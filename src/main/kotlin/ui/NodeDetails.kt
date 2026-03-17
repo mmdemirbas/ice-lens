@@ -404,7 +404,7 @@ private fun inspectorOpenPath(node: GraphNode): String? = when (node) {
     is GraphNode.SnapshotNode -> node.localPath
     is GraphNode.ManifestNode -> node.localPath
     is GraphNode.FileNode -> node.localPath
-    is GraphNode.RowNode -> node.data["local_file_path"]?.toString()
+    is GraphNode.RowNode -> node.resolvedData["local_file_path"]?.toString()
     is GraphNode.ErrorNode -> node.path
 }
 

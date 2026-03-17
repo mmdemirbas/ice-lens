@@ -166,10 +166,10 @@ fun NavigationTree(
 
                             Box(
                                 modifier = Modifier.size(10.dp).background(
-                                    getGraphNodeColor(node), androidx.compose.foundation.shape.CircleShape
+                                    getGraphNodeColor(node, isDarkSurface(colors.surface)), androidx.compose.foundation.shape.CircleShape
                                 ).border(
                                     if (isSelected) 2.dp else 1.dp,
-                                    if (isSelected) selectionColor else getGraphNodeBorderColor(node),
+                                    if (isSelected) selectionColor else getGraphNodeBorderColor(node, isDarkSurface(colors.surface)),
                                     androidx.compose.foundation.shape.CircleShape
                                 )
                             )
@@ -275,7 +275,7 @@ private fun getNodeLabel(node: GraphNode): String {
             node.data.filePath?.substringAfterLast("/")
         }"
 
-        is GraphNode.RowNode      -> "Row: ${node.data.values.firstOrNull() ?: "..."}"
+        is GraphNode.RowNode      -> "Row: ${node.resolvedData.values.firstOrNull() ?: "..."}"
         is GraphNode.ErrorNode    -> "Error: ${node.title}"
     }
 }

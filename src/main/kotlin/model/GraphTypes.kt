@@ -1,8 +1,7 @@
 package model
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.geometry.Offset
 
 // The logical graph model used by the UI
 data class GraphModel(
@@ -12,6 +11,23 @@ data class GraphModel(
     val height: Double,
 ) {
     val nodeById: Map<String, GraphNode> by lazy { nodes.associateBy { it.id } }
+
+    /** Compose-observable node positions, keyed by node ID. Used by the UI for rendering. */
+    val positions = mutableStateMapOf<String, Offset>()
+
+    fun getPosition(nodeId: String): Offset =
+        positions[nodeId] ?: Offset(0f, 0f)
+
+    fun setPosition(nodeId: String, x: Double, y: Double) {
+        positions[nodeId] = Offset(x.toFloat(), y.toFloat())
+    }
+
+    /** Copy layout positions from GraphNode.x/y into the Compose-observable positions map. */
+    fun syncPositionsFromNodes() {
+        nodes.forEach { node ->
+            positions[node.id] = Offset(node.x.toFloat(), node.y.toFloat())
+        }
+    }
 }
 
 data class FileTimeRange(
@@ -61,6 +77,11 @@ data class TableSummary(
     val metadataVersions: List<MetadataVersionInfo> = emptyList(),
 )
 
+/**
+ * Graph node base class. Subclasses are data classes for clean equality/hashing.
+ * `x` and `y` are plain mutable vars used during layout computation (NOT Compose state).
+ * The UI reads positions from `GraphModel.positions` (Compose-observable).
+ */
 sealed class GraphNode(
     open val id: String,
     initialX: Double,
@@ -68,8 +89,8 @@ sealed class GraphNode(
     open val width: Double,
     open val height: Double,
 ) {
-    var x by mutableStateOf(initialX)
-    var y by mutableStateOf(initialY)
+    var x: Double = initialX
+    var y: Double = initialY
 
     data class TableNode(
         override val id: String,
@@ -125,8 +146,11 @@ sealed class GraphNode(
         val identifierFields: List<String> = emptyList(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
+        /** Placeholder row nodes have empty data; actual data is loaded lazily via this supplier. */
+        private val dataLoader: (() -> Map<String, Any>)? = null,
     ) : GraphNode(id, initialX, initialY, 200.0, 80.0) {
         val isDelete: Boolean get() = content > 0
+        val resolvedData: Map<String, Any> by lazy { dataLoader?.invoke() ?: data }
     }
 
     data class ErrorNode(

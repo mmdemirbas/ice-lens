@@ -114,16 +114,25 @@ fun GraphCanvas(
             if (graph.nodes.isEmpty()) {
                 GraphExtents(0f, 0f, max(1f, graph.width.toFloat()), max(1f, graph.height.toFloat()))
             } else {
-                val minX = graph.nodes.minOf { it.x.toFloat() }
-                val minY = graph.nodes.minOf { it.y.toFloat() }
-                val maxX = graph.nodes.maxOf { (it.x + it.width).toFloat() }
-                val maxY = graph.nodes.maxOf { (it.y + it.height).toFloat() }
+                val minX = graph.nodes.minOf { graph.getPosition(it.id).x }
+                val minY = graph.nodes.minOf { graph.getPosition(it.id).y }
+                val maxX = graph.nodes.maxOf { graph.getPosition(it.id).x + it.width.toFloat() }
+                val maxY = graph.nodes.maxOf { graph.getPosition(it.id).y + it.height.toFloat() }
                 GraphExtents(minX, minY, maxX, maxY)
             }
         }
     }
 
     val nodeById = graph.nodeById
+
+    // Helpers to read/write Compose-observable positions
+    fun nodeX(node: GraphNode): Float = graph.getPosition(node.id).x
+    fun nodeY(node: GraphNode): Float = graph.getPosition(node.id).y
+    fun moveNode(nodeId: String, dx: Float, dy: Float) {
+        val old = graph.getPosition(nodeId)
+        graph.positions[nodeId] = Offset(old.x + dx, old.y + dy)
+    }
+
     val latestSelectedNodeIds by rememberUpdatedState(selectedNodeIds)
 
     val snapshotManifestOutLaneByEdgeId = remember(graph.nodes, graph.edges) {
@@ -136,7 +145,7 @@ fun GraphCanvas(
                     .mapNotNull { edge ->
                         val targetNode = nodeById[edge.toId] ?: return@mapNotNull null
                         if (targetNode !is GraphNode.ManifestNode) return@mapNotNull null
-                        edge to targetNode.y
+                        edge to nodeY(targetNode)
                     }
                     .sortedBy { it.second }
                 ranked.forEachIndexed { index, (edge, _) ->
@@ -156,7 +165,7 @@ fun GraphCanvas(
                     .mapNotNull { edge ->
                         val sourceNode = nodeById[edge.fromId] ?: return@mapNotNull null
                         if (sourceNode !is GraphNode.SnapshotNode) return@mapNotNull null
-                        edge to sourceNode.y
+                        edge to nodeY(sourceNode)
                     }
                     .sortedBy { it.second }
                 ranked.forEachIndexed { index, (edge, _) ->
@@ -182,10 +191,12 @@ fun GraphCanvas(
         val laneXSpacing = 14f
 
         // Always use right-center -> left-center anchors.
-        val startX = (source.x + source.width).toFloat()
-        val startY = (source.y + source.height / 2).toFloat()
-        val endX = target.x.toFloat()
-        val endY = (target.y + target.height / 2).toFloat()
+        val srcPos = graph.getPosition(source.id)
+        val tgtPos = graph.getPosition(target.id)
+        val startX = srcPos.x + source.width.toFloat()
+        val startY = srcPos.y + source.height.toFloat() / 2f
+        val endX = tgtPos.x
+        val endY = tgtPos.y + target.height.toFloat() / 2f
         val horizontalGap = kotlin.math.abs(endX - startX).coerceAtLeast(1f)
         // Explicit visible side ports: always leave from the right side and enter from the left side.
         val fixedPortStub = 18f
@@ -237,10 +248,7 @@ fun GraphCanvas(
                     val snapshot = undoStack.removeLastOrNull()
                     if (snapshot != null) {
                         snapshot.positions.forEach { (id, pos) ->
-                            nodeById[id]?.let { node ->
-                                node.x = pos.first
-                                node.y = pos.second
-                            }
+                            graph.setPosition(id, pos.first, pos.second)
                         }
                     }
                     true
@@ -343,10 +351,11 @@ fun GraphCanvas(
                                 val selRect = androidx.compose.ui.geometry.Rect(logLeft, logTop, logRight, logBottom)
 
                                 val selected = graph.nodes.filter { n ->
+                                    val nx = nodeX(n); val ny = nodeY(n)
                                     selRect.overlaps(
                                         androidx.compose.ui.geometry.Rect(
-                                            n.x.toFloat(), n.y.toFloat(),
-                                            (n.x + n.width).toFloat(), (n.y + n.height).toFloat()
+                                            nx, ny,
+                                            nx + n.width.toFloat(), ny + n.height.toFloat()
                                         )
                                     )
                                 }.map { it.id }.toSet()
@@ -397,10 +406,10 @@ fun GraphCanvas(
         val cullMargin = 400f
 
         val visibleNodes = graph.nodes.filter { node ->
-            val nodeLeft = node.x.toFloat()
-            val nodeTop = node.y.toFloat()
-            val nodeRight = (node.x + node.width).toFloat()
-            val nodeBottom = (node.y + node.height).toFloat()
+            val nodeLeft = nodeX(node)
+            val nodeTop = nodeY(node)
+            val nodeRight = nodeLeft + node.width.toFloat()
+            val nodeBottom = nodeTop + node.height.toFloat()
             nodeRight >= logicalLeft - cullMargin &&
                 nodeLeft <= logicalRight + cullMargin &&
                 nodeBottom >= logicalTop - cullMargin &&
@@ -487,12 +496,12 @@ fun GraphCanvas(
                     val currentX = offsetAnim.value.x
                     val currentY = offsetAnim.value.y
 
-                    val nodeLeft = selectedNode.x.toFloat() * currentZoom + currentX
-                    val nodeRight =
-                        (selectedNode.x.toFloat() + selectedNode.width.toFloat()) * currentZoom + currentX
-                    val nodeTop = selectedNode.y.toFloat() * currentZoom + currentY
-                    val nodeBottom =
-                        (selectedNode.y.toFloat() + selectedNode.height.toFloat()) * currentZoom + currentY
+                    val snx = nodeX(selectedNode)
+                    val sny = nodeY(selectedNode)
+                    val nodeLeft = snx * currentZoom + currentX
+                    val nodeRight = (snx + selectedNode.width.toFloat()) * currentZoom + currentX
+                    val nodeTop = sny * currentZoom + currentY
+                    val nodeBottom = (sny + selectedNode.height.toFloat()) * currentZoom + currentY
 
                     val margin = 20f
 
@@ -500,9 +509,8 @@ fun GraphCanvas(
                         nodeLeft >= margin && nodeRight <= (viewportWidth - margin) && nodeTop >= margin && nodeBottom <= (viewportHeight - margin)
 
                     if (!isVisible) {
-                        val nodeCenterX = selectedNode.x.toFloat() + (selectedNode.width.toFloat() / 2f)
-                        val nodeCenterY =
-                            selectedNode.y.toFloat() + (selectedNode.height.toFloat() / 2f)
+                        val nodeCenterX = snx + (selectedNode.width.toFloat() / 2f)
+                        val nodeCenterY = sny + (selectedNode.height.toFloat() / 2f)
 
                         val targetX = (viewportWidth / 2f - nodeCenterX) * currentZoom
                         val targetY = (viewportHeight / 2f - nodeCenterY) * currentZoom
@@ -529,7 +537,7 @@ fun GraphCanvas(
                     val target = nodeById[edge.toId]
 
                     if (source != null && target != null) {
-                        val baseEdgeColor = tonedEdgeColor(getGraphNodeBorderColor(source), source.id)
+                        val baseEdgeColor = tonedEdgeColor(getGraphNodeBorderColor(source, isDarkSurface), source.id)
                         val edgeColor = if (isDarkSurface) {
                             liftEdgeColor(baseEdgeColor, colors.onSurface, minimumBrightness = 0.54f)
                         } else {
@@ -545,7 +553,10 @@ fun GraphCanvas(
             }
 
             visibleNodes.forEach { node ->
-                Box(modifier = Modifier.offset { IntOffset(node.x.toInt(), node.y.toInt()) }) {
+                Box(modifier = Modifier.offset {
+                    val p = graph.getPosition(node.id)
+                    IntOffset(p.x.toInt(), p.y.toInt())
+                }) {
                     var pickSelectionArmed by remember(node.id) { mutableStateOf(false) }
                     Box(
                         modifier = Modifier
@@ -571,7 +582,7 @@ fun GraphCanvas(
                                     onDragStart = {
                                         // Save positions for undo before drag begins
                                         val snapshot = PositionSnapshot(
-                                            graph.nodes.associate { it.id to (it.x to it.y) }
+                                            graph.positions.toMap().mapValues { (_, v) -> v.x.toDouble() to v.y.toDouble() }
                                         )
                                         if (undoStack.size >= maxUndoDepth) undoStack.removeFirst()
                                         undoStack.add(snapshot)
@@ -586,15 +597,10 @@ fun GraphCanvas(
                                     val dy = dragAmount.y
 
                                     val currentSelectedIds = latestSelectedNodeIds
-                                    val currentSelectedNodes = currentSelectedIds.mapNotNull { nodeById[it] }
                                     if (node.id in currentSelectedIds) {
-                                        currentSelectedNodes.forEach { n ->
-                                            n.x += dx
-                                            n.y += dy
-                                        }
+                                        currentSelectedIds.forEach { id -> moveNode(id, dx, dy) }
                                     } else {
-                                        node.x += dx
-                                        node.y += dy
+                                        moveNode(node.id, dx, dy)
                                         onSelectionChange(setOf(node.id))
                                     }
                                 }
@@ -649,8 +655,9 @@ fun GraphCanvas(
 
         val tooltipNode = activeTooltipNodeId?.let(nodeById::get)
         if (tooltipNode != null) {
-            val tooltipX = ((tooltipNode.x + tooltipNode.width) * localZoom + offsetAnim.value.x + 12f).roundToInt()
-            val tooltipY = (tooltipNode.y * localZoom + offsetAnim.value.y + 12f).roundToInt()
+            val ttPos = graph.getPosition(tooltipNode.id)
+            val tooltipX = ((ttPos.x + tooltipNode.width.toFloat()) * localZoom + offsetAnim.value.x + 12f).roundToInt()
+            val tooltipY = (ttPos.y * localZoom + offsetAnim.value.y + 12f).roundToInt()
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -714,9 +721,10 @@ fun GraphCanvas(
 
                 translate(mapOffsetX, mapOffsetY) {
                     graph.nodes.forEach { n ->
+                        val np = graph.getPosition(n.id)
                         drawRect(
-                            color = getGraphNodeColor(n),
-                            topLeft = Offset((n.x.toFloat() - extents.minX) * mapScale, (n.y.toFloat() - extents.minY) * mapScale),
+                            color = getGraphNodeColor(n, isDarkSurface),
+                            topLeft = Offset((np.x - extents.minX) * mapScale, (np.y - extents.minY) * mapScale),
                             size = Size(n.width.toFloat() * mapScale, n.height.toFloat() * mapScale)
                         )
                     }

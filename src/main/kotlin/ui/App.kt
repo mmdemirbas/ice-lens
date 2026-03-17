@@ -420,12 +420,11 @@ fun App() {
                     val tableModel = UnifiedTableModel(Paths.get(normalizedTablePath))
                     val newGraph = GraphLayoutService.layoutGraph(tableModel, withRows)
                     if (preservePositions && previousSession != null) {
-                        val oldById = previousSession.graph.nodeById
+                        val oldPositions = previousSession.graph.positions
                         newGraph.nodes.forEach { n ->
-                            val old = oldById[n.id]
-                            if (old != null) {
-                                n.x = old.x
-                                n.y = old.y
+                            val oldPos = oldPositions[n.id]
+                            if (oldPos != null) {
+                                newGraph.setPosition(n.id, oldPos.x.toDouble(), oldPos.y.toDouble())
                             }
                         }
                     }
@@ -498,21 +497,20 @@ fun App() {
                     }
                     if (requestId != loadRequestId) return@launch
 
-                    val laidOutById = fullyLaidOut.nodeById
                     currentGraph.nodes.forEach { node ->
                         if (node.id in visibleNodeIds) {
-                            laidOutById[node.id]?.let { laidOut ->
-                                node.x = laidOut.x
-                                node.y = laidOut.y
-                            }
+                            val laidOutPos = fullyLaidOut.getPosition(node.id)
+                            currentGraph.setPosition(node.id, laidOutPos.x.toDouble(), laidOutPos.y.toDouble())
                         }
                     }
                     val relaid = GraphModel(
                         nodes = currentGraph.nodes,
                         edges = currentGraph.edges,
-                        width = currentGraph.nodes.maxOfOrNull { it.x + it.width } ?: 1.0,
-                        height = currentGraph.nodes.maxOfOrNull { it.y + it.height } ?: 1.0
+                        width = currentGraph.nodes.maxOfOrNull { currentGraph.getPosition(it.id).x.toDouble() + it.width } ?: 1.0,
+                        height = currentGraph.nodes.maxOfOrNull { currentGraph.getPosition(it.id).y.toDouble() + it.height } ?: 1.0
                     )
+                    // Copy positions to the new model
+                    currentGraph.positions.forEach { (id, pos) -> relaid.setPosition(id, pos.x.toDouble(), pos.y.toDouble()) }
                     setGraphModelAndBump(relaid)
                     selectedNodeIds = selectedNodeIds.intersect(visibleNodeIds)
                     sessionCache[cacheKey] = TableSession(

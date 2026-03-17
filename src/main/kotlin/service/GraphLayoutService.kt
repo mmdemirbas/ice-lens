@@ -250,56 +250,52 @@ object GraphLayoutService {
                                     }
 
                                     if (localFile.exists()) {
-                                        try {
-                                            unifiedDataFile.rows
-                                                .take(5)
-                                                .forEachIndexed { rIdx, rowData ->
-                                                    val enrichedData = mutableMapOf<String, Any>()
-                                                    val contentType = entry.dataFile?.content ?: 0
-                                                    enrichedData["file_no"] = simpleId
-                                                    enrichedData["row_idx"] = rIdx
-                                                    enrichedData["local_file_path"] = unifiedDataFile.path.toString()
-                                                    if (contentType > 0 && rowData.cells.containsKey("file_path")) {
-                                                        val targetPath =
-                                                            rowData.cells["file_path"].toString()
-                                                        val targetId = filePathToSimpleId[targetPath]
-                                                            ?: filePathToSimpleId[normalizeFilePath(targetPath)]
-                                                            ?: "?"
-                                                        enrichedData["target_file"] = "File $targetId"
-                                                        enrichedData["target_file_no"] = targetId
-                                                    }
-                                                    enrichedData.putAll(rowData.cells)
+                                        val contentType = entry.dataFile?.content ?: 0
+                                        val maxRows = 5
+                                        // Create placeholder row nodes; actual data loads lazily on first access
+                                        for (rIdx in 0 until maxRows) {
+                                            val rId = "row_${fId}_$rIdx"
+                                            if (elkNodes.containsKey(rId)) continue
+                                            elkNodes[rId] = createElkNode(root, rId, 200.0, 80.0)
 
-                                                    val rId = "row_${fId}_$rIdx"
-                                                    if (!elkNodes.containsKey(rId)) {
-                                                        elkNodes[rId] =
-                                                            createElkNode(root, rId, 200.0, 80.0)
-                                                        logicalNodes[rId] = GraphNode.RowNode(
-                                                            rId,
-                                                            enrichedData,
-                                                            contentType,
-                                                            snapshotIdentifierFields
-                                                        )
+                                            // Capture values for lazy loader
+                                            val capturedDataFile = unifiedDataFile
+                                            val capturedSimpleId = simpleId
+                                            val capturedFilePathMap = filePathToSimpleId
+                                            val capturedIdentifierFields = snapshotIdentifierFields
 
-                                                        ElkGraphUtil.createSimpleEdge(
-                                                            elkNodes[fId],
-                                                            elkNodes[rId]
-                                                        )
-                                                        edgeIds.add("e_row_$rId")
-                                                        edges.add(GraphEdge("e_row_$rId", fId, rId))
-                                                    }
+                                            logicalNodes[rId] = GraphNode.RowNode(
+                                                id = rId,
+                                                data = mapOf("file_no" to capturedSimpleId, "row_idx" to rIdx),
+                                                content = contentType,
+                                                identifierFields = capturedIdentifierFields,
+                                                dataLoader = {
+                                                    try {
+                                                        val rows = capturedDataFile.rows
+                                                        if (rIdx < rows.size) {
+                                                            val rowData = rows[rIdx]
+                                                            val enriched = mutableMapOf<String, Any>()
+                                                            enriched["file_no"] = capturedSimpleId
+                                                            enriched["row_idx"] = rIdx
+                                                            enriched["local_file_path"] = capturedDataFile.path.toString()
+                                                            if (contentType > 0 && rowData.cells.containsKey("file_path")) {
+                                                                val targetPath = rowData.cells["file_path"].toString()
+                                                                val targetId = capturedFilePathMap[targetPath]
+                                                                    ?: capturedFilePathMap[normalizeFilePath(targetPath)]
+                                                                    ?: "?"
+                                                                enriched["target_file"] = "File $targetId"
+                                                                enriched["target_file_no"] = targetId
+                                                            }
+                                                            enriched.putAll(rowData.cells)
+                                                            enriched
+                                                        } else emptyMap()
+                                                    } catch (_: Exception) { emptyMap() }
                                                 }
-                                        } catch (e: Exception) {
-                                            addErrorNode(
-                                                fId,
-                                                "ROW READ ERROR",
-                                                UnifiedReadError(
-                                                    stage = "read-data-file-rows",
-                                                    path = localFile.path,
-                                                    message = e.message ?: (e::class.simpleName ?: "Unknown error"),
-                                                    stackTrace = e.stackTraceToString(),
-                                                )
                                             )
+
+                                            ElkGraphUtil.createSimpleEdge(elkNodes[fId], elkNodes[rId])
+                                            edgeIds.add("e_row_$rId")
+                                            edges.add(GraphEdge("e_row_$rId", fId, rId))
                                         }
                                     }
                                 }
@@ -314,7 +310,7 @@ object GraphLayoutService {
         val engine = RecursiveGraphLayoutEngine()
         engine.layout(root, BasicProgressMonitor())
 
-        // Sync calculated ELK coordinates back to the actual logical models
+        // Sync calculated ELK coordinates back to the node models
         val finalNodes = logicalNodes.values.map { node ->
             val elkNode = elkNodes[node.id]
             if (elkNode != null) {
@@ -328,7 +324,9 @@ object GraphLayoutService {
         alignParentsWithChildren(logicalNodes, edges)
         preventOverlaps(logicalNodes)
 
-        return GraphModel(finalNodes, edges, root.width, root.height)
+        val model = GraphModel(finalNodes, edges, root.width, root.height)
+        model.syncPositionsFromNodes()
+        return model
     }
 
     private fun enforceChronologicalVerticalOrder(
@@ -509,9 +507,9 @@ object GraphLayoutService {
 
             posDeleteRows.forEach { rowNode ->
                 val deleteFile = rowParentFileByRowId[rowNode.id] ?: return@forEach
-                val targetPath = rowNode.data["file_path"]?.toString() ?: return@forEach
+                val targetPath = rowNode.resolvedData["file_path"]?.toString() ?: return@forEach
                 val targetRows = dataRowsByTarget[normalizeFilePath(targetPath) to snapshotId] ?: return@forEach
-                val position = parsePosition(rowNode.data) ?: return@forEach
+                val position = parsePosition(rowNode.resolvedData) ?: return@forEach
                 if (position < 0 || position >= targetRows.size) return@forEach
                 moveCandidates.add(PosDeleteMove(rowNode, targetRows[position]))
             }

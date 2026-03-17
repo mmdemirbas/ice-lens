@@ -64,7 +64,13 @@ fun filteredGraphModel(graph: GraphModel, visibleNodeIds: Set<String>): GraphMod
 
     val nodes = graph.nodes.filter { it.id in visibleNodeIds }
     val edges = graph.edges.filter { it.fromId in visibleNodeIds && it.toId in visibleNodeIds }
-    val width = nodes.maxOfOrNull { it.x + it.width } ?: 1.0
-    val height = nodes.maxOfOrNull { it.y + it.height } ?: 1.0
-    return GraphModel(nodes = nodes, edges = edges, width = width, height = height)
+    val width = nodes.maxOfOrNull { graph.getPosition(it.id).x.toDouble() + it.width } ?: 1.0
+    val height = nodes.maxOfOrNull { graph.getPosition(it.id).y.toDouble() + it.height } ?: 1.0
+    val filtered = GraphModel(nodes = nodes, edges = edges, width = width, height = height)
+    // Copy positions from the original graph
+    nodes.forEach { node ->
+        val pos = graph.getPosition(node.id)
+        filtered.setPosition(node.id, pos.x.toDouble(), pos.y.toDouble())
+    }
+    return filtered
 }
