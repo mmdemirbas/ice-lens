@@ -114,7 +114,7 @@ data class ManifestListEntry(
     @SerialName("partition_spec_id") val partitionSpecId: Int? = null,
     @SerialName("content") val content: Int? = null, // 0=Data, 1=Deletes
     @SerialName("sequence_number") val sequenceNumber: Int? = null,
-    @SerialName("min_sequence_number") val cominSequenceNumber: Int? = null,
+    @SerialName("min_sequence_number") val minSequenceNumber: Int? = null,
     @SerialName("added_snapshot_id") val addedSnapshotId: Long? = null,
     @SerialName("added_files_count") val addedFilesCount: Int? = null,
     @SerialName("existing_files_count") val existingFilesCount: Int? = null,
@@ -153,15 +153,9 @@ data class DataFile(
     @SerialName("key_metadata") val keyMetadata: ByteArray? = null,
     @SerialName("split_offsets") val splitOffsets: List<Long>? = null,
     @SerialName("equality_ids") val equalityIds: List<Int>? = null,
-    @SerialName("sort_order_id") val sorderOrderId: Long? = null,
+    @SerialName("sort_order_id") val sortOrderId: Long? = null,
 )
 
-
-@Serializable
-data class KeyValuePairInt(val key: Int, val value: Int)
-
-@Serializable
-data class KeyValuePairString(val key: Int, val value: String)
 
 @Serializable
 data class KeyValuePairLong(val key: Int, val value: Long)

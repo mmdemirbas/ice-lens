@@ -52,6 +52,7 @@ object GraphLayoutService {
         val elkNodes = mutableMapOf<String, ElkNode>()
         val logicalNodes = mutableMapOf<String, GraphNode>()
         val edges = mutableListOf<GraphEdge>()
+        val edgeIds = mutableSetOf<String>()
         val processedManifests = mutableSetOf<String>()
         val tableNodeId = "table_root"
 
@@ -124,8 +125,10 @@ object GraphLayoutService {
                 message = error.message,
                 stackTrace = error.stackTrace,
             )
+            val errEdgeId = "e_err_${parentId}_$errorNodeId"
             ElkGraphUtil.createSimpleEdge(elkNodes[parentId], elkNodes[errorNodeId])
-            edges.add(GraphEdge("e_err_${parentId}_$errorNodeId", parentId, errorNodeId))
+            edgeIds.add(errEdgeId)
+            edges.add(GraphEdge(errEdgeId, parentId, errorNodeId))
         }
 
         tableModel.readErrors.forEach { error ->
@@ -145,7 +148,7 @@ object GraphLayoutService {
                 val manifests = snapshot.manifestLists.sortedWith(
                     compareBy(
                         { it.metadata.sequenceNumber ?: Int.MAX_VALUE },
-                        { it.metadata.cominSequenceNumber ?: Int.MAX_VALUE },
+                        { it.metadata.minSequenceNumber ?: Int.MAX_VALUE },
                         { it.metadata.addedSnapshotId ?: Long.MAX_VALUE },
                         { manifestContentRank(it.metadata.content) },
                         { it.metadata.manifestPath ?: "" }
@@ -186,7 +189,7 @@ object GraphLayoutService {
                 )
             }
             val tableEdgeId = "e_table_${tableNodeId}_to_$mId"
-            if (edges.none { it.id == tableEdgeId }) {
+            if (edgeIds.add(tableEdgeId)) {
                 ElkGraphUtil.createSimpleEdge(elkNodes[tableNodeId], elkNodes[mId])
                 edges.add(GraphEdge(tableEdgeId, tableNodeId, mId))
             }
@@ -217,13 +220,15 @@ object GraphLayoutService {
                 }
 
                 val snapEdgeId = "e_snap_${mId}_to_$sId"
-                ElkGraphUtil.createSimpleEdge(elkNodes[mId], elkNodes[sId])
-                edges.add(GraphEdge(snapEdgeId, mId, sId))
+                if (edgeIds.add(snapEdgeId)) {
+                    ElkGraphUtil.createSimpleEdge(elkNodes[mId], elkNodes[sId])
+                    edges.add(GraphEdge(snapEdgeId, mId, sId))
+                }
 
                 val manifests = snapshot.manifestLists.sortedWith(
                     compareBy(
                         { it.metadata.sequenceNumber ?: Int.MAX_VALUE },
-                        { it.metadata.cominSequenceNumber ?: Int.MAX_VALUE },
+                        { it.metadata.minSequenceNumber ?: Int.MAX_VALUE },
                         { it.metadata.addedSnapshotId ?: Long.MAX_VALUE },
                         { manifestContentRank(it.metadata.content) },
                         { it.metadata.manifestPath ?: "" }
@@ -248,7 +253,7 @@ object GraphLayoutService {
                     }
 
                     val manEdgeId = "e_man_${sId}_to_$manId"
-                    if (edges.none { it.id == manEdgeId }) {
+                    if (edgeIds.add(manEdgeId)) {
                         ElkGraphUtil.createSimpleEdge(elkNodes[sId], elkNodes[manId])
                         edges.add(GraphEdge(manEdgeId, sId, manId))
                     }
@@ -285,6 +290,7 @@ object GraphLayoutService {
                                 }
 
                                 val edgeId = "e_file_${manId}_to_$fId"
+                                edgeIds.add(edgeId)
                                 ElkGraphUtil.createSimpleEdge(elkNodes[manId], elkNodes[fId])
                                 edges.add(GraphEdge(edgeId, manId, fId))
 
@@ -336,6 +342,7 @@ object GraphLayoutService {
                                                             elkNodes[fId],
                                                             elkNodes[rId]
                                                         )
+                                                        edgeIds.add("e_row_$rId")
                                                         edges.add(GraphEdge("e_row_$rId", fId, rId))
                                                     }
                                                 }
@@ -424,7 +431,7 @@ object GraphLayoutService {
             val mb = (b as? GraphNode.ManifestNode)?.data
             compareValuesBy(ma, mb,
                 { it?.sequenceNumber ?: Int.MAX_VALUE },
-                { it?.cominSequenceNumber ?: Int.MAX_VALUE },
+                { it?.minSequenceNumber ?: Int.MAX_VALUE },
                 { it?.addedSnapshotId ?: Long.MAX_VALUE },
                 { manifestContentRank(it?.content) },
                 { it?.manifestPath ?: "" }

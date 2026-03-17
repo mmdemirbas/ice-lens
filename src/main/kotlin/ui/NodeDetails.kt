@@ -965,7 +965,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             .sortedWith(
                                 compareBy(
                                     { it.data.sequenceNumber ?: Int.MAX_VALUE },
-                                    { it.data.cominSequenceNumber ?: Int.MAX_VALUE },
+                                    { it.data.minSequenceNumber ?: Int.MAX_VALUE },
                                     { manifestContentRank(it.data.content) },
                                     { it.data.manifestPath ?: "" }
                                 )
@@ -1000,7 +1000,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                         "${manifest.manifestLength ?: "N/A"}",
                                         "${manifest.partitionSpecId ?: "N/A"}",
                                         "${manifest.sequenceNumber ?: "N/A"}",
-                                        "${manifest.cominSequenceNumber ?: "N/A"}",
+                                        "${manifest.minSequenceNumber ?: "N/A"}",
                                         "${manifest.addedSnapshotId ?: "N/A"}",
                                         "${manifest.addedFilesCount ?: 0}",
                                         "${manifest.existingFilesCount ?: 0}",
@@ -1024,7 +1024,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Property", "Value", isHeader = true)
                             DetailRow("Content Type", contentType)
                             DetailRow("Sequence Num.", "${node.data.sequenceNumber ?: "N/A"}")
-                            DetailRow("Min Sequence Num.", "${node.data.cominSequenceNumber ?: "N/A"}")
+                            DetailRow("Min Sequence Num.", "${node.data.minSequenceNumber ?: "N/A"}")
                             DetailRow("Partition Spec ID", "${node.data.partitionSpecId ?: "N/A"}")
                             DetailRow("Added Snapshot", "${node.data.addedSnapshotId ?: "N/A"}")
                             DetailRow("Added Files", "${node.data.addedFilesCount ?: 0}")
@@ -1115,7 +1115,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                         data.keyMetadata?.toHexShort() ?: "N/A",
                                         longs(data.splitOffsets),
                                         data.equalityIds?.joinToString(", ") ?: "N/A",
-                                        "${data.sorderOrderId ?: "N/A"}"
+                                        "${data.sortOrderId ?: "N/A"}"
                                     )
                                 }
                             )
@@ -1145,7 +1145,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("File Format", "${node.data.fileFormat ?: "N/A"}")
                             DetailRow("Record Count", "${node.data.recordCount ?: 0}")
                             DetailRow("File Size", "${node.data.fileSizeInBytes ?: 0} bytes")
-                            DetailRow("Sort Order ID", "${node.data.sorderOrderId ?: "N/A"}")
+                            DetailRow("Sort Order ID", "${node.data.sortOrderId ?: "N/A"}")
                             DetailRow("Split Offsets", longs(node.data.splitOffsets))
                             DetailRow("Equality IDs", node.data.equalityIds?.joinToString(", ") ?: "N/A")
                             DetailRow("Partition", "N/A")
