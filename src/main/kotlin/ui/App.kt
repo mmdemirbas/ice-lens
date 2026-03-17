@@ -1,12 +1,8 @@
 package ui
 
 import androidx.compose.foundation.*
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -16,22 +12,14 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -42,17 +30,12 @@ import kotlinx.coroutines.withContext
 import model.*
 import service.GraphLayoutService
 import java.awt.Desktop
-import java.awt.Cursor
 import java.io.File
 import java.net.URI
-import java.nio.file.Paths
 import java.nio.file.NoSuchFileException
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+import java.nio.file.Paths
 import java.util.prefs.Preferences
 
-// Access native OS preferences for this package
 private val prefs = Preferences.userRoot().node("com.github.mmdemirbas.icelens")
 private const val PREF_WAREHOUSE_PATH = "last_warehouse_path"
 private const val PREF_SHOW_ROWS = "show_data_rows"
@@ -71,258 +54,12 @@ private const val PREF_SELECTED_TABLE_PATH = "selected_table_path"
 private const val PREF_SELECTED_SNAPSHOT_IDS = "selected_snapshot_ids"
 private const val PREF_IS_DARK_MODE = "is_dark_mode"
 
-// Data class to hold cached table sessions
 data class TableSession(
     val table: UnifiedTableModel,
     val graph: GraphModel,
     var selectedNodeIds: Set<String> = emptySet(),
     val fingerprint: String = "",
 )
-
-private val appDateTimeFormatter: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-        .withZone(ZoneId.systemDefault())
-
-private fun formatAppTimestamp(ms: Long?): String =
-    ms?.let { appDateTimeFormatter.format(Instant.ofEpochMilli(it)) } ?: "N/A"
-
-private fun parseLongSet(raw: String): Set<Long> =
-    raw.split(";")
-        .mapNotNull { it.trim().toLongOrNull() }
-        .toSet()
-
-private fun encodeLongSet(values: Set<Long>): String =
-    values.sorted().joinToString(";")
-
-private val IceLensLightColorScheme = lightColorScheme(
-    primary = Color(0xFF1565C0),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFDDEBFF),
-    onPrimaryContainer = Color(0xFF001C3B),
-    secondary = Color(0xFF006B5F),
-    onSecondary = Color.White,
-    background = Color(0xFFF5F7FA),
-    onBackground = Color(0xFF121417),
-    surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF121417),
-    surfaceVariant = Color(0xFFE9EEF5),
-    onSurfaceVariant = Color(0xFF475465),
-    outline = Color(0xFF7A8798),
-    outlineVariant = Color(0xFFB8C2D0),
-    error = Color(0xFFBA1A1A),
-    onError = Color.White
-)
-
-private val IceLensDarkColorScheme = darkColorScheme(
-    primary = Color(0xFFA9C7FF),
-    onPrimary = Color(0xFF00315F),
-    primaryContainer = Color(0xFF004A8A),
-    onPrimaryContainer = Color(0xFFD9E7FF),
-    secondary = Color(0xFF86D7CA),
-    onSecondary = Color(0xFF003730),
-    background = Color(0xFF101317),
-    onBackground = Color(0xFFE2E6EC),
-    surface = Color(0xFF161A20),
-    onSurface = Color(0xFFE2E6EC),
-    surfaceVariant = Color(0xFF2A3038),
-    onSurfaceVariant = Color(0xFFC2CAD6),
-    outline = Color(0xFF8C96A3),
-    outlineVariant = Color(0xFF444C58),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005)
-)
-
-private data class SnapshotFilterOption(
-    val nodeId: String,
-    val snapshotId: Long?,
-    val sequenceNumber: Long?,
-    val timestampMs: Long?,
-)
-
-private fun snapshotFilterLabel(option: SnapshotFilterOption): String {
-    val seq = option.sequenceNumber?.toString() ?: "N/A"
-    val sid = option.snapshotId?.toString() ?: "N/A"
-    return "Seq $seq | Snapshot $sid"
-}
-
-private fun computeVisibleNodeIdsForSnapshotFilter(
-    graph: GraphModel,
-    selectedSnapshotNodeIds: Set<String>
-): Set<String> {
-    if (selectedSnapshotNodeIds.isEmpty()) return graph.nodes.map { it.id }.toSet()
-
-    val validSnapshotIds = graph.nodes
-        .filterIsInstance<GraphNode.SnapshotNode>()
-        .map { it.id }
-        .toHashSet()
-    val selected = selectedSnapshotNodeIds.filterTo(mutableSetOf()) { it in validSnapshotIds }
-    if (selected.isEmpty()) return graph.nodes.map { it.id }.toSet()
-
-    val childrenByParent = graph.edges
-        .groupBy { it.fromId }
-        .mapValues { (_, edges) -> edges.map { it.toId } }
-    val parentsByChild = graph.edges
-        .groupBy { it.toId }
-        .mapValues { (_, edges) -> edges.map { it.fromId } }
-
-    val visible = mutableSetOf<String>()
-
-    fun walk(start: String, next: (String) -> List<String>) {
-        val queue = ArrayDeque<String>()
-        val seen = mutableSetOf<String>()
-        queue.add(start)
-        while (queue.isNotEmpty()) {
-            val current = queue.removeFirst()
-            if (!seen.add(current)) continue
-            visible += current
-            next(current).forEach(queue::addLast)
-        }
-    }
-
-    selected.forEach { snapshotId ->
-        walk(snapshotId) { id -> parentsByChild[id].orEmpty() }
-        walk(snapshotId) { id -> childrenByParent[id].orEmpty() }
-    }
-
-    return visible
-}
-
-private fun filteredGraphModel(graph: GraphModel, visibleNodeIds: Set<String>): GraphModel {
-    if (visibleNodeIds.isEmpty()) return GraphModel(emptyList(), emptyList(), 1.0, 1.0)
-    if (visibleNodeIds.size == graph.nodes.size) return graph
-
-    val nodes = graph.nodes.filter { it.id in visibleNodeIds }
-    val edges = graph.edges.filter { it.fromId in visibleNodeIds && it.toId in visibleNodeIds }
-    val width = nodes.maxOfOrNull { it.x + it.width } ?: 1.0
-    val height = nodes.maxOfOrNull { it.y + it.height } ?: 1.0
-    return GraphModel(nodes = nodes, edges = edges, width = width, height = height)
-}
-
-@Composable
-fun DraggableVerticalDivider(onDrag: (Float) -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxHeight()
-            .width(8.dp)
-            .pointerHoverIcon(PointerIcon(Cursor(Cursor.E_RESIZE_CURSOR)))
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures { change, dragAmount ->
-                    change.consume()
-                    onDrag(dragAmount)
-                }
-            }) {
-        VerticalDivider(modifier = Modifier.align(Alignment.Center))
-    }
-}
-
-@Composable
-fun DraggableHorizontalDivider(onDrag: (Float) -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(8.dp)
-            .pointerHoverIcon(PointerIcon(Cursor(Cursor.N_RESIZE_CURSOR)))
-            .pointerInput(Unit) {
-                detectVerticalDragGestures { change, dragAmount ->
-                    change.consume()
-                    onDrag(dragAmount)
-                }
-            }) {
-        HorizontalDivider(
-            modifier = Modifier.align(Alignment.Center),
-            color = MaterialTheme.colorScheme.outlineVariant,
-            thickness = 1.dp
-        )
-    }
-}
-
-@Composable
-fun ToolbarGroup(content: @Composable RowScope.() -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(4.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        color = MaterialTheme.colorScheme.surface
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.height(32.dp).padding(horizontal = 2.dp)
-        ) {
-            content()
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun ToolbarIconButton(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    tooltip: String,
-    onClick: () -> Unit,
-    isSelected: Boolean = false,
-    modifier: Modifier = Modifier
-) {
-    TooltipArea(
-        tooltip = {
-            Box(
-                modifier = Modifier
-                    .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.92f), RoundedCornerShape(4.dp))
-                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
-                    .padding(8.dp)
-            ) {
-                Text(text = tooltip, color = MaterialTheme.colorScheme.inverseOnSurface, fontSize = 12.sp)
-            }
-        },
-        delayMillis = 500,
-        tooltipPlacement = TooltipPlacement.CursorPoint(
-            alignment = Alignment.BottomEnd,
-            offset = DpOffset(0.dp, 16.dp)
-        )
-    ) {
-        IconButton(
-            onClick = onClick,
-            modifier = modifier,
-            colors = if (isSelected) IconButtonDefaults.filledIconButtonColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-            ) else IconButtonDefaults.iconButtonColors()
-        ) {
-            Icon(icon, contentDescription = tooltip, modifier = Modifier.size(20.dp))
-        }
-    }
-}
-
-// Helper to detect if a directory is an Iceberg table
-fun isIcebergTable(dir: File): Boolean {
-    val metaDir = File(dir, "metadata")
-    return metaDir.exists() && metaDir.isDirectory && metaDir.listFiles { f ->
-        f.name.endsWith(".metadata.json")
-    }?.isNotEmpty() == true
-}
-
-fun scanForTables(warehouseDir: File): List<String> {
-    return warehouseDir.listFiles { file ->
-        file.isDirectory && isIcebergTable(file)
-    }?.map { it.name }?.sorted() ?: emptyList()
-}
-
-fun canonicalWorkspacePath(path: String): String =
-    runCatching { File(path).canonicalPath }.getOrElse { File(path).absolutePath }
-
-fun deduplicateWorkspaceItems(items: List<WorkspaceItem>): List<WorkspaceItem> {
-    val seen = mutableSetOf<String>()
-    return items.filter { item ->
-        val key = canonicalWorkspacePath(item.path)
-        seen.add(key)
-    }
-}
-
-fun initialWarehouseTableStatuses(items: List<WorkspaceItem>): Map<String, Map<String, WorkspaceTableStatus>> {
-    return items.asSequence()
-        .filterIsInstance<WorkspaceItem.Warehouse>()
-        .associate { warehouse ->
-            warehouse.path to warehouse.tables.associateWith { WorkspaceTableStatus.EXISTING }
-        }
-}
 
 @Composable
 fun App() {
