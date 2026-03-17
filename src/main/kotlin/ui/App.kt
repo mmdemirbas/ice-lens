@@ -683,7 +683,7 @@ fun App() {
                     val tableModel = UnifiedTableModel(Paths.get(normalizedTablePath))
                     val newGraph = GraphLayoutService.layoutGraph(tableModel, withRows)
                     if (preservePositions && previousSession != null) {
-                        val oldById = previousSession.graph.nodes.associateBy { it.id }
+                        val oldById = previousSession.graph.nodeById
                         newGraph.nodes.forEach { n ->
                             val old = oldById[n.id]
                             if (old != null) {
@@ -761,7 +761,7 @@ fun App() {
                     }
                     if (requestId != loadRequestId) return@launch
 
-                    val laidOutById = fullyLaidOut.nodes.associateBy { it.id }
+                    val laidOutById = fullyLaidOut.nodeById
                     currentGraph.nodes.forEach { node ->
                         if (node.id in visibleNodeIds) {
                             laidOutById[node.id]?.let { laidOut ->

@@ -231,7 +231,7 @@ private fun flattenGraph(
 
         visited.add(nodeId)
 
-        val node = graph.nodes.find { it.id == nodeId } ?: return
+        val node = graph.nodeById[nodeId] ?: return
         val children = edgesBySource[nodeId]?.map { it.toId } ?: emptyList()
         val filteredChildren = if (visibleIds == null) children else children.filter { visibleIds.contains(it) }
 

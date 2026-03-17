@@ -114,8 +114,7 @@ fun GraphCanvas(
         }
     }
 
-    val nodeById = graph.nodes.associateBy { it.id }
-    val selectedNodes = graph.nodes.filter { it.id in selectedNodeIds }
+    val nodeById = graph.nodeById
     val latestSelectedNodeIds by rememberUpdatedState(selectedNodeIds)
 
     val snapshotManifestOutLaneByEdgeId = remember(graph.nodes, graph.edges) {
@@ -445,7 +444,7 @@ fun GraphCanvas(
 
         LaunchedEffect(selectedNodeIds) {
             if (selectedNodeIds.size == 1) {
-                val selectedNode = graph.nodes.find { it.id == selectedNodeIds.first() }
+                val selectedNode = nodeById[selectedNodeIds.first()]
                 if (selectedNode != null) {
                     val currentZoom = localZoom
                     val currentX = offsetAnim.value.x
@@ -543,7 +542,7 @@ fun GraphCanvas(
                                     val dy = dragAmount.y
 
                                     val currentSelectedIds = latestSelectedNodeIds
-                                    val currentSelectedNodes = graph.nodes.filter { it.id in currentSelectedIds }
+                                    val currentSelectedNodes = currentSelectedIds.mapNotNull { nodeById[it] }
                                     if (node.id in currentSelectedIds) {
                                         currentSelectedNodes.forEach { n ->
                                             n.x += dx

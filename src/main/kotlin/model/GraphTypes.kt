@@ -10,7 +10,9 @@ data class GraphModel(
     val edges: List<GraphEdge>,
     val width: Double,
     val height: Double,
-)
+) {
+    val nodeById: Map<String, GraphNode> by lazy { nodes.associateBy { it.id } }
+}
 
 data class FileTimeRange(
     val knownCount: Int = 0,

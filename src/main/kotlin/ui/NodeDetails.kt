@@ -159,7 +159,7 @@ private fun jsonToAnnotatedString(json: String): AnnotatedString {
 }
 
 private fun childNodes(node: GraphNode, graphModel: GraphModel): List<GraphNode> {
-    val nodeById = graphModel.nodes.associateBy { it.id }
+    val nodeById = graphModel.nodeById
     return graphModel.edges
         .asSequence()
         .filter { it.fromId == node.id }
@@ -173,7 +173,7 @@ private data class DescendantRow(
 )
 
 private fun collectDescendantRows(node: GraphNode, graphModel: GraphModel): List<DescendantRow> {
-    val nodeById = graphModel.nodes.associateBy { it.id }
+    val nodeById = graphModel.nodeById
     val childrenByParent = graphModel.edges
         .groupBy { it.fromId }
         .mapValues { (_, edges) -> edges.map { it.toId } }
@@ -207,7 +207,7 @@ private fun collectDescendantRows(node: GraphNode, graphModel: GraphModel): List
 }
 
 private fun identifierFieldNamesForNode(node: GraphNode, graphModel: GraphModel): List<String> {
-    val nodeById = graphModel.nodes.associateBy { it.id }
+    val nodeById = graphModel.nodeById
     val parentsByChild = graphModel.edges
         .groupBy { it.toId }
         .mapValues { (_, edges) -> edges.map { it.fromId } }
@@ -518,7 +518,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
             }
 
             val currentGraph = graphModel ?: return@CompositionLocalProvider
-            val node = currentGraph.nodes.find { it.id == selectedNodeIds.first() } ?: return@CompositionLocalProvider
+            val node = currentGraph.nodeById[selectedNodeIds.first()] ?: return@CompositionLocalProvider
             val children = remember(node.id, currentGraph.nodes, currentGraph.edges) { childNodes(node, currentGraph) }
 
             val scrollState = rememberScrollState()
