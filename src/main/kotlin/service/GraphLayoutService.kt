@@ -69,15 +69,6 @@ object GraphLayoutService {
         var nextErrorSimpleId = 1
         val seenErrorKeys = mutableSetOf<String>()
 
-        fun normalizeFilePath(path: String): String {
-            val trimmed = path.trim()
-            if (trimmed.isEmpty()) return trimmed
-            val normalized = if (trimmed.startsWith("file:")) {
-                runCatching { URI(trimmed).path }.getOrDefault(trimmed.removePrefix("file:"))
-            } else trimmed
-            return normalized.replace("\\", "/")
-        }
-
         fun registerFilePathAlias(path: String, simpleId: Int) {
             val trimmed = path.trim()
             if (trimmed.isEmpty()) return
@@ -454,15 +445,6 @@ object GraphLayoutService {
             val ra = (a as? GraphNode.RowNode)?.id ?: ""
             val rb = (b as? GraphNode.RowNode)?.id ?: ""
             ra.compareTo(rb)
-        }
-
-        fun normalizeFilePath(path: String): String {
-            val trimmed = path.trim()
-            if (trimmed.isEmpty()) return trimmed
-            val normalized = if (trimmed.startsWith("file:")) {
-                runCatching { URI(trimmed).path }.getOrDefault(trimmed.removePrefix("file:"))
-            } else trimmed
-            return normalized.replace("\\", "/")
         }
 
         fun parsePosition(data: Map<String, Any>): Int? {
@@ -849,19 +831,6 @@ object GraphLayoutService {
         )
     }
 
-    private fun metadataVersionFromFileName(fileName: String): Int? =
-        fileName.removePrefix("v").removeSuffix(".metadata.json").toIntOrNull()
-
-    private fun normalizedPath(path: String): String {
-        val trimmed = path.trim()
-        if (trimmed.isEmpty()) return trimmed
-        val normalized = if (trimmed.startsWith("file:")) {
-            runCatching { URI(trimmed).path }.getOrDefault(trimmed.removePrefix("file:"))
-        } else {
-            trimmed
-        }
-        return normalized.replace("\\", "/")
-    }
 
     private fun fileLastModifiedMs(path: Path, cache: MutableMap<String, Long?>): Long? {
         val key = runCatching { path.toAbsolutePath().normalize().toString() }.getOrElse { path.toString() }
@@ -916,7 +885,7 @@ object GraphLayoutService {
                 uniqueSnapshotKeys.add(snapshotKey)
                 val snapshotManifestListKey = snapshotMeta.manifestList
                     ?.takeIf { it.isNotBlank() }
-                    ?.let(::normalizedPath)
+                    ?.let(::normalizeFilePath)
                     ?: "path:${unifiedSnapshot.path}"
                 if (uniqueSnapshotManifestListKeys.add(snapshotManifestListKey)) {
                     snapshotManifestListTimes.add(fileLastModifiedMs(unifiedSnapshot.path, mtimeCache))
@@ -951,7 +920,7 @@ object GraphLayoutService {
 
                         val dataFileKey = dataFile?.filePath
                             ?.takeIf { it.isNotBlank() }
-                            ?.let(::normalizedPath)
+                            ?.let(::normalizeFilePath)
                             ?: "path:${unifiedDataFile.path}"
                         if (uniqueDataFileKeys.add(dataFileKey)) {
                             dataFileTimes.add(fileLastModifiedMs(unifiedDataFile.path, mtimeCache))

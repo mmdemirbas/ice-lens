@@ -61,13 +61,8 @@ private fun rowCardDetailEntries(node: GraphNode.RowNode): List<Map.Entry<String
     return if (nonIdentifiers.isNotEmpty()) nonIdentifiers + identifiers else filtered
 }
 
-private fun isPrimaryMetadataFile(fileName: String): Boolean {
-    val base = fileName.removeSuffix(".metadata.json")
-    return fileName.endsWith(".metadata.json") &&
-        base.startsWith("v") &&
-        base.drop(1).all { it.isDigit() } &&
-        base.length > 1
-}
+private fun isPrimaryMetadataFile(fileName: String): Boolean =
+    model.metadataVersionFromFileName(fileName) != null
 
 private fun fileNameFromPath(path: String?): String {
     val raw = path?.trim().orEmpty()
@@ -95,16 +90,6 @@ private fun formatBytes(bytes: Long?): String {
 
 private val NodeCardTextPrimary = Color(0xFF1A1C1E)
 private val NodeCardTextSecondary = Color(0xFF3D4652)
-private val DarkSelectionAccent = Color(0xFF00E5FF)
-
-private fun isDarkSurfaceColor(color: Color): Boolean =
-    (0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue) < 0.5f
-
-@Composable
-private fun selectionHighlightColor(): Color {
-    val colors = MaterialTheme.colorScheme
-    return if (isDarkSurfaceColor(colors.surface)) DarkSelectionAccent else colors.primary
-}
 
 fun getGraphNodeColor(node: GraphNode): Color = when (node) {
     is GraphNode.TableNode    -> Color(0xFFD7CCC8)

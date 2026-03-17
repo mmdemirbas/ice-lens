@@ -46,9 +46,6 @@ private fun tonedEdgeColor(base: Color, sourceId: String): Color {
     return Color(ch(base.red), ch(base.green), ch(base.blue), base.alpha)
 }
 
-private fun perceivedBrightness(color: Color): Float =
-    0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue
-
 private fun liftEdgeColor(base: Color, target: Color, minimumBrightness: Float): Color {
     val baseBrightness = perceivedBrightness(base)
     if (baseBrightness >= minimumBrightness) return base
@@ -79,8 +76,8 @@ fun GraphCanvas(
     onNodeDoubleClick: (GraphNode) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
-    val isDarkSurface = perceivedBrightness(colors.surface) < 0.5f
-    val selectionColor = if (isDarkSurface) Color(0xFF00E5FF) else colors.primary
+    val isDarkSurface = isDarkSurface(colors.surface)
+    val selectionColor = if (isDarkSurface) DarkSelectionAccent else colors.primary
     // Consumed to ensure recomposition/reset-sensitive logic sees relayout events.
     @Suppress("UNUSED_VARIABLE")
     val _graphRevision = graphRevision

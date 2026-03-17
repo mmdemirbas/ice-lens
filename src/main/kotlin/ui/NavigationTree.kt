@@ -57,9 +57,8 @@ fun NavigationTree(
     onNodeSelect: (GraphNode) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    val isDarkSurface = (0.2126f * colors.surface.red + 0.7152f * colors.surface.green + 0.0722f * colors.surface.blue) < 0.5f
-    val selectionColor = if (isDarkSurface) Color(0xFF00E5FF) else colors.primary
-    val selectedBgColor = selectionColor.copy(alpha = if (isDarkSurface) 0.4f else 0.2f)
+    val selectionColor = selectionHighlightColor()
+    val selectedBgColor = selectionColor.copy(alpha = if (isDarkSurface(colors.surface)) 0.4f else 0.2f)
     val expandedNodeIdsByState = remember { mutableStateOf(setOf<String>()) }
     var expandedNodeIds by expandedNodeIdsByState
     var searchQuery by remember { mutableStateOf("") }

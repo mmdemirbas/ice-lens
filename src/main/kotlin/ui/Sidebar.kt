@@ -26,11 +26,6 @@ import model.WorkspaceTableStatus
 import java.io.File
 import javax.swing.JFileChooser
 
-private fun isDarkSurfaceColor(color: Color): Boolean =
-    (0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue) < 0.5f
-
-private fun selectionHighlightColor(colors: ColorScheme): Color =
-    if (isDarkSurfaceColor(colors.surface)) Color(0xFF00E5FF) else colors.primary
 
 @Composable
 fun CompactSearchField(
@@ -98,8 +93,8 @@ fun WorkspacePanel(
     val currentOnMoveRoot by rememberUpdatedState(onMoveRoot)
 
     val colors = MaterialTheme.colorScheme
-    val selectionColor = selectionHighlightColor(colors)
-    val selectedBgColor = selectionColor.copy(alpha = if (isDarkSurfaceColor(colors.surface)) 0.4f else 0.2f)
+    val selectionColor = selectionHighlightColor()
+    val selectedBgColor = selectionColor.copy(alpha = if (isDarkSurface(colors.surface)) 0.4f else 0.2f)
     Column(modifier = Modifier.fillMaxSize().background(colors.surfaceVariant).padding(8.dp)) {
         Button(
             onClick = {
@@ -336,8 +331,8 @@ fun WorkspaceRootItem(
     modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
-    val selectionColor = selectionHighlightColor(colors)
-    val selectedBgColor = selectionColor.copy(alpha = if (isDarkSurfaceColor(colors.surface)) 0.4f else 0.2f)
+    val selectionColor = selectionHighlightColor()
+    val selectedBgColor = selectionColor.copy(alpha = if (isDarkSurface(colors.surface)) 0.4f else 0.2f)
     val prefix = when (item) {
         is WorkspaceItem.Warehouse   -> "warehouse: "
         is WorkspaceItem.SingleTable -> "table: "

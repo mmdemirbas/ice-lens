@@ -24,9 +24,6 @@ private fun toError(stage: String, path: Path, throwable: Throwable): UnifiedRea
     )
 }
 
-private fun metadataVersionFromFileName(fileName: String): Int? =
-    fileName.removePrefix("v").removeSuffix(".metadata.json").toIntOrNull()
-
 fun UnifiedWarehouseModel(warehousePath: Path): UnifiedWarehouseModel {
     return UnifiedWarehouseModel(
         path = warehousePath,
