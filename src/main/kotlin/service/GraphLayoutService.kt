@@ -122,33 +122,12 @@ object GraphLayoutService {
 
         // Assign simple IDs for all file paths upfront so delete rows can always resolve target file IDs.
         tableModel.metadatas.forEach { metadata ->
-            val sortedSnapshots = metadata.snapshots.sortedWith(
-                compareBy(
-                    { it.metadata.timestampMs ?: Long.MAX_VALUE },
-                    { it.metadata.sequenceNumber ?: Long.MAX_VALUE },
-                    { it.metadata.snapshotId ?: Long.MAX_VALUE }
-                )
-            )
+            val sortedSnapshots = metadata.snapshots.sortedWith(unifiedSnapshotComparator)
             sortedSnapshots.forEach { snapshot ->
-                val manifests = snapshot.manifestLists.sortedWith(
-                    compareBy(
-                        { it.metadata.sequenceNumber ?: Int.MAX_VALUE },
-                        { it.metadata.minSequenceNumber ?: Int.MAX_VALUE },
-                        { it.metadata.addedSnapshotId ?: Long.MAX_VALUE },
-                        { manifestContentRank(it.metadata.content) },
-                        { it.metadata.manifestPath ?: "" }
-                    )
-                )
+                val manifests = snapshot.manifestLists.sortedWith(unifiedManifestComparator)
                 manifests.forEach { unifiedManifest ->
-                    val unifiedDataFiles = unifiedManifest.manifests.sortedWith(
-                        compareBy(
-                            { it.metadata.dataFile?.dataSequenceNumber ?: it.metadata.sequenceNumber ?: (unifiedManifest.metadata.sequenceNumber?.toLong() ?: Long.MAX_VALUE) },
-                            { it.metadata.fileSequenceNumber ?: Long.MAX_VALUE },
-                            { contentRank(it.metadata.dataFile?.content) },
-                            { it.metadata.status },
-                            { it.metadata.dataFile?.filePath ?: "" }
-                        )
-                    )
+                    val fallbackSeq = unifiedManifest.metadata.sequenceNumber?.toLong() ?: Long.MAX_VALUE
+                    val unifiedDataFiles = unifiedManifest.manifests.sortedWith(unifiedDataFileComparator(fallbackSeq))
                     unifiedDataFiles.forEach { unifiedDataFile ->
                         val rawPath = unifiedDataFile.metadata.dataFile?.filePath.orEmpty()
                         assignSimpleId(rawPath)
@@ -179,13 +158,7 @@ object GraphLayoutService {
                 edges.add(GraphEdge(tableEdgeId, tableNodeId, mId))
             }
 
-            val sortedSnapshots = metadata.snapshots.sortedWith(
-                compareBy(
-                    { it.metadata.timestampMs ?: Long.MAX_VALUE },
-                    { it.metadata.sequenceNumber ?: Long.MAX_VALUE },
-                    { it.metadata.snapshotId ?: Long.MAX_VALUE }
-                )
-            )
+            val sortedSnapshots = metadata.snapshots.sortedWith(unifiedSnapshotComparator)
             sortedSnapshots.forEach { snapshot ->
                 val snap = snapshot.metadata
                 val snapshotIdentifierFields = identifierFieldNamesForSchema(meta, snap.schemaId)
@@ -210,15 +183,7 @@ object GraphLayoutService {
                     edges.add(GraphEdge(snapEdgeId, mId, sId))
                 }
 
-                val manifests = snapshot.manifestLists.sortedWith(
-                    compareBy(
-                        { it.metadata.sequenceNumber ?: Int.MAX_VALUE },
-                        { it.metadata.minSequenceNumber ?: Int.MAX_VALUE },
-                        { it.metadata.addedSnapshotId ?: Long.MAX_VALUE },
-                        { manifestContentRank(it.metadata.content) },
-                        { it.metadata.manifestPath ?: "" }
-                    )
-                )
+                val manifests = snapshot.manifestLists.sortedWith(unifiedManifestComparator)
                 manifests.forEach { unifiedManifest ->
                     val manifest = unifiedManifest.metadata
                     val rawManPath = manifest.manifestPath ?: "unknown_${UUID.randomUUID()}"
@@ -246,15 +211,8 @@ object GraphLayoutService {
                     if (processedManifests.add(manId)) {
                         val manifestPath = manifest.manifestPath
                         if (manifestPath != null) {
-                            val unifiedDataFiles = unifiedManifest.manifests.sortedWith(
-                                compareBy(
-                                    { it.metadata.dataFile?.dataSequenceNumber ?: it.metadata.sequenceNumber ?: (manifest.sequenceNumber?.toLong() ?: Long.MAX_VALUE) },
-                                    { it.metadata.fileSequenceNumber ?: Long.MAX_VALUE },
-                                    { contentRank(it.metadata.dataFile?.content) },
-                                    { it.metadata.status },
-                                    { it.metadata.dataFile?.filePath ?: "" }
-                                )
-                            )
+                            val fallbackSeq = manifest.sequenceNumber?.toLong() ?: Long.MAX_VALUE
+                            val unifiedDataFiles = unifiedManifest.manifests.sortedWith(unifiedDataFileComparator(fallbackSeq))
                             unifiedDataFiles.take(10).forEachIndexed { fileIndex, unifiedDataFile ->
                                 val entry = unifiedDataFile.metadata
                                 val dataFile = entry.dataFile ?: DataFile(filePath = "unknown")
@@ -965,6 +923,28 @@ object GraphLayoutService {
             metadataVersions = metadataVersions
         )
     }
+
+    private val unifiedSnapshotComparator: Comparator<UnifiedSnapshot> = compareBy(
+        { it.metadata.timestampMs ?: Long.MAX_VALUE },
+        { it.metadata.sequenceNumber ?: Long.MAX_VALUE },
+        { it.metadata.snapshotId ?: Long.MAX_VALUE },
+    )
+
+    private val unifiedManifestComparator: Comparator<UnifiedManifest> = compareBy(
+        { it.metadata.sequenceNumber ?: Int.MAX_VALUE },
+        { it.metadata.minSequenceNumber ?: Int.MAX_VALUE },
+        { it.metadata.addedSnapshotId ?: Long.MAX_VALUE },
+        { manifestContentRank(it.metadata.content) },
+        { it.metadata.manifestPath ?: "" },
+    )
+
+    private fun unifiedDataFileComparator(fallbackSequenceNumber: Long): Comparator<UnifiedDataFile> = compareBy(
+        { it.metadata.dataFile?.dataSequenceNumber ?: it.metadata.sequenceNumber ?: fallbackSequenceNumber },
+        { it.metadata.fileSequenceNumber ?: Long.MAX_VALUE },
+        { contentRank(it.metadata.dataFile?.content) },
+        { it.metadata.status },
+        { it.metadata.dataFile?.filePath ?: "" },
+    )
 
     private fun contentRank(content: Int?): Int = when (content ?: 0) {
         2 -> 0 // Equality deletes first
