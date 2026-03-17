@@ -898,7 +898,7 @@ fun App() {
             "structure" -> {
                 if (visibleGraphModel != null) {
                     NavigationTree(
-                        graph = visibleGraphModel!!,
+                        graph = visibleGraphModel,
                         selectedNodeIds = selectedNodeIds,
                         onNodeSelect = { selectedNodeIds = setOf(it.id) }
                     )

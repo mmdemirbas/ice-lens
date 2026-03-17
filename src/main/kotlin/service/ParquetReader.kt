@@ -1,14 +1,24 @@
 package service
 
 import java.io.File
+import java.sql.Connection
 import java.sql.DriverManager
-import java.sql.ResultSet
 
 object ParquetReader {
 
-    // Load JDBC driver
     init {
         Class.forName("org.duckdb.DuckDBDriver")
+    }
+
+    private var connection: Connection? = null
+
+    @Synchronized
+    private fun getConnection(): Connection {
+        val conn = connection
+        if (conn != null && !conn.isClosed) return conn
+        val newConn = DriverManager.getConnection("jdbc:duckdb:")
+        connection = newConn
+        return newConn
     }
 
     fun queryParquet(filePath: String): List<Map<String, Any>> {
@@ -19,26 +29,26 @@ object ParquetReader {
         // Escape single quotes just in case the path contains them
         val safePath = canonicalPath.replace("'", "''").replace("\\", "/")
 
-        // DuckDB In-Memory connection
-        DriverManager.getConnection("jdbc:duckdb:").use { conn ->
-            val stmt = conn.createStatement()
+        val conn = getConnection()
+        val stmt = conn.createStatement()
 
-            // Explicitly use read_parquet() to bypass auto-detect globbing issues
-            val sql = "SELECT * FROM read_parquet('$safePath') LIMIT 50"
-            val rs: ResultSet = stmt.executeQuery(sql)
-            val meta = rs.metaData
-            val colCount = meta.columnCount
+        // Explicitly use read_parquet() to bypass auto-detect globbing issues
+        val sql = "SELECT * FROM read_parquet('$safePath') LIMIT 50"
+        val rs = stmt.executeQuery(sql)
+        val meta = rs.metaData
+        val colCount = meta.columnCount
 
-            while (rs.next()) {
-                val row = mutableMapOf<String, Any>()
-                for (i in 1..colCount) {
-                    val colName = meta.getColumnName(i)
-                    val value = rs.getObject(i) ?: "null"
-                    row[colName] = value
-                }
-                rows.add(row)
+        while (rs.next()) {
+            val row = mutableMapOf<String, Any>()
+            for (i in 1..colCount) {
+                val colName = meta.getColumnName(i)
+                val value = rs.getObject(i) ?: "null"
+                row[colName] = value
             }
+            rows.add(row)
         }
+        rs.close()
+        stmt.close()
         return rows
     }
 }
