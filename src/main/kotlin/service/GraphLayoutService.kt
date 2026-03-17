@@ -27,15 +27,9 @@ object GraphLayoutService {
             .registerLayoutMetaDataProviders(LayeredMetaDataProvider())
     }
 
-    enum class ParentAlignment {
-        ALIGN_FIRST_CHILD,
-        CENTER_CHILDREN
-    }
-
     fun layoutGraph(
         tableModel: UnifiedTableModel,
         showRows: Boolean,
-        parentAlignment: ParentAlignment = ParentAlignment.ALIGN_FIRST_CHILD
     ): GraphModel {
         val root = ElkGraphUtil.createGraph()
 
@@ -373,7 +367,7 @@ object GraphLayoutService {
         }
 
         enforceChronologicalVerticalOrder(logicalNodes, edges)
-        alignParentsWithChildren(logicalNodes, edges, parentAlignment)
+        alignParentsWithChildren(logicalNodes, edges)
         preventOverlaps(logicalNodes)
 
         return GraphModel(finalNodes, edges, root.width, root.height)
@@ -595,7 +589,6 @@ object GraphLayoutService {
     private fun alignParentsWithChildren(
         nodesById: Map<String, GraphNode>,
         edges: List<GraphEdge>,
-        _strategy: ParentAlignment
     ) {
         val nonSiblingEdges = edges.filter { !it.isSibling }
         val childrenByParentIds = nonSiblingEdges
