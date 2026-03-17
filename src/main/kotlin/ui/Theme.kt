@@ -6,6 +6,8 @@ import androidx.compose.ui.graphics.Color
 
 val DarkSelectionAccent = Color(0xFF00E5FF)
 
+const val TOOLTIP_DELAY_MS = 500
+
 fun perceivedBrightness(color: Color): Float =
     0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue
 

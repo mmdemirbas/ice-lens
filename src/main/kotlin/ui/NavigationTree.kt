@@ -38,7 +38,7 @@ fun TreeIconButton(
                 Text(text = tooltip, color = colors.inverseOnSurface, fontSize = 12.sp)
             }
         },
-        delayMillis = 500,
+        delayMillis = TOOLTIP_DELAY_MS,
         tooltipPlacement = TooltipPlacement.CursorPoint(
             alignment = Alignment.BottomEnd,
             offset = DpOffset(0.dp, 16.dp)

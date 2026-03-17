@@ -1,0 +1,35 @@
+[versions]
+kotlin = "2.3.10"
+compose = "1.10.1"
+material3 = "1.10.0-alpha05"
+material-icons = "1.7.3"
+serialization-json = "1.10.0"
+avro4k = "2.10.0"
+avro = "1.12.1"
+elk = "0.11.0"
+xtext = "2.33.0"
+duckdb = "1.4.4.0"
+slf4j = "2.0.17"
+
+junit5 = "5.11.4"
+kotlin-test = "2.3.10"
+
+[libraries]
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit5" }
+kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", version.ref = "kotlin-test" }
+material3-desktop = { module = "org.jetbrains.compose.material3:material3-desktop", version.ref = "material3" }
+material-icons-extended = { module = "org.jetbrains.compose.material:material-icons-extended-desktop", version.ref = "material-icons" }
+serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization-json" }
+avro4k-core = { module = "com.github.avro-kotlin.avro4k:avro4k-core", version.ref = "avro4k" }
+avro = { module = "org.apache.avro:avro", version.ref = "avro" }
+elk-core = { module = "org.eclipse.elk:org.eclipse.elk.core", version.ref = "elk" }
+elk-layered = { module = "org.eclipse.elk:org.eclipse.elk.alg.layered", version.ref = "elk" }
+xtext-xbase-lib = { module = "org.eclipse.xtext:org.eclipse.xtext.xbase.lib", version.ref = "xtext" }
+duckdb-jdbc = { module = "org.duckdb:duckdb_jdbc", version.ref = "duckdb" }
+slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+compose = { id = "org.jetbrains.compose", version.ref = "compose" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

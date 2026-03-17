@@ -1056,6 +1056,31 @@ fun App() {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.align(Alignment.Center)
                         )
+                    } else if (!isLoadingTable && workspaceItems.isEmpty()) {
+                        Column(
+                            modifier = Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Default.Storage,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "No tables in workspace",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Click \"Add to Workspace\" in the sidebar to get started.",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
                     }
 
                     if (isLoadingTable) {
@@ -1070,11 +1095,36 @@ fun App() {
                     }
 
                     if (errorMsg != null) {
-                        Text(
-                            "Error: $errorMsg",
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)
-                        )
+                        Surface(
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            tonalElevation = 2.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "Error: $errorMsg",
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                IconButton(
+                                    onClick = { errorMsg = null },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "Dismiss",
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1343,6 +1393,13 @@ fun App() {
             }
         }
     }
+    }
+
+    LaunchedEffect(errorMsg) {
+        if (errorMsg != null) {
+            delay(8000)
+            errorMsg = null
+        }
     }
 
     LaunchedEffect(showRows) {

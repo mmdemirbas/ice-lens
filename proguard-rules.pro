@@ -9,7 +9,7 @@
 -keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault,Signature,InnerClasses,EnclosingMethod,*Annotation*
 
 # Application entry points and app code.
--keep class MainKt { *; }
+-keep class app.MainKt { *; }
 -keep class ui.** { *; }
 -keep class model.** { *; }
 -keep class service.** { *; }

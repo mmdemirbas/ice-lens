@@ -23,6 +23,10 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
@@ -84,10 +88,15 @@ fun GraphCanvas(
 
     val offsetAnim = remember { Animatable(Offset(100f, 100f), Offset.VectorConverter) }
     val coroutineScope = rememberCoroutineScope()
-    
+
     // Smooth internal state to eliminate lag during gestures
     var localZoom by remember { mutableStateOf(zoom) }
-    
+
+    // Undo stack: snapshots of node positions before each drag
+    data class PositionSnapshot(val positions: Map<String, Pair<Double, Double>>)
+    val undoStack = remember { mutableListOf<PositionSnapshot>() }
+    val maxUndoDepth = 20
+
     var hoveredNodeId by remember { mutableStateOf<String?>(null) }
     var activeTooltipNodeId by remember { mutableStateOf<String?>(null) }
     var marqueeStart by remember { mutableStateOf<Offset?>(null) }
@@ -207,10 +216,38 @@ fun GraphCanvas(
         )
     }
 
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(colors.surfaceVariant)
+            .focusRequester(focusRequester)
+            .focusable()
+            .onPreviewKeyEvent { keyEvent ->
+                if (keyEvent.type == KeyEventType.KeyDown &&
+                    keyEvent.key == Key.Z &&
+                    (keyEvent.isMetaPressed || keyEvent.isCtrlPressed) &&
+                    !keyEvent.isShiftPressed
+                ) {
+                    val snapshot = undoStack.removeLastOrNull()
+                    if (snapshot != null) {
+                        snapshot.positions.forEach { (id, pos) ->
+                            nodeById[id]?.let { node ->
+                                node.x = pos.first
+                                node.y = pos.second
+                            }
+                        }
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
             .pointerInput(isSelectMode) {
                 awaitPointerEventScope {
                     while (true) {
@@ -422,7 +459,7 @@ fun GraphCanvas(
         LaunchedEffect(hoveredNodeId) {
             activeTooltipNodeId = null
             val targetNodeId = hoveredNodeId ?: return@LaunchedEffect
-            delay(900)
+            delay(TOOLTIP_DELAY_MS.toLong())
             if (hoveredNodeId == targetNodeId) {
                 activeTooltipNodeId = targetNodeId
             }
@@ -532,6 +569,13 @@ fun GraphCanvas(
                             .pointerInput(node.id, localZoom) {
                                 detectDragGestures(
                                     onDragStart = {
+                                        // Save positions for undo before drag begins
+                                        val snapshot = PositionSnapshot(
+                                            graph.nodes.associate { it.id to (it.x to it.y) }
+                                        )
+                                        if (undoStack.size >= maxUndoDepth) undoStack.removeFirst()
+                                        undoStack.add(snapshot)
+
                                         if (!pickSelectionArmed && !latestSelectedNodeIds.contains(node.id)) {
                                             onSelectionChange(setOf(node.id))
                                         }
