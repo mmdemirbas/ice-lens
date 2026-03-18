@@ -1,5 +1,6 @@
 package model
 
+import androidx.compose.ui.geometry.Offset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -52,12 +53,12 @@ class GraphTypesTest {
     }
 
     @Test
-    fun `GraphModel syncPositionsFromNodes copies node x y to positions`() {
+    fun `GraphModel initialPositions used as fallback`() {
         val node = GraphNode.TableNode("t1", tableSummary())
-        node.x = 42.0
-        node.y = 99.0
-        val model = GraphModel(listOf(node), emptyList(), 100.0, 100.0)
-        model.syncPositionsFromNodes()
+        val model = GraphModel(
+            listOf(node), emptyList(), 100.0, 100.0,
+            initialPositions = mapOf("t1" to Offset(42f, 99f))
+        )
 
         val pos = model.getPosition("t1")
         assertEquals(42f, pos.x)

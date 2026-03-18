@@ -9,23 +9,28 @@ data class GraphModel(
     val edges: List<GraphEdge>,
     val width: Double,
     val height: Double,
+    /** Thread-safe initial positions set during layout. NOT Compose state — safe on any thread. */
+    val initialPositions: Map<String, Offset> = emptyMap(),
 ) {
     val nodeById: Map<String, GraphNode> by lazy { nodes.associateBy { it.id } }
 
-    /** Compose-observable node positions, keyed by node ID. Used by the UI for rendering. */
+    /** Compose-observable node positions for the UI. Must only be read/written on the main thread. */
     val positions = mutableStateMapOf<String, Offset>()
 
     fun getPosition(nodeId: String): Offset =
-        positions[nodeId] ?: Offset(0f, 0f)
+        positions[nodeId] ?: initialPositions[nodeId] ?: Offset(0f, 0f)
 
+    /** Update a position in the Compose-observable map. Call on main thread only. */
     fun setPosition(nodeId: String, x: Double, y: Double) {
         positions[nodeId] = Offset(x.toFloat(), y.toFloat())
     }
 
-    /** Copy layout positions from GraphNode.x/y into the Compose-observable positions map. */
-    fun syncPositionsFromNodes() {
-        nodes.forEach { node ->
-            positions[node.id] = Offset(node.x.toFloat(), node.y.toFloat())
+    /** Sync initial positions into the Compose-observable map. Call on main thread only. */
+    fun syncPositionsToUI() {
+        initialPositions.forEach { (id, pos) ->
+            if (id !in positions) {
+                positions[id] = pos
+            }
         }
     }
 }

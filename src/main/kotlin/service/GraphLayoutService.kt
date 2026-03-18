@@ -1,5 +1,6 @@
 package service
 
+import androidx.compose.ui.geometry.Offset
 import model.*
 import org.eclipse.elk.alg.layered.options.LayeredMetaDataProvider
 import org.eclipse.elk.core.RecursiveGraphLayoutEngine
@@ -324,9 +325,8 @@ object GraphLayoutService {
         alignParentsWithChildren(logicalNodes, edges)
         preventOverlaps(logicalNodes)
 
-        val model = GraphModel(finalNodes, edges, root.width, root.height)
-        model.syncPositionsFromNodes()
-        return model
+        val posMap = finalNodes.associate { it.id to Offset(it.x.toFloat(), it.y.toFloat()) }
+        return GraphModel(finalNodes, edges, root.width, root.height, initialPositions = posMap)
     }
 
     private fun enforceChronologicalVerticalOrder(
@@ -514,10 +514,11 @@ object GraphLayoutService {
                 moveCandidates.add(PosDeleteMove(rowNode, targetRows[position]))
             }
 
-            // Insert position deletes after their anchor rows
+            // Insert position deletes after their anchor rows (O(n) index lookup)
+            val anchorIndexById = adjustedRowOrder.withIndex().associate { (i, r) -> r.id to i }
             val insertedAfterAnchor = mutableMapOf<String, Int>()
             moveCandidates.forEach { move ->
-                val anchorIndex = adjustedRowOrder.indexOfFirst { it.id == move.anchor.id }
+                val anchorIndex = anchorIndexById[move.anchor.id] ?: -1
                 if (anchorIndex < 0) {
                     adjustedRowOrder.add(move.row)
                 } else {

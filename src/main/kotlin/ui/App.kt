@@ -24,9 +24,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import model.*
 import service.GraphLayoutService
 import java.awt.Desktop
@@ -123,7 +125,7 @@ fun App() {
     }
     var snapshotFilterMenuExpanded by remember { mutableStateOf(false) }
 
-    val sessionCache = remember { mutableMapOf<String, TableSession>() }
+    val sessionCache = remember { java.util.concurrent.ConcurrentHashMap<String, TableSession>() }
     val coroutineScope = rememberCoroutineScope()
 
     val snapshotFilterOptions = remember(graphModel) {
@@ -374,6 +376,7 @@ fun App() {
     }
 
     fun setGraphModelAndBump(model: GraphModel?) {
+        model?.syncPositionsToUI()
         graphModel = model
         graphRevision++
     }
@@ -412,8 +415,9 @@ fun App() {
         selectedTablePath = normalizedTablePath
         prefs.put(PREF_SELECTED_TABLE_PATH, normalizedTablePath)
 
-        if (!forceRelayout && !forceReloadFromFs && sessionCache.containsKey(cacheKey)) {
-            val session = sessionCache[cacheKey]!!
+        val cachedSession = if (!forceRelayout && !forceReloadFromFs) sessionCache[cacheKey] else null
+        if (cachedSession != null) {
+            val session = cachedSession
             setGraphModelAndBump(session.graph)
             selectedNodeIds = session.selectedNodeIds
             errorMsg = null
@@ -430,6 +434,7 @@ fun App() {
             try {
                 val previousSession = sessionCache[cacheKey]
                 val reloaded = withContext(Dispatchers.Default) {
+                    coroutineContext.ensureActive()
                     val fingerprint = computeTableFingerprint(normalizedTablePath)
                     if (fingerprint == "missing" && previousSession != null) {
                         return@withContext previousSession.copy(fingerprint = "missing")
@@ -437,16 +442,18 @@ fun App() {
                     if (forceReloadFromFs && !forceRelayout && previousSession != null && previousSession.fingerprint == fingerprint) {
                         return@withContext previousSession
                     }
+                    coroutineContext.ensureActive()
                     val tableModel = UnifiedTableModel(Paths.get(normalizedTablePath))
-                    val newGraph = GraphLayoutService.layoutGraph(tableModel, withRows)
+                    coroutineContext.ensureActive()
+                    var newGraph = GraphLayoutService.layoutGraph(tableModel, withRows)
                     if (preservePositions && previousSession != null) {
-                        val oldPositions = previousSession.graph.positions
+                        // Merge old positions: initialPositions is thread-safe (immutable map)
+                        val oldInitial = previousSession.graph.initialPositions
+                        val mergedPositions = newGraph.initialPositions.toMutableMap()
                         newGraph.nodes.forEach { n ->
-                            val oldPos = oldPositions[n.id]
-                            if (oldPos != null) {
-                                newGraph.setPosition(n.id, oldPos.x.toDouble(), oldPos.y.toDouble())
-                            }
+                            oldInitial[n.id]?.let { mergedPositions[n.id] = it }
                         }
+                        newGraph = newGraph.copy(initialPositions = mergedPositions)
                     }
                     TableSession(
                         table = tableModel,
@@ -519,20 +526,21 @@ fun App() {
                     }
                     if (requestId != loadRequestId) return@launch
 
+                    // Build merged positions: new layout for visible nodes, keep existing for others
+                    val mergedPositions = currentGraph.initialPositions.toMutableMap()
+                    mergedPositions.putAll(currentGraph.positions)
                     currentGraph.nodes.forEach { node ->
                         if (node.id in visibleNodeIds) {
-                            val laidOutPos = fullyLaidOut.getPosition(node.id)
-                            currentGraph.setPosition(node.id, laidOutPos.x.toDouble(), laidOutPos.y.toDouble())
+                            fullyLaidOut.initialPositions[node.id]?.let { mergedPositions[node.id] = it }
                         }
                     }
                     val relaid = GraphModel(
                         nodes = currentGraph.nodes,
                         edges = currentGraph.edges,
-                        width = currentGraph.nodes.maxOfOrNull { currentGraph.getPosition(it.id).x.toDouble() + it.width } ?: 1.0,
-                        height = currentGraph.nodes.maxOfOrNull { currentGraph.getPosition(it.id).y.toDouble() + it.height } ?: 1.0
+                        width = currentGraph.nodes.maxOfOrNull { (mergedPositions[it.id]?.x?.toDouble() ?: 0.0) + it.width } ?: 1.0,
+                        height = currentGraph.nodes.maxOfOrNull { (mergedPositions[it.id]?.y?.toDouble() ?: 0.0) + it.height } ?: 1.0,
+                        initialPositions = mergedPositions
                     )
-                    // Copy positions to the new model
-                    currentGraph.positions.forEach { (id, pos) -> relaid.setPosition(id, pos.x.toDouble(), pos.y.toDouble()) }
                     setGraphModelAndBump(relaid)
                     selectedNodeIds = selectedNodeIds.intersect(visibleNodeIds)
                     sessionCache[cacheKey] = TableSession(

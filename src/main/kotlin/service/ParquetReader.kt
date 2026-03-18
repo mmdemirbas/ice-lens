@@ -11,8 +11,8 @@ object ParquetReader {
     }
 
     private var connection: Connection? = null
+    private val lock = Any()
 
-    @Synchronized
     private fun getConnection(): Connection {
         val conn = connection
         if (conn != null && !conn.isClosed) return conn
@@ -22,33 +22,41 @@ object ParquetReader {
     }
 
     fun queryParquet(filePath: String): List<Map<String, Any>> {
-        val rows = mutableListOf<Map<String, Any>>()
-
-        // Resolve symlinks and pure native path for the OS
+        // Resolve symlinks and pure native path for the OS (done outside lock — no shared state)
         val canonicalPath = File(filePath).canonicalPath
-        // Escape single quotes just in case the path contains them
         val safePath = canonicalPath.replace("'", "''").replace("\\", "/")
 
-        val conn = getConnection()
-        val stmt = conn.createStatement()
-
-        // Explicitly use read_parquet() to bypass auto-detect globbing issues
-        val sql = "SELECT * FROM read_parquet('$safePath') LIMIT 50"
-        val rs = stmt.executeQuery(sql)
-        val meta = rs.metaData
-        val colCount = meta.columnCount
-
-        while (rs.next()) {
-            val row = mutableMapOf<String, Any>()
-            for (i in 1..colCount) {
-                val colName = meta.getColumnName(i)
-                val value = rs.getObject(i) ?: "null"
-                row[colName] = value
+        synchronized(lock) {
+            val conn = try {
+                getConnection()
+            } catch (e: Exception) {
+                // Reset and retry once on connection failure
+                connection = null
+                getConnection()
             }
-            rows.add(row)
+
+            val rows = mutableListOf<Map<String, Any>>()
+            val stmt = conn.createStatement()
+            try {
+                val sql = "SELECT * FROM read_parquet('$safePath') LIMIT 50"
+                val rs = stmt.executeQuery(sql)
+                val meta = rs.metaData
+                val colCount = meta.columnCount
+
+                while (rs.next()) {
+                    val row = mutableMapOf<String, Any>()
+                    for (i in 1..colCount) {
+                        val colName = meta.getColumnName(i)
+                        val value = rs.getObject(i) ?: "null"
+                        row[colName] = value
+                    }
+                    rows.add(row)
+                }
+                rs.close()
+            } finally {
+                stmt.close()
+            }
+            return rows
         }
-        rs.close()
-        stmt.close()
-        return rows
     }
 }
