@@ -1,55 +1,37 @@
 # Iceberg Lens
 
-Read-only desktop UI to inspect Apache Iceberg table structure (local filesystem).
+[![CI](https://github.com/mmdemirbas/ice-lens/actions/workflows/ci.yml/badge.svg)](https://github.com/mmdemirbas/ice-lens/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/mmdemirbas/ice-lens)](https://github.com/mmdemirbas/ice-lens/releases)
+[![License](https://img.shields.io/github/license/mmdemirbas/ice-lens)](LICENSE)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.3-blue)](https://kotlinlang.org/)
+[![Compose](https://img.shields.io/badge/Compose_Desktop-1.10-blue)](https://www.jetbrains.com/lp/compose-multiplatform/)
 
-It helps you see:
+Read-only desktop UI to inspect Apache Iceberg table structure from local filesystems.
 
-- metadata
-- snapshots
-- manifests
-- data files
-- delete files (equality / position)
-- sample rows
-- changelogs on each level to track changes over time
-
-This project is built with Kotlin + Compose Desktop.
-
-## Scope / safety
-
-- **Read-only**: Iceberg Lens does not modify tables or metadata.
-- **Local-first**: loads tables from folders on your machine (useful for debugging).
-- **Offline-friendly**: works without external services/catalogs.
+- **Read-only** -- never modifies tables or metadata
+- **Local-first** -- loads tables from folders on your machine
+- **Offline-friendly** -- works without external services or catalogs
+- **Cross-platform** -- macOS, Windows, Linux
 
 ## Screenshots
 
-### Fullscreen
+| Fullscreen | Overview |
+|---|---|
+| ![Fullscreen](assets/screenshots/fullscreen.png) | ![Overview](assets/screenshots/overview.png) |
 
-![Fullscreen](assets/screenshots/fullscreen.png)
+## Features
 
-### Overview
-
-![Overview](assets/screenshots/overview.png)
-
-### Cheatsheet
-
-![Help](assets/screenshots/help.png)
-
-## Why this project
-
-Iceberg metadata is powerful, but not easy to read quickly from raw files.
-Iceberg Lens provides an interactive **graph + inspector** so you can understand table structure
-faster and debug changes without manually opening metadata/manifest files.
-
-## Main features
-
-- Interactive graph for Iceberg structure
-- Inspector panel with detailed node info + direct parent/child relations
-- Workspace tree for multiple warehouses/tables
-- Movable panes (left/right/top/bottom)
-- Re-apply layout button
-- Auto-reload table from filesystem
-- Changelog tables on each level to track changes over time
-- Opening multiple tables / warehouses in the same workspace
+- Interactive graph visualization of Iceberg table structure (metadata, snapshots, manifests, data files, delete files, sample rows)
+- Inspector panel with detailed node info, parent/child navigation, and JSON highlighting
+- Schema evolution view -- diffs between schema versions (added/dropped/renamed columns, type changes)
+- Table properties inspector -- property changes tracked across metadata versions
+- Snapshot filtering -- select snapshots to isolate their subgraph
+- Workspace tree for multiple warehouses and tables
+- Movable, dockable tool window panels (left/right/top/bottom)
+- Dark mode with theme-aware node colors
+- Undo for node dragging (Ctrl/Cmd+Z)
+- Auto-reload from filesystem
+- In-app cheat sheet (About > Cheat Sheet)
 
 ## Quick start
 
@@ -57,16 +39,17 @@ faster and debug changes without manually opening metadata/manifest files.
 
 - Java 17+ (JDK)
 
-### Download (recommended)
+### Download
 
-Prebuilt installers are available on *
-*[GitHub Releases](https://github.com/mmdemirbas/ice-lens/releases)**:
+Prebuilt installers are available on [GitHub Releases](https://github.com/mmdemirbas/ice-lens/releases):
 
-- macOS: `.dmg`
-- Windows: `.msi`
-- Linux: `.deb`
+| Platform | Format |
+|---|---|
+| macOS | `.dmg` |
+| Windows | `.msi` |
+| Linux | `.deb` |
 
-### Run
+### Run from source
 
 ```bash
 ./gradlew run
@@ -78,98 +61,64 @@ Prebuilt installers are available on *
 ./gradlew build
 ```
 
-## Quick usage
+### Test
 
-1. Click **Add to Workspace**.
-2. Choose a warehouse folder or a single table folder.
-    - Warehouse folder = contains multiple tables
-    - Table folder = contains metadata/ and data files
+```bash
+./gradlew test
+```
+
+## Usage
+
+1. Click **Add to Workspace** (sidebar or empty state button).
+2. Choose a warehouse folder (contains multiple tables) or a single table folder (contains `metadata/`).
 3. Select a table from the Workspace panel.
-4. Explore graph nodes.
-5. Click a node to see details in **Inspector**.
+4. Explore graph nodes -- click to inspect, drag to rearrange.
+5. Click a node to see details in the **Inspector** panel.
 
-Useful toolbar actions:
+### Toolbar
 
-- **Re-apply Layout**: reset node layout after manual dragging
-- **Fit Graph**: auto-zoom & scroll to fit graph in view
+| Action | Description |
+|---|---|
+| Pan / Select mode | Toggle between canvas panning and marquee selection |
+| Zoom controls | Zoom in/out, reset to 100%, fit graph to view |
+| Re-apply Layout | Recompute node positions from scratch |
+| Snapshot Filter | Show only nodes connected to selected snapshots |
+| Dark Mode | Toggle light/dark theme |
+| About | Version info, diagnostic copy, cheat sheet |
 
-## Limitations (current)
+### Keyboard shortcuts
 
-- Local filesystem only (no catalog integrations / remote object stores yet).
-- “Sample rows” is intended for debugging and may be best-effort depending on file
-  availability/format.
-- Reading sample rows scans files and will be slow on large tables.
+| Shortcut | Action |
+|---|---|
+| Ctrl/Cmd + Z | Undo node drag |
+| Ctrl/Cmd + Scroll | Zoom at cursor |
+| Scroll | Pan canvas |
+| Click node | Select |
+| Ctrl/Cmd + Click | Multi-select |
+| Drag (Select mode) | Marquee select |
+| Double-click empty area | Toggle all panels |
+| Double-click node | Toggle inspector |
 
-## Roadmap (ideas)
+## Limitations
 
-- Implement different layout options
-- Optimize performance for large tables
-- Make available as an IntelliJ IDEA plugin
-- Search + filters (partition, content type, file name)
-- Export (graph / node details)
-- Snapshot diff / compare
-- Optional remote support (S3/HDFS/ADLS) if there is demand
+- Local filesystem only (no catalog integrations or remote object stores yet).
+- Sample rows are best-effort -- depends on file availability and format.
+- Row loading may be slow for tables with many data files when "Show Rows" is enabled.
 
-## Release (GitHub)
+## Release
 
-You do not need to commit binaries into Git history.
 Release assets are built by GitHub Actions and uploaded to GitHub Releases.
 
-### One command
-
 ```bash
-./release.sh 1.0.1
+./release.sh 1.0.2
 ```
 
-Script steps:
+The script validates the working tree, checks the version in `build.gradle.kts`, runs a local build, creates a git tag, and pushes. The CI release workflow then builds macOS `.dmg`, Windows `.msi`, and Linux `.deb` installers.
 
-1. Check working tree is clean
-2. Check `build.gradle.kts` version matches input
-3. Run local build check
-4. Create git tag `v1.0.1`
-5. Push branch + tag
-6. Trigger release workflow to build:
-    - macOS `.dmg`
-    - Windows `.msi`
-    - Linux `.deb`
+## Contributing
 
-## 中文概要
-
-用于检查 Apache Iceberg 表结构（本地文件系统）的只读桌面 UI。
-
-它可以帮助您查看：
-
-- 元数据
-- 快照
-- 清单
-- 数据文件
-- 删除文件（相等/位置）
-- 示例行
-
-### 运行
-
-```bash
-./gradlew run
-```
-
-### 快速使用方法
-
-1. 点击**添加到工作区**。
-2. 选择一个仓库文件夹或单个表文件夹。
-3. 从工作区面板中选择一个表。
-4. 浏览图节点。
-5. 点击节点以在**检查器**中查看详细信息。
-
-### 实用工具栏操作：
-
-- **重新应用布局**：手动拖动后重置节点布局
-- **调整图大小**：自动缩放和滚动以适应视图
-
-### 限制（当前）
-
-- 仅限本地文件系统（暂不支持目录集成/远程对象存储）。
-- “示例行”仅用于调试，可能因文件可用性/格式而异，无法保证其准确性。
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions, code style, and PR process.
 
 ## License
 
-Apache-2.0. See `LICENSE`.
+Apache-2.0. See [LICENSE](LICENSE).
