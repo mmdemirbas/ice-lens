@@ -32,6 +32,7 @@ import service.GraphLayoutService
 import java.awt.Desktop
 import java.io.File
 import java.net.URI
+import javax.swing.JFileChooser
 import java.nio.file.NoSuchFileException
 import java.nio.file.Paths
 import java.util.prefs.Preferences
@@ -90,6 +91,7 @@ fun App() {
     var fitGraphRequest by remember { mutableIntStateOf(0) }
     var selectedNodeIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var errorMsg by remember { mutableStateOf<String?>(null) }
+    var isStaleData by remember { mutableStateOf(false) }
     var workspaceExpandedPaths by remember {
         val saved = prefs.get(PREF_WORKSPACE_EXPANDED_PATHS, "")
         val expanded = saved
@@ -247,6 +249,24 @@ fun App() {
                     if (this[table.path] == null) this[table.path] = WorkspaceTableStatus.EXISTING
                 }
             }
+    }
+
+    fun addWorkspaceRoot(path: String) {
+        val file = File(path)
+        if (file.exists() && file.isDirectory) {
+            val normalizedPath = canonicalWorkspacePath(path)
+            if (workspaceItems.any { canonicalWorkspacePath(it.path) == normalizedPath }) return
+
+            val newItem = if (isIcebergTable(file)) {
+                WorkspaceItem.SingleTable(normalizedPath, file.name)
+            } else {
+                WorkspaceItem.Warehouse(normalizedPath, file.name, scanForTables(file))
+            }
+            saveWorkspace(workspaceItems + newItem)
+            if (newItem is WorkspaceItem.Warehouse) {
+                setWorkspaceExpandedPaths(workspaceExpandedPaths + newItem.path)
+            }
+        }
     }
 
     fun refreshWarehouseTables() {
@@ -445,6 +465,7 @@ fun App() {
                     emptySet()
                 }
                 errorMsg = null
+                isStaleData = false
             } catch (e: NoSuchFileException) {
                 if (requestId != loadRequestId) return@launch
                 val cached = sessionCache[cacheKey]
@@ -454,6 +475,7 @@ fun App() {
                     setGraphModelAndBump(fallback.graph)
                     selectedNodeIds = selectedNodeIds.filter { id -> fallback.graph.nodes.any { it.id == id } }.toSet()
                     errorMsg = "Table was deleted from filesystem. Showing latest cached snapshot."
+                    isStaleData = true
                 } else {
                     errorMsg = "Table was deleted from filesystem and no cached snapshot is available."
                     if (!forceReloadFromFs) {
@@ -597,23 +619,7 @@ fun App() {
                     }
                     loadTable(tablePath)
                 },
-                onAddRoot = { path ->
-                    val file = File(path)
-                    if (file.exists() && file.isDirectory) {
-                        val normalizedPath = canonicalWorkspacePath(path)
-                        if (workspaceItems.any { canonicalWorkspacePath(it.path) == normalizedPath }) return@WorkspacePanel
-
-                        val newItem = if (isIcebergTable(file)) {
-                            WorkspaceItem.SingleTable(normalizedPath, file.name)
-                        } else {
-                            WorkspaceItem.Warehouse(normalizedPath, file.name, scanForTables(file))
-                        }
-                        saveWorkspace(workspaceItems + newItem)
-                        if (newItem is WorkspaceItem.Warehouse) {
-                            setWorkspaceExpandedPaths(workspaceExpandedPaths + newItem.path)
-                        }
-                    }
-                },
+                onAddRoot = { path -> addWorkspaceRoot(path) },
                 onRemoveRoot = { item ->
                     saveWorkspace(workspaceItems.filter { it != item })
                 },
@@ -805,10 +811,17 @@ fun App() {
                         ) {
                             DropdownMenuItem(
                                 text = {
-                                    Text(
-                                        "Snapshot Filter",
-                                        fontWeight = FontWeight.SemiBold
-                                    )
+                                    Column {
+                                        Text(
+                                            "Snapshot Filter",
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            "Show only nodes connected to selected snapshots",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 },
                                 onClick = {}
                             )
@@ -1074,10 +1087,24 @@ fun App() {
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "Click \"Add to Workspace\" in the sidebar to get started.",
+                                "Add an Iceberg table or warehouse directory to get started.",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
+                            Spacer(Modifier.height(16.dp))
+                            Button(onClick = {
+                                val chooser = JFileChooser()
+                                chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                                chooser.dialogTitle = "Add Warehouse or Table"
+                                chooser.currentDirectory = File(System.getProperty("user.home"))
+                                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                                    addWorkspaceRoot(chooser.selectedFile.absolutePath)
+                                }
+                            }) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Add to Workspace", fontSize = 13.sp)
+                            }
                         }
                     }
 
@@ -1089,6 +1116,33 @@ fun App() {
                             CircularProgressIndicator()
                             Spacer(Modifier.height(8.dp))
                             Text("Loading table...", color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+
+                    if (isStaleData && errorMsg == null) {
+                        Surface(
+                            modifier = Modifier.align(Alignment.TopCenter).padding(8.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.9f),
+                            tonalElevation = 1.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Warning,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "Viewing cached data \u2014 table may have been deleted from filesystem",
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    fontSize = 11.sp
+                                )
+                            }
                         }
                     }
 
@@ -1104,12 +1158,26 @@ fun App() {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    "Error: $errorMsg",
+                                    errorMsg!!,
                                     color = MaterialTheme.colorScheme.onErrorContainer,
                                     fontSize = 13.sp,
                                     modifier = Modifier.weight(1f)
                                 )
-                                Spacer(Modifier.width(8.dp))
+                                if (selectedTablePath != null) {
+                                    Spacer(Modifier.width(8.dp))
+                                    TextButton(
+                                        onClick = {
+                                            errorMsg = null
+                                            reloadCurrentTableFromFilesystem()
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Reload", fontSize = 12.sp)
+                                    }
+                                }
+                                Spacer(Modifier.width(4.dp))
                                 IconButton(
                                     onClick = { errorMsg = null },
                                     modifier = Modifier.size(24.dp)
@@ -1290,6 +1358,7 @@ fun App() {
 
             if (showAboutDialog) {
                 val githubUrl = "https://github.com/mmdemirbas/ice-lens"
+                var aboutTab by remember { mutableIntStateOf(0) }
                 AlertDialog(
                     onDismissRequest = { showAboutDialog = false },
                     confirmButton = {
@@ -1297,28 +1366,85 @@ fun App() {
                             Text("Close")
                         }
                     },
-                    title = { Text("About Ice Lens") },
-                    text = {
+                    title = {
                         Column {
-                            Text("A visual inspector for Apache Iceberg tables. It visualizes metadata, snapshots, manifests, and row-level delete relationships.")
-                            Spacer(Modifier.height(8.dp))
-                            Text("Author: Muhammed Demirbaş")
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                text = githubUrl,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.clickable {
-                                    runCatching {
-                                        if (!Desktop.isDesktopSupported()) {
-                                            error("Desktop browsing is not supported on this platform.")
+                            Text("Iceberg Lens")
+                            Spacer(Modifier.height(4.dp))
+                            Row {
+                                TextButton(onClick = { aboutTab = 0 }) {
+                                    Text("About", fontWeight = if (aboutTab == 0) FontWeight.Bold else FontWeight.Normal)
+                                }
+                                TextButton(onClick = { aboutTab = 1 }) {
+                                    Text("Cheat Sheet", fontWeight = if (aboutTab == 1) FontWeight.Bold else FontWeight.Normal)
+                                }
+                            }
+                        }
+                    },
+                    text = {
+                        val scrollState = rememberScrollState()
+                        Column(Modifier.verticalScroll(scrollState).widthIn(min = 400.dp)) {
+                            if (aboutTab == 0) {
+                                Text("A visual inspector for Apache Iceberg tables. It visualizes metadata, snapshots, manifests, and row-level delete relationships.")
+                                Spacer(Modifier.height(8.dp))
+                                Text("Author: Muhammed Demirbaş")
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = githubUrl,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.clickable {
+                                        runCatching {
+                                            if (!Desktop.isDesktopSupported()) {
+                                                error("Desktop browsing is not supported on this platform.")
+                                            }
+                                            Desktop.getDesktop().browse(URI(githubUrl))
+                                        }.onFailure { e ->
+                                            errorMsg = "Failed to open GitHub link: ${e.message}"
                                         }
-                                        Desktop.getDesktop().browse(URI(githubUrl))
-                                    }.onFailure { e ->
-                                        errorMsg = "Failed to open GitHub link: ${e.message}"
+                                    }
+                                )
+                            } else {
+                                @Composable fun shortcutRow(action: String, shortcut: String) {
+                                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                                        Text(action, modifier = Modifier.weight(1f), fontSize = 13.sp)
+                                        Text(shortcut, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
                                     }
                                 }
-                            )
+                                Text("Keyboard Shortcuts", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Spacer(Modifier.height(4.dp))
+                                shortcutRow("Undo node drag", "Ctrl/Cmd + Z")
+                                HorizontalDivider(Modifier.padding(vertical = 2.dp))
+
+                                Spacer(Modifier.height(12.dp))
+                                Text("Graph Canvas", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Spacer(Modifier.height(4.dp))
+                                shortcutRow("Pan / scroll", "Scroll wheel or trackpad")
+                                shortcutRow("Zoom", "Ctrl/Cmd + scroll")
+                                shortcutRow("Select node", "Click node")
+                                shortcutRow("Multi-select", "Ctrl/Cmd + click")
+                                shortcutRow("Marquee select", "Drag on canvas (Select mode)")
+                                shortcutRow("Toggle marquee (add/remove)", "Shift + drag")
+                                shortcutRow("Drag node(s)", "Drag selected node")
+                                shortcutRow("Deselect all", "Click empty area")
+                                HorizontalDivider(Modifier.padding(vertical = 2.dp))
+
+                                Spacer(Modifier.height(12.dp))
+                                Text("Panels", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Spacer(Modifier.height(4.dp))
+                                shortcutRow("Toggle all panels", "Double-click empty area")
+                                shortcutRow("Toggle inspector", "Double-click a node")
+                                shortcutRow("Reposition panel", "Drag panel title bar")
+                                shortcutRow("Hide panel", "Click \u2212 on panel title")
+                                shortcutRow("Show panel", "Click icon in side bar")
+                                HorizontalDivider(Modifier.padding(vertical = 2.dp))
+
+                                Spacer(Modifier.height(12.dp))
+                                Text("Workspace", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Spacer(Modifier.height(4.dp))
+                                shortcutRow("Add table/warehouse", "Click 'Add to Workspace'")
+                                shortcutRow("Reorder items", "Drag workspace items")
+                                shortcutRow("Remove item", "Click \u00D7 on item")
+                            }
                         }
                     }
                 )

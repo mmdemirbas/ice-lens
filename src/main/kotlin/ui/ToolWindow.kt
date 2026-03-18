@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,6 +15,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -154,6 +157,7 @@ fun ToolWindowPane(
     val colors = MaterialTheme.colorScheme
     Column(modifier = Modifier.fillMaxSize().background(colors.surface)) {
         var titleBounds by remember { mutableStateOf<Rect?>(null) }
+        val isDraggable = onDragStart != null && onDragMove != null && onDragEnd != null
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -161,6 +165,7 @@ fun ToolWindowPane(
                 .background(if (isBeingDragged) colors.primaryContainer.copy(alpha = 0.72f) else colors.surfaceVariant)
                 .padding(horizontal = 8.dp)
                 .onGloballyPositioned { coords -> titleBounds = coords.boundsInWindow() }
+                .then(if (isDraggable) Modifier.pointerHoverIcon(PointerIcon(java.awt.Cursor(java.awt.Cursor.MOVE_CURSOR))) else Modifier)
                 .pointerInput(onDragStart, onDragMove, onDragEnd, onDragCancel) {
                     if (onDragStart != null && onDragMove != null && onDragEnd != null) {
                         detectDragGestures(
@@ -179,6 +184,15 @@ fun ToolWindowPane(
                 },
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (isDraggable) {
+                Icon(
+                    Icons.Default.DragIndicator,
+                    contentDescription = "Drag to reposition",
+                    modifier = Modifier.size(14.dp),
+                    tint = colors.onSurfaceVariant.copy(alpha = 0.5f)
+                )
+                Spacer(Modifier.width(4.dp))
+            }
             Text(
                 text = title.uppercase(),
                 fontSize = 10.sp,
