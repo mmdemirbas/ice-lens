@@ -32,6 +32,9 @@ import model.KeyValuePairBytes
 import model.KeyValuePairLong
 import model.MetadataLogEntry
 import model.SnapshotLogEntry
+import model.TableSchema
+import model.TableSchemaField
+import model.metadataVersionFromFileName
 import java.awt.Desktop
 import java.io.File
 import java.net.URI
@@ -679,6 +682,9 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                 rows = mergedMetadataRows
                             )
                         }
+
+                        SchemaEvolutionSection(metadataChildren)
+                        PropertiesEvolutionSection(metadataChildren)
                     }
 
                     is GraphNode.MetadataNode -> {
@@ -1214,5 +1220,274 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
             )
         }
     }
+    }
+}
+
+// --- Schema Evolution ---
+
+private data class FieldInfo(
+    val id: Int,
+    val name: String,
+    val required: Boolean,
+    val type: String,
+)
+
+private fun extractFields(schema: TableSchema): Map<Int, FieldInfo> =
+    schema.fields.mapNotNull { field ->
+        val id = field.id ?: return@mapNotNull null
+        id to FieldInfo(
+            id = id,
+            name = field.name ?: "field_$id",
+            required = field.required ?: false,
+            type = field.type?.toString()?.removeSurrounding("\"") ?: "unknown"
+        )
+    }.toMap()
+
+private sealed class SchemaChange(val fieldId: Int, val fieldName: String) {
+    class Added(id: Int, name: String, val type: String, val required: Boolean) : SchemaChange(id, name) {
+        override fun toString() = "Added: $fieldName ($type${if (required) ", required" else ""})"
+    }
+    class Dropped(id: Int, name: String, val type: String) : SchemaChange(id, name) {
+        override fun toString() = "Dropped: $fieldName ($type)"
+    }
+    class TypeChanged(id: Int, name: String, val oldType: String, val newType: String) : SchemaChange(id, name) {
+        override fun toString() = "Type changed: $fieldName ($oldType \u2192 $newType)"
+    }
+    class Renamed(id: Int, val oldName: String, val newName: String) : SchemaChange(id, newName) {
+        override fun toString() = "Renamed: $oldName \u2192 $newName"
+    }
+    class RequiredChanged(id: Int, name: String, val wasRequired: Boolean) : SchemaChange(id, name) {
+        override fun toString() = if (wasRequired) "Made optional: $fieldName" else "Made required: $fieldName"
+    }
+}
+
+private fun diffSchemas(oldSchema: TableSchema, newSchema: TableSchema): List<SchemaChange> {
+    val oldFields = extractFields(oldSchema)
+    val newFields = extractFields(newSchema)
+    val changes = mutableListOf<SchemaChange>()
+
+    // Added fields
+    (newFields.keys - oldFields.keys).forEach { id ->
+        val f = newFields[id]!!
+        changes.add(SchemaChange.Added(id, f.name, f.type, f.required))
+    }
+
+    // Dropped fields
+    (oldFields.keys - newFields.keys).forEach { id ->
+        val f = oldFields[id]!!
+        changes.add(SchemaChange.Dropped(id, f.name, f.type))
+    }
+
+    // Changed fields
+    (oldFields.keys intersect newFields.keys).forEach { id ->
+        val old = oldFields[id]!!
+        val new = newFields[id]!!
+        if (old.name != new.name) {
+            changes.add(SchemaChange.Renamed(id, old.name, new.name))
+        }
+        if (old.type != new.type) {
+            changes.add(SchemaChange.TypeChanged(id, new.name, old.type, new.type))
+        }
+        if (old.required != new.required) {
+            changes.add(SchemaChange.RequiredChanged(id, new.name, old.required))
+        }
+    }
+
+    return changes.sortedBy { it.fieldId }
+}
+
+@Composable
+private fun SchemaEvolutionSection(metadataChildren: List<GraphNode.MetadataNode>) {
+    // Collect all unique schemas across metadata versions
+    val allSchemas = metadataChildren.flatMap { meta ->
+        meta.data.schemas.map { schema -> meta to schema }
+    }
+    val uniqueSchemas = allSchemas
+        .distinctBy { it.second.schemaId }
+        .sortedBy { it.second.schemaId ?: Int.MAX_VALUE }
+
+    if (uniqueSchemas.size < 2) return // No evolution to show
+
+    Spacer(Modifier.height(16.dp))
+    SectionTitle("Schema Evolution")
+
+    val changes = mutableListOf<Triple<Int, Int, List<SchemaChange>>>() // fromSchemaId, toSchemaId, changes
+    for (i in 0 until uniqueSchemas.size - 1) {
+        val oldSchema = uniqueSchemas[i].second
+        val newSchema = uniqueSchemas[i + 1].second
+        val diff = diffSchemas(oldSchema, newSchema)
+        if (diff.isNotEmpty()) {
+            changes.add(Triple(oldSchema.schemaId ?: i, newSchema.schemaId ?: (i + 1), diff))
+        }
+    }
+
+    if (changes.isEmpty()) {
+        DetailTable {
+            DetailRow("Status", "No field changes detected between schema versions")
+        }
+        return
+    }
+
+    val colors = MaterialTheme.colorScheme
+
+    changes.forEach { (fromId, toId, diffs) ->
+        Text(
+            "Schema $fromId \u2192 $toId",
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+        )
+        DetailTable {
+            diffs.forEach { change ->
+                val changeColor = when (change) {
+                    is SchemaChange.Added -> colors.secondary
+                    is SchemaChange.Dropped -> colors.error
+                    else -> colors.onSurface
+                }
+                DetailRow(
+                    key = when (change) {
+                        is SchemaChange.Added -> "+ Added"
+                        is SchemaChange.Dropped -> "- Dropped"
+                        is SchemaChange.TypeChanged -> "\u0394 Type"
+                        is SchemaChange.Renamed -> "\u0394 Rename"
+                        is SchemaChange.RequiredChanged -> "\u0394 Required"
+                    },
+                    value = change.toString().substringAfter(": ")
+                )
+            }
+        }
+    }
+
+    // Show current schema fields
+    val latestSchema = uniqueSchemas.last().second
+    Spacer(Modifier.height(8.dp))
+    Text(
+        "Current Schema (ID ${latestSchema.schemaId ?: "?"}): ${latestSchema.fields.size} fields",
+        fontWeight = FontWeight.Medium,
+        fontSize = 12.sp,
+        modifier = Modifier.padding(bottom = 4.dp)
+    )
+    val identifierIds = latestSchema.identifierFieldIds.toSet()
+    DetailTable {
+        DetailRow("ID", "Name / Type / Required", isHeader = true)
+        latestSchema.fields.forEach { field ->
+            val isIdentifier = (field.id ?: -1) in identifierIds
+            val typeStr = field.type?.toString()?.removeSurrounding("\"") ?: "unknown"
+            val suffix = buildString {
+                if (field.required == true) append(", required")
+                if (isIdentifier) append(", identifier")
+            }
+            DetailRow(
+                "${field.id ?: "?"}",
+                "${field.name ?: "?"} ($typeStr$suffix)"
+            )
+        }
+    }
+}
+
+// --- Properties Evolution ---
+
+@Composable
+private fun PropertiesEvolutionSection(metadataChildren: List<GraphNode.MetadataNode>) {
+    if (metadataChildren.isEmpty()) return
+
+    // Collect properties from each metadata version
+    data class VersionProps(val version: String, val props: Map<String, String>)
+    val versions = metadataChildren.map { meta ->
+        VersionProps(
+            version = metadataVersionFromFileName(meta.fileName)?.let { "v$it" } ?: meta.fileName,
+            props = meta.data.properties
+        )
+    }
+
+    // Merge all property keys
+    val allKeys = versions.flatMap { it.props.keys }.toSortedSet()
+    if (allKeys.isEmpty()) return
+
+    Spacer(Modifier.height(16.dp))
+    SectionTitle("Table Properties")
+
+    val colors = MaterialTheme.colorScheme
+
+    // If only one metadata version, show a simple table
+    if (versions.size == 1) {
+        DetailTable {
+            DetailRow("Key", "Value", isHeader = true)
+            versions[0].props.toSortedMap().forEach { (k, v) ->
+                DetailRow(k, v)
+            }
+        }
+        return
+    }
+
+    // Multiple versions: show evolution
+    // First show the current values
+    val latestProps = versions.last().props
+
+    // Detect changes across versions
+    data class PropChange(
+        val key: String,
+        val fromVersion: String,
+        val toVersion: String,
+        val oldValue: String?,
+        val newValue: String?,
+    )
+
+    val changes = mutableListOf<PropChange>()
+    for (i in 0 until versions.size - 1) {
+        val oldV = versions[i]
+        val newV = versions[i + 1]
+        val bothKeys = (oldV.props.keys + newV.props.keys)
+        bothKeys.forEach { key ->
+            val oldVal = oldV.props[key]
+            val newVal = newV.props[key]
+            if (oldVal != newVal) {
+                changes.add(PropChange(key, oldV.version, newV.version, oldVal, newVal))
+            }
+        }
+    }
+
+    // Show current properties with change indicators
+    DetailTable {
+        DetailRow("Key", "Value", isHeader = true)
+        allKeys.forEach { key ->
+            val currentVal = latestProps[key]
+            val hasChanges = changes.any { it.key == key }
+            if (currentVal != null) {
+                DetailRow(
+                    key = if (hasChanges) "\u0394 $key" else key,
+                    value = currentVal
+                )
+            } else {
+                DetailRow(key = "- $key", value = "(removed)")
+            }
+        }
+    }
+
+    // Show change log if there are any
+    if (changes.isNotEmpty()) {
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Property Changes",
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+
+        val changeHeaders = listOf("Property", "From", "To", "Old Value", "New Value")
+        val changeRows = changes.map { change ->
+            listOf(
+                change.key,
+                change.fromVersion,
+                change.toVersion,
+                change.oldValue ?: "(not set)",
+                change.newValue ?: "(removed)"
+            )
+        }
+        WideTable(
+            headers = changeHeaders,
+            rows = changeRows,
+            columnWidth = 160.dp
+        )
     }
 }
