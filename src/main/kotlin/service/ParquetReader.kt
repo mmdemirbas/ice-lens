@@ -38,7 +38,7 @@ object ParquetReader {
             val rows = mutableListOf<Map<String, Any>>()
             val stmt = conn.createStatement()
             try {
-                val sql = "SELECT * FROM read_parquet('$safePath') LIMIT 50"
+                val sql = "SELECT * FROM read_parquet('$safePath') LIMIT ${GraphLayoutService.MAX_PARQUET_SAMPLE_ROWS}"
                 val rs = stmt.executeQuery(sql)
                 val meta = rs.metaData
                 val colCount = meta.columnCount

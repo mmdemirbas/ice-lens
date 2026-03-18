@@ -7,6 +7,11 @@ import androidx.compose.ui.graphics.Color
 val DarkSelectionAccent = Color(0xFF00E5FF)
 
 const val TOOLTIP_DELAY_MS = 500
+const val ERROR_AUTO_DISMISS_MS = 8000L
+const val MAX_UNDO_DEPTH = 20
+const val FILESYSTEM_POLL_INTERVAL_MS = 3000L
+const val MIN_ZOOM = 0.1f
+const val MAX_ZOOM = 3f
 
 fun perceivedBrightness(color: Color): Float =
     0.2126f * color.red + 0.7152f * color.green + 0.0722f * color.blue

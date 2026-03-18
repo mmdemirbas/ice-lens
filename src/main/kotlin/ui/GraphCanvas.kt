@@ -95,7 +95,7 @@ fun GraphCanvas(
     // Undo stack: snapshots of node positions before each drag
     data class PositionSnapshot(val positions: Map<String, Pair<Double, Double>>)
     val undoStack = remember { mutableListOf<PositionSnapshot>() }
-    val maxUndoDepth = 20
+    val maxUndoDepth = MAX_UNDO_DEPTH
 
     var hoveredNodeId by remember { mutableStateOf<String?>(null) }
     var activeTooltipNodeId by remember { mutableStateOf<String?>(null) }
@@ -271,7 +271,7 @@ fun GraphCanvas(
                                 // Zoom at mouse position
                                 val zoomFactor = Math.pow(1.1, -delta.y.toDouble()).toFloat()
                                 val oldZoom = localZoom
-                                val newZoom = (oldZoom * zoomFactor).coerceIn(0.1f, 3f)
+                                val newZoom = (oldZoom * zoomFactor).coerceIn(MIN_ZOOM, MAX_ZOOM)
                                 
                                 if (newZoom != oldZoom) {
                                     val mousePos = changes.first().position
@@ -294,7 +294,7 @@ fun GraphCanvas(
                             val zoomFactor = event.calculateZoom()
                             if (zoomFactor != 1f) {
                                 val oldZoom = localZoom
-                                val newZoom = (oldZoom * zoomFactor).coerceIn(0.1f, 3f)
+                                val newZoom = (oldZoom * zoomFactor).coerceIn(MIN_ZOOM, MAX_ZOOM)
                                 if (newZoom != oldZoom) {
                                     val centroid = event.calculateCentroid()
                                     val layoutOffset = offsetAnim.value + (centroid - offsetAnim.value) * (1 - newZoom / oldZoom)
@@ -314,7 +314,7 @@ fun GraphCanvas(
                 if (!isSelectMode) {
                     detectTransformGestures { centroid, pan, gestureZoom, _ ->
                         val oldZoom = localZoom
-                        val newZoom = (oldZoom * gestureZoom).coerceIn(0.1f, 3f)
+                        val newZoom = (oldZoom * gestureZoom).coerceIn(MIN_ZOOM, MAX_ZOOM)
 
                         if (newZoom != oldZoom) {
                             val layoutOffset = offsetAnim.value + (centroid - offsetAnim.value) * (1 - newZoom / oldZoom)
@@ -446,7 +446,7 @@ fun GraphCanvas(
             val availableHeight = (viewportHeight - fitPadding * 2f).coerceAtLeast(1f)
             val fitZoomX = availableWidth / extents.width
             val fitZoomY = availableHeight / extents.height
-            val fitZoom = min(fitZoomX, fitZoomY).coerceIn(0.1f, 3f)
+            val fitZoom = min(fitZoomX, fitZoomY).coerceIn(MIN_ZOOM, MAX_ZOOM)
 
             val centerX = (extents.minX + extents.maxX) / 2f
             val centerY = (extents.minY + extents.maxY) / 2f

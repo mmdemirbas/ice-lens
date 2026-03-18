@@ -28,6 +28,13 @@ object GraphLayoutService {
             .registerLayoutMetaDataProviders(LayeredMetaDataProvider())
     }
 
+    /** Max data files shown per manifest in the graph. */
+    private const val MAX_FILES_PER_MANIFEST = 10
+    /** Max sample rows created per data file. */
+    private const val MAX_ROWS_PER_FILE = 5
+    /** Max sample rows read from Parquet via DuckDB. */
+    const val MAX_PARQUET_SAMPLE_ROWS = 50
+
     fun layoutGraph(
         tableModel: UnifiedTableModel,
         showRows: Boolean,
@@ -214,7 +221,7 @@ object GraphLayoutService {
                         if (manifestPath != null) {
                             val fallbackSeq = manifest.sequenceNumber?.toLong() ?: Long.MAX_VALUE
                             val unifiedDataFiles = unifiedManifest.manifests.sortedWith(unifiedDataFileComparator(fallbackSeq))
-                            unifiedDataFiles.take(10).forEachIndexed { fileIndex, unifiedDataFile ->
+                            unifiedDataFiles.take(MAX_FILES_PER_MANIFEST).forEachIndexed { fileIndex, unifiedDataFile ->
                                 val entry = unifiedDataFile.metadata
                                 val dataFile = entry.dataFile ?: DataFile(filePath = "unknown")
                                 val rawPath = dataFile.filePath.orEmpty()
@@ -252,7 +259,7 @@ object GraphLayoutService {
 
                                     if (localFile.exists()) {
                                         val contentType = entry.dataFile?.content ?: 0
-                                        val maxRows = 5
+                                        val maxRows = MAX_ROWS_PER_FILE
                                         // Create placeholder row nodes; actual data loads lazily on first access
                                         for (rIdx in 0 until maxRows) {
                                             val rId = "row_${fId}_$rIdx"
@@ -290,7 +297,11 @@ object GraphLayoutService {
                                                             enriched.putAll(rowData.cells)
                                                             enriched
                                                         } else emptyMap()
-                                                    } catch (_: Exception) { emptyMap() }
+                                                    } catch (e: Exception) {
+                                                        org.slf4j.LoggerFactory.getLogger("GraphLayoutService")
+                                                            .warn("Failed to load rows for file {}: {}", capturedDataFile.path, e.message)
+                                                        emptyMap()
+                                                    }
                                                 }
                                             )
 

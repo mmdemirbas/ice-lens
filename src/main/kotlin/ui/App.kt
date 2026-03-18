@@ -492,7 +492,7 @@ fun App() {
             } catch (e: Exception) {
                 if (requestId != loadRequestId) return@launch
                 errorMsg = e.message
-                e.printStackTrace()
+                org.slf4j.LoggerFactory.getLogger("App").error("Failed to load table: {}", normalizedTablePath, e)
                 if (!forceReloadFromFs) {
                     setGraphModelAndBump(null)
                 }
@@ -747,7 +747,7 @@ fun App() {
                         icon = Icons.Default.ZoomOut,
                         tooltip = "Zoom Out",
                         onClick = {
-                            zoom = (zoom / 1.2f).coerceAtLeast(0.1f)
+                            zoom = (zoom / 1.2f).coerceAtLeast(MIN_ZOOM)
                             prefs.putFloat(PREF_ZOOM, zoom)
                         },
                         modifier = Modifier.size(32.dp)
@@ -764,7 +764,7 @@ fun App() {
                         icon = Icons.Default.ZoomIn,
                         tooltip = "Zoom In",
                         onClick = {
-                            zoom = (zoom * 1.2f).coerceAtMost(3f)
+                            zoom = (zoom * 1.2f).coerceAtMost(MAX_ZOOM)
                             prefs.putFloat(PREF_ZOOM, zoom)
                         },
                         modifier = Modifier.size(32.dp)
@@ -1551,7 +1551,7 @@ fun App() {
 
     LaunchedEffect(errorMsg) {
         if (errorMsg != null) {
-            delay(8000)
+            delay(ERROR_AUTO_DISMISS_MS)
             errorMsg = null
         }
     }
@@ -1584,7 +1584,7 @@ fun App() {
                     }
                 }
             }
-            delay(3000)
+            delay(FILESYSTEM_POLL_INTERVAL_MS)
         }
     }
 
@@ -1599,7 +1599,7 @@ fun App() {
         }
         while (isActive) {
             refreshWarehouseTables()
-            delay(3000)
+            delay(FILESYSTEM_POLL_INTERVAL_MS)
         }
     }
 }
