@@ -13,5 +13,3 @@ NEW FEATURE
 
 MORE PLATFORMS
 - Consider making this project available as an IntelliJ IDEA plugin
-
-

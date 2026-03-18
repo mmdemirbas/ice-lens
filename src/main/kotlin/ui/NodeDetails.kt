@@ -546,7 +546,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.FolderOpen,
-                                    contentDescription = null,
+                                    contentDescription = "Open in file browser",
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(Modifier.width(4.dp))

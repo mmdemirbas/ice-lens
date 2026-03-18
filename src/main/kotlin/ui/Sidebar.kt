@@ -108,7 +108,7 @@ fun WorkspacePanel(
                 }
             }, modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+            Icon(Icons.Default.Add, contentDescription = "Add", modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
             Text("Add to Workspace", fontSize = 12.sp)
         }
@@ -369,7 +369,7 @@ fun WorkspaceRootItem(
             IconButton(onClick = onToggleExpand, modifier = Modifier.size(24.dp)) {
                 Icon(
                     if (isExpanded) Icons.Default.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
+                    contentDescription = if (isExpanded) "Collapse" else "Expand",
                     modifier = Modifier.size(16.dp)
                 )
             }

@@ -843,7 +843,7 @@ fun App() {
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                     modifier = Modifier.height(30.dp)
                                 ) {
-                                    Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.DoneAll, contentDescription = "Select all", modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.width(4.dp))
                                     Text("All", fontSize = 11.sp)
                                 }
@@ -852,7 +852,7 @@ fun App() {
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                     modifier = Modifier.height(30.dp)
                                 ) {
-                                    Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear selection", modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.width(4.dp))
                                     Text("None", fontSize = 11.sp)
                                 }
@@ -863,7 +863,7 @@ fun App() {
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                     modifier = Modifier.height(30.dp)
                                 ) {
-                                    Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.SwapHoriz, contentDescription = "Invert selection", modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.width(4.dp))
                                     Text("Invert", fontSize = 11.sp)
                                 }
@@ -1082,7 +1082,7 @@ fun App() {
                         ) {
                             Icon(
                                 Icons.Default.Storage,
-                                contentDescription = null,
+                                contentDescription = "No tables",
                                 modifier = Modifier.size(48.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
@@ -1109,7 +1109,7 @@ fun App() {
                                     addWorkspaceRoot(chooser.selectedFile.absolutePath)
                                 }
                             }) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Add, contentDescription = "Add", modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(8.dp))
                                 Text("Add to Workspace", fontSize = 13.sp)
                             }
@@ -1140,7 +1140,7 @@ fun App() {
                             ) {
                                 Icon(
                                     Icons.Default.Warning,
-                                    contentDescription = null,
+                                    contentDescription = "Stale data warning",
                                     modifier = Modifier.size(14.dp),
                                     tint = MaterialTheme.colorScheme.onTertiaryContainer
                                 )
@@ -1180,7 +1180,7 @@ fun App() {
                                         },
                                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                                     ) {
-                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Icon(Icons.Default.Refresh, contentDescription = "Reload", modifier = Modifier.size(14.dp))
                                         Spacer(Modifier.width(4.dp))
                                         Text("Reload", fontSize = 12.sp)
                                     }
@@ -1392,9 +1392,31 @@ fun App() {
                         val scrollState = rememberScrollState()
                         Column(Modifier.verticalScroll(scrollState).widthIn(min = 400.dp)) {
                             if (aboutTab == 0) {
+                                val appVersion = remember {
+                                    runCatching {
+                                        val props = java.util.Properties()
+                                        props.load(Thread.currentThread().contextClassLoader.getResourceAsStream("version.properties"))
+                                        props.getProperty("version", "dev")
+                                    }.getOrDefault("dev")
+                                }
                                 Text("A visual inspector for Apache Iceberg tables. It visualizes metadata, snapshots, manifests, and row-level delete relationships.")
                                 Spacer(Modifier.height(8.dp))
+                                Text("Version: $appVersion", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(Modifier.height(4.dp))
                                 Text("Author: Muhammed Demirbaş")
+                                Spacer(Modifier.height(8.dp))
+                                TextButton(onClick = {
+                                    val info = buildString {
+                                        appendLine("Iceberg Lens $appVersion")
+                                        appendLine("OS: ${System.getProperty("os.name")} ${System.getProperty("os.version")} (${System.getProperty("os.arch")})")
+                                        appendLine("Java: ${System.getProperty("java.version")} (${System.getProperty("java.vendor")})")
+                                        appendLine("Runtime: ${System.getProperty("java.runtime.name")} ${System.getProperty("java.runtime.version")}")
+                                    }
+                                    val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                                    clipboard.setContents(java.awt.datatransfer.StringSelection(info), null)
+                                }) {
+                                    Text("Copy diagnostic info", fontSize = 12.sp)
+                                }
                                 Spacer(Modifier.height(6.dp))
                                 Text(
                                     text = githubUrl,

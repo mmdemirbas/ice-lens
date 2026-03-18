@@ -46,6 +46,15 @@ tasks.test {
     useJUnitPlatform()
 }
 
+// Generate a version.properties file accessible at runtime
+tasks.processResources {
+    val versionFile = file("$buildDir/resources/main/version.properties")
+    doFirst {
+        versionFile.parentFile.mkdirs()
+        versionFile.writeText("version=${project.version}\n")
+    }
+}
+
 compose.desktop {
     application {
         mainClass = "app.MainKt"
