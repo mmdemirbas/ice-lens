@@ -1,0 +1,82 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "a6217f72-1314-4872-9926-a5d4c8b90053",
+  "location" : "file:/data/iceberg/default/test",
+  "last-sequence-number" : 1,
+  "last-updated-ms" : 1774355385443,
+  "last-column-id" : 2,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "identifier-field-ids" : [ 1 ],
+    "fields" : [ {
+      "id" : 1,
+      "name" : "k",
+      "required" : true,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "v",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : 859671389683896769,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 859671389683896769,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 859671389683896769,
+    "timestamp-ms" : 1774355385443,
+    "summary" : {
+      "operation" : "append",
+      "flink.operator-id" : "e883208d19e3c34f8aaf2a3168a63337",
+      "flink.job-id" : "63d538b3e45151635fad1dedf7af36b3",
+      "flink.max-committed-checkpoint-id" : "9223372036854775807",
+      "added-data-files" : "1",
+      "added-records" : "2",
+      "added-files-size" : "648",
+      "changed-partition-count" : "1",
+      "total-records" : "2",
+      "total-files-size" : "648",
+      "total-data-files" : "1",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "1.20.3",
+      "engine-name" : "flink",
+      "iceberg-version" : "Apache Iceberg  (commit 60577f70f59d1ba83b724e3ef2b6d69f8b97b071)"
+    },
+    "manifest-list" : "file:/data/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro",
+    "schema-id" : 0
+  } ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1774355385443,
+    "snapshot-id" : 859671389683896769
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1774355379741,
+    "metadata-file" : "file:/data/iceberg/default/test/metadata/v1.metadata.json"
+  } ]
+}
