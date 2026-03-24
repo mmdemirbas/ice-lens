@@ -29,8 +29,11 @@ class WorkspaceTypesTest {
     }
 
     @Test
-    fun `deserialize returns null for non-existent path`() {
-        assertNull(WorkspaceItem.deserialize("W|/nonexistent/path/that/does/not/exist"))
+    fun `deserialize preserves items with non-existent paths`() {
+        val result = WorkspaceItem.deserialize("W|/nonexistent/path/that/does/not/exist")
+        assertIs<WorkspaceItem.Warehouse>(result)
+        assertEquals("/nonexistent/path/that/does/not/exist", result.path)
+        assertEquals("exist", result.name)
     }
 
     @Test

@@ -28,11 +28,10 @@ sealed class WorkspaceItem {
             if (parts.size != 2) return null
             val type = parts[0]
             val path = parts[1]
-            val file = File(path)
-            if (!file.exists()) return null
+            val name = File(path).name
             return when (type) {
-                "W" -> Warehouse(path, file.name)
-                "T" -> SingleTable(path, file.name)
+                "W" -> Warehouse(path, name)
+                "T" -> SingleTable(path, name)
                 else -> null
             }
         }

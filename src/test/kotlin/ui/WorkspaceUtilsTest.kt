@@ -86,4 +86,63 @@ class WorkspaceUtilsTest {
             tmpDir.deleteRecursively()
         }
     }
+
+    @Test
+    fun `scanForTables finds nested tables recursively`() {
+        val tmpDir = kotlin.io.path.createTempDirectory("warehouse-test").toFile()
+        try {
+            // Create nested iceberg table at depth 2
+            val db = java.io.File(tmpDir, "db")
+            val table1 = java.io.File(db, "table1")
+            val meta1 = java.io.File(table1, "metadata")
+            meta1.mkdirs()
+            java.io.File(meta1, "v1.metadata.json").writeText("{}")
+
+            // Create nested paimon table at depth 3
+            val ns = java.io.File(tmpDir, "ns")
+            val schema = java.io.File(ns, "schema1")
+            val table2 = java.io.File(schema, "table2")
+            java.io.File(table2, "snapshot").mkdirs()
+            java.io.File(table2, "schema").mkdirs()
+
+            // Create a non-table directory
+            val notTable = java.io.File(tmpDir, "empty")
+            notTable.mkdirs()
+
+            val tables = scanForTables(tmpDir)
+            assertEquals(listOf("db/table1", "ns/schema1/table2"), tables)
+        } finally {
+            tmpDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `scanForTables skips hidden directories`() {
+        val tmpDir = kotlin.io.path.createTempDirectory("warehouse-test").toFile()
+        try {
+            // Create a table inside a hidden directory — should be skipped
+            val hidden = java.io.File(tmpDir, ".hidden")
+            val table1 = java.io.File(hidden, "table1")
+            val meta1 = java.io.File(table1, "metadata")
+            meta1.mkdirs()
+            java.io.File(meta1, "v1.metadata.json").writeText("{}")
+
+            // Create a visible table
+            val table2 = java.io.File(tmpDir, "table2")
+            val meta2 = java.io.File(table2, "metadata")
+            meta2.mkdirs()
+            java.io.File(meta2, "v1.metadata.json").writeText("{}")
+
+            val tables = scanForTables(tmpDir)
+            assertEquals(listOf("table2"), tables)
+        } finally {
+            tmpDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `scanForTables returns empty for non-existent directory`() {
+        val tables = scanForTables(java.io.File("/nonexistent/path"))
+        assertEquals(emptyList(), tables)
+    }
 }

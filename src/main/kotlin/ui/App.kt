@@ -40,7 +40,7 @@ import service.TableFormatDetector
 import java.awt.Desktop
 import java.io.File
 import java.net.URI
-import javax.swing.JFileChooser
+
 import java.nio.file.NoSuchFileException
 import java.nio.file.Paths
 import java.util.prefs.Preferences
@@ -62,6 +62,7 @@ private const val PREF_WORKSPACE_EXPANDED_PATHS = "workspace_expanded_paths"
 private const val PREF_SELECTED_TABLE_PATH = "selected_table_path"
 private const val PREF_SELECTED_SNAPSHOT_IDS = "selected_snapshot_ids"
 private const val PREF_IS_DARK_MODE = "is_dark_mode"
+private const val PREF_LAST_BROWSE_DIRECTORY = "last_browse_directory"
 
 data class TableSession(
     val table: UnifiedTableModel? = null,
@@ -116,7 +117,11 @@ fun App() {
         mutableStateOf(
             workspaceItems
                 .filterIsInstance<WorkspaceItem.SingleTable>()
-                .associate { it.path to WorkspaceTableStatus.EXISTING }
+                .associate { table ->
+                    val dir = File(table.path)
+                    val exists = dir.exists() && dir.isDirectory && isTableDirectory(dir)
+                    table.path to if (exists) WorkspaceTableStatus.EXISTING else WorkspaceTableStatus.DELETED
+                }
         )
     }
     var isLoadingTable by remember { mutableStateOf(false) }
@@ -131,6 +136,9 @@ fun App() {
         mutableStateOf(parseLongSet(prefs.get(PREF_SELECTED_SNAPSHOT_IDS, "")))
     }
     var snapshotFilterMenuExpanded by remember { mutableStateOf(false) }
+    var lastBrowseDirectory by remember {
+        mutableStateOf(prefs.get(PREF_LAST_BROWSE_DIRECTORY, "").ifBlank { null })
+    }
 
     val sessionCache = remember { java.util.concurrent.ConcurrentHashMap<String, TableSession>() }
     val coroutineScope = rememberCoroutineScope()
@@ -266,7 +274,7 @@ fun App() {
             val normalizedPath = canonicalWorkspacePath(path)
             if (workspaceItems.any { canonicalWorkspacePath(it.path) == normalizedPath }) return
 
-            val newItem = if (isIcebergTable(file)) {
+            val newItem = if (isTableDirectory(file)) {
                 WorkspaceItem.SingleTable(normalizedPath, file.name)
             } else {
                 WorkspaceItem.Warehouse(normalizedPath, file.name, scanForTables(file))
@@ -285,7 +293,7 @@ fun App() {
         val refreshedItems = workspaceItems.map { item ->
             if (item is WorkspaceItem.SingleTable) {
                 val tableDir = File(item.path)
-                val existsNow = tableDir.exists() && tableDir.isDirectory && isIcebergTable(tableDir)
+                val existsNow = tableDir.exists() && tableDir.isDirectory && isTableDirectory(tableDir)
                 val previousStatus = singleTableStatuses[item.path] ?: WorkspaceTableStatus.EXISTING
                 val newStatus = when {
                     !existsNow -> WorkspaceTableStatus.DELETED
@@ -330,7 +338,7 @@ fun App() {
                 .filterIsInstance<WorkspaceItem.SingleTable>()
                 .associate { table ->
                     val tableDir = File(table.path)
-                    val existsNow = tableDir.exists() && tableDir.isDirectory && isIcebergTable(tableDir)
+                    val existsNow = tableDir.exists() && tableDir.isDirectory && isTableDirectory(tableDir)
                     val previousStatus = singleTableStatuses[table.path] ?: WorkspaceTableStatus.EXISTING
                     val status = when {
                         !existsNow -> WorkspaceTableStatus.DELETED
@@ -650,6 +658,11 @@ fun App() {
                 onExpandedPathsChange = { setWorkspaceExpandedPaths(it) },
                 searchQuery = workspaceSearchQuery,
                 onSearchQueryChange = { workspaceSearchQuery = it },
+                lastBrowseDirectory = lastBrowseDirectory,
+                onLastBrowseDirectoryChange = { dir ->
+                    lastBrowseDirectory = dir
+                    prefs.put(PREF_LAST_BROWSE_DIRECTORY, dir)
+                },
                 onTableSelect = { tablePath ->
                     if (selectedTablePath != null && graphModel != null) {
                         val oldKey = "$selectedTablePath-rows_$showRows"
@@ -1164,18 +1177,18 @@ fun App() {
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
-                                "Add an Iceberg table or warehouse directory to get started.",
+                                "Add an Iceberg/Paimon table or warehouse directory to get started.",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
                             Spacer(Modifier.height(16.dp))
                             Button(onClick = {
-                                val chooser = JFileChooser()
-                                chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                                chooser.dialogTitle = "Add Warehouse or Table"
-                                chooser.currentDirectory = File(System.getProperty("user.home"))
-                                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                                    addWorkspaceRoot(chooser.selectedFile.absolutePath)
+                                val initialDir = lastBrowseDirectory?.let { File(it) }
+                                val selected = chooseDirectory(initialDir)
+                                if (selected != null) {
+                                    lastBrowseDirectory = selected.parent ?: selected.absolutePath
+                                    prefs.put(PREF_LAST_BROWSE_DIRECTORY, lastBrowseDirectory!!)
+                                    addWorkspaceRoot(selected.absolutePath)
                                 }
                             }) {
                                 Icon(Icons.Default.Add, contentDescription = "Add", modifier = Modifier.size(16.dp))

@@ -26,7 +26,6 @@ import model.WorkspaceTableStatus
 import service.TableFormat
 import service.TableFormatDetector
 import java.io.File
-import javax.swing.JFileChooser
 
 
 @Composable
@@ -81,6 +80,8 @@ fun WorkspacePanel(
     onExpandedPathsChange: (Set<String>) -> Unit,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
+    lastBrowseDirectory: String?,
+    onLastBrowseDirectoryChange: (String) -> Unit,
     onTableSelect: (String) -> Unit,
     onAddRoot: (String) -> Unit,
     onRemoveRoot: (WorkspaceItem) -> Unit,
@@ -100,13 +101,11 @@ fun WorkspacePanel(
     Column(modifier = Modifier.fillMaxSize().background(colors.surfaceVariant).padding(8.dp)) {
         Button(
             onClick = {
-                val chooser = JFileChooser()
-                chooser.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-                chooser.dialogTitle = "Add Warehouse or Table"
-                chooser.currentDirectory = File(System.getProperty("user.home"))
-
-                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
-                    onAddRoot(chooser.selectedFile.absolutePath)
+                val initialDir = lastBrowseDirectory?.let { File(it) }
+                val selected = chooseDirectory(initialDir)
+                if (selected != null) {
+                    onLastBrowseDirectoryChange(selected.parent ?: selected.absolutePath)
+                    onAddRoot(selected.absolutePath)
                 }
             }, modifier = Modifier.fillMaxWidth()
         ) {
@@ -182,9 +181,13 @@ fun WorkspacePanel(
                             item = item,
                             isSelected = isSelected,
                             isExpanded = effectivelyExpanded,
-                            status = if (item is WorkspaceItem.SingleTable) {
-                                singleTableStatuses[item.path] ?: WorkspaceTableStatus.EXISTING
-                            } else null,
+                            status = when {
+                                item is WorkspaceItem.SingleTable ->
+                                    singleTableStatuses[item.path] ?: WorkspaceTableStatus.EXISTING
+                                item is WorkspaceItem.Warehouse && !File(item.path).exists() ->
+                                    WorkspaceTableStatus.DELETED
+                                else -> null
+                            },
                             onToggleExpand = {
                                 onExpandedPathsChange(if (expandedPaths.contains(item.path)) {
                                     expandedPaths - item.path
