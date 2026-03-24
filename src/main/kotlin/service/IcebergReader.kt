@@ -10,20 +10,8 @@ import java.io.File
 private val logger = LoggerFactory.getLogger(IcebergReader::class.java)
 
 object IcebergReader {
-    data class ReadError(
-        val message: String,
-        val stackTrace: String? = null,
-    )
-
-    /** @see AvroReader.ReadResult */
-    data class ReadResult<T>(
-        val entries: List<T>,
-        val errors: List<ReadError> = emptyList(),
-    )
-
     private val json = Json { ignoreUnknownKeys = true }
 
-    // 1. Read Metadata JSON
     fun readTableMetadata(localPath: String): TableMetadata {
         logger.debug("Reading Iceberg metadata: {}", localPath)
         val file = File(localPath)
@@ -36,22 +24,13 @@ object IcebergReader {
         return metadata
     }
 
-    // 2. Read Manifest List (Avro)
-    fun readManifestList(localPath: String): ReadResult<ManifestListEntry> {
+    fun readManifestList(localPath: String): AvroReader.ReadResult<ManifestListEntry> {
         logger.debug("Reading Iceberg manifest list: {}", localPath)
-        return toReadResult(AvroReader.readAvro(localPath))
+        return AvroReader.readAvro(localPath)
     }
 
-    // 3. Read Manifest File (Avro)
-    fun readManifestFile(localPath: String): ReadResult<ManifestEntry> {
+    fun readManifestFile(localPath: String): AvroReader.ReadResult<ManifestEntry> {
         logger.debug("Reading Iceberg manifest: {}", localPath)
-        return toReadResult(AvroReader.readAvro(localPath))
+        return AvroReader.readAvro(localPath)
     }
-
-    @Suppress("DEPRECATION")
-    private fun <T> toReadResult(avroResult: AvroReader.ReadResult<T>): ReadResult<T> =
-        ReadResult(
-            entries = avroResult.entries,
-            errors = avroResult.errors.map { ReadError(it.message, it.stackTrace) },
-        )
 }

@@ -23,8 +23,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import model.WorkspaceItem
 import model.WorkspaceTableStatus
-import service.TableFormat
-import service.TableFormatDetector
 import java.io.File
 
 
@@ -275,13 +273,7 @@ fun WorkspacePanel(
                                 WorkspaceTableStatus.EXISTING -> tableName
                             }
 
-                            val formatBadge = remember(tablePath) {
-                                when (TableFormatDetector.detect(File(tablePath))) {
-                                    TableFormat.ICEBERG -> "ICE"
-                                    TableFormat.PAIMON -> "PMN"
-                                    TableFormat.UNKNOWN -> null
-                                }
-                            }
+                            val formatBadge = remember(tablePath) { formatBadgeLabel(File(tablePath)) }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -358,13 +350,7 @@ fun WorkspaceRootItem(
     val selectionColor = selectionHighlightColor()
     val selectedBgColor = selectionColor.copy(alpha = if (isDarkSurface(colors.surface)) 0.4f else 0.2f)
     val formatBadge = remember(item.path) {
-        if (item is WorkspaceItem.SingleTable) {
-            when (TableFormatDetector.detect(File(item.path))) {
-                TableFormat.ICEBERG -> "ICE"
-                TableFormat.PAIMON -> "PMN"
-                TableFormat.UNKNOWN -> null
-            }
-        } else null
+        if (item is WorkspaceItem.SingleTable) formatBadgeLabel(File(item.path)) else null
     }
     val prefix = when (item) {
         is WorkspaceItem.Warehouse   -> "warehouse: "

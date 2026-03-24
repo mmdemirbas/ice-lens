@@ -27,20 +27,6 @@ private fun toError(stage: String, path: Path, throwable: Throwable): UnifiedRea
     )
 }
 
-fun UnifiedWarehouseModel(warehousePath: Path): UnifiedWarehouseModel {
-    return UnifiedWarehouseModel(
-        path = warehousePath,
-        tables = Files
-            .list(warehousePath)
-            .filter { Files.isDirectory(it) }
-            .toList()
-            .associate { tablePath ->
-                val table = UnifiedTableModel(tablePath)
-                table.name to table
-            },
-    )
-}
-
 fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
     logger.info("Loading Iceberg table: {}", tablePath)
     val metadataDir = tablePath.resolve("metadata")
@@ -139,7 +125,7 @@ fun UnifiedSnapshot(snapshotPath: Path, snapshot: Snapshot): UnifiedSnapshot {
     val snapshotReadErrors = mutableListOf<UnifiedReadError>()
     val manifestList = manifestListResult.getOrElse { e ->
         snapshotReadErrors += toError("read-manifest-list-file", snapshotPath, e)
-        IcebergReader.ReadResult(entries = emptyList())
+        service.AvroReader.ReadResult(entries = emptyList())
     }
     snapshotReadErrors += manifestList.errors.map { error ->
         UnifiedReadError(
@@ -168,7 +154,7 @@ fun UnifiedManifest(manifestPath: Path, manifest: ManifestListEntry): UnifiedMan
     val manifestReadErrors = mutableListOf<UnifiedReadError>()
     val dataFiles = manifestFileResult.getOrElse { e ->
         manifestReadErrors += toError("read-manifest-file", manifestPath, e)
-        IcebergReader.ReadResult(entries = emptyList())
+        service.AvroReader.ReadResult(entries = emptyList())
     }
     manifestReadErrors += dataFiles.errors.map { error ->
         UnifiedReadError(
@@ -208,11 +194,6 @@ fun UnifiedManifest(manifestPath: Path, manifest: ManifestListEntry): UnifiedMan
         readErrors = manifestReadErrors,
     )
 }
-
-data class UnifiedWarehouseModel(
-    val path: Path,
-    val tables: Map<String, UnifiedTableModel>,
-)
 
 data class UnifiedTableModel(
     override val path: Path,

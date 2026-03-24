@@ -100,90 +100,46 @@ fun nodeCardTextPrimary(): Color =
 fun nodeCardTextSecondary(): Color =
     if (isDarkSurface(MaterialTheme.colorScheme.surface)) Color(0xFFAEB5BF) else Color(0xFF3D4652)
 
-fun getGraphNodeColor(node: GraphNode, dark: Boolean = false): Color = when (node) {
-    is GraphNode.TableNode    -> if (dark) Color(0xFF4E3B32) else Color(0xFFD7CCC8)
-    is GraphNode.MetadataNode -> if (isPrimaryMetadataFile(node.fileName))
-        (if (dark) Color(0xFF4A2858) else Color(0xFFE1BEE7))
-    else
-        (if (dark) Color(0xFF3D3548) else Color(0xFFD7CFDE))
-    is GraphNode.SnapshotNode -> if (dark) Color(0xFF1A3A5C) else Color(0xFFBBDEFB)
-    is GraphNode.ManifestNode -> when (node.data.content) {
-        1    -> if (dark) Color(0xFF5C2020) else Color(0xFFFFCDD2)
-        else -> if (dark) Color(0xFF1E3D20) else Color(0xFFC8E6C9)
-    }
-    is GraphNode.FileNode     -> when (node.data.content ?: 0) {
-        1    -> if (dark) Color(0xFF5C2020) else Color(0xFFFFCDD2)
-        2    -> if (dark) Color(0xFF4A4020) else Color(0xFFFFF59D)
-        else -> if (dark) Color(0xFF1E3D20) else Color(0xFFC8E6C9)
-    }
-    is GraphNode.RowNode      -> when (node.content) {
-        1    -> if (dark) Color(0xFF5C2020) else Color(0xFFFFCDD2)
-        2    -> if (dark) Color(0xFF4A4020) else Color(0xFFFFF59D)
-        else -> if (dark) Color(0xFF1E3D20) else Color(0xFFC8E6C9)
-    }
-    is GraphNode.ErrorNode    -> if (dark) Color(0xFF4A1010) else Color(0xFFFFEBEE)
-    // Paimon node colors
+/** Paired light/dark colors for node fill and border. */
+private data class NodeColors(val lightFill: Long, val darkFill: Long, val lightBorder: Long, val darkBorder: Long)
+
+// Reusable color palettes
+private val BROWN       = NodeColors(0xFFD7CCC8, 0xFF4E3B32, 0xFF5D4037, 0xFFBCAAA4)
+private val PURPLE      = NodeColors(0xFFE1BEE7, 0xFF4A2858, 0xFF8E24AA, 0xFFCE93D8)
+private val PURPLE_MUTE = NodeColors(0xFFD7CFDE, 0xFF3D3548, 0xFF6F6180, 0xFFB0A4BA)
+private val BLUE        = NodeColors(0xFFBBDEFB, 0xFF1A3A5C, 0xFF1976D2, 0xFF64B5F6)
+private val GREEN       = NodeColors(0xFFC8E6C9, 0xFF1E3D20, 0xFF388E3C, 0xFF81C784)
+private val RED         = NodeColors(0xFFFFCDD2, 0xFF5C2020, 0xFFD32F2F, 0xFFEF9A9A)
+private val YELLOW      = NodeColors(0xFFFFF59D, 0xFF4A4020, 0xFFB26A00, 0xFFE6C56A)
+private val ERROR       = NodeColors(0xFFFFEBEE, 0xFF4A1010, 0xFFB71C1C, 0xFFEF5350)
+private val GREY        = NodeColors(0xFFE0E0E0, 0xFF3D3D3D, 0xFF616161, 0xFF9E9E9E)
+private val TEAL        = NodeColors(0xFFB2DFDB, 0xFF2E4A3A, 0xFF00695C, 0xFF80CBC4)
+
+private fun nodeColorScheme(node: GraphNode): NodeColors = when (node) {
+    is GraphNode.TableNode    -> BROWN
+    is GraphNode.MetadataNode -> if (isPrimaryMetadataFile(node.fileName)) PURPLE else PURPLE_MUTE
+    is GraphNode.SnapshotNode -> BLUE
+    is GraphNode.ManifestNode -> if (node.data.content == 1) RED else GREEN
+    is GraphNode.FileNode     -> when (node.data.content ?: 0) { 1 -> RED; 2 -> YELLOW; else -> GREEN }
+    is GraphNode.RowNode      -> when (node.content) { 1 -> RED; 2 -> YELLOW; else -> GREEN }
+    is GraphNode.ErrorNode    -> ERROR
     is GraphNode.PaimonSnapshotNode -> when (node.commitKind) {
-        "COMPACT"   -> if (dark) Color(0xFF4A2858) else Color(0xFFE1BEE7)
-        "OVERWRITE" -> if (dark) Color(0xFF4A4020) else Color(0xFFFFF59D)
-        "ANALYZE"   -> if (dark) Color(0xFF2E4A3A) else Color(0xFFB2DFDB)
-        else        -> if (dark) Color(0xFF1A3A5C) else Color(0xFFBBDEFB) // APPEND and default
+        "COMPACT" -> PURPLE; "OVERWRITE" -> YELLOW; "ANALYZE" -> TEAL; else -> BLUE
     }
-    is GraphNode.PaimonSchemaNode -> if (dark) Color(0xFF4A2858) else Color(0xFFE1BEE7)
-    is GraphNode.PaimonManifestListNode -> when (node.kind) {
-        "base" -> if (dark) Color(0xFF3D3D3D) else Color(0xFFE0E0E0)
-        "delta" -> if (dark) Color(0xFF1A3A5C) else Color(0xFFBBDEFB)
-        "changelog" -> if (dark) Color(0xFF4A4020) else Color(0xFFFFF59D)
-        else -> if (dark) Color(0xFF3D3D3D) else Color(0xFFE0E0E0)
-    }
-    is GraphNode.PaimonManifestNode -> if (dark) Color(0xFF1E3D20) else Color(0xFFC8E6C9)
-    is GraphNode.PaimonDataFileNode -> when (node.operationKind) {
-        1    -> if (dark) Color(0xFF5C2020) else Color(0xFFFFCDD2)  // DELETE
-        else -> if (dark) Color(0xFF1E3D20) else Color(0xFFC8E6C9)  // ADD
-    }
+    is GraphNode.PaimonSchemaNode       -> PURPLE
+    is GraphNode.PaimonManifestListNode -> when (node.kind) { "delta" -> BLUE; "changelog" -> YELLOW; else -> GREY }
+    is GraphNode.PaimonManifestNode     -> GREEN
+    is GraphNode.PaimonDataFileNode     -> if (node.operationKind == 1) RED else GREEN
 }
 
-fun getGraphNodeBorderColor(node: GraphNode, dark: Boolean = false): Color = when (node) {
-    is GraphNode.TableNode    -> if (dark) Color(0xFFBCAAA4) else Color(0xFF5D4037)
-    is GraphNode.MetadataNode -> if (isPrimaryMetadataFile(node.fileName))
-        (if (dark) Color(0xFFCE93D8) else Color(0xFF8E24AA))
-    else
-        (if (dark) Color(0xFFB0A4BA) else Color(0xFF6F6180))
-    is GraphNode.SnapshotNode -> if (dark) Color(0xFF64B5F6) else Color(0xFF1976D2)
-    is GraphNode.ManifestNode -> when (node.data.content) {
-        1    -> if (dark) Color(0xFFEF9A9A) else Color(0xFFD32F2F)
-        else -> if (dark) Color(0xFF81C784) else Color(0xFF388E3C)
-    }
-    is GraphNode.FileNode     -> when (node.data.content ?: 0) {
-        1    -> if (dark) Color(0xFFEF9A9A) else Color(0xFFD32F2F)
-        2    -> if (dark) Color(0xFFE6C56A) else Color(0xFFB26A00)
-        else -> if (dark) Color(0xFF81C784) else Color(0xFF388E3C)
-    }
-    is GraphNode.RowNode      -> when (node.content) {
-        1    -> if (dark) Color(0xFFEF9A9A) else Color(0xFFD32F2F)
-        2    -> if (dark) Color(0xFFE6C56A) else Color(0xFFB26A00)
-        else -> if (dark) Color(0xFF81C784) else Color(0xFF388E3C)
-    }
-    is GraphNode.ErrorNode    -> if (dark) Color(0xFFEF5350) else Color(0xFFB71C1C)
-    // Paimon node border colors
-    is GraphNode.PaimonSnapshotNode -> when (node.commitKind) {
-        "COMPACT"   -> if (dark) Color(0xFFCE93D8) else Color(0xFF8E24AA)
-        "OVERWRITE" -> if (dark) Color(0xFFE6C56A) else Color(0xFFB26A00)
-        "ANALYZE"   -> if (dark) Color(0xFF80CBC4) else Color(0xFF00695C)
-        else        -> if (dark) Color(0xFF64B5F6) else Color(0xFF1976D2) // APPEND and default
-    }
-    is GraphNode.PaimonSchemaNode -> if (dark) Color(0xFFCE93D8) else Color(0xFF8E24AA)
-    is GraphNode.PaimonManifestListNode -> when (node.kind) {
-        "base" -> if (dark) Color(0xFF9E9E9E) else Color(0xFF616161)
-        "delta" -> if (dark) Color(0xFF64B5F6) else Color(0xFF1976D2)
-        "changelog" -> if (dark) Color(0xFFE6C56A) else Color(0xFFB26A00)
-        else -> if (dark) Color(0xFF9E9E9E) else Color(0xFF616161)
-    }
-    is GraphNode.PaimonManifestNode -> if (dark) Color(0xFF81C784) else Color(0xFF388E3C)
-    is GraphNode.PaimonDataFileNode -> when (node.operationKind) {
-        1    -> if (dark) Color(0xFFEF9A9A) else Color(0xFFD32F2F)  // DELETE
-        else -> if (dark) Color(0xFF81C784) else Color(0xFF388E3C)  // ADD
-    }
+fun getGraphNodeColor(node: GraphNode, dark: Boolean = false): Color {
+    val c = nodeColorScheme(node)
+    return Color(if (dark) c.darkFill else c.lightFill)
+}
+
+fun getGraphNodeBorderColor(node: GraphNode, dark: Boolean = false): Color {
+    val c = nodeColorScheme(node)
+    return Color(if (dark) c.darkBorder else c.lightBorder)
 }
 
 private val timestampFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")

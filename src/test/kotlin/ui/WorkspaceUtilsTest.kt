@@ -10,31 +10,40 @@ import kotlin.test.assertTrue
 class WorkspaceUtilsTest {
 
     @Test
-    fun `isIcebergTable returns false for non-existent directory`() {
-        assertFalse(isIcebergTable(java.io.File("/nonexistent/path")))
+    fun `isTableDirectory returns false for non-existent directory`() {
+        assertFalse(isTableDirectory(java.io.File("/nonexistent/path")))
     }
 
     @Test
-    fun `isIcebergTable returns true for directory with metadata`() {
+    fun `isTableDirectory returns true for Iceberg directory`() {
         val tmpDir = kotlin.io.path.createTempDirectory("iceberg-test").toFile()
         try {
             val metaDir = java.io.File(tmpDir, "metadata")
             metaDir.mkdirs()
             java.io.File(metaDir, "v1.metadata.json").writeText("{}")
-            assertTrue(isIcebergTable(tmpDir))
+            assertTrue(isTableDirectory(tmpDir))
         } finally {
             tmpDir.deleteRecursively()
         }
     }
 
     @Test
-    fun `isIcebergTable returns false for directory without metadata json`() {
-        val tmpDir = kotlin.io.path.createTempDirectory("iceberg-test").toFile()
+    fun `isTableDirectory returns true for Paimon directory`() {
+        val tmpDir = kotlin.io.path.createTempDirectory("paimon-test").toFile()
         try {
-            val metaDir = java.io.File(tmpDir, "metadata")
-            metaDir.mkdirs()
-            java.io.File(metaDir, "somefile.avro").writeText("")
-            assertFalse(isIcebergTable(tmpDir))
+            java.io.File(tmpDir, "snapshot").mkdirs()
+            java.io.File(tmpDir, "schema").mkdirs()
+            assertTrue(isTableDirectory(tmpDir))
+        } finally {
+            tmpDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `isTableDirectory returns false for plain directory`() {
+        val tmpDir = kotlin.io.path.createTempDirectory("plain-test").toFile()
+        try {
+            assertFalse(isTableDirectory(tmpDir))
         } finally {
             tmpDir.deleteRecursively()
         }

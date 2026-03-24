@@ -8,8 +8,6 @@ import java.io.File
 
 fun isTableDirectory(dir: File): Boolean = TableFormatDetector.detect(dir) != TableFormat.UNKNOWN
 
-fun isIcebergTable(dir: File): Boolean = TableFormatDetector.isIcebergTable(dir)
-
 /**
  * Recursively scans [warehouseDir] for table directories (Iceberg or Paimon).
  * Returns relative paths from the warehouse root, sorted alphabetically.
@@ -84,6 +82,13 @@ fun chooseDirectory(initialDir: File?): File? {
             chooser.selectedFile
         } else null
     }
+}
+
+/** Returns a short badge label for the detected table format, or null if unknown. */
+fun formatBadgeLabel(dir: File): String? = when (TableFormatDetector.detect(dir)) {
+    TableFormat.ICEBERG -> "ICE"
+    TableFormat.PAIMON -> "PMN"
+    TableFormat.UNKNOWN -> null
 }
 
 fun canonicalWorkspacePath(path: String): String =
