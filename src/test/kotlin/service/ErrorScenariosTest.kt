@@ -70,6 +70,35 @@ class ErrorScenariosTest {
     }
 
     @Test
+    fun `AvroReader reads valid Avro via file URI`() {
+        val schema = Avro.schema<ManifestListEntry>()
+        val file = File(tmpDir, "via-uri.avro")
+        DataFileWriter(GenericDatumWriter<GenericData.Record>(schema)).use { writer ->
+            writer.create(schema, file)
+            val record = GenericData.Record(schema)
+            record.put("manifest_path", "/test/manifest.avro")
+            record.put("manifest_length", 1024L)
+            record.put("partition_spec_id", 0)
+            record.put("content", 0)
+            record.put("sequence_number", 1)
+            record.put("min_sequence_number", 1)
+            record.put("added_snapshot_id", 1L)
+            record.put("added_files_count", 1)
+            record.put("existing_files_count", 0)
+            record.put("deleted_files_count", 0)
+            record.put("added_rows_count", 100L)
+            record.put("existing_rows_count", 0L)
+            record.put("deleted_rows_count", 0L)
+            writer.append(record)
+        }
+        // Read via file: URI
+        val result = AvroReader.readAvro<ManifestListEntry>(file.toURI().toString())
+        assertEquals(1, result.entries.size)
+        assertEquals("/test/manifest.avro", result.entries[0].manifestPath)
+        assertEquals(0, result.errors.size)
+    }
+
+    @Test
     fun `AvroReader returns empty result for valid Avro with zero records`() {
         val schema = Avro.schema<ManifestListEntry>()
         val file = File(tmpDir, "empty-records.avro")

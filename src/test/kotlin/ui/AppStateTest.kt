@@ -25,7 +25,7 @@ class AppStateTest {
     }
 
     private fun createState(prefs: Preferences = this.prefs): AppState {
-        return AppState(prefs, CoroutineScope(Dispatchers.Unconfined))
+        return AppState(prefs, CoroutineScope(Dispatchers.Unconfined), Dispatchers.Unconfined)
     }
 
     // ═══════════════════════════════════════════════════════════════

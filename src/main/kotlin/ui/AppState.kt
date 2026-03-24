@@ -35,6 +35,7 @@ data class TableSession(
 class AppState(
     private val prefs: Preferences,
     private val coroutineScope: CoroutineScope,
+    private val backgroundDispatcher: kotlinx.coroutines.CoroutineDispatcher = Dispatchers.Default,
 ) {
     companion object {
         internal const val PREF_WORKSPACE_ITEMS = "workspace_items"
@@ -424,7 +425,7 @@ class AppState(
         coroutineScope.launch {
             try {
                 val previousSession = sessionCache[cacheKey]
-                val reloaded = withContext(Dispatchers.Default) {
+                val reloaded = withContext(backgroundDispatcher) {
                     coroutineContext.ensureActive()
                     val fingerprint = computeTableFingerprint(normalizedTablePath)
                     if (fingerprint == "missing" && previousSession != null) {
@@ -522,8 +523,8 @@ class AppState(
             coroutineScope.launch {
                 try {
                     val existingSession = sessionCache[cacheKey]
-                    val fingerprint = withContext(Dispatchers.Default) { computeTableFingerprint(tablePath) }
-                    val fullyLaidOut = withContext(Dispatchers.Default) {
+                    val fingerprint = withContext(backgroundDispatcher) { computeTableFingerprint(tablePath) }
+                    val fullyLaidOut = withContext(backgroundDispatcher) {
                         if (existingSession?.paimonTable != null) {
                             val pm = existingSession.paimonTable
                             GraphLayoutService.layoutPaimonGraph(pm, showRows)
@@ -581,9 +582,9 @@ class AppState(
         coroutineScope.launch {
             try {
                 val existingSession = sessionCache[cacheKey]
-                val fingerprint = withContext(Dispatchers.Default) { computeTableFingerprint(tablePath) }
-                val format = withContext(Dispatchers.Default) { TableFormatDetector.detect(java.io.File(tablePath)) }
-                val (icebergModel, paimonModel, newGraph) = withContext(Dispatchers.Default) {
+                val fingerprint = withContext(backgroundDispatcher) { computeTableFingerprint(tablePath) }
+                val format = withContext(backgroundDispatcher) { TableFormatDetector.detect(java.io.File(tablePath)) }
+                val (icebergModel, paimonModel, newGraph) = withContext(backgroundDispatcher) {
                     when {
                         format == TableFormat.PAIMON || existingSession?.paimonTable != null -> {
                             val pm = existingSession?.paimonTable ?: PaimonUnifiedTableModel(Paths.get(tablePath))
