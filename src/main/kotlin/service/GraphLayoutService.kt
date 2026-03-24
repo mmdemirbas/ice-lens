@@ -46,6 +46,19 @@ object GraphLayoutService {
     }
 
     /**
+     * Builds and lays out a graph for the given Paimon table model.
+     * Delegates graph construction to [PaimonGraphBuilder], then runs ELK layout
+     * and post-processing.
+     */
+    fun layoutPaimonGraph(
+        tableModel: PaimonUnifiedTableModel,
+        showRows: Boolean,
+    ): GraphModel {
+        val buildResult = PaimonGraphBuilder.buildGraph(tableModel, showRows)
+        return layoutNodes(buildResult.nodes, buildResult.edges)
+    }
+
+    /**
      * Positions pre-built nodes and edges using ELK layered layout, then applies
      * chronological ordering, parent alignment, and overlap prevention.
      */
@@ -190,6 +203,55 @@ object GraphLayoutService {
             val manifestChildren = childrenByParent[parent.id].orEmpty()
                 .mapNotNull { nodesById[it] as? GraphNode.ManifestNode }
             reorder(manifestChildren, manifestComparator, minGap = 34.0)
+        }
+
+        // Paimon: order snapshot nodes by ID
+        val paimonSnapshotComparator = Comparator<GraphNode> { a, b ->
+            val sa = (a as? GraphNode.PaimonSnapshotNode)?.data
+            val sb = (b as? GraphNode.PaimonSnapshotNode)?.data
+            compareValuesBy(sa, sb,
+                { it?.timeMillis ?: Long.MAX_VALUE },
+                { it?.id ?: Long.MAX_VALUE }
+            )
+        }
+        val paimonSnapshots = nodesById.values.filterIsInstance<GraphNode.PaimonSnapshotNode>()
+        reorder(paimonSnapshots, paimonSnapshotComparator, minGap = 40.0)
+
+        // Paimon: order manifest list nodes (base before delta before changelog)
+        val manifestListKindRank = mapOf("base" to 0, "delta" to 1, "changelog" to 2)
+        val paimonManifestListComparator = Comparator<GraphNode> { a, b ->
+            val ka = (a as? GraphNode.PaimonManifestListNode)?.kind
+            val kb = (b as? GraphNode.PaimonManifestListNode)?.kind
+            (manifestListKindRank[ka] ?: 3).compareTo(manifestListKindRank[kb] ?: 3)
+        }
+        paimonSnapshots.forEach { parent ->
+            val mlChildren = childrenByParent[parent.id].orEmpty()
+                .mapNotNull { nodesById[it] as? GraphNode.PaimonManifestListNode }
+            reorder(mlChildren, paimonManifestListComparator, minGap = 34.0)
+        }
+
+        // Paimon: order manifest nodes by simpleId
+        val paimonManifestComparator = Comparator<GraphNode> { a, b ->
+            val ma = (a as? GraphNode.PaimonManifestNode)?.simpleId ?: Int.MAX_VALUE
+            val mb = (b as? GraphNode.PaimonManifestNode)?.simpleId ?: Int.MAX_VALUE
+            ma.compareTo(mb)
+        }
+        nodesById.values.filterIsInstance<GraphNode.PaimonManifestListNode>().forEach { parent ->
+            val manChildren = childrenByParent[parent.id].orEmpty()
+                .mapNotNull { nodesById[it] as? GraphNode.PaimonManifestNode }
+            reorder(manChildren, paimonManifestComparator, minGap = 34.0)
+        }
+
+        // Paimon: order data file nodes by simpleId
+        val paimonFileComparator = Comparator<GraphNode> { a, b ->
+            val fa = (a as? GraphNode.PaimonDataFileNode)?.simpleId ?: Int.MAX_VALUE
+            val fb = (b as? GraphNode.PaimonDataFileNode)?.simpleId ?: Int.MAX_VALUE
+            fa.compareTo(fb)
+        }
+        nodesById.values.filterIsInstance<GraphNode.PaimonManifestNode>().forEach { parent ->
+            val fileChildren = childrenByParent[parent.id].orEmpty()
+                .mapNotNull { nodesById[it] as? GraphNode.PaimonDataFileNode }
+            reorder(fileChildren, paimonFileComparator, minGap = 30.0)
         }
 
         val orderedManifests = nodesById.values
@@ -449,6 +511,7 @@ object GraphLayoutService {
             }
         }
 
+        // Iceberg layers
         alignLayer(
             parents = nodesById.values.filterIsInstance<GraphNode.FileNode>(),
             upstreamFilter = { it is GraphNode.ManifestNode },
@@ -472,7 +535,29 @@ object GraphLayoutService {
         alignLayer(
             parents = nodesById.values.filterIsInstance<GraphNode.TableNode>(),
             upstreamFilter = { false },
-            childFilter = { it is GraphNode.MetadataNode }
+            childFilter = { it is GraphNode.MetadataNode || it is GraphNode.PaimonSnapshotNode }
+        )
+
+        // Paimon layers
+        alignLayer(
+            parents = nodesById.values.filterIsInstance<GraphNode.PaimonDataFileNode>(),
+            upstreamFilter = { it is GraphNode.PaimonManifestNode },
+            childFilter = { it is GraphNode.RowNode }
+        )
+        alignLayer(
+            parents = nodesById.values.filterIsInstance<GraphNode.PaimonManifestNode>(),
+            upstreamFilter = { it is GraphNode.PaimonManifestListNode },
+            childFilter = { it is GraphNode.PaimonDataFileNode }
+        )
+        alignLayer(
+            parents = nodesById.values.filterIsInstance<GraphNode.PaimonManifestListNode>(),
+            upstreamFilter = { it is GraphNode.PaimonSnapshotNode },
+            childFilter = { it is GraphNode.PaimonManifestNode }
+        )
+        alignLayer(
+            parents = nodesById.values.filterIsInstance<GraphNode.PaimonSnapshotNode>(),
+            upstreamFilter = { it is GraphNode.TableNode },
+            childFilter = { it is GraphNode.PaimonManifestListNode }
         )
     }
 
@@ -497,6 +582,12 @@ object GraphLayoutService {
         preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.ManifestNode>())
         preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.FileNode>(), margin = 2.0)
         preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.RowNode>(), margin = 2.0)
+        // Paimon layers
+        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.PaimonSnapshotNode>())
+        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.PaimonSchemaNode>())
+        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.PaimonManifestListNode>())
+        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.PaimonManifestNode>())
+        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.PaimonDataFileNode>(), margin = 2.0)
     }
 
     private fun createElkNode(parent: ElkNode, id: String, w: Double, h: Double): ElkNode {

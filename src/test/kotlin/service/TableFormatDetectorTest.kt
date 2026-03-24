@@ -53,4 +53,56 @@ class TableFormatDetectorTest {
         file.deleteOnExit()
         assertEquals(TableFormat.UNKNOWN, TableFormatDetector.detect(file))
     }
+
+    @Test
+    fun `detect returns PAIMON for directory with snapshot and schema subdirs`() {
+        val dir = createTempDirectory("paimon").toFile()
+        File(dir, "snapshot").mkdirs()
+        File(dir, "schema").mkdirs()
+        try {
+            assertEquals(TableFormat.PAIMON, TableFormatDetector.detect(dir))
+            assertTrue(TableFormatDetector.isPaimonTable(dir))
+            assertFalse(TableFormatDetector.isIcebergTable(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `isPaimonTable returns false for directory with only snapshot`() {
+        val dir = createTempDirectory("half-paimon").toFile()
+        File(dir, "snapshot").mkdirs()
+        try {
+            assertFalse(TableFormatDetector.isPaimonTable(dir))
+            assertEquals(TableFormat.UNKNOWN, TableFormatDetector.detect(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `isPaimonTable returns false for directory with only schema`() {
+        val dir = createTempDirectory("half-paimon2").toFile()
+        File(dir, "schema").mkdirs()
+        try {
+            assertFalse(TableFormatDetector.isPaimonTable(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `Iceberg takes precedence over Paimon when both markers exist`() {
+        val dir = createTempDirectory("both").toFile()
+        val metaDir = File(dir, "metadata")
+        metaDir.mkdirs()
+        File(metaDir, "v1.metadata.json").writeText("{}")
+        File(dir, "snapshot").mkdirs()
+        File(dir, "schema").mkdirs()
+        try {
+            assertEquals(TableFormat.ICEBERG, TableFormatDetector.detect(dir))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
 }

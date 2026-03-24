@@ -5,7 +5,7 @@ import java.io.File
 /** Detected table format for a directory. */
 enum class TableFormat {
     ICEBERG,
-    // PAIMON — not yet implemented
+    PAIMON,
     UNKNOWN,
 }
 
@@ -13,7 +13,7 @@ enum class TableFormat {
  * Detects the table format of a directory by examining its structure.
  *
  * - **Iceberg**: has a `metadata/` subdirectory containing at least one `*.metadata.json` file
- * - **Paimon** (future): has `snapshot/` + `schema/` subdirectories
+ * - **Paimon**: has both `snapshot/` and `schema/` subdirectories
  * - **Unknown**: none of the above markers found
  */
 object TableFormatDetector {
@@ -23,7 +23,7 @@ object TableFormatDetector {
         if (!dir.isDirectory) return TableFormat.UNKNOWN
         return when {
             isIcebergTable(dir) -> TableFormat.ICEBERG
-            // Future: isPaimonTable(dir) -> TableFormat.PAIMON
+            isPaimonTable(dir) -> TableFormat.PAIMON
             else -> TableFormat.UNKNOWN
         }
     }
@@ -34,5 +34,13 @@ object TableFormatDetector {
         return metaDir.exists() && metaDir.isDirectory && metaDir.listFiles { f ->
             f.name.endsWith(".metadata.json")
         }?.isNotEmpty() == true
+    }
+
+    /** Checks whether the given directory is a Paimon table (has `snapshot/` + `schema/` dirs). */
+    fun isPaimonTable(dir: File): Boolean {
+        val snapshotDir = File(dir, "snapshot")
+        val schemaDir = File(dir, "schema")
+        return snapshotDir.exists() && snapshotDir.isDirectory &&
+            schemaDir.exists() && schemaDir.isDirectory
     }
 }

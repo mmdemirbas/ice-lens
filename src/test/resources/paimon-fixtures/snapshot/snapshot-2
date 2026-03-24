@@ -1,0 +1,18 @@
+{
+  "version": 3,
+  "id": 2,
+  "schemaId": 0,
+  "baseManifestList": "manifest/manifest-list-base-1",
+  "deltaManifestList": "manifest/manifest-list-delta-1",
+  "changelogManifestList": null,
+  "indexManifest": null,
+  "commitUser": "user-uuid-456",
+  "commitIdentifier": 12346,
+  "commitKind": "COMPACT",
+  "timeMillis": 1700000060000,
+  "logOffsets": {},
+  "totalRecordCount": 200,
+  "deltaRecordCount": 5,
+  "changelogRecordCount": 0,
+  "watermark": -9223372036854775808
+}

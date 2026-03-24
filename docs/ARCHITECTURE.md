@@ -10,37 +10,48 @@ ice-lens is a single-module Kotlin Compose Desktop application. All code lives i
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  Filesystem                                                             │
 │  ├── metadata/*.metadata.json    (Iceberg table metadata)               │
-│  ├── metadata/*.avro             (manifest lists, manifests)            │
-│  └── data/**/*.parquet           (data/delete files)                    │
+│  ├── metadata/*.avro             (Iceberg manifest lists, manifests)    │
+│  ├── snapshot/snapshot-*         (Paimon snapshot JSON)                 │
+│  ├── schema/schema-*             (Paimon schema JSON)                  │
+│  ├── manifest/*                  (Paimon manifest list + manifest Avro) │
+│  └── data/**/*.parquet|.orc      (data files — shared by both formats)  │
 └──────────────┬──────────────────────────────────────────────────────────┘
                │
                ▼
 ┌──────────────────────────────────────────┐
 │  PARSING LAYER                           │
 │                                          │
+│  AvroReader.readAvro<T>()               │  ← Shared Avro deserialization
+│                                          │
+│  Iceberg:                                │
 │  IcebergReader.readTableMetadata()       │  ← JSON → TableMetadata
 │  IcebergReader.readManifestList()        │  ← Avro → ManifestListEntry
 │  IcebergReader.readManifestFile()        │  ← Avro → ManifestEntry
-│  ParquetReader.queryParquet()            │  ← DuckDB → Map<String, Any>
+│                                          │
+│  Paimon:                                 │
+│  PaimonReader.readSnapshot()             │  ← JSON → PaimonSnapshot
+│  PaimonReader.readSchema()               │  ← JSON → PaimonSchema
+│  PaimonReader.readManifestList()         │  ← Avro → PaimonManifestFileMeta
+│  PaimonReader.readManifest()             │  ← Avro → PaimonManifestEntry
+│                                          │
+│  SampleRowReader.querySampleRows()       │  ← DuckDB → Map<String, Any>
 └──────────────┬───────────────────────────┘
                │
                ▼
 ┌──────────────────────────────────────────┐
 │  MODEL LAYER                             │
 │                                          │
+│  Iceberg:                                │
 │  UnifiedTableModel()                     │  Walks metadata dir, parses all files
 │    └── UnifiedSnapshot()                 │  Resolves manifest list paths
 │          └── UnifiedManifest()           │  Resolves data file paths
-│                └── UnifiedDataFile       │  Lazy row loading via ParquetReader
+│                └── UnifiedDataFile       │  Lazy row loading
 │                                          │
-│  Data classes:                           │
-│  UnifiedWarehouseModel                   │
-│  UnifiedTableModel                       │
-│  UnifiedMetadata                         │
-│  UnifiedSnapshot                         │
-│  UnifiedManifest                         │
-│  UnifiedDataFile                         │
-│  UnifiedRow                              │
+│  Paimon:                                 │
+│  PaimonUnifiedTableModel()               │  Walks snapshot/ + schema/ dirs
+│    └── PaimonUnifiedSnapshot             │  Resolves base/delta/changelog manifests
+│          └── PaimonUnifiedManifest       │  Resolves manifest files
+│                └── PaimonUnifiedDataFile  │  Lazy row loading
 └──────────────┬───────────────────────────┘
                │
                ▼
@@ -48,11 +59,10 @@ ice-lens is a single-module Kotlin Compose Desktop application. All code lives i
 │  GRAPH CONSTRUCTION (format-specific)    │
 │                                          │
 │  IcebergGraphBuilder.buildGraph()        │  ← Iceberg model → nodes + edges
+│  PaimonGraphBuilder.buildGraph()         │  ← Paimon model → nodes + edges
 │    - Creates GraphNode/GraphEdge list    │
 │    - Builds TableSummary statistics      │
 │    - Manages node ID registry            │
-│                                          │
-│  (Future: PaimonGraphBuilder)            │
 └──────────────┬───────────────────────────┘
                │
                ▼
@@ -97,18 +107,30 @@ ice-lens is a single-module Kotlin Compose Desktop application. All code lives i
 
 ```
 GraphNode (sealed class)
-├── TableNode          Root node per table
-├── MetadataNode       One per metadata.json file
-├── SnapshotNode       One per snapshot
-├── ManifestNode       One per manifest file (data or delete)
-├── FileNode           One per data/delete file entry
-├── RowNode            One per sample row (lazy-loaded)
-└── ErrorNode          One per read error (inline in graph)
+├── TableNode                Root node per table (shared by both formats)
+├── MetadataNode             Iceberg: one per metadata.json file
+├── SnapshotNode             Iceberg: one per snapshot
+├── ManifestNode             Iceberg: one per manifest file (data or delete)
+├── FileNode                 Iceberg: one per data/delete file entry
+├── PaimonSnapshotNode       Paimon: one per snapshot (with commitKind)
+├── PaimonSchemaNode         Paimon: one per schema version
+├── PaimonManifestListNode   Paimon: one per manifest list (base/delta/changelog)
+├── PaimonManifestNode       Paimon: one per manifest file
+├── PaimonDataFileNode       Paimon: one per data file entry (with LSM level, ADD/DELETE)
+├── RowNode                  One per sample row (lazy-loaded, shared by both formats)
+└── ErrorNode                One per read error (inline in graph)
 ```
 
-Graph edges are directional (parent → child) following the Iceberg metadata tree:
+Iceberg graph edges (parent → child):
 ```
 TableNode → MetadataNode → SnapshotNode → ManifestNode → FileNode → RowNode
+```
+
+Paimon graph edges (parent → child):
+```
+TableNode → PaimonSnapshotNode → PaimonManifestListNode(base|delta|changelog)
+                                    → PaimonManifestNode → PaimonDataFileNode → RowNode
+           → PaimonSchemaNode (sibling edge from snapshot)
 ```
 
 ## Iceberg metadata tree (what we parse)
@@ -126,6 +148,29 @@ Table (directory)
     ├── snap-*.avro                 (manifest list files)
     ├── *.avro                      (manifest files)
     └── version-hint.text           (optional, points to latest metadata version)
+```
+
+## Paimon metadata tree (what we parse)
+
+```
+Table (directory)
+├── snapshot/
+│   ├── EARLIEST                   (text file: earliest snapshot number)
+│   ├── LATEST                     (text file: latest snapshot number)
+│   └── snapshot-N                 ← PaimonSnapshot (JSON)
+│       ├── schemaId → schema/schema-N
+│       ├── baseManifestList → manifest/manifest-list-*   ← PaimonManifestFileMeta[] (Avro)
+│       │                         └── manifest-*          ← PaimonManifestEntry[] (Avro)
+│       │                               └── _FILE._FILE_NAME → data file
+│       ├── deltaManifestList → manifest/manifest-list-*  (new changes in this snapshot)
+│       └── changelogManifestList → manifest/manifest-list-* (optional)
+├── schema/
+│   └── schema-N                   ← PaimonSchema (JSON)
+├── manifest/
+│   ├── manifest-list-*            (Avro — manifest list files)
+│   └── manifest-*                 (Avro — manifest files)
+└── bucket-N/ or [partition=value]/bucket-N/
+    └── data-*.orc                 (data files)
 ```
 
 ## Threading model
@@ -171,45 +216,49 @@ Serialized to preferences as `W|/path` or `T|/path`, separated by `;`.
 
 Detection logic (via `TableFormatDetector`):
 - `TableFormat.ICEBERG`: has `metadata/` subdirectory with `*.metadata.json`
-- `TableFormat.UNKNOWN`: no recognized markers (Paimon detection not yet implemented)
-- Warehouse: contains directories detected as tables
+- `TableFormat.PAIMON`: has both `snapshot/` and `schema/` subdirectories
+- `TableFormat.UNKNOWN`: no recognized markers
+- Warehouse: contains directories detected as tables (any format)
 
 ## Extension points for new formats
 
+To add a new table format (e.g., Delta Lake, Hudi), follow the pattern established by Iceberg and Paimon:
+
 ### Format detection
-`TableFormatDetector.kt` — add new `TableFormat` enum values and detection logic:
-- Iceberg: `metadata/` with `*.metadata.json` (implemented)
-- Paimon (future): `snapshot/` + `schema/` directories
+`TableFormatDetector.kt` — add new `TableFormat` enum value and detection logic.
 
 ### Reader layer
-- `IcebergReader.readAvro<T>()` is already generic — works for any Avro file if you provide matching `@Serializable` data classes
-- New format: add `PaimonReader` with Paimon-specific Avro schemas and JSON parsing
+- `AvroReader.readAvro<T>()` is generic — works for any Avro file with matching `@Serializable` data classes
+- Create a `*Reader.kt` with format-specific JSON/Avro parsing (see `IcebergReader`, `PaimonReader`)
 
 ### Model layer
-- `UnifiedModel.kt` functions (`UnifiedTableModel()`, `UnifiedSnapshot()`, etc.) are Iceberg-specific factory functions
-- New format: create parallel `PaimonUnifiedModel.kt` or refactor to a `TableFormatLoader` interface
+- Create `*UnifiedModel.kt` with data classes and factory function (see `UnifiedModel.kt`, `PaimonUnifiedModel.kt`)
 
 ### Graph construction
-- `IcebergGraphBuilder` handles Iceberg-specific graph construction (nodes + edges)
+- Create `*GraphBuilder.kt` following the `IcebergGraphBuilder`/`PaimonGraphBuilder` pattern
 - `GraphLayoutService.layoutNodes()` is format-agnostic — accepts any list of nodes + edges
-- To add Paimon: create `PaimonGraphBuilder` following `IcebergGraphBuilder` pattern
-- Layout engine + post-processing are shared code
+- Add post-processing cases (ordering, alignment, overlap) for new node types in `GraphLayoutService`
 
 ### UI rendering
-- `NodeComponents.kt` — add rendering for new node subtypes (match on sealed class)
+- `NodeComponents.kt` — add node card rendering + colors for new `GraphNode` subtypes
 - `NodeDetails.kt` — add inspector panels for new node types
-- `Theme.kt` — add colors/badges for new concepts (LSM levels, commit kinds)
+- `Sidebar.kt` — add format badge in `WorkspaceRootItem`
+- `App.kt` — add format detection and layout dispatch in the 3 layout call sites
 
 ## File format handling
 
 | File type | Reader | Library |
 |-----------|--------|---------|
-| `.metadata.json` | `IcebergReader.readTableMetadata()` | `kotlinx-serialization-json` |
-| `.avro` (manifest list) | `IcebergReader.readManifestList()` | `avro4k` + Apache Avro |
-| `.avro` (manifest) | `IcebergReader.readManifestFile()` | `avro4k` + Apache Avro |
-| `.parquet`/`.orc`/`.avro` (data/delete) | `SampleRowReader.querySampleRows()` | DuckDB JDBC |
+| Iceberg `.metadata.json` | `IcebergReader.readTableMetadata()` | `kotlinx-serialization-json` |
+| Iceberg `.avro` (manifest list) | `IcebergReader.readManifestList()` | `AvroReader` + `avro4k` |
+| Iceberg `.avro` (manifest) | `IcebergReader.readManifestFile()` | `AvroReader` + `avro4k` |
+| Paimon `snapshot-*` | `PaimonReader.readSnapshot()` | `kotlinx-serialization-json` |
+| Paimon `schema-*` | `PaimonReader.readSchema()` | `kotlinx-serialization-json` |
+| Paimon manifest list `.avro` | `PaimonReader.readManifestList()` | `AvroReader` + `avro4k` |
+| Paimon manifest `.avro` | `PaimonReader.readManifest()` | `AvroReader` + `avro4k` |
+| `.parquet`/`.orc`/`.avro` (data) | `SampleRowReader.querySampleRows()` | DuckDB JDBC |
 
-Avro deserialization: `avro4k` maps `@Serializable` Kotlin data classes to Avro schemas via `Avro.schema<T>()`, then `Avro.decodeFromGenericData()` converts `GenericRecord` → typed instance. The `readAvro<T>()` function is fully reified and reusable for any Avro schema.
+Avro deserialization: `avro4k` maps `@Serializable` Kotlin data classes to Avro schemas via `Avro.schema<T>()`, then `Avro.decodeFromGenericData()` converts `GenericRecord` → typed instance. The shared `AvroReader.readAvro<T>()` function is fully reified and reusable for any Avro schema.
 
 ## Build system
 

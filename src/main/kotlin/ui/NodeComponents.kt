@@ -123,7 +123,12 @@ fun getGraphNodeColor(node: GraphNode, dark: Boolean = false): Color = when (nod
     }
     is GraphNode.ErrorNode    -> if (dark) Color(0xFF4A1010) else Color(0xFFFFEBEE)
     // Paimon node colors
-    is GraphNode.PaimonSnapshotNode -> if (dark) Color(0xFF1A3A5C) else Color(0xFFBBDEFB)
+    is GraphNode.PaimonSnapshotNode -> when (node.commitKind) {
+        "COMPACT"   -> if (dark) Color(0xFF4A2858) else Color(0xFFE1BEE7)
+        "OVERWRITE" -> if (dark) Color(0xFF4A4020) else Color(0xFFFFF59D)
+        "ANALYZE"   -> if (dark) Color(0xFF2E4A3A) else Color(0xFFB2DFDB)
+        else        -> if (dark) Color(0xFF1A3A5C) else Color(0xFFBBDEFB) // APPEND and default
+    }
     is GraphNode.PaimonSchemaNode -> if (dark) Color(0xFF4A2858) else Color(0xFFE1BEE7)
     is GraphNode.PaimonManifestListNode -> when (node.kind) {
         "base" -> if (dark) Color(0xFF3D3D3D) else Color(0xFFE0E0E0)
@@ -161,7 +166,12 @@ fun getGraphNodeBorderColor(node: GraphNode, dark: Boolean = false): Color = whe
     }
     is GraphNode.ErrorNode    -> if (dark) Color(0xFFEF5350) else Color(0xFFB71C1C)
     // Paimon node border colors
-    is GraphNode.PaimonSnapshotNode -> if (dark) Color(0xFF64B5F6) else Color(0xFF1976D2)
+    is GraphNode.PaimonSnapshotNode -> when (node.commitKind) {
+        "COMPACT"   -> if (dark) Color(0xFFCE93D8) else Color(0xFF8E24AA)
+        "OVERWRITE" -> if (dark) Color(0xFFE6C56A) else Color(0xFFB26A00)
+        "ANALYZE"   -> if (dark) Color(0xFF80CBC4) else Color(0xFF00695C)
+        else        -> if (dark) Color(0xFF64B5F6) else Color(0xFF1976D2) // APPEND and default
+    }
     is GraphNode.PaimonSchemaNode -> if (dark) Color(0xFFCE93D8) else Color(0xFF8E24AA)
     is GraphNode.PaimonManifestListNode -> when (node.kind) {
         "base" -> if (dark) Color(0xFF9E9E9E) else Color(0xFF616161)

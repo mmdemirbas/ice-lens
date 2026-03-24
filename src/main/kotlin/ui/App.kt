@@ -35,6 +35,8 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.coroutineContext
 import model.*
 import service.GraphLayoutService
+import service.TableFormat
+import service.TableFormatDetector
 import java.awt.Desktop
 import java.io.File
 import java.net.URI
@@ -62,7 +64,8 @@ private const val PREF_SELECTED_SNAPSHOT_IDS = "selected_snapshot_ids"
 private const val PREF_IS_DARK_MODE = "is_dark_mode"
 
 data class TableSession(
-    val table: UnifiedTableModel,
+    val table: UnifiedTableModel? = null,
+    val paimonTable: PaimonUnifiedTableModel? = null,
     val graph: GraphModel,
     var selectedNodeIds: Set<String> = emptySet(),
     val fingerprint: String = "",
@@ -447,9 +450,20 @@ fun App() {
                         return@withContext previousSession
                     }
                     coroutineContext.ensureActive()
-                    val tableModel = UnifiedTableModel(Paths.get(normalizedTablePath))
+                    val tablePath = Paths.get(normalizedTablePath)
+                    val format = TableFormatDetector.detect(tablePath.toFile())
                     coroutineContext.ensureActive()
-                    var newGraph = GraphLayoutService.layoutGraph(tableModel, withRows)
+                    val (icebergModel, paimonModel, newGraphRaw) = when (format) {
+                        TableFormat.PAIMON -> {
+                            val pm = PaimonUnifiedTableModel(tablePath)
+                            Triple(null, pm, GraphLayoutService.layoutPaimonGraph(pm, withRows))
+                        }
+                        else -> {
+                            val im = UnifiedTableModel(tablePath)
+                            Triple(im, null, GraphLayoutService.layoutGraph(im, withRows))
+                        }
+                    }
+                    var newGraph = newGraphRaw
                     if (preservePositions && previousSession != null) {
                         // Merge old positions: initialPositions is thread-safe (immutable map)
                         val oldInitial = previousSession.graph.initialPositions
@@ -460,7 +474,8 @@ fun App() {
                         newGraph = newGraph.copy(initialPositions = mergedPositions)
                     }
                     TableSession(
-                        table = tableModel,
+                        table = icebergModel,
+                        paimonTable = paimonModel,
                         graph = newGraph,
                         selectedNodeIds = previousSession?.selectedNodeIds.orEmpty(),
                         fingerprint = fingerprint
@@ -520,13 +535,16 @@ fun App() {
 
             coroutineScope.launch {
                 try {
-                    val existingTableModel = sessionCache[cacheKey]?.table
+                    val existingSession = sessionCache[cacheKey]
                     val fingerprint = withContext(Dispatchers.Default) { computeTableFingerprint(tablePath) }
-                    val tableModel = existingTableModel ?: withContext(Dispatchers.Default) {
-                        UnifiedTableModel(Paths.get(tablePath))
-                    }
                     val fullyLaidOut = withContext(Dispatchers.Default) {
-                        GraphLayoutService.layoutGraph(tableModel, showRows)
+                        if (existingSession?.paimonTable != null) {
+                            val pm = existingSession.paimonTable
+                            GraphLayoutService.layoutPaimonGraph(pm, showRows)
+                        } else {
+                            val tableModel = existingSession?.table ?: UnifiedTableModel(Paths.get(tablePath))
+                            GraphLayoutService.layoutGraph(tableModel, showRows)
+                        }
                     }
                     if (requestId != loadRequestId) return@launch
 
@@ -548,7 +566,8 @@ fun App() {
                     setGraphModelAndBump(relaid)
                     selectedNodeIds = selectedNodeIds.intersect(visibleNodeIds)
                     sessionCache[cacheKey] = TableSession(
-                        table = tableModel,
+                        table = existingSession?.table,
+                        paimonTable = existingSession?.paimonTable,
                         graph = relaid,
                         selectedNodeIds = selectedNodeIds,
                         fingerprint = fingerprint
@@ -576,17 +595,24 @@ fun App() {
 
         coroutineScope.launch {
             try {
-                val existingTableModel = sessionCache[cacheKey]?.table
+                val existingSession = sessionCache[cacheKey]
                 val fingerprint = withContext(Dispatchers.Default) { computeTableFingerprint(tablePath) }
-                val tableModel = existingTableModel ?: withContext(Dispatchers.Default) {
-                    UnifiedTableModel(Paths.get(tablePath))
-                }
-                val newGraph = withContext(Dispatchers.Default) {
-                    GraphLayoutService.layoutGraph(tableModel, showRows)
+                val format = withContext(Dispatchers.Default) { TableFormatDetector.detect(java.io.File(tablePath)) }
+                val (icebergModel, paimonModel, newGraph) = withContext(Dispatchers.Default) {
+                    when {
+                        format == TableFormat.PAIMON || existingSession?.paimonTable != null -> {
+                            val pm = existingSession?.paimonTable ?: PaimonUnifiedTableModel(Paths.get(tablePath))
+                            Triple(null, pm, GraphLayoutService.layoutPaimonGraph(pm, showRows))
+                        }
+                        else -> {
+                            val im = existingSession?.table ?: UnifiedTableModel(Paths.get(tablePath))
+                            Triple(im, null, GraphLayoutService.layoutGraph(im, showRows))
+                        }
+                    }
                 }
 
                 if (requestId != loadRequestId) return@launch
-                val session = TableSession(tableModel, newGraph, fingerprint = fingerprint)
+                val session = TableSession(table = icebergModel, paimonTable = paimonModel, graph = newGraph, fingerprint = fingerprint)
                 sessionCache[cacheKey] = session
                 setGraphModelAndBump(newGraph)
                 selectedNodeIds = emptySet()

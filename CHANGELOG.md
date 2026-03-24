@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Paimon graph node types: `PaimonSnapshotNode`, `PaimonSchemaNode`, `PaimonManifestListNode`, `PaimonManifestNode`, `PaimonDataFileNode`
 - `AvroReader.kt` — shared Avro file reader extracted from `IcebergReader`, reused by both Iceberg and Paimon readers
 - Paimon node rendering (cards, tooltips, colors, inspector panels) in `NodeComponents.kt` and `NodeDetails.kt`
+- Paimon snapshot color per `commitKind` (APPEND=blue, COMPACT=purple, OVERWRITE=amber, ANALYZE=teal)
+- Paimon manifest list color per kind (base=gray, delta=blue, changelog=amber)
+- Paimon data file color per operation (ADD=green, DELETE=red)
+- `TableFormat.PAIMON` detection in `TableFormatDetector` (presence of `snapshot/` + `schema/` directories)
+- `GraphLayoutService.layoutPaimonGraph()` — Paimon-specific layout entry point
+- Paimon node post-processing in `GraphLayoutService` (ordering, alignment, overlap prevention)
+- Format badge ("ICE"/"PMN") next to table names in workspace sidebar
+- Paimon test fixtures (`src/test/resources/paimon-fixtures/`)
+- `PaimonSchemaTest` — Paimon JSON deserialization tests (9 tests)
+- `PaimonGraphBuilderTest` — Paimon graph construction tests (11 tests)
+- Paimon detection tests in `TableFormatDetectorTest` (4 new tests)
 - `IcebergGraphBuilder` — extracted Iceberg-specific graph construction from `GraphLayoutService` into a dedicated builder
 - `TableFormatDetector` — directory-based table format detection (Iceberg detection, extensible for Paimon)
 - `GraphLayoutService.layoutNodes()` — public API accepting pre-built nodes/edges for format-agnostic layout

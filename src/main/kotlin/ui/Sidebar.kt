@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import model.WorkspaceItem
 import model.WorkspaceTableStatus
+import service.TableFormat
+import service.TableFormatDetector
 import java.io.File
 import javax.swing.JFileChooser
 
@@ -270,6 +272,13 @@ fun WorkspacePanel(
                                 WorkspaceTableStatus.EXISTING -> tableName
                             }
 
+                            val formatBadge = remember(tablePath) {
+                                when (TableFormatDetector.detect(File(tablePath))) {
+                                    TableFormat.ICEBERG -> "ICE"
+                                    TableFormat.PAIMON -> "PMN"
+                                    TableFormat.UNKNOWN -> null
+                                }
+                            }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -280,6 +289,18 @@ fun WorkspacePanel(
                             ) {
                                 Icon(Icons.Default.TableChart, null, modifier = Modifier.size(14.dp), tint = colors.onSurfaceVariant)
                                 Spacer(Modifier.width(8.dp))
+                                if (formatBadge != null) {
+                                    Text(
+                                        text = formatBadge,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = colors.onTertiaryContainer,
+                                        modifier = Modifier
+                                            .background(colors.tertiaryContainer, RoundedCornerShape(3.dp))
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                }
                                 Text(
                                     text = label,
                                     fontSize = 12.sp,
@@ -333,6 +354,15 @@ fun WorkspaceRootItem(
     val colors = MaterialTheme.colorScheme
     val selectionColor = selectionHighlightColor()
     val selectedBgColor = selectionColor.copy(alpha = if (isDarkSurface(colors.surface)) 0.4f else 0.2f)
+    val formatBadge = remember(item.path) {
+        if (item is WorkspaceItem.SingleTable) {
+            when (TableFormatDetector.detect(File(item.path))) {
+                TableFormat.ICEBERG -> "ICE"
+                TableFormat.PAIMON -> "PMN"
+                TableFormat.UNKNOWN -> null
+            }
+        } else null
+    }
     val prefix = when (item) {
         is WorkspaceItem.Warehouse   -> "warehouse: "
         is WorkspaceItem.SingleTable -> "table: "
@@ -384,6 +414,18 @@ fun WorkspaceRootItem(
             }
         }
 
+        if (formatBadge != null) {
+            Text(
+                text = formatBadge,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.onTertiaryContainer,
+                modifier = Modifier
+                    .background(colors.tertiaryContainer, RoundedCornerShape(3.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+        }
         Text(
             text = "$prefix${item.name}$suffix",
             fontSize = 13.sp,

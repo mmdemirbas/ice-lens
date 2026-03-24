@@ -2,7 +2,7 @@
 
 ## Project overview
 
-**Iceberg Lens** is a read-only desktop application for inspecting Apache Iceberg table structure from local filesystems. It renders an interactive graph visualization (table → metadata → snapshots → manifests → data files → sample rows) alongside a detailed inspector panel.
+**Iceberg Lens** is a read-only desktop application for inspecting Apache Iceberg and Apache Paimon table structure from local filesystems. It renders an interactive graph visualization (table → metadata → snapshots → manifests → data files → sample rows) alongside a detailed inspector panel.
 
 ## Tech stack
 
@@ -22,13 +22,18 @@ src/main/kotlin/
 │   ├── IcebergSchema.kt       # @Serializable Iceberg data classes (metadata, snapshot, manifest, data file)
 │   ├── IcebergPaths.kt        # Shared path utilities (normalizeFilePath, metadataVersionFromFileName)
 │   ├── UnifiedModel.kt        # Aggregated data layer — reads & links all Iceberg artifacts into a tree
-│   ├── GraphTypes.kt          # GraphModel (with nodeById), GraphNode (sealed), GraphEdge
+│   ├── PaimonSchema.kt        # @Serializable Paimon data classes (snapshot, schema, manifest list, manifest entry)
+│   ├── PaimonUnifiedModel.kt  # Aggregated Paimon data layer — reads & links snapshots, schemas, manifests
+│   ├── GraphTypes.kt          # GraphModel (with nodeById), GraphNode (sealed incl. Paimon types), GraphEdge
 │   ├── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 │   └── ToolWindowTypes.kt     # ToolWindowAnchor enum, ToolWindowConfig
 ├── service/
-│   ├── IcebergReader.kt       # JSON/Avro file reading (readTableMetadata, readManifestList, readManifestFile)
+│   ├── AvroReader.kt          # Shared Avro file reader (reified readAvro<T>), used by both Iceberg and Paimon
+│   ├── IcebergReader.kt       # Iceberg JSON/Avro reading (delegates Avro to AvroReader)
+│   ├── PaimonReader.kt        # Paimon JSON snapshot/schema + Avro manifest list/manifest reading
 │   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet, ORC, Avro — max 50)
 │   ├── IcebergGraphBuilder.kt # Iceberg-specific graph construction: UnifiedTableModel → nodes + edges
+│   ├── PaimonGraphBuilder.kt  # Paimon-specific graph construction: PaimonUnifiedTableModel → nodes + edges
 │   ├── GraphLayoutService.kt  # Format-agnostic ELK layout + post-processing (ordering, alignment, overlap prevention)
 │   └── TableFormatDetector.kt # Directory-based table format detection (Iceberg / Paimon / Unknown)
 └── ui/
@@ -37,12 +42,12 @@ src/main/kotlin/
     ├── Theme.kt               # Color schemes, dark surface detection, selection highlight
     ├── CommonComponents.kt    # Reusable widgets: draggable dividers, toolbar group/icon button
     ├── FormatUtils.kt         # Timestamp formatting, long set serialization
-    ├── WorkspaceUtils.kt      # Iceberg table detection (via TableFormatDetector), workspace dedup, table scanning
+    ├── WorkspaceUtils.kt      # Table detection (via TableFormatDetector for Iceberg/Paimon), workspace dedup, table scanning
     ├── SnapshotFilter.kt      # Snapshot filter data model and graph filtering logic
     ├── GraphCanvas.kt         # Interactive graph: zoom/pan, node selection/drag, marquee, mini-map, viewport culling
-    ├── NodeComponents.kt      # Node card composables (Table/Metadata/Snapshot/Manifest/File/Row/Error) + tooltip + copy buttons
+    ├── NodeComponents.kt      # Node card composables (Iceberg + Paimon node types) + tooltip + copy buttons
     ├── NodeDetails.kt         # Inspector panel — detailed metadata, JSON highlighting, changelogs, sample rows
-    ├── Sidebar.kt             # Workspace panel — add/remove roots, search, drag-to-reorder
+    ├── Sidebar.kt             # Workspace panel — add/remove roots, search, drag-to-reorder, format badges (ICE/PMN)
     ├── NavigationTree.kt      # Structure tree view — flatten graph, search, expand/collapse
     └── ToolWindow.kt          # Draggable tool window bars and panes
 ```
@@ -63,7 +68,8 @@ src/main/kotlin/
 - All data access is read-only — no table modifications
 - Node colors are hardcoded per node type in `NodeComponents.kt` (`getGraphNodeColor` / `getGraphNodeBorderColor`)
 - Dark mode detection uses `perceivedBrightness()` (0.2126R + 0.7152G + 0.0722B < 0.5)
-- Graph layout flow: `UnifiedTableModel` → `IcebergGraphBuilder.buildGraph()` → nodes/edges → `GraphLayoutService.layoutNodes()` → `GraphModel` → `GraphCanvas`
+- Graph layout flow (Iceberg): `UnifiedTableModel` → `IcebergGraphBuilder.buildGraph()` → nodes/edges → `GraphLayoutService.layoutNodes()` → `GraphModel` → `GraphCanvas`
+- Graph layout flow (Paimon): `PaimonUnifiedTableModel` → `PaimonGraphBuilder.buildGraph()` → nodes/edges → `GraphLayoutService.layoutNodes()` → `GraphModel` → `GraphCanvas`
 - `GraphModel.nodeById` provides a lazy `Map<String, GraphNode>` — use it instead of `nodes.find`/`nodes.associateBy`
 - File paths are resolved relative to the metadata directory using `resolveForceRelative()`
 - Workspace serialization uses a simple `W|path` / `T|path` format joined by `;`
@@ -85,7 +91,7 @@ src/main/kotlin/
 
 ## Node ID conventions
 
-Graph node IDs follow these patterns — important for understanding `IcebergGraphBuilder`:
+### Iceberg (`IcebergGraphBuilder`)
 
 - `table_root` — the single table root node
 - `meta_<filename>` — metadata nodes (e.g., `meta_v1.metadata.json`)
@@ -96,6 +102,18 @@ Graph node IDs follow these patterns — important for understanding `IcebergGra
 - `err_<seq>_<hash>_<hash>` — error nodes
 
 Edge IDs: `e_table_*`, `e_snap_*`, `e_man_*`, `e_file_*`, `e_row_*`, `e_err_*`.
+
+### Paimon (`PaimonGraphBuilder`)
+
+- `table_root` — the single table root node (shared with Iceberg)
+- `pschema_<id>` — Paimon schema nodes
+- `psnap_<id>` — Paimon snapshot nodes
+- `pml_<snapshotId>_<kind>` — manifest list nodes (kind = base/delta/changelog)
+- `pman_<n>` — manifest nodes (incrementing counter)
+- `pdf_<manId>_<simpleId>_<index>` — data file nodes
+- `row_<fId>_<index>` — reuses existing RowNode
+
+Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, `e_row_*`, `e_err_*`.
 
 ## Known issues and tech debt
 
@@ -111,30 +129,29 @@ Edge IDs: `e_table_*`, `e_snap_*`, `e_man_*`, `e_file_*`, `e_row_*`, `e_err_*`.
 ./gradlew test --tests "*.IcebergPathsTest"   # Specific test class
 ```
 
-80+ tests across 14 files. Gaps: no tests for `IcebergReader`, `UnifiedModel`, or end-to-end integration.
+100+ tests across 16 files. Gaps: no tests for `IcebergReader`, `UnifiedModel`, or end-to-end integration.
 
-## Extending for new table formats (Paimon)
+## Supported table formats
 
-### Reusable as-is
-- `GraphTypes.kt` — add new `GraphNode` subtypes
-- `SampleRowReader.kt` — Paimon data files are also Parquet/ORC
-- `IcebergReader.readAvro<T>()` — generic Avro reader, works for any `@Serializable` schema
-- `GraphLayoutService.layoutNodes()` — format-agnostic layout engine
-- `TableFormatDetector` — add `PAIMON` detection (presence of `snapshot/` + `schema/` dirs)
-- All `ui/` files — canvas, inspector, theme, sidebar are format-agnostic
+### Iceberg
+- Detection: `metadata/` dir with `*.metadata.json` files
+- Reader: `IcebergReader` (JSON metadata + Avro manifests via `AvroReader`)
+- Model: `UnifiedTableModel` → `IcebergGraphBuilder` → `GraphLayoutService`
 
-### Needs abstraction
-- `UnifiedModel.kt` — currently Iceberg-only factory functions calling `IcebergReader`
-- `WorkspaceTypes.kt` — detection already uses `TableFormatDetector`; add Paimon case
+### Paimon
+- Detection: `snapshot/` + `schema/` directories
+- Reader: `PaimonReader` (JSON snapshots/schemas + Avro manifest lists/manifests via `AvroReader`)
+- Model: `PaimonUnifiedTableModel` → `PaimonGraphBuilder` → `GraphLayoutService`
+- Key differences from Iceberg: manifest lists split into base (accumulated) and delta (new changes); LSM tree levels on data files; commitKind (APPEND/COMPACT/OVERWRITE/ANALYZE)
 
-### Extension steps
-1. `model/PaimonSchema.kt` — Paimon data classes (snapshot JSON, schema JSON, manifest Avro)
-2. `service/PaimonReader.kt` — Paimon file parsing
-3. `model/PaimonUnifiedModel.kt` — Paimon → unified model bridge
-4. Add Paimon node types to `GraphTypes.kt` (e.g., `BucketNode`, `PaimonSnapshotNode`)
-5. Implement `PaimonGraphBuilder` (parallel to `IcebergGraphBuilder`)
-6. Add `TableFormat.PAIMON` detection to `TableFormatDetector`
-7. Add Paimon rendering to `NodeComponents.kt` and `NodeDetails.kt`
+### Extending for new table formats
+- Add new `GraphNode` subtypes to `GraphTypes.kt`
+- Create reader (reuse `AvroReader.readAvro<T>()` for Avro files)
+- Create unified model (`*UnifiedModel.kt`) and graph builder (`*GraphBuilder.kt`)
+- Add format detection to `TableFormatDetector`
+- Add node rendering to `NodeComponents.kt` and `NodeDetails.kt`
+- Add post-processing cases to `GraphLayoutService` (ordering, alignment, overlap prevention)
+- Update `App.kt` to handle the new format in layout calls
 
 ## Related documentation
 
