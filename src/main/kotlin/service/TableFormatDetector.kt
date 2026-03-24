@@ -1,6 +1,9 @@
 package service
 
+import org.slf4j.LoggerFactory
 import java.io.File
+
+private val logger = LoggerFactory.getLogger(TableFormatDetector::class.java)
 
 /** Detected table format for a directory. */
 enum class TableFormat {
@@ -21,11 +24,15 @@ object TableFormatDetector {
     /** Returns the detected [TableFormat] for the given directory. */
     fun detect(dir: File): TableFormat {
         if (!dir.isDirectory) return TableFormat.UNKNOWN
-        return when {
+        val format = when {
             isIcebergTable(dir) -> TableFormat.ICEBERG
             isPaimonTable(dir) -> TableFormat.PAIMON
             else -> TableFormat.UNKNOWN
         }
+        if (format != TableFormat.UNKNOWN) {
+            logger.debug("Detected {} table at: {}", format, dir)
+        }
+        return format
     }
 
     /** Checks whether the given directory is an Iceberg table. */

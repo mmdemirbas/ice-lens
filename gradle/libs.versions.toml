@@ -11,7 +11,7 @@ avro = "1.12.1"
 elk = "0.11.0"
 xtext = "2.33.0"
 duckdb = "1.4.4.0"
-slf4j = "2.0.17"
+logback = "1.5.18"
 
 junit5 = "5.11.4"
 kotlin-test = "2.3.10"
@@ -28,7 +28,7 @@ elk-core = { module = "org.eclipse.elk:org.eclipse.elk.core", version.ref = "elk
 elk-layered = { module = "org.eclipse.elk:org.eclipse.elk.alg.layered", version.ref = "elk" }
 xtext-xbase-lib = { module = "org.eclipse.xtext:org.eclipse.xtext.xbase.lib", version.ref = "xtext" }
 duckdb-jdbc = { module = "org.duckdb:duckdb_jdbc", version.ref = "duckdb" }
-slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

@@ -1,11 +1,14 @@
 package model
 
+import org.slf4j.LoggerFactory
 import service.IcebergReader
 import service.SampleRowReader
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.streams.asSequence
+
+private val logger = LoggerFactory.getLogger("model.UnifiedModel")
 
 data class UnifiedReadError(
     val stage: String,
@@ -39,6 +42,7 @@ fun UnifiedWarehouseModel(warehousePath: Path): UnifiedWarehouseModel {
 }
 
 fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
+    logger.info("Loading Iceberg table: {}", tablePath)
     val metadataDir = tablePath.resolve("metadata")
     val tableReadErrors = mutableListOf<UnifiedReadError>()
 
@@ -103,6 +107,13 @@ fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
                 { it.path.fileName.toString() },
             )
         )
+
+    val totalSnapshots = orderedMetadatas.sumOf { it.snapshots.size }
+    logger.info("  Iceberg table loaded: {} metadata files, {} snapshots, {} errors",
+        orderedMetadatas.size, totalSnapshots, tableReadErrors.size)
+    if (tableReadErrors.isNotEmpty()) {
+        tableReadErrors.forEach { err -> logger.warn("  Read error [{}] {}: {}", err.stage, err.path, err.message) }
+    }
 
     return UnifiedTableModel(
         path = tablePath,

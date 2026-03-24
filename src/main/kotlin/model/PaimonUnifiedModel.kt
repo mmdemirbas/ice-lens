@@ -1,11 +1,14 @@
 package model
 
+import org.slf4j.LoggerFactory
 import service.AvroReader
 import service.PaimonReader
 import service.SampleRowReader
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.streams.asSequence
+
+private val logger = LoggerFactory.getLogger("model.PaimonUnifiedModel")
 
 /** Aggregated Paimon table model linking snapshots, schemas, manifests, and data files. */
 data class PaimonUnifiedTableModel(
@@ -53,20 +56,31 @@ data class PaimonUnifiedDataFile(
  * then resolves each snapshot's manifest lists and manifest files.
  */
 fun PaimonUnifiedTableModel(tablePath: Path): PaimonUnifiedTableModel {
+    logger.info("Loading Paimon table: {}", tablePath)
     val errors = mutableListOf<UnifiedReadError>()
 
     // 1. Read all schemas
     val schemaDir = tablePath.resolve("schema")
     val schemas = readSchemas(schemaDir, errors)
     val schemasById = schemas.associateBy { it.id }
+    logger.info("  Schemas loaded: {}", schemas.size)
 
     // 2. Read all snapshots
     val snapshotDir = tablePath.resolve("snapshot")
     val snapshotFiles = listSnapshotFiles(snapshotDir, errors)
+    logger.info("  Snapshot files found: {}", snapshotFiles.size)
 
     val snapshots = snapshotFiles.mapNotNull { snapshotPath ->
         readPaimonSnapshot(tablePath, snapshotPath, schemasById, errors)
     }.sortedBy { it.metadata.id ?: Long.MAX_VALUE }
+
+    val totalManifests = snapshots.sumOf { it.baseManifests.size + it.deltaManifests.size + it.changelogManifests.size }
+    val totalDataFiles = snapshots.sumOf { s -> (s.baseManifests + s.deltaManifests + s.changelogManifests).sumOf { it.entries.size } }
+    logger.info("  Paimon table loaded: {} snapshots, {} manifests, {} data files, {} errors",
+        snapshots.size, totalManifests, totalDataFiles, errors.size)
+    if (errors.isNotEmpty()) {
+        errors.forEach { err -> logger.warn("  Read error [{}] {}: {}", err.stage, err.path, err.message) }
+    }
 
     return PaimonUnifiedTableModel(
         path = tablePath,

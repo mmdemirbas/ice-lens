@@ -1,5 +1,6 @@
 package app
 
+import org.slf4j.LoggerFactory
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -132,7 +133,10 @@ private fun persistWindowState(window: java.awt.Window, isMaximized: Boolean) {
     }
 }
 
+private val logger = LoggerFactory.getLogger("app.Main")
+
 fun main() = application {
+    logger.info("Iceberg Lens starting — log file: {}/.icelens/icelens.log", System.getProperty("user.home"))
     val launchConfig = resolveLaunchWindowConfig()
     var awtWindow by remember { mutableStateOf<java.awt.Window?>(null) }
     val windowState = rememberWindowState(

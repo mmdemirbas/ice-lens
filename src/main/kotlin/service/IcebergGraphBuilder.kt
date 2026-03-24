@@ -1,11 +1,14 @@
 package service
 
 import model.*
+import org.slf4j.LoggerFactory
 import java.io.File
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.*
+
+private val logger = LoggerFactory.getLogger(IcebergGraphBuilder::class.java)
 
 /**
  * Builds graph nodes and edges from an Iceberg [UnifiedTableModel].
@@ -267,8 +270,7 @@ object IcebergGraphBuilder {
                                                             enriched
                                                         } else emptyMap()
                                                     } catch (e: Exception) {
-                                                        org.slf4j.LoggerFactory.getLogger("IcebergGraphBuilder")
-                                                            .warn("Failed to load rows for file {}: {}", capturedDataFile.path, e.message)
+                                                        logger.warn("Failed to load rows for file {}: {}", capturedDataFile.path, e.message)
                                                         emptyMap()
                                                     }
                                                 }

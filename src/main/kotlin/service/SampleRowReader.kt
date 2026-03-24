@@ -1,8 +1,11 @@
 package service
 
+import org.slf4j.LoggerFactory
 import java.io.File
 import java.sql.Connection
 import java.sql.DriverManager
+
+private val logger = LoggerFactory.getLogger(SampleRowReader::class.java)
 
 /** Allowed file extensions for data file queries. */
 private val ALLOWED_DATA_FILE_EXTENSIONS = setOf("parquet", "orc", "avro")
@@ -55,6 +58,7 @@ object SampleRowReader {
             val conn = try {
                 getConnection()
             } catch (e: Exception) {
+                logger.warn("DuckDB connection failed, resetting and retrying: {}", e.message)
                 // Reset and retry once on connection failure
                 connection = null
                 getConnection()
@@ -79,6 +83,10 @@ object SampleRowReader {
                     rows.add(row)
                 }
                 rs.close()
+                logger.debug("Sample rows queried: {} rows from {}", rows.size, safePath)
+            } catch (e: Exception) {
+                logger.error("DuckDB query failed for {}: {}", safePath, e.message, e)
+                throw e
             } finally {
                 pstmt.close()
             }

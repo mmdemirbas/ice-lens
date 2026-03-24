@@ -35,7 +35,7 @@ dependencies {
     implementation(libs.duckdb.jdbc)
 
     // Logging
-    implementation(libs.slf4j.simple)
+    implementation(libs.logback.classic)
 
     // Testing
     testImplementation(libs.kotlin.test.junit5)

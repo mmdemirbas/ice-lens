@@ -8,11 +8,14 @@ import com.github.avrokotlin.avro4k.schema
 import org.apache.avro.file.DataFileReader
 import org.apache.avro.generic.GenericDatumReader
 import org.apache.avro.generic.GenericRecord
+import org.slf4j.LoggerFactory
 import java.io.File
 import java.net.URI
 
 /** Shared Avro file reader for any `@Serializable` data class. */
 object AvroReader {
+
+    @PublishedApi internal val logger = LoggerFactory.getLogger(AvroReader::class.java)
 
     /** Result of reading an Avro file: successfully decoded entries plus per-record errors. */
     data class ReadResult<T>(
@@ -30,10 +33,13 @@ object AvroReader {
      * Records that fail to decode are collected as errors rather than aborting.
      */
     inline fun <reified T : Any> readAvro(localPath: String): ReadResult<T> {
+        logger.debug("Reading Avro file: {} (type={})", localPath, T::class.simpleName)
         val file = when {
             localPath.startsWith("file:") -> File(URI(localPath))
-            localPath.matches(Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:.*")) ->
+            localPath.matches(Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:.*")) -> {
+                logger.error("Unsupported URI scheme in Avro path: {}", localPath)
                 throw IllegalArgumentException("Unsupported URI scheme in path: $localPath")
+            }
             else -> File(localPath)
         }
 
@@ -48,6 +54,7 @@ object AvroReader {
                     @Suppress("DEPRECATION") entries.add(Avro.decodeFromGenericData(schema, record))
                 } catch (e: Exception) {
                     val details = e.message ?: e::class.simpleName ?: "Unknown decode error"
+                    logger.warn("Avro decode error in {}, record #{}: {}", localPath, rowIndex, details)
                     errors.add(
                         ReadError(
                             message = "Record #$rowIndex decode failed: $details",
@@ -58,6 +65,7 @@ object AvroReader {
                 rowIndex++
             }
 
+            logger.debug("Avro file read complete: {} ({} entries, {} errors)", localPath, entries.size, errors.size)
             ReadResult(entries = entries, errors = errors)
         }
     }

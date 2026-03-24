@@ -13,7 +13,10 @@ import org.eclipse.elk.core.options.SizeConstraint
 import org.eclipse.elk.core.util.BasicProgressMonitor
 import org.eclipse.elk.graph.ElkNode
 import org.eclipse.elk.graph.util.ElkGraphUtil
+import org.slf4j.LoggerFactory
 import java.util.*
+
+private val logger = LoggerFactory.getLogger(GraphLayoutService::class.java)
 
 /**
  * Layout engine that positions pre-built graph nodes using ELK and applies
@@ -41,7 +44,9 @@ object GraphLayoutService {
         tableModel: UnifiedTableModel,
         showRows: Boolean,
     ): GraphModel {
+        logger.debug("Building Iceberg graph for: {}", tableModel.name)
         val buildResult = IcebergGraphBuilder.buildGraph(tableModel, showRows)
+        logger.debug("Iceberg graph built: {} nodes, {} edges", buildResult.nodes.size, buildResult.edges.size)
         return layoutNodes(buildResult.nodes, buildResult.edges)
     }
 
@@ -54,7 +59,9 @@ object GraphLayoutService {
         tableModel: PaimonUnifiedTableModel,
         showRows: Boolean,
     ): GraphModel {
+        logger.debug("Building Paimon graph for: {}", tableModel.name)
         val buildResult = PaimonGraphBuilder.buildGraph(tableModel, showRows)
+        logger.debug("Paimon graph built: {} nodes, {} edges", buildResult.nodes.size, buildResult.edges.size)
         return layoutNodes(buildResult.nodes, buildResult.edges)
     }
 

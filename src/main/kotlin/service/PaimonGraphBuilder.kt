@@ -1,9 +1,12 @@
 package service
 
 import model.*
+import org.slf4j.LoggerFactory
 import java.io.File
 import java.net.URI
 import java.util.*
+
+private val logger = LoggerFactory.getLogger(PaimonGraphBuilder::class.java)
 
 /**
  * Builds graph nodes and edges from a Paimon [PaimonUnifiedTableModel].
@@ -232,8 +235,7 @@ object PaimonGraphBuilder {
                                                         enriched
                                                     } else emptyMap()
                                                 } catch (e: Exception) {
-                                                    org.slf4j.LoggerFactory.getLogger("PaimonGraphBuilder")
-                                                        .warn("Failed to load rows for file {}: {}", capturedDataFile.path, e.message)
+                                                    logger.warn("Failed to load rows for file {}: {}", capturedDataFile.path, e.message)
                                                     emptyMap()
                                                 }
                                             }

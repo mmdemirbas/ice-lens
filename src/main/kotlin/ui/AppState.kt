@@ -17,9 +17,12 @@ import service.TableFormatDetector
 import java.io.File
 import java.nio.file.NoSuchFileException
 import java.nio.file.Paths
+import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
 import java.util.prefs.Preferences
 import kotlin.coroutines.coroutineContext
+
+private val logger = LoggerFactory.getLogger(AppState::class.java)
 
 data class TableSession(
     val table: UnifiedTableModel? = null,
@@ -142,6 +145,7 @@ class AppState(
     }
 
     private fun loadPersistedState() {
+        logger.info("Loading persisted workspace state")
         // Workspace items
         val saved = prefs.get(PREF_WORKSPACE_ITEMS, "")
         val items = saved.split(";").mapNotNull { WorkspaceItem.deserialize(it) }
@@ -225,17 +229,26 @@ class AppState(
         val file = File(path)
         if (file.exists() && file.isDirectory) {
             val normalizedPath = canonicalWorkspacePath(path)
-            if (workspaceItems.any { canonicalWorkspacePath(it.path) == normalizedPath }) return
+            if (workspaceItems.any { canonicalWorkspacePath(it.path) == normalizedPath }) {
+                logger.debug("Workspace root already exists, skipping: {}", normalizedPath)
+                return
+            }
 
             val newItem = if (isTableDirectory(file)) {
                 WorkspaceItem.SingleTable(normalizedPath, file.name)
             } else {
                 WorkspaceItem.Warehouse(normalizedPath, file.name, scanForTables(file))
             }
+            logger.info("Adding workspace root: {} ({})", normalizedPath, newItem::class.simpleName)
+            if (newItem is WorkspaceItem.Warehouse) {
+                logger.info("  Found {} tables in warehouse", newItem.tables.size)
+            }
             saveWorkspace(workspaceItems + newItem)
             if (newItem is WorkspaceItem.Warehouse) {
                 updateWorkspaceExpandedPaths(workspaceExpandedPaths + newItem.path)
             }
+        } else {
+            logger.warn("Cannot add workspace root — path does not exist or is not a directory: {}", path)
         }
     }
 
@@ -393,6 +406,7 @@ class AppState(
 
         val cachedSession = if (!forceRelayout && !forceReloadFromFs) sessionCache[cacheKey] else null
         if (cachedSession != null) {
+            logger.debug("Cache hit for table: {}", normalizedTablePath)
             setGraphModelAndBump(cachedSession.graph)
             selectedNodeIds = cachedSession.selectedNodeIds
             errorMsg = null
@@ -400,6 +414,8 @@ class AppState(
             return
         }
 
+        logger.info("Loading table: {} (showRows={}, forceRelayout={}, forceReloadFromFs={}, preservePositions={})",
+            normalizedTablePath, withRows, forceRelayout, forceReloadFromFs, preservePositions)
         isLoadingTable = true
         errorMsg = null
         val requestId = loadRequestId + 1
@@ -451,6 +467,8 @@ class AppState(
 
                 if (requestId != loadRequestId) return@launch
                 sessionCache[cacheKey] = reloaded
+                logger.info("Table loaded successfully: {} ({} nodes, {} edges)",
+                    normalizedTablePath, reloaded.graph.nodes.size, reloaded.graph.edges.size)
                 setGraphModelAndBump(reloaded.graph)
                 selectedNodeIds = if (preservePositions && !forceRelayout) {
                     selectedNodeIds.filter { id -> reloaded.graph.nodes.any { it.id == id } }.toSet()
@@ -461,6 +479,7 @@ class AppState(
                 isStaleData = false
             } catch (e: NoSuchFileException) {
                 if (requestId != loadRequestId) return@launch
+                logger.warn("Table path no longer exists: {}", normalizedTablePath)
                 val cached = sessionCache[cacheKey]
                 if (cached != null) {
                     val fallback = cached.copy(fingerprint = "missing")
@@ -478,7 +497,7 @@ class AppState(
             } catch (e: Exception) {
                 if (requestId != loadRequestId) return@launch
                 errorMsg = e.message
-                org.slf4j.LoggerFactory.getLogger("App").error("Failed to load table: {}", normalizedTablePath, e)
+                logger.error("Failed to load table: {}", normalizedTablePath, e)
                 if (!forceReloadFromFs) {
                     setGraphModelAndBump(null)
                 }
