@@ -81,4 +81,16 @@ class GraphTypesTest {
         assertEquals("yes", node.resolvedData["loaded"])
         assertTrue("placeholder" !in node.resolvedData)
     }
+
+    @Test
+    fun `RowNode resolvedData falls back to data when loader returns empty map`() {
+        val node = GraphNode.RowNode(
+            id = "r1",
+            data = mapOf("file_no" to 1, "row_idx" to 0),
+            dataLoader = { emptyMap() }
+        )
+        // Empty loader result should fall back to initial data
+        assertEquals(1, node.resolvedData["file_no"])
+        assertEquals(0, node.resolvedData["row_idx"])
+    }
 }

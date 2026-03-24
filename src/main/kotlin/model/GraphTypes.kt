@@ -155,7 +155,10 @@ sealed class GraphNode(
         private val dataLoader: (() -> Map<String, Any>)? = null,
     ) : GraphNode(id, initialX, initialY, 200.0, 80.0) {
         val isDelete: Boolean get() = content > 0
-        val resolvedData: Map<String, Any> by lazy { dataLoader?.invoke() ?: data }
+        val resolvedData: Map<String, Any> by lazy {
+            val loaded = dataLoader?.invoke()
+            if (loaded.isNullOrEmpty()) data else loaded
+        }
     }
 
     // --- Paimon node types ---
