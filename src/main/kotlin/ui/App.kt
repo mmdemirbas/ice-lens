@@ -13,9 +13,13 @@ import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -700,10 +704,49 @@ fun App() {
         colorScheme = if (isDarkMode) IceLensDarkColorScheme else IceLensLightColorScheme
     ) {
         CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+            val appFocusRequester = remember { FocusRequester() }
+            LaunchedEffect(Unit) { appFocusRequester.requestFocus() }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background)
+                    .focusRequester(appFocusRequester)
+                    .focusable()
+                    .onPreviewKeyEvent { keyEvent ->
+                        if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        val ctrl = keyEvent.isMetaPressed || keyEvent.isCtrlPressed
+                        when {
+                            // Ctrl/Cmd + = or Ctrl/Cmd + + → zoom in
+                            ctrl && !keyEvent.isShiftPressed && (keyEvent.key == Key.Equals || keyEvent.key == Key.NumPadAdd) -> {
+                                zoom = (zoom * 1.2f).coerceAtMost(MAX_ZOOM)
+                                prefs.putFloat(PREF_ZOOM, zoom)
+                                true
+                            }
+                            // Ctrl/Cmd + - → zoom out
+                            ctrl && !keyEvent.isShiftPressed && (keyEvent.key == Key.Minus || keyEvent.key == Key.NumPadSubtract) -> {
+                                zoom = (zoom / 1.2f).coerceAtLeast(MIN_ZOOM)
+                                prefs.putFloat(PREF_ZOOM, zoom)
+                                true
+                            }
+                            // Ctrl/Cmd + 0 → reset zoom
+                            ctrl && !keyEvent.isShiftPressed && keyEvent.key == Key.Zero -> {
+                                zoom = 1f
+                                prefs.putFloat(PREF_ZOOM, zoom)
+                                true
+                            }
+                            // Ctrl/Cmd + Shift + F → fit graph
+                            ctrl && keyEvent.isShiftPressed && keyEvent.key == Key.F -> {
+                                if (visibleGraphModel != null) fitGraphRequest++
+                                true
+                            }
+                            // Ctrl/Cmd + L → re-apply layout
+                            ctrl && !keyEvent.isShiftPressed && keyEvent.key == Key.L -> {
+                                reapplyCurrentLayout()
+                                true
+                            }
+                            else -> false
+                        }
+                    }
                     .onGloballyPositioned { coords -> appWindowBounds = coords.boundsInWindow() }
             ) {
             Column(Modifier.fillMaxSize()) {
@@ -1365,118 +1408,9 @@ fun App() {
             }
 
             if (showAboutDialog) {
-                val githubUrl = "https://github.com/mmdemirbas/ice-lens"
-                var aboutTab by remember { mutableIntStateOf(0) }
-                AlertDialog(
-                    onDismissRequest = { showAboutDialog = false },
-                    confirmButton = {
-                        TextButton(onClick = { showAboutDialog = false }) {
-                            Text("Close")
-                        }
-                    },
-                    title = {
-                        Column {
-                            Text("Iceberg Lens")
-                            Spacer(Modifier.height(4.dp))
-                            Row {
-                                TextButton(onClick = { aboutTab = 0 }) {
-                                    Text("About", fontWeight = if (aboutTab == 0) FontWeight.Bold else FontWeight.Normal)
-                                }
-                                TextButton(onClick = { aboutTab = 1 }) {
-                                    Text("Cheat Sheet", fontWeight = if (aboutTab == 1) FontWeight.Bold else FontWeight.Normal)
-                                }
-                            }
-                        }
-                    },
-                    text = {
-                        val scrollState = rememberScrollState()
-                        Column(Modifier.verticalScroll(scrollState).widthIn(min = 400.dp)) {
-                            if (aboutTab == 0) {
-                                val appVersion = remember {
-                                    runCatching {
-                                        val props = java.util.Properties()
-                                        props.load(Thread.currentThread().contextClassLoader.getResourceAsStream("version.properties"))
-                                        props.getProperty("version", "dev")
-                                    }.getOrDefault("dev")
-                                }
-                                Text("A visual inspector for Apache Iceberg tables. It visualizes metadata, snapshots, manifests, and row-level delete relationships.")
-                                Spacer(Modifier.height(8.dp))
-                                Text("Version: $appVersion", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Spacer(Modifier.height(4.dp))
-                                Text("Author: Muhammed Demirbaş")
-                                Spacer(Modifier.height(8.dp))
-                                TextButton(onClick = {
-                                    val info = buildString {
-                                        appendLine("Iceberg Lens $appVersion")
-                                        appendLine("OS: ${System.getProperty("os.name")} ${System.getProperty("os.version")} (${System.getProperty("os.arch")})")
-                                        appendLine("Java: ${System.getProperty("java.version")} (${System.getProperty("java.vendor")})")
-                                        appendLine("Runtime: ${System.getProperty("java.runtime.name")} ${System.getProperty("java.runtime.version")}")
-                                    }
-                                    val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-                                    clipboard.setContents(java.awt.datatransfer.StringSelection(info), null)
-                                }) {
-                                    Text("Copy diagnostic info", fontSize = 12.sp)
-                                }
-                                Spacer(Modifier.height(6.dp))
-                                Text(
-                                    text = githubUrl,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.clickable {
-                                        runCatching {
-                                            if (!Desktop.isDesktopSupported()) {
-                                                error("Desktop browsing is not supported on this platform.")
-                                            }
-                                            Desktop.getDesktop().browse(URI(githubUrl))
-                                        }.onFailure { e ->
-                                            errorMsg = "Failed to open GitHub link: ${e.message}"
-                                        }
-                                    }
-                                )
-                            } else {
-                                @Composable fun shortcutRow(action: String, shortcut: String) {
-                                    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                                        Text(action, modifier = Modifier.weight(1f), fontSize = 13.sp)
-                                        Text(shortcut, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
-                                    }
-                                }
-                                Text("Keyboard Shortcuts", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Spacer(Modifier.height(4.dp))
-                                shortcutRow("Undo node drag", "Ctrl/Cmd + Z")
-                                HorizontalDivider(Modifier.padding(vertical = 2.dp))
-
-                                Spacer(Modifier.height(12.dp))
-                                Text("Graph Canvas", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Spacer(Modifier.height(4.dp))
-                                shortcutRow("Pan / scroll", "Scroll wheel or trackpad")
-                                shortcutRow("Zoom", "Ctrl/Cmd + scroll")
-                                shortcutRow("Select node", "Click node")
-                                shortcutRow("Multi-select", "Ctrl/Cmd + click")
-                                shortcutRow("Marquee select", "Drag on canvas (Select mode)")
-                                shortcutRow("Toggle marquee (add/remove)", "Shift + drag")
-                                shortcutRow("Drag node(s)", "Drag selected node")
-                                shortcutRow("Deselect all", "Click empty area")
-                                HorizontalDivider(Modifier.padding(vertical = 2.dp))
-
-                                Spacer(Modifier.height(12.dp))
-                                Text("Panels", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Spacer(Modifier.height(4.dp))
-                                shortcutRow("Toggle all panels", "Double-click empty area")
-                                shortcutRow("Toggle inspector", "Double-click a node")
-                                shortcutRow("Reposition panel", "Drag panel title bar")
-                                shortcutRow("Hide panel", "Click \u2212 on panel title")
-                                shortcutRow("Show panel", "Click icon in side bar")
-                                HorizontalDivider(Modifier.padding(vertical = 2.dp))
-
-                                Spacer(Modifier.height(12.dp))
-                                Text("Workspace", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Spacer(Modifier.height(4.dp))
-                                shortcutRow("Add table/warehouse", "Click 'Add to Workspace'")
-                                shortcutRow("Reorder items", "Drag workspace items")
-                                shortcutRow("Remove item", "Click \u00D7 on item")
-                            }
-                        }
-                    }
+                AboutDialog(
+                    onDismiss = { showAboutDialog = false },
+                    onError = { msg -> errorMsg = msg },
                 )
             }
 

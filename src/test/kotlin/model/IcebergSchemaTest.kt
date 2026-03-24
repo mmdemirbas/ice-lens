@@ -3,6 +3,7 @@ package model
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
 class IcebergSchemaTest {
@@ -75,5 +76,42 @@ class IcebergSchemaTest {
         assertEquals("/data/file.parquet", file.filePath)
         assertEquals(1, file.content)
         assertEquals(500L, file.recordCount)
+    }
+
+    @Test
+    fun `DataFile equals uses structural ByteArray comparison`() {
+        val a = DataFile(filePath = "/a.parquet", keyMetadata = byteArrayOf(1, 2, 3))
+        val b = DataFile(filePath = "/a.parquet", keyMetadata = byteArrayOf(1, 2, 3))
+        val c = DataFile(filePath = "/a.parquet", keyMetadata = byteArrayOf(4, 5, 6))
+        assertEquals(a, b, "DataFiles with same keyMetadata content should be equal")
+        assertEquals(a.hashCode(), b.hashCode(), "DataFiles with same keyMetadata should have same hashCode")
+        assertNotEquals(a, c, "DataFiles with different keyMetadata should not be equal")
+    }
+
+    @Test
+    fun `DataFile equals handles null keyMetadata`() {
+        val a = DataFile(filePath = "/a.parquet", keyMetadata = null)
+        val b = DataFile(filePath = "/a.parquet", keyMetadata = null)
+        val c = DataFile(filePath = "/a.parquet", keyMetadata = byteArrayOf(1))
+        assertEquals(a, b)
+        assertNotEquals(a, c)
+    }
+
+    @Test
+    fun `KeyValuePairBytes equals uses structural ByteArray comparison`() {
+        val a = KeyValuePairBytes(1, byteArrayOf(10, 20))
+        val b = KeyValuePairBytes(1, byteArrayOf(10, 20))
+        val c = KeyValuePairBytes(1, byteArrayOf(30, 40))
+        assertEquals(a, b)
+        assertEquals(a.hashCode(), b.hashCode())
+        assertNotEquals(a, c)
+    }
+
+    @Test
+    fun `DataFile can be used in sets without ByteArray identity issues`() {
+        val a = DataFile(filePath = "/a.parquet", keyMetadata = byteArrayOf(1, 2))
+        val b = DataFile(filePath = "/a.parquet", keyMetadata = byteArrayOf(1, 2))
+        val set = setOf(a, b)
+        assertEquals(1, set.size, "Identical DataFiles should deduplicate in a Set")
     }
 }

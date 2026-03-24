@@ -48,6 +48,8 @@ object IcebergReader {
     private inline fun <reified T : Any> readAvro(localPath: String): ReadResult<T> {
         val file = when {
             localPath.startsWith("file:") -> File(URI(localPath))
+            localPath.matches(Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:.*")) ->
+                throw IllegalArgumentException("Unsupported URI scheme in path: $localPath")
             else                          -> File(localPath)
         }
 

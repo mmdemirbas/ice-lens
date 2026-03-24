@@ -154,11 +154,60 @@ data class DataFile(
     @SerialName("split_offsets") val splitOffsets: List<Long>? = null,
     @SerialName("equality_ids") val equalityIds: List<Int>? = null,
     @SerialName("sort_order_id") val sortOrderId: Long? = null,
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is DataFile) return false
+        return filePath == other.filePath &&
+            fileFormat == other.fileFormat &&
+            recordCount == other.recordCount &&
+            fileSizeInBytes == other.fileSizeInBytes &&
+            content == other.content &&
+            dataSequenceNumber == other.dataSequenceNumber &&
+            columnSizes == other.columnSizes &&
+            valueCounts == other.valueCounts &&
+            nullValueCounts == other.nullValueCounts &&
+            nanValueCounts == other.nanValueCounts &&
+            lowerBounds == other.lowerBounds &&
+            upperBounds == other.upperBounds &&
+            keyMetadata.contentEquals(other.keyMetadata) &&
+            splitOffsets == other.splitOffsets &&
+            equalityIds == other.equalityIds &&
+            sortOrderId == other.sortOrderId
+    }
+
+    override fun hashCode(): Int {
+        var result = filePath.hashCode()
+        result = 31 * result + fileFormat.hashCode()
+        result = 31 * result + recordCount.hashCode()
+        result = 31 * result + fileSizeInBytes.hashCode()
+        result = 31 * result + content.hashCode()
+        result = 31 * result + dataSequenceNumber.hashCode()
+        result = 31 * result + columnSizes.hashCode()
+        result = 31 * result + valueCounts.hashCode()
+        result = 31 * result + nullValueCounts.hashCode()
+        result = 31 * result + nanValueCounts.hashCode()
+        result = 31 * result + lowerBounds.hashCode()
+        result = 31 * result + upperBounds.hashCode()
+        result = 31 * result + (keyMetadata?.contentHashCode() ?: 0)
+        result = 31 * result + splitOffsets.hashCode()
+        result = 31 * result + equalityIds.hashCode()
+        result = 31 * result + sortOrderId.hashCode()
+        return result
+    }
+}
 
 
 @Serializable
 data class KeyValuePairLong(val key: Int, val value: Long)
 
 @Serializable
-data class KeyValuePairBytes(val key: Int, val value: ByteArray)
+data class KeyValuePairBytes(val key: Int, val value: ByteArray) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is KeyValuePairBytes) return false
+        return key == other.key && value.contentEquals(other.value)
+    }
+
+    override fun hashCode(): Int = 31 * key + value.contentHashCode()
+}

@@ -16,7 +16,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
 import model.GraphNode
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -180,7 +184,7 @@ fun DetailTable(
 }
 
 @Composable
-fun DetailRow(key: String, value: String, isHeader: Boolean = false, isDark: Boolean = false) {
+fun DetailRow(key: String, value: String, isHeader: Boolean = false, isDark: Boolean = false, copyable: Boolean = false) {
     val colors = MaterialTheme.colorScheme
     val bgColor = if (isHeader) {
         if (isDark) colors.inverseSurface.copy(alpha = 0.58f) else colors.surfaceVariant
@@ -213,7 +217,7 @@ fun DetailRow(key: String, value: String, isHeader: Boolean = false, isDark: Boo
         Spacer(Modifier.width(8.dp))
         Text(
             text = value,
-            modifier = Modifier.weight(0.68f),
+            modifier = Modifier.weight(if (copyable) 0.62f else 0.68f),
             fontSize = 11.sp,
             fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
             fontFamily = if (isHeader) null else FontFamily.Monospace,
@@ -221,6 +225,22 @@ fun DetailRow(key: String, value: String, isHeader: Boolean = false, isDark: Boo
             maxLines = 5,
             overflow = TextOverflow.Ellipsis
         )
+        if (copyable && value.isNotBlank() && value != "N/A") {
+            IconButton(
+                onClick = {
+                    Toolkit.getDefaultToolkit().systemClipboard
+                        .setContents(StringSelection(value), null)
+                },
+                modifier = Modifier.size(20.dp)
+            ) {
+                Icon(
+                    Icons.Default.ContentCopy,
+                    contentDescription = "Copy $key",
+                    modifier = Modifier.size(12.dp),
+                    tint = keyColor
+                )
+            }
+        }
     }
     HorizontalDivider(color = dividerColor, thickness = 0.5.dp)
 }

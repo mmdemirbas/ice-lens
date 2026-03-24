@@ -48,10 +48,12 @@ tasks.test {
 
 // Generate a version.properties file accessible at runtime
 tasks.processResources {
-    val versionFile = file("$buildDir/resources/main/version.properties")
+    val versionFile = layout.buildDirectory.file("resources/main/version.properties")
+    val projectVersion = version.toString()
     doFirst {
-        versionFile.parentFile.mkdirs()
-        versionFile.writeText("version=${project.version}\n")
+        val file = versionFile.get().asFile
+        file.parentFile.mkdirs()
+        file.writeText("version=$projectVersion\n")
     }
 }
 

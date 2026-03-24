@@ -602,9 +602,9 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                         DetailTable {
                             DetailRow("Property", "Value", isHeader = true)
                             DetailRow("Name", summary.tableName)
-                            DetailRow("Table Path", summary.tablePath)
-                            DetailRow("Location", summary.location ?: "N/A")
-                            DetailRow("Table UUID", summary.tableUuid ?: "N/A")
+                            DetailRow("Table Path", summary.tablePath, copyable = true)
+                            DetailRow("Location", summary.location ?: "N/A", copyable = true)
+                            DetailRow("Table UUID", summary.tableUuid ?: "N/A", copyable = true)
                             DetailRow("Format Version", "${summary.formatVersion ?: "N/A"}")
                             DetailRow("Current Snapshot ID", currentSnapshotLabel(summary.currentSnapshotId))
                             DetailRow("Current Metadata Version", "${summary.currentMetadataVersion ?: "N/A"}")
@@ -692,8 +692,8 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Property", "Value", isHeader = true)
                             DetailRow("File Name", node.fileName)
                             DetailRow("Format Version", "${node.data.formatVersion}")
-                            DetailRow("Table UUID", "${node.data.tableUuid ?: "N/A"}")
-                            DetailRow("Location", "${node.data.location ?: "N/A"}")
+                            DetailRow("Table UUID", "${node.data.tableUuid ?: "N/A"}", copyable = true)
+                            DetailRow("Location", "${node.data.location ?: "N/A"}", copyable = true)
                             DetailRow("Last Seq. Num.", "${node.data.lastSequenceNumber ?: "N/A"}")
                             DetailRow("Last Updated", formatTimestamp(node.data.lastUpdatedMs))
                             DetailRow("Last Column ID", "${node.data.lastColumnId ?: "N/A"}")
@@ -1042,7 +1042,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Manifest Length", "${node.data.manifestLength ?: 0} bytes")
                             val manifestPath = node.data.manifestPath
                             val manifestPathLabel = if (manifestPath == null) "N/A" else "${manifestPath.substringAfterLast("/")} ($manifestPath)"
-                            DetailRow("Path", manifestPathLabel)
+                            DetailRow("Path", manifestPathLabel, copyable = true)
                         }
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
@@ -1162,7 +1162,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Lower Bounds", kvBytes(node.data.lowerBounds))
                             DetailRow("Upper Bounds", kvBytes(node.data.upperBounds))
                             val filePath = node.data.filePath
-                            DetailRow("Path", "${filePath ?: "N/A"}")
+                            DetailRow("Path", "${filePath ?: "N/A"}", copyable = true)
                         }
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
@@ -1192,7 +1192,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Property", "Value", isHeader = true)
                             DetailRow("Title", node.title)
                             DetailRow("Stage", node.stage)
-                            DetailRow("Path", node.path)
+                            DetailRow("Path", node.path, copyable = true)
                             DetailRow("Message", node.message)
                         }
                         Spacer(Modifier.height(12.dp))

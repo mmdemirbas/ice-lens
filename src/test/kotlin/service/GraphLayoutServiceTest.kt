@@ -119,4 +119,57 @@ class GraphLayoutServiceTest {
         assertEquals(1, errorNodes.size)
         assertEquals("test error", errorNodes[0].message)
     }
+
+    @Test
+    fun `layoutGraph assigns unique manifest node IDs even for hashCode-colliding paths`() {
+        // Create two snapshots pointing to manifests whose paths have different values
+        // but could potentially collide with hashCode()
+        val snap1 = Snapshot(snapshotId = 1, timestampMs = 1000, manifestList = "snap-1.avro")
+        val snap2 = Snapshot(snapshotId = 2, timestampMs = 2000, manifestList = "snap-2.avro")
+
+        val manifest1 = ManifestListEntry(manifestPath = "/table/metadata/manifest-aaa.avro", content = 0)
+        val manifest2 = ManifestListEntry(manifestPath = "/table/metadata/manifest-bbb.avro", content = 0)
+
+        val table = UnifiedTableModel(
+            path = Path.of("/test/collision"),
+            name = "collision",
+            versionHint = "1",
+            metadatas = listOf(
+                UnifiedMetadata(
+                    path = Path.of("/test/collision/metadata/v1.metadata.json"),
+                    metadata = TableMetadata(formatVersion = 2, snapshots = listOf(snap1, snap2)),
+                    snapshots = listOf(
+                        UnifiedSnapshot(
+                            path = Path.of("/test/collision/metadata/snap-1.avro"),
+                            metadata = snap1,
+                            manifests = listOf(
+                                UnifiedManifest(
+                                    path = Path.of("/test/collision/metadata/manifest-aaa.avro"),
+                                    metadata = manifest1,
+                                    dataFiles = emptyList()
+                                )
+                            )
+                        ),
+                        UnifiedSnapshot(
+                            path = Path.of("/test/collision/metadata/snap-2.avro"),
+                            metadata = snap2,
+                            manifests = listOf(
+                                UnifiedManifest(
+                                    path = Path.of("/test/collision/metadata/manifest-bbb.avro"),
+                                    metadata = manifest2,
+                                    dataFiles = emptyList()
+                                )
+                            )
+                        ),
+                    )
+                )
+            )
+        )
+        val graph = GraphLayoutService.layoutGraph(table, showRows = false)
+
+        val manifestNodes = graph.nodes.filterIsInstance<GraphNode.ManifestNode>()
+        assertEquals(2, manifestNodes.size, "Should have 2 distinct manifest nodes")
+        val ids = manifestNodes.map { it.id }.toSet()
+        assertEquals(2, ids.size, "Manifest node IDs should be unique")
+    }
 }

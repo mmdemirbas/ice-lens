@@ -2,18 +2,15 @@ package ui
 
 import model.WorkspaceItem
 import model.WorkspaceTableStatus
+import service.TableFormat
+import service.TableFormatDetector
 import java.io.File
 
-fun isIcebergTable(dir: File): Boolean {
-    val metaDir = File(dir, "metadata")
-    return metaDir.exists() && metaDir.isDirectory && metaDir.listFiles { f ->
-        f.name.endsWith(".metadata.json")
-    }?.isNotEmpty() == true
-}
+fun isIcebergTable(dir: File): Boolean = TableFormatDetector.isIcebergTable(dir)
 
 fun scanForTables(warehouseDir: File): List<String> {
     return warehouseDir.listFiles { file ->
-        file.isDirectory && isIcebergTable(file)
+        file.isDirectory && TableFormatDetector.detect(file) != TableFormat.UNKNOWN
     }?.map { it.name }?.sorted() ?: emptyList()
 }
 

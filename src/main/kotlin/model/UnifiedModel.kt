@@ -1,7 +1,7 @@
 package model
 
 import service.IcebergReader
-import service.ParquetReader
+import service.SampleRowReader
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.readText
@@ -141,7 +141,7 @@ fun UnifiedSnapshot(snapshotPath: Path, snapshot: Snapshot): UnifiedSnapshot {
     return UnifiedSnapshot(
         path = snapshotPath,
         metadata = snapshot,
-        manifestLists = manifestList.entries.map { manifest ->
+        manifests = manifestList.entries.map { manifest ->
             val metadataDir = snapshotPath.parent
             UnifiedManifest(
                 resolveForceRelative(metadataDir, manifest.manifestPath),
@@ -167,17 +167,31 @@ fun UnifiedManifest(manifestPath: Path, manifest: ManifestListEntry): UnifiedMan
             stackTrace = error.stackTrace,
         )
     }
+    val dataRoot = manifestPath.parent?.parent ?: manifestPath.parent ?: manifestPath
+    val normalizedDataRoot = runCatching { dataRoot.toAbsolutePath().normalize() }.getOrElse { dataRoot.normalize() }
+
     return UnifiedManifest(
         path = manifestPath,
         metadata = manifest,
-        manifests = dataFiles.entries.map { dataFile ->
+        dataFiles = dataFiles.entries.map { dataFile ->
             val metadataDirPrefix = manifest.manifestPath.orEmpty().substringBeforeLast('/')
             val tableDirPrefix = metadataDirPrefix.substringBeforeLast('/')
             val dataFilePathInFile = dataFile.dataFile?.filePath.orEmpty()
             val dataFilePathRelative =
                 dataFilePathInFile.removePrefix(tableDirPrefix).removePrefix("/")
-            val dataRoot = manifestPath.parent?.parent ?: manifestPath.parent ?: manifestPath
             val dataFilePathResolved = dataRoot.resolve(dataFilePathRelative)
+
+            // Validate resolved path stays within the table directory tree
+            val normalizedResolved = runCatching { dataFilePathResolved.toAbsolutePath().normalize() }
+                .getOrElse { dataFilePathResolved.normalize() }
+            if (!normalizedResolved.startsWith(normalizedDataRoot)) {
+                manifestReadErrors += UnifiedReadError(
+                    stage = "path-traversal-check",
+                    path = dataFilePathInFile,
+                    message = "Data file path resolves outside the table directory: $normalizedResolved",
+                )
+            }
+
             UnifiedDataFile(path = dataFilePathResolved, metadata = dataFile)
         },
         readErrors = manifestReadErrors,
@@ -207,14 +221,14 @@ data class UnifiedMetadata(
 data class UnifiedSnapshot(
     val path: Path,
     val metadata: Snapshot,
-    val manifestLists: List<UnifiedManifest>,
+    val manifests: List<UnifiedManifest>,
     val readErrors: List<UnifiedReadError> = emptyList(),
 )
 
 data class UnifiedManifest(
     val path: Path,
     val metadata: ManifestListEntry,
-    val manifests: List<UnifiedDataFile>,
+    val dataFiles: List<UnifiedDataFile>,
     val readErrors: List<UnifiedReadError> = emptyList(),
 )
 
@@ -222,7 +236,7 @@ data class UnifiedDataFile(
     val path: Path,
     val metadata: ManifestEntry,
     private val rowsLoader: () -> List<UnifiedRow> = {
-        ParquetReader.queryParquet(path.toString()).map { UnifiedRow(it) }
+        SampleRowReader.querySampleRows(path.toString()).map { UnifiedRow(it) }
     },
 ) {
     val rows: List<UnifiedRow> by lazy { rowsLoader() }

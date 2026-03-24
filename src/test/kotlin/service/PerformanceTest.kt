@@ -49,7 +49,7 @@ class PerformanceTest {
                             addedSnapshotId = globalSnapshotIdx.toLong(),
                             addedFilesCount = filesPerManifest,
                         ),
-                        manifests = files
+                        dataFiles = files
                     )
                 }
                 UnifiedSnapshot(
@@ -60,7 +60,7 @@ class PerformanceTest {
                         sequenceNumber = globalSnapshotIdx.toLong(),
                         summary = mapOf("operation" to "append")
                     ),
-                    manifestLists = manifests
+                    manifests = manifests
                 )
             }
             UnifiedMetadata(
@@ -168,13 +168,58 @@ class PerformanceTest {
     }
 
     @Test
+    fun `graph builder produces realistic edge counts`() {
+        // Verify that performance tests exercise edge creation, not just nodes
+        val table = generateTable(3, 4, 3, 5)
+        val result = IcebergGraphBuilder.buildGraph(table, showRows = false)
+        val nodeCount = result.nodes.size
+        val edgeCount = result.edges.size
+
+        // There should be edges connecting every parent to its children
+        assertTrue(edgeCount > 0, "Graph should have edges")
+        // With the hierarchy table→metadata→snapshot→manifest→file, edges should be at least nodeCount-1
+        assertTrue(edgeCount >= nodeCount - 1, "Edge count ($edgeCount) should be >= node count - 1 (${nodeCount - 1})")
+        println("Graph: $nodeCount nodes, $edgeCount edges (ratio: ${edgeCount.toFloat() / nodeCount})")
+    }
+
+    @Test
+    fun `graph builder is O(n) in total artifacts`() {
+        // Verify that doubling the table size roughly doubles build time, not quadruples it
+        val smallTable = generateTable(2, 3, 2, 5)
+        val largeTable = generateTable(4, 6, 4, 5)
+
+        // Warm up
+        IcebergGraphBuilder.buildGraph(smallTable, showRows = false)
+        IcebergGraphBuilder.buildGraph(largeTable, showRows = false)
+
+        val smallTime = measureTimeMillis {
+            repeat(3) { IcebergGraphBuilder.buildGraph(smallTable, showRows = false) }
+        }
+        val largeTime = measureTimeMillis {
+            repeat(3) { IcebergGraphBuilder.buildGraph(largeTable, showRows = false) }
+        }
+
+        val smallNodes = IcebergGraphBuilder.buildGraph(smallTable, showRows = false).nodes.size
+        val largeNodes = IcebergGraphBuilder.buildGraph(largeTable, showRows = false).nodes.size
+        val sizeRatio = largeNodes.toFloat() / smallNodes
+        val timeRatio = largeTime.toFloat() / smallTime.coerceAtLeast(1)
+
+        println("Small: $smallNodes nodes in ${smallTime}ms, Large: $largeNodes nodes in ${largeTime}ms")
+        println("Size ratio: $sizeRatio, Time ratio: $timeRatio")
+
+        // Time ratio should be roughly proportional to size ratio (not squared)
+        // Allow 3x headroom for overhead
+        assertTrue(timeRatio < sizeRatio * 3, "Time ratio ($timeRatio) too large vs size ratio ($sizeRatio) — suggests O(n²)")
+    }
+
+    @Test
     fun `DuckDB connection reuse`() {
         // Verify the synchronized connection doesn't deadlock with rapid sequential calls
         val elapsed = measureTimeMillis {
             repeat(5) {
                 try {
                     // This will fail (no file) but should not deadlock or corrupt state
-                    ParquetReader.queryParquet("/nonexistent/file.parquet")
+                    SampleRowReader.querySampleRows("/nonexistent/file.parquet")
                 } catch (_: Exception) {
                     // Expected - file doesn't exist
                 }
