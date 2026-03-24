@@ -12,12 +12,14 @@ private val logger = LoggerFactory.getLogger("model.PaimonUnifiedModel")
 
 /** Aggregated Paimon table model linking snapshots, schemas, manifests, and data files. */
 data class PaimonUnifiedTableModel(
-    val path: Path,
-    val name: String,
+    override val path: Path,
+    override val name: String,
     val schemas: List<PaimonSchema>,
     val snapshots: List<PaimonUnifiedSnapshot>,
-    val readErrors: List<UnifiedReadError> = emptyList(),
-)
+    override val readErrors: List<UnifiedReadError> = emptyList(),
+) : FormatTableModel {
+    override val format get() = service.TableFormat.PAIMON
+}
 
 /** A Paimon snapshot with its resolved manifest trees. */
 data class PaimonUnifiedSnapshot(

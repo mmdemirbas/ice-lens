@@ -215,12 +215,14 @@ data class UnifiedWarehouseModel(
 )
 
 data class UnifiedTableModel(
-    val path: Path,
-    val name: String,
+    override val path: Path,
+    override val name: String,
     val versionHint: String,
     val metadatas: List<UnifiedMetadata>,
-    val readErrors: List<UnifiedReadError> = emptyList(),
-)
+    override val readErrors: List<UnifiedReadError> = emptyList(),
+) : FormatTableModel {
+    override val format get() = service.TableFormat.ICEBERG
+}
 
 data class UnifiedMetadata(
     val path: Path,

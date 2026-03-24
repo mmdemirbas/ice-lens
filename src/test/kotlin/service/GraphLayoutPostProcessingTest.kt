@@ -68,7 +68,7 @@ class GraphLayoutPostProcessingTest {
                 paimonSnapshot(id = 2, timeMillis = 2000L),
             )
         )
-        val graph = GraphLayoutService.layoutPaimonGraph(paimonTable, showRows = false)
+        val graph = GraphLayoutService.layoutGraph(paimonTable, showRows = false)
 
         val snapNodes = graph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>()
             .sortedBy { graph.getPosition(it.id).y }
@@ -94,7 +94,7 @@ class GraphLayoutPostProcessingTest {
                 )
             )
         )
-        val graph = GraphLayoutService.layoutPaimonGraph(paimonTable, showRows = false)
+        val graph = GraphLayoutService.layoutGraph(paimonTable, showRows = false)
 
         val fileNodes = graph.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
             .sortedBy { graph.getPosition(it.id).y }
@@ -147,7 +147,7 @@ class GraphLayoutPostProcessingTest {
         val paimonTable = paimonTable(
             snapshots = (1..5).map { i -> paimonSnapshot(id = i.toLong(), timeMillis = 1000L * i) }
         )
-        val graph = GraphLayoutService.layoutPaimonGraph(paimonTable, showRows = false)
+        val graph = GraphLayoutService.layoutGraph(paimonTable, showRows = false)
         assertNoOverlaps<GraphNode.PaimonSnapshotNode>(graph)
     }
 
@@ -168,7 +168,7 @@ class GraphLayoutPostProcessingTest {
                 )
             )
         )
-        val graph = GraphLayoutService.layoutPaimonGraph(paimonTable, showRows = false)
+        val graph = GraphLayoutService.layoutGraph(paimonTable, showRows = false)
         assertNoOverlaps<GraphNode.PaimonManifestListNode>(graph)
     }
 
@@ -186,7 +186,7 @@ class GraphLayoutPostProcessingTest {
                 )
             )
         )
-        val graph = GraphLayoutService.layoutPaimonGraph(paimonTable, showRows = false)
+        val graph = GraphLayoutService.layoutGraph(paimonTable, showRows = false)
         assertNoOverlaps<GraphNode.PaimonManifestNode>(graph)
     }
 
@@ -202,7 +202,7 @@ class GraphLayoutPostProcessingTest {
                 )
             )
         )
-        val graph = GraphLayoutService.layoutPaimonGraph(paimonTable, showRows = false)
+        val graph = GraphLayoutService.layoutGraph(paimonTable, showRows = false)
         assertNoOverlaps<GraphNode.PaimonDataFileNode>(graph)
     }
 
@@ -243,7 +243,7 @@ class GraphLayoutPostProcessingTest {
                     baseManifests = listOf(paimonManifest("m2", entries = listOf(paimonDataFile("f2")))))
             )
         )
-        val graph = GraphLayoutService.layoutPaimonGraph(paimonTable, showRows = false)
+        val graph = GraphLayoutService.layoutGraph(paimonTable, showRows = false)
 
         graph.nodes.forEach { node ->
             val pos = graph.getPosition(node.id)
@@ -310,7 +310,7 @@ class GraphLayoutPostProcessingTest {
                     deltaManifests = listOf(paimonManifest("m2", entries = listOf(paimonDataFile("f3")))))
             )
         )
-        val graph = GraphLayoutService.layoutPaimonGraph(paimonTable, showRows = false)
+        val graph = GraphLayoutService.layoutGraph(paimonTable, showRows = false)
 
         graph.nodes.forEach { node ->
             val pos = graph.getPosition(node.id)

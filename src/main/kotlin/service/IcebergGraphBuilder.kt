@@ -25,12 +25,6 @@ object IcebergGraphBuilder {
     private const val MAX_ROWS_PER_FILE = 5
 
     /** Result of building graph nodes and edges from a table model. */
-    data class BuildResult(
-        val nodes: List<GraphNode>,
-        val edges: List<GraphEdge>,
-        val summary: TableSummary,
-    )
-
     /**
      * Builds graph nodes and edges for the given Iceberg table model.
      * Does not perform layout — call [GraphLayoutService.layoutGraph] with the result.
@@ -38,7 +32,7 @@ object IcebergGraphBuilder {
     fun buildGraph(
         tableModel: UnifiedTableModel,
         showRows: Boolean,
-    ): BuildResult {
+    ): GraphBuildResult {
         val logicalNodes = mutableMapOf<String, GraphNode>()
         val edges = mutableListOf<GraphEdge>()
         val edgeIds = mutableSetOf<String>()
@@ -288,7 +282,7 @@ object IcebergGraphBuilder {
             }
         }
 
-        return BuildResult(
+        return GraphBuildResult(
             nodes = logicalNodes.values.toList(),
             edges = edges,
             summary = tableSummary,

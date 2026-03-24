@@ -69,8 +69,7 @@ src/main/kotlin/
 - All data access is read-only — no table modifications
 - Node colors are hardcoded per node type in `NodeComponents.kt` (`getGraphNodeColor` / `getGraphNodeBorderColor`)
 - Dark mode detection uses `perceivedBrightness()` (0.2126R + 0.7152G + 0.0722B < 0.5)
-- Graph layout flow (Iceberg): `UnifiedTableModel` → `IcebergGraphBuilder.buildGraph()` → nodes/edges → `GraphLayoutService.layoutNodes()` → `GraphModel` → `GraphCanvas`
-- Graph layout flow (Paimon): `PaimonUnifiedTableModel` → `PaimonGraphBuilder.buildGraph()` → nodes/edges → `GraphLayoutService.layoutNodes()` → `GraphModel` → `GraphCanvas`
+- Graph layout flow: `FormatTableModel` → `GraphLayoutService.layoutGraph()` dispatches to format-specific builder → `GraphBuildResult` → `layoutNodes()` → `GraphModel` → `GraphCanvas`
 - `GraphModel.nodeById` provides a lazy `Map<String, GraphNode>` — use it instead of `nodes.find`/`nodes.associateBy`
 - File paths are resolved relative to the metadata directory using `resolveForceRelative()`
 - Workspace serialization uses a simple `W|path` / `T|path` format joined by `;`
@@ -130,7 +129,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew test --tests "*.IcebergPathsTest"   # Specific test class
 ```
 
-160+ tests across 17 files. `AppState` fully unit-tested (workspace mgmt, persistence, status tracking, fingerprinting). Gaps: no tests for `IcebergReader`, `UnifiedModel`, or end-to-end integration.
+270+ tests across 23 files covering full pipelines for both formats, error recovery, layout post-processing, AppState lifecycle, and SampleRowReader with real Parquet files.
 
 ## Supported table formats
 
@@ -146,13 +145,23 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 - Key differences from Iceberg: manifest lists split into base (accumulated) and delta (new changes); LSM tree levels on data files; commitKind (APPEND/COMPACT/OVERWRITE/ANALYZE)
 
 ### Extending for new table formats
-- Add new `GraphNode` subtypes to `GraphTypes.kt`
-- Create reader (reuse `AvroReader.readAvro<T>()` for Avro files)
-- Create unified model (`*UnifiedModel.kt`) and graph builder (`*GraphBuilder.kt`)
-- Add format detection to `TableFormatDetector`
-- Add node rendering to `NodeComponents.kt` and `NodeDetails.kt`
-- Add post-processing cases to `GraphLayoutService` (ordering, alignment, overlap prevention)
-- Update `App.kt` to handle the new format in layout calls
+All format-specific models implement the `FormatTableModel` sealed interface.
+The `sealed` keyword ensures the compiler flags every `when` that needs a new case.
+
+1. Add enum value to `TableFormat` and detection to `TableFormatDetector`
+2. Create `@Serializable` schema data classes (e.g., `DeltaSchema.kt`)
+3. Create reader (reuse `AvroReader.readAvro<T>()` for Avro files)
+4. Create unified model implementing `FormatTableModel` (`*UnifiedModel.kt`)
+5. Create graph builder returning `GraphBuildResult` (`*GraphBuilder.kt`)
+6. Add `when` case in `GraphLayoutService.layoutGraph()` (single dispatch point)
+7. Add `when` case in `AppState.loadTableModel()` (single dispatch point)
+8. Add `GraphNode` subtypes to `GraphTypes.kt`
+9. Add node rendering to `NodeComponents.kt` and `NodeDetails.kt`
+10. Add post-processing comparators to `GraphLayoutService.enforceChronologicalVerticalOrder()`
+11. Add alignment/overlap layers to `alignParentsWithChildren()` / `preventOverlaps()`
+12. Add format badge to `Sidebar.kt`
+
+Steps 1-7 are clean single-point changes. Steps 8-12 require adding `when` cases (compiler-enforced via sealed types).
 
 ## Related documentation
 

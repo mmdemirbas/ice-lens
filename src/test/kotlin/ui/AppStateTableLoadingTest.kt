@@ -150,8 +150,7 @@ class AppStateTableLoadingTest {
         val cacheKey = "$tablePath-rows_${state.showRows}"
         val session = state.sessionCache[cacheKey]
         assertNotNull(session)
-        assertNotNull(session.paimonTable, "Should have Paimon table model")
-        assertNull(session.table, "Should NOT have Iceberg table model")
+        assertIs<PaimonUnifiedTableModel>(session.tableModel, "Should have Paimon table model")
     }
 
     // ═══════════════════════════════════════════════════════════════

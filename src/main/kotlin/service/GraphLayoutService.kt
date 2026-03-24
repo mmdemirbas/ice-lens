@@ -36,32 +36,20 @@ object GraphLayoutService {
     const val MAX_PARQUET_SAMPLE_ROWS = 50
 
     /**
-     * Builds and lays out a graph for the given Iceberg table model.
-     * Delegates graph construction to [IcebergGraphBuilder], then runs ELK layout
-     * and post-processing.
+     * Builds and lays out a graph for any table format model.
+     * Dispatches to the appropriate format-specific graph builder,
+     * then runs shared ELK layout and post-processing.
      */
     fun layoutGraph(
-        tableModel: UnifiedTableModel,
+        tableModel: FormatTableModel,
         showRows: Boolean,
     ): GraphModel {
-        logger.debug("Building Iceberg graph for: {}", tableModel.name)
-        val buildResult = IcebergGraphBuilder.buildGraph(tableModel, showRows)
-        logger.debug("Iceberg graph built: {} nodes, {} edges", buildResult.nodes.size, buildResult.edges.size)
-        return layoutNodes(buildResult.nodes, buildResult.edges)
-    }
-
-    /**
-     * Builds and lays out a graph for the given Paimon table model.
-     * Delegates graph construction to [PaimonGraphBuilder], then runs ELK layout
-     * and post-processing.
-     */
-    fun layoutPaimonGraph(
-        tableModel: PaimonUnifiedTableModel,
-        showRows: Boolean,
-    ): GraphModel {
-        logger.debug("Building Paimon graph for: {}", tableModel.name)
-        val buildResult = PaimonGraphBuilder.buildGraph(tableModel, showRows)
-        logger.debug("Paimon graph built: {} nodes, {} edges", buildResult.nodes.size, buildResult.edges.size)
+        logger.debug("Building {} graph for: {}", tableModel.format, tableModel.name)
+        val buildResult = when (tableModel) {
+            is UnifiedTableModel -> IcebergGraphBuilder.buildGraph(tableModel, showRows)
+            is PaimonUnifiedTableModel -> PaimonGraphBuilder.buildGraph(tableModel, showRows)
+        }
+        logger.debug("{} graph built: {} nodes, {} edges", tableModel.format, buildResult.nodes.size, buildResult.edges.size)
         return layoutNodes(buildResult.nodes, buildResult.edges)
     }
 
