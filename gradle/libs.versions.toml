@@ -24,6 +24,7 @@ material-icons-extended = { module = "org.jetbrains.compose.material:material-ic
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization-json" }
 avro4k-core = { module = "com.github.avro-kotlin.avro4k:avro4k-core", version.ref = "avro4k" }
 avro = { module = "org.apache.avro:avro", version.ref = "avro" }
+zstd-jni = { module = "com.github.luben:zstd-jni", version = "1.5.6-9" }
 elk-core = { module = "org.eclipse.elk:org.eclipse.elk.core", version.ref = "elk" }
 elk-layered = { module = "org.eclipse.elk:org.eclipse.elk.alg.layered", version.ref = "elk" }
 xtext-xbase-lib = { module = "org.eclipse.xtext:org.eclipse.xtext.xbase.lib", version.ref = "xtext" }

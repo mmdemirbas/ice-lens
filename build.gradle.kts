@@ -26,6 +26,7 @@ dependencies {
     implementation(libs.serialization.json)
     implementation(libs.avro4k.core)
     implementation(libs.avro)
+    implementation(libs.zstd.jni)  // Zstandard codec for Avro files (used by Paimon)
 
     // Graph Layout Engine (ELK)
     implementation(libs.elk.core)
