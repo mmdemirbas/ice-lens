@@ -274,8 +274,12 @@ private fun getNodeLabel(node: GraphNode): String {
         is GraphNode.FileNode     -> "File ${node.simpleId}: ${
             node.data.filePath?.substringAfterLast("/")
         }"
-
         is GraphNode.RowNode      -> "Row: ${node.resolvedData.values.firstOrNull() ?: "..."}"
         is GraphNode.ErrorNode    -> "Error: ${node.title}"
+        is GraphNode.PaimonSnapshotNode -> "PSnap ${node.simpleId}: ${node.data.commitKind ?: ""}"
+        is GraphNode.PaimonSchemaNode -> "PSchema ${node.simpleId}"
+        is GraphNode.PaimonManifestListNode -> "PManifestList: ${node.kind}"
+        is GraphNode.PaimonManifestNode -> "PManifest ${node.simpleId}"
+        is GraphNode.PaimonDataFileNode -> "PFile ${node.simpleId}: ${node.entry.file?.fileName?.substringAfterLast("/") ?: ""}"
     }
 }

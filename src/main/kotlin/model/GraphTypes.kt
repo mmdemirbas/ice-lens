@@ -158,6 +158,62 @@ sealed class GraphNode(
         val resolvedData: Map<String, Any> by lazy { dataLoader?.invoke() ?: data }
     }
 
+    // --- Paimon node types ---
+
+    /** Paimon snapshot node. */
+    data class PaimonSnapshotNode(
+        override val id: String,
+        val data: PaimonSnapshot,
+        val simpleId: Int,
+        val commitKind: String? = null,
+        val localPath: String? = null,
+        val initialX: Double = 0.0,
+        val initialY: Double = 0.0,
+    ) : GraphNode(id, initialX, initialY, 210.0, 84.0)
+
+    /** Paimon schema node. */
+    data class PaimonSchemaNode(
+        override val id: String,
+        val data: PaimonSchema,
+        val simpleId: Int,
+        val localPath: String? = null,
+        val initialX: Double = 0.0,
+        val initialY: Double = 0.0,
+    ) : GraphNode(id, initialX, initialY, 220.0, 80.0)
+
+    /** Paimon manifest list node (base, delta, or changelog). */
+    data class PaimonManifestListNode(
+        override val id: String,
+        val kind: String,                  // "base", "delta", "changelog"
+        val simpleId: Int,
+        val localPath: String? = null,
+        val initialX: Double = 0.0,
+        val initialY: Double = 0.0,
+    ) : GraphNode(id, initialX, initialY, 220.0, 80.0)
+
+    /** Paimon manifest node (references a single manifest file within a manifest list). */
+    data class PaimonManifestNode(
+        override val id: String,
+        val data: PaimonManifestFileMeta,
+        val simpleId: Int,
+        val localPath: String? = null,
+        val initialX: Double = 0.0,
+        val initialY: Double = 0.0,
+    ) : GraphNode(id, initialX, initialY, 200.0, 80.0)
+
+    /** Paimon data file node. */
+    data class PaimonDataFileNode(
+        override val id: String,
+        val entry: PaimonManifestEntry,
+        val simpleId: Int,
+        val bucket: Int? = null,
+        val level: Int? = null,
+        val operationKind: Int? = null,     // 0=ADD, 1=DELETE
+        val localPath: String? = null,
+        val initialX: Double = 0.0,
+        val initialY: Double = 0.0,
+    ) : GraphNode(id, initialX, initialY, 200.0, 60.0)
+
     data class ErrorNode(
         override val id: String,
         val title: String,

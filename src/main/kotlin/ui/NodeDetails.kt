@@ -55,6 +55,11 @@ private fun nodeTitle(node: GraphNode): String = when (node) {
         else -> "DATA ROW"
     }
     is GraphNode.ErrorNode -> "ERROR ${node.title}"
+    is GraphNode.PaimonSnapshotNode -> "PAIMON SNAPSHOT ${node.simpleId}"
+    is GraphNode.PaimonSchemaNode -> "PAIMON SCHEMA ${node.simpleId}"
+    is GraphNode.PaimonManifestListNode -> "PAIMON ${node.kind.uppercase()} MANIFEST LIST"
+    is GraphNode.PaimonManifestNode -> "PAIMON MANIFEST ${node.simpleId}"
+    is GraphNode.PaimonDataFileNode -> "PAIMON FILE ${node.simpleId}"
 }
 
 private fun normalizeText(value: String?): String {
@@ -409,6 +414,11 @@ private fun inspectorOpenPath(node: GraphNode): String? = when (node) {
     is GraphNode.FileNode -> node.localPath
     is GraphNode.RowNode -> node.resolvedData["local_file_path"]?.toString()
     is GraphNode.ErrorNode -> node.path
+    is GraphNode.PaimonSnapshotNode -> node.localPath
+    is GraphNode.PaimonSchemaNode -> node.localPath
+    is GraphNode.PaimonManifestListNode -> node.localPath
+    is GraphNode.PaimonManifestNode -> node.localPath
+    is GraphNode.PaimonDataFileNode -> node.localPath
 }
 
 @Composable
@@ -1210,6 +1220,88 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp
                             )
+                        }
+                    }
+                    is GraphNode.PaimonSnapshotNode -> {
+                        DetailTable {
+                            DetailRow("Property", "Value", isHeader = true)
+                            DetailRow("Snapshot ID", "${node.data.id ?: "N/A"}")
+                            DetailRow("Version", "${node.data.version ?: "N/A"}")
+                            DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
+                            DetailRow("Commit Kind", node.commitKind ?: "N/A")
+                            DetailRow("Commit User", node.data.commitUser ?: "N/A", copyable = true)
+                            DetailRow("Commit Identifier", "${node.data.commitIdentifier ?: "N/A"}")
+                            DetailRow("Timestamp", ui.formatTimestamp(node.data.timeMillis))
+                            DetailRow("Total Records", "${node.data.totalRecordCount ?: "N/A"}")
+                            DetailRow("Delta Records", "${node.data.deltaRecordCount ?: "N/A"}")
+                            DetailRow("Changelog Records", "${node.data.changelogRecordCount ?: "N/A"}")
+                            DetailRow("Watermark", "${node.data.watermark ?: "N/A"}")
+                            DetailRow("Base Manifest List", node.data.baseManifestList ?: "N/A", copyable = true)
+                            DetailRow("Delta Manifest List", node.data.deltaManifestList ?: "N/A", copyable = true)
+                            DetailRow("Changelog Manifest List", node.data.changelogManifestList ?: "N/A", copyable = true)
+                            DetailRow("Index Manifest", node.data.indexManifest ?: "N/A", copyable = true)
+                        }
+                    }
+                    is GraphNode.PaimonSchemaNode -> {
+                        DetailTable {
+                            DetailRow("Property", "Value", isHeader = true)
+                            DetailRow("Schema ID", "${node.data.id ?: "N/A"}")
+                            DetailRow("Highest Field ID", "${node.data.highestFieldId ?: "N/A"}")
+                            DetailRow("Partition Keys", node.data.partitionKeys.joinToString(", ").ifEmpty { "N/A" })
+                            DetailRow("Primary Keys", node.data.primaryKeys.joinToString(", ").ifEmpty { "N/A" })
+                            DetailRow("Comment", node.data.comment ?: "N/A")
+                        }
+                        if (node.data.fields.isNotEmpty()) {
+                            Spacer(Modifier.height(12.dp))
+                            SectionTitle("Fields")
+                            DetailTable {
+                                DetailRow("Name", "Type", isHeader = true)
+                                node.data.fields.forEach { field ->
+                                    DetailRow(field.name ?: "?", field.type ?: "?")
+                                }
+                            }
+                        }
+                        if (node.data.options.isNotEmpty()) {
+                            Spacer(Modifier.height(12.dp))
+                            SectionTitle("Options")
+                            DetailTable {
+                                DetailRow("Key", "Value", isHeader = true)
+                                node.data.options.forEach { (k, v) -> DetailRow(k, v) }
+                            }
+                        }
+                    }
+                    is GraphNode.PaimonManifestListNode -> {
+                        DetailTable {
+                            DetailRow("Property", "Value", isHeader = true)
+                            DetailRow("Kind", node.kind)
+                            DetailRow("Path", node.localPath ?: "N/A", copyable = true)
+                        }
+                    }
+                    is GraphNode.PaimonManifestNode -> {
+                        DetailTable {
+                            DetailRow("Property", "Value", isHeader = true)
+                            DetailRow("File Name", node.data.fileName ?: "N/A", copyable = true)
+                            DetailRow("File Size", "${node.data.fileSize ?: "N/A"}")
+                            DetailRow("Added Files", "${node.data.numAddedFiles ?: "N/A"}")
+                            DetailRow("Deleted Files", "${node.data.numDeletedFiles ?: "N/A"}")
+                            DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
+                        }
+                    }
+                    is GraphNode.PaimonDataFileNode -> {
+                        val file = node.entry.file
+                        DetailTable {
+                            DetailRow("Property", "Value", isHeader = true)
+                            DetailRow("File Name", file?.fileName ?: "N/A", copyable = true)
+                            DetailRow("Kind", if (node.operationKind == 1) "DELETE" else "ADD")
+                            DetailRow("Bucket", "${node.bucket ?: "N/A"}")
+                            DetailRow("Total Buckets", "${node.entry.totalBuckets ?: "N/A"}")
+                            DetailRow("LSM Level", "${node.level ?: "N/A"}")
+                            DetailRow("File Size", "${file?.fileSize ?: "N/A"}")
+                            DetailRow("Row Count", "${file?.rowCount ?: "N/A"}")
+                            DetailRow("Schema ID", "${file?.schemaId ?: "N/A"}")
+                            DetailRow("Min Seq", "${file?.minSequenceNumber ?: "N/A"}")
+                            DetailRow("Max Seq", "${file?.maxSequenceNumber ?: "N/A"}")
+                            DetailRow("Creation Time", ui.formatTimestamp(file?.creationTime))
                         }
                     }
                 }

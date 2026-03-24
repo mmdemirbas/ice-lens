@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Apache Paimon table format support (data model, reader, unified model, graph types, graph builder)
+- `PaimonSchema.kt` — `@Serializable` data classes for Paimon snapshots, schemas, manifest lists, and manifest entries
+- `PaimonReader.kt` — reads Paimon snapshot/schema JSON and manifest list/manifest Avro files
+- `PaimonUnifiedModel.kt` — aggregated Paimon table model linking snapshots, schemas, manifests, and data files
+- `PaimonGraphBuilder.kt` — builds graph nodes and edges from a Paimon unified table model
+- Paimon graph node types: `PaimonSnapshotNode`, `PaimonSchemaNode`, `PaimonManifestListNode`, `PaimonManifestNode`, `PaimonDataFileNode`
+- `AvroReader.kt` — shared Avro file reader extracted from `IcebergReader`, reused by both Iceberg and Paimon readers
+- Paimon node rendering (cards, tooltips, colors, inspector panels) in `NodeComponents.kt` and `NodeDetails.kt`
 - `IcebergGraphBuilder` — extracted Iceberg-specific graph construction from `GraphLayoutService` into a dedicated builder
 - `TableFormatDetector` — directory-based table format detection (Iceberg detection, extensible for Paimon)
 - `GraphLayoutService.layoutNodes()` — public API accepting pre-built nodes/edges for format-agnostic layout

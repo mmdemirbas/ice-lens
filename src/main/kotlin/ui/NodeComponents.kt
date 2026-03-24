@@ -122,6 +122,20 @@ fun getGraphNodeColor(node: GraphNode, dark: Boolean = false): Color = when (nod
         else -> if (dark) Color(0xFF1E3D20) else Color(0xFFC8E6C9)
     }
     is GraphNode.ErrorNode    -> if (dark) Color(0xFF4A1010) else Color(0xFFFFEBEE)
+    // Paimon node colors
+    is GraphNode.PaimonSnapshotNode -> if (dark) Color(0xFF1A3A5C) else Color(0xFFBBDEFB)
+    is GraphNode.PaimonSchemaNode -> if (dark) Color(0xFF4A2858) else Color(0xFFE1BEE7)
+    is GraphNode.PaimonManifestListNode -> when (node.kind) {
+        "base" -> if (dark) Color(0xFF3D3D3D) else Color(0xFFE0E0E0)
+        "delta" -> if (dark) Color(0xFF1A3A5C) else Color(0xFFBBDEFB)
+        "changelog" -> if (dark) Color(0xFF4A4020) else Color(0xFFFFF59D)
+        else -> if (dark) Color(0xFF3D3D3D) else Color(0xFFE0E0E0)
+    }
+    is GraphNode.PaimonManifestNode -> if (dark) Color(0xFF1E3D20) else Color(0xFFC8E6C9)
+    is GraphNode.PaimonDataFileNode -> when (node.operationKind) {
+        1    -> if (dark) Color(0xFF5C2020) else Color(0xFFFFCDD2)  // DELETE
+        else -> if (dark) Color(0xFF1E3D20) else Color(0xFFC8E6C9)  // ADD
+    }
 }
 
 fun getGraphNodeBorderColor(node: GraphNode, dark: Boolean = false): Color = when (node) {
@@ -146,6 +160,20 @@ fun getGraphNodeBorderColor(node: GraphNode, dark: Boolean = false): Color = whe
         else -> if (dark) Color(0xFF81C784) else Color(0xFF388E3C)
     }
     is GraphNode.ErrorNode    -> if (dark) Color(0xFFEF5350) else Color(0xFFB71C1C)
+    // Paimon node border colors
+    is GraphNode.PaimonSnapshotNode -> if (dark) Color(0xFF64B5F6) else Color(0xFF1976D2)
+    is GraphNode.PaimonSchemaNode -> if (dark) Color(0xFFCE93D8) else Color(0xFF8E24AA)
+    is GraphNode.PaimonManifestListNode -> when (node.kind) {
+        "base" -> if (dark) Color(0xFF9E9E9E) else Color(0xFF616161)
+        "delta" -> if (dark) Color(0xFF64B5F6) else Color(0xFF1976D2)
+        "changelog" -> if (dark) Color(0xFFE6C56A) else Color(0xFFB26A00)
+        else -> if (dark) Color(0xFF9E9E9E) else Color(0xFF616161)
+    }
+    is GraphNode.PaimonManifestNode -> if (dark) Color(0xFF81C784) else Color(0xFF388E3C)
+    is GraphNode.PaimonDataFileNode -> when (node.operationKind) {
+        1    -> if (dark) Color(0xFFEF9A9A) else Color(0xFFD32F2F)  // DELETE
+        else -> if (dark) Color(0xFF81C784) else Color(0xFF388E3C)  // ADD
+    }
 }
 
 private val timestampFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
@@ -264,6 +292,11 @@ fun NodeTooltip(node: GraphNode) {
             is GraphNode.FileNode -> "FILE ${node.simpleId}: ${fileContentLabel(node.data.content)}"
             is GraphNode.RowNode -> rowContentLabel(node.content)
             is GraphNode.ErrorNode -> "ERROR"
+            is GraphNode.PaimonSnapshotNode -> "PAIMON SNAPSHOT ${node.simpleId}"
+            is GraphNode.PaimonSchemaNode -> "PAIMON SCHEMA ${node.simpleId}"
+            is GraphNode.PaimonManifestListNode -> "PAIMON ${node.kind.uppercase()} MANIFEST LIST"
+            is GraphNode.PaimonManifestNode -> "PAIMON MANIFEST ${node.simpleId}"
+            is GraphNode.PaimonDataFileNode -> "PAIMON FILE ${node.simpleId}"
         }
         
         Text(
@@ -326,6 +359,31 @@ fun NodeTooltip(node: GraphNode) {
                     if (!node.stackTrace.isNullOrBlank()) {
                         DetailRow("Stack Trace", node.stackTrace, isDark = true)
                     }
+                }
+                is GraphNode.PaimonSnapshotNode -> {
+                    DetailRow("Snapshot ID", "${node.data.id ?: "N/A"}", isDark = true)
+                    DetailRow("Commit Kind", node.commitKind ?: "N/A", isDark = true)
+                    DetailRow("Timestamp", formatTimestamp(node.data.timeMillis), isDark = true)
+                    DetailRow("Records", formatCount(node.data.totalRecordCount), isDark = true)
+                }
+                is GraphNode.PaimonSchemaNode -> {
+                    DetailRow("Schema ID", "${node.data.id ?: "N/A"}", isDark = true)
+                    DetailRow("Fields", "${node.data.fields.size}", isDark = true)
+                    DetailRow("Primary Keys", node.data.primaryKeys.joinToString(", ").ifEmpty { "N/A" }, isDark = true)
+                }
+                is GraphNode.PaimonManifestListNode -> {
+                    DetailRow("Kind", node.kind, isDark = true)
+                }
+                is GraphNode.PaimonManifestNode -> {
+                    DetailRow("File", node.data.fileName ?: "N/A", isDark = true)
+                    DetailRow("Added", "${node.data.numAddedFiles ?: 0} files", isDark = true)
+                    DetailRow("Deleted", "${node.data.numDeletedFiles ?: 0} files", isDark = true)
+                }
+                is GraphNode.PaimonDataFileNode -> {
+                    DetailRow("File", node.entry.file?.fileName ?: "N/A", isDark = true)
+                    DetailRow("Rows", formatCount(node.entry.file?.rowCount), isDark = true)
+                    DetailRow("Level", "${node.level ?: "N/A"}", isDark = true)
+                    DetailRow("Kind", if (node.operationKind == 1) "DELETE" else "ADD", isDark = true)
                 }
             }
         }
@@ -528,6 +586,59 @@ fun ErrorCard(node: GraphNode.ErrorNode, isSelected: Boolean = false) {
             Text("Stage: ${node.stage}", fontSize = 9.sp, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(node.path, fontSize = 9.sp, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(node.message, fontSize = 10.sp, color = nodeCardTextPrimary(), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** Generic card for all Paimon node types. */
+@Composable
+fun PaimonNodeCard(node: GraphNode, isSelected: Boolean = false) {
+    val selectionBorderColor = selectionHighlightColor()
+    val dark = isDarkSurface(MaterialTheme.colorScheme.surface)
+    val borderWidth = if (isSelected) 5.dp else 2.dp
+    val borderColor = if (isSelected) selectionBorderColor else getGraphNodeBorderColor(node, dark)
+    Box(
+        modifier = Modifier
+            .size(node.width.dp, node.height.dp)
+            .background(getGraphNodeColor(node, dark), RoundedCornerShape(8.dp))
+            .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(8.dp))
+            .padding(6.dp)
+    ) {
+        Column {
+            when (node) {
+                is GraphNode.PaimonSnapshotNode -> {
+                    Text("PAIMON SNAP ${node.simpleId}", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+                    Text(node.commitKind ?: "N/A", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary())
+                    Text("ID: ${node.data.id ?: "?"}", fontSize = 10.sp, color = nodeCardTextPrimary())
+                    Text("Records: ${node.data.totalRecordCount ?: "?"}", fontSize = 10.sp, color = nodeCardTextSecondary())
+                }
+                is GraphNode.PaimonSchemaNode -> {
+                    Text("PAIMON SCHEMA ${node.simpleId}", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+                    Text("${node.data.fields.size} fields", fontSize = 11.sp, color = nodeCardTextPrimary())
+                    val keys = node.data.primaryKeys.joinToString(", ")
+                    if (keys.isNotEmpty()) Text("PK: $keys", fontSize = 10.sp, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                is GraphNode.PaimonManifestListNode -> {
+                    Text("PAIMON ${node.kind.uppercase()}", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+                    Text("Manifest List", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary())
+                }
+                is GraphNode.PaimonManifestNode -> {
+                    Text("PAIMON MANIFEST ${node.simpleId}", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+                    Text(node.data.fileName ?: "N/A", fontSize = 9.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
+                    Text("+${node.data.numAddedFiles ?: 0} / -${node.data.numDeletedFiles ?: 0}", fontSize = 10.sp, color = nodeCardTextSecondary())
+                }
+                is GraphNode.PaimonDataFileNode -> {
+                    val kindLabel = if (node.operationKind == 1) "DEL" else "ADD"
+                    Text("PFILE ${node.simpleId}: $kindLabel", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+                    Text(node.entry.file?.fileName ?: "N/A", fontSize = 8.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
+                    val level = node.level
+                    val rows = node.entry.file?.rowCount
+                    Text("${rows ?: "?"} rows" + if (level != null) " L$level" else "", fontSize = 10.sp, color = nodeCardTextPrimary())
+                }
+                else -> {
+                    Text(node.id, fontSize = 10.sp, color = nodeCardTextPrimary())
+                }
+            }
         }
     }
 }
