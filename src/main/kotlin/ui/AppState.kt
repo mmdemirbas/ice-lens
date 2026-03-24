@@ -94,7 +94,7 @@ class AppState(
     // ═══════════════════════════════════════════════════════════════
 
     val sessionCache = ConcurrentHashMap<String, TableSession>()
-    private var loadRequestId = 0L
+    @Volatile private var loadRequestId = 0L
 
     // ═══════════════════════════════════════════════════════════════
     //  Derived State

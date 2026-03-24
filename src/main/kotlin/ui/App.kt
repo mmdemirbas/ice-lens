@@ -1023,15 +1023,13 @@ fun App() {
         }
     }
 
-    LaunchedEffect(state.workspaceItems) {
-        state.refreshWarehouseTables()
-    }
-
     LaunchedEffect(Unit) {
         val restoredTablePath = state.selectedTablePath
         if (restoredTablePath != null && state.graphModel == null && !state.isLoadingTable) {
             state.loadTable(tablePath = restoredTablePath, withRows = state.showRows)
         }
+        // Single periodic refresh for workspace table status.
+        // Also covers changes from addWorkspaceRoot/removeWorkspaceRoot within one polling interval.
         while (isActive) {
             state.refreshWarehouseTables()
             delay(FILESYSTEM_POLL_INTERVAL_MS)

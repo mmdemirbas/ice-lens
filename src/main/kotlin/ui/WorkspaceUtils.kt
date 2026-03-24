@@ -2,9 +2,12 @@ package ui
 
 import model.WorkspaceItem
 import model.WorkspaceTableStatus
+import org.slf4j.LoggerFactory
 import service.TableFormat
 import service.TableFormatDetector
 import java.io.File
+
+private val logger = LoggerFactory.getLogger("ui.WorkspaceUtils")
 
 fun isTableDirectory(dir: File): Boolean = TableFormatDetector.detect(dir) != TableFormat.UNKNOWN
 
@@ -21,8 +24,17 @@ fun scanForTables(warehouseDir: File, maxDepth: Int = 50): List<String> {
     var directoriesScanned = 0
     val maxDirectories = 10_000
 
+    var limitReached = false
+
     fun walk(dir: File, relativePath: String, depth: Int) {
-        if (depth > maxDepth || directoriesScanned >= maxDirectories) return
+        if (depth > maxDepth) return
+        if (directoriesScanned >= maxDirectories) {
+            if (!limitReached) {
+                limitReached = true
+                logger.warn("Directory scan limit ({}) reached in {}; some tables may not be discovered", maxDirectories, warehouseDir)
+            }
+            return
+        }
         val canonical = runCatching { dir.canonicalPath }.getOrElse { dir.absolutePath }
         if (!visited.add(canonical)) return
         directoriesScanned++

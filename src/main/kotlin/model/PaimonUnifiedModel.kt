@@ -177,6 +177,7 @@ private fun readManifestList(
         manifestDir.resolve(manifestListPath)
     } else {
         // Fallback: resolve directly from table root (for non-standard layouts)
+        logger.debug("Manifest list not in manifest/ subdir, falling back to table root: {}", manifestListPath)
         tablePath.resolve(manifestListPath)
     }
     val result = runCatching { PaimonReader.readManifestList(resolvedPath.toString()) }
@@ -244,6 +245,7 @@ private fun resolveDataFilePath(tablePath: Path, entry: PaimonManifestEntry): Pa
         val candidate = bucketDir.resolve(fileName)
         if (Files.exists(candidate)) return candidate
     }
-    // Fall back: search common locations or just resolve from table root
+    // Fall back: resolve from table root
+    logger.debug("Data file not found in bucket-{}, falling back to table root: {}", bucket, fileName)
     return tablePath.resolve(fileName)
 }

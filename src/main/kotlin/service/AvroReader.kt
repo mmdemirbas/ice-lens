@@ -16,6 +16,7 @@ import java.net.URI
 object AvroReader {
 
     @PublishedApi internal val logger = LoggerFactory.getLogger(AvroReader::class.java)
+    @PublishedApi internal val URI_SCHEME_PATTERN = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:.*")
 
     /** Result of reading an Avro file: successfully decoded entries plus per-record errors. */
     data class ReadResult<T>(
@@ -36,7 +37,7 @@ object AvroReader {
         logger.debug("Reading Avro file: {} (type={})", localPath, T::class.simpleName)
         val file = when {
             localPath.startsWith("file:") -> File(URI(localPath))
-            localPath.matches(Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:.*")) -> {
+            localPath.matches(URI_SCHEME_PATTERN) -> {
                 logger.error("Unsupported URI scheme in Avro path: {}", localPath)
                 throw IllegalArgumentException("Unsupported URI scheme in path: $localPath")
             }
