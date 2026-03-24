@@ -22,16 +22,17 @@ Read-only desktop UI to inspect Apache Iceberg table structure from local filesy
 ## Features
 
 - Interactive graph visualization of Iceberg table structure (metadata, snapshots, manifests, data files, delete files, sample rows)
-- Inspector panel with detailed node info, parent/child navigation, and JSON highlighting
+- Inspector panel with detailed node info, parent/child navigation, JSON highlighting, and copy-to-clipboard buttons
 - Schema evolution view -- diffs between schema versions (added/dropped/renamed columns, type changes)
 - Table properties inspector -- property changes tracked across metadata versions
 - Snapshot filtering -- select snapshots to isolate their subgraph
 - Workspace tree for multiple warehouses and tables
 - Movable, dockable tool window panels (left/right/top/bottom)
 - Dark mode with theme-aware node colors
-- Undo for node dragging (Ctrl/Cmd+Z)
+- Keyboard shortcuts for zoom, fit, re-layout, and undo
 - Auto-reload from filesystem
 - In-app cheat sheet (About > Cheat Sheet)
+- Viewport culling for large graph performance
 
 ## Quick start
 
@@ -90,6 +91,11 @@ Prebuilt installers are available on [GitHub Releases](https://github.com/mmdemi
 
 | Shortcut | Action |
 |---|---|
+| Ctrl/Cmd + = / + | Zoom in |
+| Ctrl/Cmd + - | Zoom out |
+| Ctrl/Cmd + 0 | Reset zoom to 100% |
+| Ctrl/Cmd + Shift + F | Fit graph to view |
+| Ctrl/Cmd + L | Re-apply layout |
 | Ctrl/Cmd + Z | Undo node drag |
 | Ctrl/Cmd + Scroll | Zoom at cursor |
 | Scroll | Pan canvas |

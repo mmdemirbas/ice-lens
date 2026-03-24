@@ -26,7 +26,11 @@ cd ice-lens
 
 ## Project structure
 
-See [CLAUDE.md](CLAUDE.md) for a detailed architecture overview, key conventions, and known quirks.
+See [CLAUDE.md](CLAUDE.md) for a detailed architecture overview, key conventions, and known quirks. Key architecture docs:
+
+- [CLAUDE.md](CLAUDE.md) -- file-level architecture, conventions, extension guide
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) -- layer diagram, data flow, threading model
+- [CHANGELOG.md](CHANGELOG.md) -- version history
 
 ## Making changes
 

@@ -10,13 +10,13 @@
 
 ## Code quality
 
-- **Split `App.kt` further** — currently ~1400 lines. Extract: `Toolbar` composable (~250 lines), `AboutDialog` composable (~100 lines), `AppState` state holder class (consolidate ~30 state vars and ~10 inner functions).
+- **Split `App.kt` further** — currently ~1500 lines. Extract: `Toolbar` composable (~250 lines), `AppState` state holder class (consolidate ~30 state vars and ~10 inner functions). `AboutDialog` has already been extracted.
 
 ---
 
 ## Performance
 
-- **Profile Compose rendering for large graphs** — ELK layout is fast (benchmarked up to 4000 nodes at ~1.3s). Compose rendering at scale (thousands of visible nodes simultaneously) has not been measured. Consider level-of-detail rendering or node virtualization if it becomes a bottleneck.
+- **Profile Compose rendering for large graphs** — ELK layout is fast (benchmarked up to 4000 nodes at ~1.3s). Viewport culling is in place but Compose rendering at scale (thousands of visible nodes simultaneously) has not been measured. Consider level-of-detail rendering or node virtualization if it becomes a bottleneck.
 
 ---
 
@@ -24,15 +24,9 @@
 
 - **App icon** — no custom icon; installers use the default Java icon. Need `.icns`/`.ico`/`.png` assets and `nativeDistributions { iconFile.set(...) }` in build.gradle.kts.
 
-- **Keyboard shortcuts** — add shortcuts for: zoom in/out (Ctrl+=/Ctrl+-), reset zoom (Ctrl+0), fit graph (Ctrl+Shift+F), re-layout (Ctrl+L), toggle panels.
-
 - **Typography consistency** — 8 different font sizes used ad-hoc. Define a scale (e.g. 10, 12, 14, 16sp) and apply uniformly. FileNode/RowNode cards at 8-9sp are too small at default zoom.
 
 - **Collapsible inspector sections** — TableNode inspector has 8+ sections stacked vertically. Add expand/collapse chevrons per section.
-
-- **Tooltips on truncated text** — truncated file paths and node names need full-text tooltips on hover.
-
-- **Copy to clipboard** — add copy buttons next to file paths, UUIDs, and other key values in the inspector.
 
 - **Pan/Select mode clarity** — tooltips should explain behavior, not just name (e.g. "Drag to scroll the canvas" vs "Drag to marquee-select nodes").
 
@@ -63,6 +57,8 @@
 - **Crash reporting** — uncaught exception handler that writes to a log file and shows "Copy error details" dialog.
 
 - **Telemetry (opt-in)** — anonymous usage analytics to inform feature prioritization.
+
+- **Apache Paimon support** — second table format. Architecture is prepared: `IcebergGraphBuilder` extracted, `TableFormatDetector` in place, `GraphLayoutService.layoutNodes()` is format-agnostic.
 
 ---
 
