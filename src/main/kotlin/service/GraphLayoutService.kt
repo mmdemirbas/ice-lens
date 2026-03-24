@@ -366,6 +366,13 @@ object GraphLayoutService {
                 rowNode.y = currentY
             }
         }
+
+        // Paimon: order row nodes by ID within each data file parent
+        nodesById.values.filterIsInstance<GraphNode.PaimonDataFileNode>().forEach { parent ->
+            val rows = childrenByParent[parent.id].orEmpty()
+                .mapNotNull { nodesById[it] as? GraphNode.RowNode }
+            reorder(rows, rowComparator, minGap = 24.0)
+        }
     }
 
     private fun alignParentsWithChildren(
