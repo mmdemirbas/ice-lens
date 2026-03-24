@@ -76,11 +76,16 @@ fun PaimonUnifiedTableModel(tablePath: Path): PaimonUnifiedTableModel {
 
     val totalManifests = snapshots.sumOf { it.baseManifests.size + it.deltaManifests.size + it.changelogManifests.size }
     val totalDataFiles = snapshots.sumOf { s -> (s.baseManifests + s.deltaManifests + s.changelogManifests).sumOf { it.entries.size } }
+    val allSnapshotErrors = snapshots.flatMap { it.readErrors }
+    val allManifestErrors = snapshots.flatMap { s -> (s.baseManifests + s.deltaManifests + s.changelogManifests).flatMap { it.readErrors } }
+    val totalErrors = errors.size + allSnapshotErrors.size + allManifestErrors.size
     logger.info("  Paimon table loaded: {} snapshots, {} manifests, {} data files, {} errors",
-        snapshots.size, totalManifests, totalDataFiles, errors.size)
+        snapshots.size, totalManifests, totalDataFiles, totalErrors)
     if (errors.isNotEmpty()) {
         errors.forEach { err -> logger.warn("  Read error [{}] {}: {}", err.stage, err.path, err.message) }
     }
+    allSnapshotErrors.forEach { err -> logger.warn("  Snapshot read error [{}] {}: {}", err.stage, err.path, err.message) }
+    allManifestErrors.forEach { err -> logger.warn("  Manifest read error [{}] {}: {}", err.stage, err.path, err.message) }
 
     return PaimonUnifiedTableModel(
         path = tablePath,
@@ -163,7 +168,15 @@ private fun readManifestList(
 ): List<PaimonUnifiedManifest> {
     if (manifestListPath.isNullOrBlank()) return emptyList()
 
-    val resolvedPath = tablePath.resolve(manifestListPath)
+    // Paimon stores manifest lists in the manifest/ subdirectory.
+    // Snapshot JSON contains just the filename — resolve under manifest/.
+    val manifestDir = tablePath.resolve("manifest")
+    val resolvedPath = if (manifestDir.resolve(manifestListPath).toFile().exists()) {
+        manifestDir.resolve(manifestListPath)
+    } else {
+        // Fallback: resolve directly from table root (for non-standard layouts)
+        tablePath.resolve(manifestListPath)
+    }
     val result = runCatching { PaimonReader.readManifestList(resolvedPath.toString()) }
         .getOrElse { e ->
             errors += UnifiedReadError(stage, resolvedPath.toString(), e.message ?: "Unknown error", e.stackTraceToString())

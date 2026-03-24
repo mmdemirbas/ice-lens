@@ -377,6 +377,39 @@ class PaimonPipelineTest {
         assertEquals(100L, node0.entry.file?.rowCount)
     }
 
+    @Test
+    fun `manifest list in manifest subdirectory is resolved correctly`() {
+        // Regression test: Paimon stores manifest lists in manifest/ subdir,
+        // but snapshot JSON references them by filename only (no manifest/ prefix).
+        val schemaDir = File(tmpDir, "schema").apply { mkdirs() }
+        val snapshotDir = File(tmpDir, "snapshot").apply { mkdirs() }
+        val manifestDir = File(tmpDir, "manifest").apply { mkdirs() }
+
+        File(schemaDir, "schema-0").writeText("""{"id": 0, "fields": [{"id": 0, "name": "k", "type": "INT"}], "primaryKeys": ["k"]}""")
+        // Snapshot references manifest list by filename only (no "manifest/" prefix)
+        File(snapshotDir, "snapshot-1").writeText("""
+            {"id": 1, "schemaId": 0, "baseManifestList": "manifest-list-base-0", "commitKind": "APPEND", "timeMillis": 1700000000000, "totalRecordCount": 50}
+        """.trimIndent())
+
+        // Manifest list lives in manifest/ subdirectory
+        writeManifestListAvro(
+            File(manifestDir, "manifest-list-base-0"),
+            listOf(ManifestListEntry(fileName = "manifest-0", fileSize = 1024, numAddedFiles = 1, numDeletedFiles = 0, schemaId = 0))
+        )
+        writeManifestAvro(
+            File(manifestDir, "manifest-0"),
+            listOf(ManifestEntryData(kind = 0, bucket = 0, fileName = "data-0.parquet", fileSize = 4096, rowCount = 50, level = 0))
+        )
+
+        val model = PaimonUnifiedTableModel(tmpDir.toPath())
+
+        assertEquals(1, model.snapshots.size)
+        assertEquals(0, model.readErrors.size, "Top-level errors: ${model.readErrors}")
+        assertEquals(0, model.snapshots[0].readErrors.size, "Snapshot errors: ${model.snapshots[0].readErrors}")
+        assertEquals(1, model.snapshots[0].baseManifests.size, "Should find manifest via manifest/ subdir")
+        assertEquals(1, model.snapshots[0].baseManifests[0].entries.size, "Should find data file entries")
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  Fixture Helpers
     // ═══════════════════════════════════════════════════════════════
