@@ -9,7 +9,6 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.neverEqualPolicy
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -28,26 +27,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.coroutineContext
 import model.*
-import service.GraphLayoutService
-import service.TableFormat
-import service.TableFormatDetector
 import java.awt.Desktop
 import java.io.File
 import java.net.URI
-
-import java.nio.file.NoSuchFileException
-import java.nio.file.Paths
 import java.util.prefs.Preferences
 
 private val prefs = Preferences.userRoot().node("com.github.mmdemirbas.icelens")
-private const val PREF_WAREHOUSE_PATH = "last_warehouse_path"
-private const val PREF_SHOW_ROWS = "show_data_rows"
+
 private const val PREF_LEFT_PANE_WIDTH = "left_pane_width"
 private const val PREF_RIGHT_PANE_WIDTH = "right_pane_width"
 private const val PREF_BOTTOM_PANE_HEIGHT = "bottom_pane_height"
@@ -57,147 +46,21 @@ private const val PREF_BOTTOM_SPLIT = "bottom_split"
 private const val PREF_WINDOW_ANCHORS = "tool_window_anchors"
 private const val PREF_ZOOM = "zoom"
 private const val PREF_IS_SELECT_MODE = "is_select_mode"
-private const val PREF_WORKSPACE_ITEMS = "workspace_items"
-private const val PREF_WORKSPACE_EXPANDED_PATHS = "workspace_expanded_paths"
-private const val PREF_SELECTED_TABLE_PATH = "selected_table_path"
-private const val PREF_SELECTED_SNAPSHOT_IDS = "selected_snapshot_ids"
 private const val PREF_IS_DARK_MODE = "is_dark_mode"
-private const val PREF_LAST_BROWSE_DIRECTORY = "last_browse_directory"
-
-data class TableSession(
-    val table: UnifiedTableModel? = null,
-    val paimonTable: PaimonUnifiedTableModel? = null,
-    val graph: GraphModel,
-    var selectedNodeIds: Set<String> = emptySet(),
-    val fingerprint: String = "",
-)
 
 @Composable
 fun App() {
-    var workspaceItems by remember {
-        val saved = prefs.get(PREF_WORKSPACE_ITEMS, "")
-        val items = saved.split(";").mapNotNull { WorkspaceItem.deserialize(it) }
-        val refreshed = items.map { item ->
-            if (item is WorkspaceItem.Warehouse) {
-                item.copy(tables = scanForTables(File(item.path)))
-            } else item
-        }
-        val deduplicated = deduplicateWorkspaceItems(refreshed)
-        if (deduplicated.size != refreshed.size) {
-            prefs.put(PREF_WORKSPACE_ITEMS, deduplicated.joinToString(";") { it.serialize() })
-        }
-        mutableStateOf(deduplicated)
-    }
+    val coroutineScope = rememberCoroutineScope()
+    val state = remember { AppState(prefs, coroutineScope) }
 
-    var selectedTablePath by remember {
-        mutableStateOf(
-            prefs.get(PREF_SELECTED_TABLE_PATH, "")
-                .trim()
-                .ifBlank { null }
-        )
-    }
-    var graphModel by remember { mutableStateOf<GraphModel?>(null, neverEqualPolicy()) }
-    var graphRevision by remember { mutableIntStateOf(0) }
-    var fitGraphRequest by remember { mutableIntStateOf(0) }
-    var selectedNodeIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-    var isStaleData by remember { mutableStateOf(false) }
-    var workspaceExpandedPaths by remember {
-        val saved = prefs.get(PREF_WORKSPACE_EXPANDED_PATHS, "")
-        val expanded = saved
-            .split(";")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .toSet()
-        mutableStateOf(expanded)
-    }
-    var workspaceSearchQuery by remember { mutableStateOf("") }
-    var warehouseTableStatuses by remember { mutableStateOf(initialWarehouseTableStatuses(workspaceItems)) }
-    var singleTableStatuses by remember {
-        mutableStateOf(
-            workspaceItems
-                .filterIsInstance<WorkspaceItem.SingleTable>()
-                .associate { table ->
-                    val dir = File(table.path)
-                    val exists = dir.exists() && dir.isDirectory && isTableDirectory(dir)
-                    table.path to if (exists) WorkspaceTableStatus.EXISTING else WorkspaceTableStatus.DELETED
-                }
-        )
-    }
-    var isLoadingTable by remember { mutableStateOf(false) }
-    var loadRequestId by remember { mutableStateOf(0L) }
-    var showRows by remember { mutableStateOf(prefs.getBoolean(PREF_SHOW_ROWS, true)) }
+    // ═══ UI-Only State ═══
+
     var isSelectMode by remember { mutableStateOf(prefs.getBoolean(PREF_IS_SELECT_MODE, true)) }
     var isDarkMode by remember { mutableStateOf(prefs.getBoolean(PREF_IS_DARK_MODE, false)) }
     var zoom by remember { mutableStateOf(prefs.getFloat(PREF_ZOOM, 1f)) }
     var showAboutDialog by remember { mutableStateOf(false) }
-    var selectedSnapshotFilterNodeIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var selectedSnapshotFilterSnapshotIds by remember {
-        mutableStateOf(parseLongSet(prefs.get(PREF_SELECTED_SNAPSHOT_IDS, "")))
-    }
     var snapshotFilterMenuExpanded by remember { mutableStateOf(false) }
-    var lastBrowseDirectory by remember {
-        mutableStateOf(prefs.get(PREF_LAST_BROWSE_DIRECTORY, "").ifBlank { null })
-    }
-
-    val sessionCache = remember { java.util.concurrent.ConcurrentHashMap<String, TableSession>() }
-    val coroutineScope = rememberCoroutineScope()
-
-    val snapshotFilterOptions = remember(graphModel) {
-        graphModel
-            ?.nodes
-            ?.filterIsInstance<GraphNode.SnapshotNode>()
-            ?.sortedWith(
-                compareBy<GraphNode.SnapshotNode> { it.data.sequenceNumber ?: Long.MAX_VALUE }
-                    .thenBy { it.data.timestampMs ?: Long.MAX_VALUE }
-                    .thenBy { it.data.snapshotId ?: Long.MAX_VALUE }
-            )
-            ?.map {
-                SnapshotFilterOption(
-                    nodeId = it.id,
-                    snapshotId = it.data.snapshotId,
-                    sequenceNumber = it.data.sequenceNumber,
-                    timestampMs = it.data.timestampMs
-                )
-            }
-            .orEmpty()
-    }
-    val allSnapshotFilterNodeIds = remember(snapshotFilterOptions) { snapshotFilterOptions.map { it.nodeId }.toSet() }
-    val nodeIdToSnapshotId = remember(snapshotFilterOptions) {
-        snapshotFilterOptions.associate { it.nodeId to it.snapshotId }
-    }
-    val visibleNodeIds = remember(graphModel, selectedSnapshotFilterNodeIds) {
-        graphModel?.let { computeVisibleNodeIdsForSnapshotFilter(it, selectedSnapshotFilterNodeIds) }.orEmpty()
-    }
-    val visibleGraphModel = remember(graphModel, visibleNodeIds) {
-        graphModel?.let { filteredGraphModel(it, visibleNodeIds) }
-    }
-
-    LaunchedEffect(allSnapshotFilterNodeIds) {
-        val constrained = selectedSnapshotFilterNodeIds.intersect(allSnapshotFilterNodeIds)
-        if (constrained != selectedSnapshotFilterNodeIds) {
-            selectedSnapshotFilterNodeIds = constrained
-        }
-    }
-
-    LaunchedEffect(snapshotFilterOptions, selectedSnapshotFilterSnapshotIds) {
-        val desiredNodeIds = snapshotFilterOptions
-            .filter { option -> option.snapshotId != null && option.snapshotId in selectedSnapshotFilterSnapshotIds }
-            .map { it.nodeId }
-            .toSet()
-        if (desiredNodeIds != selectedSnapshotFilterNodeIds) {
-            selectedSnapshotFilterNodeIds = desiredNodeIds
-        }
-    }
-
-    LaunchedEffect(visibleNodeIds) {
-        if (selectedNodeIds.isNotEmpty() && visibleNodeIds.isNotEmpty()) {
-            val constrained = selectedNodeIds.intersect(visibleNodeIds)
-            if (constrained != selectedNodeIds) {
-                selectedNodeIds = constrained
-            }
-        }
-    }
+    var fitGraphRequest by remember { mutableIntStateOf(0) }
 
     var leftPaneWidth by remember { mutableStateOf(prefs.getFloat(PREF_LEFT_PANE_WIDTH, 250f).dp) }
     var rightPaneWidth by remember { mutableStateOf(prefs.getFloat(PREF_RIGHT_PANE_WIDTH, 300f).dp) }
@@ -235,141 +98,11 @@ fun App() {
         ToolWindowConfig("inspector", "Inspector", Icons.Default.Info, windowAnchors["inspector"] ?: ToolWindowAnchor.RIGHT_TOP)
     )
 
-    fun setWorkspaceExpandedPaths(paths: Set<String>) {
-        workspaceExpandedPaths = paths
-        prefs.put(PREF_WORKSPACE_EXPANDED_PATHS, paths.joinToString(";"))
-    }
-
-    fun saveWorkspace(items: List<WorkspaceItem>) {
-        val deduplicated = deduplicateWorkspaceItems(items)
-        workspaceItems = deduplicated
-        prefs.put(PREF_WORKSPACE_ITEMS, deduplicated.joinToString(";") { it.serialize() })
-        val validPaths = deduplicated.map { it.path }.toSet()
-        setWorkspaceExpandedPaths(workspaceExpandedPaths.filter { it in validPaths }.toSet())
-        val warehousePaths = deduplicated.filterIsInstance<WorkspaceItem.Warehouse>().map { it.path }.toSet()
-        warehouseTableStatuses = warehouseTableStatuses
-            .filterKeys { it in warehousePaths }
-            .toMutableMap()
-            .apply {
-                deduplicated.filterIsInstance<WorkspaceItem.Warehouse>().forEach { warehouse ->
-                    if (this[warehouse.path] == null) {
-                        this[warehouse.path] = warehouse.tables.associateWith { WorkspaceTableStatus.EXISTING }
-                    }
-                }
-            }
-        val singleTablePaths = deduplicated.filterIsInstance<WorkspaceItem.SingleTable>().map { it.path }.toSet()
-        singleTableStatuses = singleTableStatuses
-            .filterKeys { it in singleTablePaths }
-            .toMutableMap()
-            .apply {
-                deduplicated.filterIsInstance<WorkspaceItem.SingleTable>().forEach { table ->
-                    if (this[table.path] == null) this[table.path] = WorkspaceTableStatus.EXISTING
-                }
-            }
-    }
-
-    fun addWorkspaceRoot(path: String) {
-        val file = File(path)
-        if (file.exists() && file.isDirectory) {
-            val normalizedPath = canonicalWorkspacePath(path)
-            if (workspaceItems.any { canonicalWorkspacePath(it.path) == normalizedPath }) return
-
-            val newItem = if (isTableDirectory(file)) {
-                WorkspaceItem.SingleTable(normalizedPath, file.name)
-            } else {
-                WorkspaceItem.Warehouse(normalizedPath, file.name, scanForTables(file))
-            }
-            saveWorkspace(workspaceItems + newItem)
-            if (newItem is WorkspaceItem.Warehouse) {
-                setWorkspaceExpandedPaths(workspaceExpandedPaths + newItem.path)
-            }
-        }
-    }
-
-    fun refreshWarehouseTables() {
-        var hasWorkspaceUpdate = false
-        var hasStatusUpdate = false
-
-        val refreshedItems = workspaceItems.map { item ->
-            if (item is WorkspaceItem.SingleTable) {
-                val tableDir = File(item.path)
-                val existsNow = tableDir.exists() && tableDir.isDirectory && isTableDirectory(tableDir)
-                val previousStatus = singleTableStatuses[item.path] ?: WorkspaceTableStatus.EXISTING
-                val newStatus = when {
-                    !existsNow -> WorkspaceTableStatus.DELETED
-                    previousStatus == WorkspaceTableStatus.DELETED -> WorkspaceTableStatus.NEW
-                    else -> previousStatus
-                }
-                if (newStatus != previousStatus) hasStatusUpdate = true
-                return@map item
-            }
-            if (item !is WorkspaceItem.Warehouse) return@map item
-
-            val scannedTables = scanForTables(File(item.path))
-            if (scannedTables != item.tables) {
-                hasWorkspaceUpdate = true
-            }
-
-            val existingStatuses = warehouseTableStatuses[item.path].orEmpty()
-            val knownTableNames = (existingStatuses.keys + scannedTables).toSortedSet()
-            val scannedSet = scannedTables.toSet()
-            val updatedStatuses = knownTableNames.associateWith { tableName ->
-                when {
-                    tableName in scannedSet && tableName !in existingStatuses -> WorkspaceTableStatus.NEW
-                    tableName in scannedSet && existingStatuses[tableName] == WorkspaceTableStatus.DELETED -> WorkspaceTableStatus.NEW
-                    tableName in scannedSet -> existingStatuses[tableName] ?: WorkspaceTableStatus.EXISTING
-                    else -> WorkspaceTableStatus.DELETED
-                }
-            }
-            if (updatedStatuses != existingStatuses) {
-                hasStatusUpdate = true
-            }
-
-            item.copy(tables = scannedTables)
-        }
-
-        if (hasWorkspaceUpdate) {
-            workspaceItems = deduplicateWorkspaceItems(refreshedItems)
-            prefs.put(PREF_WORKSPACE_ITEMS, workspaceItems.joinToString(";") { it.serialize() })
-        }
-
-        if (hasStatusUpdate || hasWorkspaceUpdate) {
-            singleTableStatuses = refreshedItems
-                .filterIsInstance<WorkspaceItem.SingleTable>()
-                .associate { table ->
-                    val tableDir = File(table.path)
-                    val existsNow = tableDir.exists() && tableDir.isDirectory && isTableDirectory(tableDir)
-                    val previousStatus = singleTableStatuses[table.path] ?: WorkspaceTableStatus.EXISTING
-                    val status = when {
-                        !existsNow -> WorkspaceTableStatus.DELETED
-                        previousStatus == WorkspaceTableStatus.DELETED -> WorkspaceTableStatus.NEW
-                        else -> previousStatus
-                    }
-                    table.path to status
-                }
-            warehouseTableStatuses = refreshedItems
-                .filterIsInstance<WorkspaceItem.Warehouse>()
-                .associate { warehouse ->
-                    val scannedSet = warehouse.tables.toSet()
-                    val previousStatuses = warehouseTableStatuses[warehouse.path].orEmpty()
-                    val knownTableNames = (previousStatuses.keys + warehouse.tables).toSortedSet()
-                    val statuses = knownTableNames.associateWith { tableName ->
-                        when {
-                            tableName in scannedSet && tableName !in previousStatuses -> WorkspaceTableStatus.NEW
-                            tableName in scannedSet && previousStatuses[tableName] == WorkspaceTableStatus.DELETED -> WorkspaceTableStatus.NEW
-                            tableName in scannedSet -> previousStatuses[tableName] ?: WorkspaceTableStatus.EXISTING
-                            else -> WorkspaceTableStatus.DELETED
-                        }
-                    }
-                    warehouse.path to statuses
-                }
-        }
-    }
+    // ═══ UI Helper Functions ═══
 
     fun moveToolWindow(id: String, newAnchor: ToolWindowAnchor) {
         val currentAnchor = windowAnchors[id] ?: ToolWindowAnchor.LEFT_TOP
         if (currentAnchor == newAnchor) return
-
         val newAnchors = windowAnchors.toMutableMap()
         newAnchors[id] = newAnchor
         windowAnchors = newAnchors
@@ -390,309 +123,50 @@ fun App() {
         }
     }
 
-    fun setGraphModelAndBump(model: GraphModel?) {
-        model?.syncPositionsToUI()
-        graphModel = model
-        graphRevision++
+    fun toggleWindowVisibility(id: String) {
+        hiddenToolWindowIds = if (id in hiddenToolWindowIds) hiddenToolWindowIds - id else hiddenToolWindowIds + id
+    }
+    fun toggleInspectorVisibility() {
+        toggleWindowVisibility("inspector")
+    }
+    fun toggleAllPanelsVisibility() {
+        val visibleIds = toolWindows.map { it.id }.filter { it !in hiddenToolWindowIds }
+        hiddenToolWindowIds = if (visibleIds.isNotEmpty()) toolWindows.map { it.id }.toSet() else emptySet()
     }
 
-    fun updateSnapshotFilterSelection(nodeIds: Set<String>) {
-        val constrained = nodeIds.intersect(allSnapshotFilterNodeIds)
-        selectedSnapshotFilterNodeIds = constrained
-        val snapshotIds = constrained.mapNotNull { nodeIdToSnapshotId[it] }.toSet()
-        selectedSnapshotFilterSnapshotIds = snapshotIds
-        prefs.put(PREF_SELECTED_SNAPSHOT_IDS, encodeLongSet(snapshotIds))
-    }
+    fun toolWindowTitle(id: String): String = toolWindows.firstOrNull { it.id == id }?.title ?: id
 
-    fun computeTableFingerprint(tablePath: String): String {
-        val metadataDir = File(tablePath, "metadata")
-        if (!metadataDir.exists() || !metadataDir.isDirectory) return "missing"
-        val trackedFiles = metadataDir.listFiles()?.filter { file ->
-            file.isFile && (file.name.endsWith(".metadata.json") || file.name == "version-hint.text")
-        }?.sortedBy { it.name }.orEmpty()
-        if (trackedFiles.isEmpty()) return "empty"
-        val signature = trackedFiles.joinToString("|") { file ->
-            "${file.name}:${file.length()}:${file.lastModified()}"
-        }
-        return signature.hashCode().toString()
-    }
-
-    // Logic to load a specific table
-    fun loadTable(
-        tablePath: String,
-        withRows: Boolean = showRows,
-        forceRelayout: Boolean = false,
-        forceReloadFromFs: Boolean = false,
-        preservePositions: Boolean = false
-    ) {
-        val normalizedTablePath = canonicalWorkspacePath(tablePath)
-        val cacheKey = "$normalizedTablePath-rows_$withRows"
-        selectedTablePath = normalizedTablePath
-        prefs.put(PREF_SELECTED_TABLE_PATH, normalizedTablePath)
-
-        val cachedSession = if (!forceRelayout && !forceReloadFromFs) sessionCache[cacheKey] else null
-        if (cachedSession != null) {
-            val session = cachedSession
-            setGraphModelAndBump(session.graph)
-            selectedNodeIds = session.selectedNodeIds
-            errorMsg = null
-            isLoadingTable = false
-            return
-        }
-
-        isLoadingTable = true
-        errorMsg = null
-        val requestId = loadRequestId + 1
-        loadRequestId = requestId
-
-        coroutineScope.launch {
-            try {
-                val previousSession = sessionCache[cacheKey]
-                val reloaded = withContext(Dispatchers.Default) {
-                    coroutineContext.ensureActive()
-                    val fingerprint = computeTableFingerprint(normalizedTablePath)
-                    if (fingerprint == "missing" && previousSession != null) {
-                        return@withContext previousSession.copy(fingerprint = "missing")
-                    }
-                    if (forceReloadFromFs && !forceRelayout && previousSession != null && previousSession.fingerprint == fingerprint) {
-                        return@withContext previousSession
-                    }
-                    coroutineContext.ensureActive()
-                    val tablePath = Paths.get(normalizedTablePath)
-                    val format = TableFormatDetector.detect(tablePath.toFile())
-                    coroutineContext.ensureActive()
-                    val (icebergModel, paimonModel, newGraphRaw) = when (format) {
-                        TableFormat.PAIMON -> {
-                            val pm = PaimonUnifiedTableModel(tablePath)
-                            Triple(null, pm, GraphLayoutService.layoutPaimonGraph(pm, withRows))
-                        }
-                        else -> {
-                            val im = UnifiedTableModel(tablePath)
-                            Triple(im, null, GraphLayoutService.layoutGraph(im, withRows))
-                        }
-                    }
-                    var newGraph = newGraphRaw
-                    if (preservePositions && previousSession != null) {
-                        // Merge old positions: initialPositions is thread-safe (immutable map)
-                        val oldInitial = previousSession.graph.initialPositions
-                        val mergedPositions = newGraph.initialPositions.toMutableMap()
-                        newGraph.nodes.forEach { n ->
-                            oldInitial[n.id]?.let { mergedPositions[n.id] = it }
-                        }
-                        newGraph = newGraph.copy(initialPositions = mergedPositions)
-                    }
-                    TableSession(
-                        table = icebergModel,
-                        paimonTable = paimonModel,
-                        graph = newGraph,
-                        selectedNodeIds = previousSession?.selectedNodeIds.orEmpty(),
-                        fingerprint = fingerprint
-                    )
-                }
-
-                if (requestId != loadRequestId) return@launch
-                sessionCache[cacheKey] = reloaded
-                setGraphModelAndBump(reloaded.graph)
-                selectedNodeIds = if (preservePositions && !forceRelayout) {
-                    selectedNodeIds.filter { id -> reloaded.graph.nodes.any { it.id == id } }.toSet()
-                } else {
-                    emptySet()
-                }
-                errorMsg = null
-                isStaleData = false
-            } catch (e: NoSuchFileException) {
-                if (requestId != loadRequestId) return@launch
-                val cached = sessionCache[cacheKey]
-                if (cached != null) {
-                    val fallback = cached.copy(fingerprint = "missing")
-                    sessionCache[cacheKey] = fallback
-                    setGraphModelAndBump(fallback.graph)
-                    selectedNodeIds = selectedNodeIds.filter { id -> fallback.graph.nodes.any { it.id == id } }.toSet()
-                    errorMsg = "Table was deleted from filesystem. Showing latest cached snapshot."
-                    isStaleData = true
-                } else {
-                    errorMsg = "Table was deleted from filesystem and no cached snapshot is available."
-                    if (!forceReloadFromFs) {
-                        setGraphModelAndBump(null)
-                    }
-                }
-            } catch (e: Exception) {
-                if (requestId != loadRequestId) return@launch
-                errorMsg = e.message
-                org.slf4j.LoggerFactory.getLogger("App").error("Failed to load table: {}", normalizedTablePath, e)
-                if (!forceReloadFromFs) {
-                    setGraphModelAndBump(null)
-                }
-            } finally {
-                if (requestId == loadRequestId) {
-                    isLoadingTable = false
-                }
-            }
-        }
-    }
-
-    fun reapplyCurrentLayout() {
-        val currentGraph = graphModel
-        if (selectedSnapshotFilterNodeIds.isNotEmpty() && currentGraph != null) {
-            val tablePath = selectedTablePath ?: return
-            val cacheKey = "$tablePath-rows_$showRows"
-            isLoadingTable = true
-            errorMsg = null
-            val requestId = loadRequestId + 1
-            loadRequestId = requestId
-
-            coroutineScope.launch {
-                try {
-                    val existingSession = sessionCache[cacheKey]
-                    val fingerprint = withContext(Dispatchers.Default) { computeTableFingerprint(tablePath) }
-                    val fullyLaidOut = withContext(Dispatchers.Default) {
-                        if (existingSession?.paimonTable != null) {
-                            val pm = existingSession.paimonTable
-                            GraphLayoutService.layoutPaimonGraph(pm, showRows)
-                        } else {
-                            val tableModel = existingSession?.table ?: UnifiedTableModel(Paths.get(tablePath))
-                            GraphLayoutService.layoutGraph(tableModel, showRows)
-                        }
-                    }
-                    if (requestId != loadRequestId) return@launch
-
-                    // Build merged positions: new layout for visible nodes, keep existing for others
-                    val mergedPositions = currentGraph.initialPositions.toMutableMap()
-                    mergedPositions.putAll(currentGraph.positions)
-                    currentGraph.nodes.forEach { node ->
-                        if (node.id in visibleNodeIds) {
-                            fullyLaidOut.initialPositions[node.id]?.let { mergedPositions[node.id] = it }
-                        }
-                    }
-                    val relaid = GraphModel(
-                        nodes = currentGraph.nodes,
-                        edges = currentGraph.edges,
-                        width = currentGraph.nodes.maxOfOrNull { (mergedPositions[it.id]?.x?.toDouble() ?: 0.0) + it.width } ?: 1.0,
-                        height = currentGraph.nodes.maxOfOrNull { (mergedPositions[it.id]?.y?.toDouble() ?: 0.0) + it.height } ?: 1.0,
-                        initialPositions = mergedPositions
-                    )
-                    setGraphModelAndBump(relaid)
-                    selectedNodeIds = selectedNodeIds.intersect(visibleNodeIds)
-                    sessionCache[cacheKey] = TableSession(
-                        table = existingSession?.table,
-                        paimonTable = existingSession?.paimonTable,
-                        graph = relaid,
-                        selectedNodeIds = selectedNodeIds,
-                        fingerprint = fingerprint
-                    )
-                    errorMsg = null
-                } catch (e: Exception) {
-                    if (requestId != loadRequestId) return@launch
-                    errorMsg = e.message
-                } finally {
-                    if (requestId == loadRequestId) {
-                        isLoadingTable = false
-                    }
-                }
-            }
-            return
-        }
-
-        val tablePath = selectedTablePath ?: return
-        val cacheKey = "$tablePath-rows_$showRows"
-
-        isLoadingTable = true
-        errorMsg = null
-        val requestId = loadRequestId + 1
-        loadRequestId = requestId
-
-        coroutineScope.launch {
-            try {
-                val existingSession = sessionCache[cacheKey]
-                val fingerprint = withContext(Dispatchers.Default) { computeTableFingerprint(tablePath) }
-                val format = withContext(Dispatchers.Default) { TableFormatDetector.detect(java.io.File(tablePath)) }
-                val (icebergModel, paimonModel, newGraph) = withContext(Dispatchers.Default) {
-                    when {
-                        format == TableFormat.PAIMON || existingSession?.paimonTable != null -> {
-                            val pm = existingSession?.paimonTable ?: PaimonUnifiedTableModel(Paths.get(tablePath))
-                            Triple(null, pm, GraphLayoutService.layoutPaimonGraph(pm, showRows))
-                        }
-                        else -> {
-                            val im = existingSession?.table ?: UnifiedTableModel(Paths.get(tablePath))
-                            Triple(im, null, GraphLayoutService.layoutGraph(im, showRows))
-                        }
-                    }
-                }
-
-                if (requestId != loadRequestId) return@launch
-                val session = TableSession(table = icebergModel, paimonTable = paimonModel, graph = newGraph, fingerprint = fingerprint)
-                sessionCache[cacheKey] = session
-                setGraphModelAndBump(newGraph)
-                selectedNodeIds = emptySet()
-                errorMsg = null
-            } catch (e: Exception) {
-                if (requestId != loadRequestId) return@launch
-                errorMsg = e.message
-            } finally {
-                if (requestId == loadRequestId) {
-                    isLoadingTable = false
-                }
-            }
-        }
-    }
-
-    fun reloadCurrentTableFromFilesystem(preserveLayout: Boolean = true) {
-        val tablePath = selectedTablePath ?: return
-        loadTable(
-            tablePath = tablePath,
-            withRows = showRows,
-            forceReloadFromFs = true,
-            preservePositions = preserveLayout
-        )
-    }
+    // ═══ Render Tool Window Content ═══
 
     @Composable
     fun RenderToolWindowContent(toolWindowId: String) {
         when (toolWindowId) {
             "workspace" -> WorkspacePanel(
-                workspaceItems = workspaceItems,
-                warehouseTableStatuses = warehouseTableStatuses,
-                singleTableStatuses = singleTableStatuses,
-                selectedTablePath = selectedTablePath,
-                expandedPaths = workspaceExpandedPaths,
-                onExpandedPathsChange = { setWorkspaceExpandedPaths(it) },
-                searchQuery = workspaceSearchQuery,
-                onSearchQueryChange = { workspaceSearchQuery = it },
-                lastBrowseDirectory = lastBrowseDirectory,
-                onLastBrowseDirectoryChange = { dir ->
-                    lastBrowseDirectory = dir
-                    prefs.put(PREF_LAST_BROWSE_DIRECTORY, dir)
-                },
+                workspaceItems = state.workspaceItems,
+                warehouseTableStatuses = state.warehouseTableStatuses,
+                singleTableStatuses = state.singleTableStatuses,
+                selectedTablePath = state.selectedTablePath,
+                expandedPaths = state.workspaceExpandedPaths,
+                onExpandedPathsChange = { state.updateWorkspaceExpandedPaths(it) },
+                searchQuery = state.workspaceSearchQuery,
+                onSearchQueryChange = { state.workspaceSearchQuery = it },
+                lastBrowseDirectory = state.lastBrowseDirectory,
+                onLastBrowseDirectoryChange = { dir -> state.updateLastBrowseDirectory(dir) },
                 onTableSelect = { tablePath ->
-                    if (selectedTablePath != null && graphModel != null) {
-                        val oldKey = "$selectedTablePath-rows_$showRows"
-                        sessionCache[oldKey]?.selectedNodeIds = selectedNodeIds
-                    }
-                    loadTable(tablePath)
+                    state.saveCurrentSessionSelection()
+                    state.loadTable(tablePath)
                 },
-                onAddRoot = { path -> addWorkspaceRoot(path) },
-                onRemoveRoot = { item ->
-                    saveWorkspace(workspaceItems.filter { it != item })
-                },
-                onMoveRoot = { item, delta ->
-                    val index = workspaceItems.indexOf(item)
-                    if (index != -1) {
-                        val newIndex = (index + delta).coerceIn(0, workspaceItems.size - 1)
-                        if (newIndex != index) {
-                            val newList = workspaceItems.toMutableList()
-                            newList.removeAt(index)
-                            newList.add(newIndex, item)
-                            saveWorkspace(newList)
-                        }
-                    }
-                }
+                onAddRoot = { path -> state.addWorkspaceRoot(path) },
+                onRemoveRoot = { item -> state.removeWorkspaceRoot(item) },
+                onMoveRoot = { item, delta -> state.moveWorkspaceRoot(item, delta) }
             )
             "structure" -> {
-                if (visibleGraphModel != null) {
+                val graph = state.visibleGraphModel
+                if (graph != null) {
                     NavigationTree(
-                        graph = visibleGraphModel,
-                        selectedNodeIds = selectedNodeIds,
-                        onNodeSelect = { selectedNodeIds = setOf(it.id) }
+                        graph = graph,
+                        selectedNodeIds = state.selectedNodeIds,
+                        onNodeSelect = { state.selectedNodeIds = setOf(it.id) }
                     )
                 } else {
                     Text(
@@ -703,9 +177,11 @@ fun App() {
                     )
                 }
             }
-            "inspector" -> NodeDetailsContent(visibleGraphModel, selectedNodeIds)
+            "inspector" -> NodeDetailsContent(state.visibleGraphModel, state.selectedNodeIds)
         }
     }
+
+    // ═══ Tool Window Layout Helpers ═══
 
     val anchorToWindowId = toolWindows.associate { window ->
         (windowAnchors[window.id] ?: window.anchor) to window.id
@@ -726,18 +202,7 @@ fun App() {
         .filter { (windowAnchors[it.id] ?: it.anchor) == ToolWindowAnchor.BOTTOM_RIGHT }
         .map { it.id to it.icon }
 
-    fun toggleWindowVisibility(id: String) {
-        hiddenToolWindowIds = if (id in hiddenToolWindowIds) hiddenToolWindowIds - id else hiddenToolWindowIds + id
-    }
-    fun toggleInspectorVisibility() {
-        toggleWindowVisibility("inspector")
-    }
-    fun toggleAllPanelsVisibility() {
-        val visibleIds = toolWindows.map { it.id }.filter { it !in hiddenToolWindowIds }
-        hiddenToolWindowIds = if (visibleIds.isNotEmpty()) toolWindows.map { it.id }.toSet() else emptySet()
-    }
-
-    fun toolWindowTitle(id: String): String = toolWindows.firstOrNull { it.id == id }?.title ?: id
+    // ═══ Main UI ═══
 
     MaterialTheme(
         colorScheme = if (isDarkMode) IceLensDarkColorScheme else IceLensLightColorScheme
@@ -755,32 +220,27 @@ fun App() {
                         if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         val ctrl = keyEvent.isMetaPressed || keyEvent.isCtrlPressed
                         when {
-                            // Ctrl/Cmd + = or Ctrl/Cmd + + → zoom in
                             ctrl && !keyEvent.isShiftPressed && (keyEvent.key == Key.Equals || keyEvent.key == Key.NumPadAdd) -> {
                                 zoom = (zoom * 1.2f).coerceAtMost(MAX_ZOOM)
                                 prefs.putFloat(PREF_ZOOM, zoom)
                                 true
                             }
-                            // Ctrl/Cmd + - → zoom out
                             ctrl && !keyEvent.isShiftPressed && (keyEvent.key == Key.Minus || keyEvent.key == Key.NumPadSubtract) -> {
                                 zoom = (zoom / 1.2f).coerceAtLeast(MIN_ZOOM)
                                 prefs.putFloat(PREF_ZOOM, zoom)
                                 true
                             }
-                            // Ctrl/Cmd + 0 → reset zoom
                             ctrl && !keyEvent.isShiftPressed && keyEvent.key == Key.Zero -> {
                                 zoom = 1f
                                 prefs.putFloat(PREF_ZOOM, zoom)
                                 true
                             }
-                            // Ctrl/Cmd + Shift + F → fit graph
                             ctrl && keyEvent.isShiftPressed && keyEvent.key == Key.F -> {
-                                if (visibleGraphModel != null) fitGraphRequest++
+                                if (state.visibleGraphModel != null) fitGraphRequest++
                                 true
                             }
-                            // Ctrl/Cmd + L → re-apply layout
                             ctrl && !keyEvent.isShiftPressed && keyEvent.key == Key.L -> {
-                                reapplyCurrentLayout()
+                                state.reapplyCurrentLayout()
                                 true
                             }
                             else -> false
@@ -790,6 +250,7 @@ fun App() {
             ) {
             Column(Modifier.fillMaxSize()) {
 
+            // ═══ Toolbar ═══
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -870,7 +331,7 @@ fun App() {
                         icon = Icons.Default.FullscreenExit,
                         tooltip = "Fit Graph",
                         onClick = {
-                            if (visibleGraphModel != null) fitGraphRequest++
+                            if (state.visibleGraphModel != null) fitGraphRequest++
                         },
                         modifier = Modifier.size(32.dp)
                     )
@@ -878,7 +339,7 @@ fun App() {
                     ToolbarIconButton(
                         icon = Icons.Default.Schema,
                         tooltip = "Re-apply Layout",
-                        onClick = { reapplyCurrentLayout() },
+                        onClick = { state.reapplyCurrentLayout() },
                         modifier = Modifier.size(32.dp)
                     )
                 }
@@ -891,7 +352,7 @@ fun App() {
                             icon = Icons.Default.FilterList,
                             tooltip = "Filter by snapshots",
                             onClick = { snapshotFilterMenuExpanded = !snapshotFilterMenuExpanded },
-                            isSelected = selectedSnapshotFilterNodeIds.isNotEmpty(),
+                            isSelected = state.selectedSnapshotFilterNodeIds.isNotEmpty(),
                             modifier = Modifier.size(32.dp)
                         )
                         DropdownMenu(
@@ -921,7 +382,7 @@ fun App() {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 TextButton(
-                                    onClick = { updateSnapshotFilterSelection(allSnapshotFilterNodeIds) },
+                                    onClick = { state.updateSnapshotFilterSelection(state.allSnapshotFilterNodeIds) },
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                     modifier = Modifier.height(30.dp)
                                 ) {
@@ -930,7 +391,7 @@ fun App() {
                                     Text("All", fontSize = 11.sp)
                                 }
                                 TextButton(
-                                    onClick = { updateSnapshotFilterSelection(emptySet()) },
+                                    onClick = { state.updateSnapshotFilterSelection(emptySet()) },
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                     modifier = Modifier.height(30.dp)
                                 ) {
@@ -940,7 +401,7 @@ fun App() {
                                 }
                                 TextButton(
                                     onClick = {
-                                        updateSnapshotFilterSelection(allSnapshotFilterNodeIds - selectedSnapshotFilterNodeIds)
+                                        state.updateSnapshotFilterSelection(state.allSnapshotFilterNodeIds - state.selectedSnapshotFilterNodeIds)
                                     },
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                     modifier = Modifier.height(30.dp)
@@ -951,14 +412,14 @@ fun App() {
                                 }
                             }
                             HorizontalDivider()
-                            if (snapshotFilterOptions.isEmpty()) {
+                            if (state.snapshotFilterOptions.isEmpty()) {
                                 DropdownMenuItem(
                                     text = { Text("No snapshots") },
                                     onClick = {}
                                 )
                             } else {
-                                snapshotFilterOptions.forEach { option ->
-                                    val isSelected = option.nodeId in selectedSnapshotFilterNodeIds
+                                state.snapshotFilterOptions.forEach { option ->
+                                    val isSelected = option.nodeId in state.selectedSnapshotFilterNodeIds
                                     DropdownMenuItem(
                                         text = {
                                             Row(
@@ -982,11 +443,11 @@ fun App() {
                                         },
                                         onClick = {
                                             val updated = if (isSelected) {
-                                                selectedSnapshotFilterNodeIds - option.nodeId
+                                                state.selectedSnapshotFilterNodeIds - option.nodeId
                                             } else {
-                                                selectedSnapshotFilterNodeIds + option.nodeId
+                                                state.selectedSnapshotFilterNodeIds + option.nodeId
                                             }
-                                            updateSnapshotFilterSelection(updated)
+                                            state.updateSnapshotFilterSelection(updated)
                                         }
                                     )
                                 }
@@ -995,10 +456,10 @@ fun App() {
                     }
                     Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
                     Text(
-                        text = if (selectedSnapshotFilterNodeIds.isEmpty()) {
+                        text = if (state.selectedSnapshotFilterNodeIds.isEmpty()) {
                             "All"
                         } else {
-                            "${selectedSnapshotFilterNodeIds.size}/${snapshotFilterOptions.size}"
+                            "${state.selectedSnapshotFilterNodeIds.size}/${state.snapshotFilterOptions.size}"
                         },
                         fontSize = 11.sp,
                         modifier = Modifier.padding(horizontal = 8.dp)
@@ -1025,7 +486,7 @@ fun App() {
                             }
                             Desktop.getDesktop().browse(URI("https://github.com/mmdemirbas/ice-lens"))
                         }.onFailure { e ->
-                            errorMsg = "Failed to open GitHub link: ${e.message}"
+                            state.errorMsg = "Failed to open GitHub link: ${e.message}"
                         }
                     }
                     ToolbarIconButton(
@@ -1044,6 +505,9 @@ fun App() {
                 }
             }
             HorizontalDivider()
+
+            // ═══ Main Content Area ═══
+
             val leftTopId = visibleAnchorToWindowId[ToolWindowAnchor.LEFT_TOP]
             val leftBottomId = visibleAnchorToWindowId[ToolWindowAnchor.LEFT_BOTTOM]
             val rightTopId = visibleAnchorToWindowId[ToolWindowAnchor.RIGHT_TOP]
@@ -1131,33 +595,35 @@ fun App() {
                     })
                 }
 
+                // ═══ Graph Canvas (Center) ═══
+
                 Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
-                    val currentGraph = visibleGraphModel
+                    val currentGraph = state.visibleGraphModel
                     if (currentGraph != null) {
-                        key(graphRevision) {
+                        key(state.graphRevision) {
                             GraphCanvas(
                                 graph = currentGraph,
-                                graphRevision = graphRevision,
+                                graphRevision = state.graphRevision,
                                 fitGraphRequest = fitGraphRequest,
-                                selectedNodeIds = selectedNodeIds,
+                                selectedNodeIds = state.selectedNodeIds,
                                 isSelectMode = isSelectMode,
                                 zoom = zoom,
                                 onZoomChange = {
                                     zoom = it
                                     prefs.putFloat(PREF_ZOOM, it)
                                 },
-                                onSelectionChange = { selectedNodeIds = it },
+                                onSelectionChange = { state.selectedNodeIds = it },
                                 onEmptyAreaDoubleClick = { toggleAllPanelsVisibility() },
                                 onNodeDoubleClick = { toggleInspectorVisibility() }
                             )
                         }
-                    } else if (!isLoadingTable && workspaceItems.isNotEmpty()) {
+                    } else if (!state.isLoadingTable && state.workspaceItems.isNotEmpty()) {
                         Text(
                             "Select a table from the sidebar to view its structure.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.align(Alignment.Center)
                         )
-                    } else if (!isLoadingTable && workspaceItems.isEmpty()) {
+                    } else if (!state.isLoadingTable && state.workspaceItems.isEmpty()) {
                         Column(
                             modifier = Modifier.align(Alignment.Center),
                             horizontalAlignment = Alignment.CenterHorizontally
@@ -1183,12 +649,11 @@ fun App() {
                             )
                             Spacer(Modifier.height(16.dp))
                             Button(onClick = {
-                                val initialDir = lastBrowseDirectory?.let { File(it) }
+                                val initialDir = state.lastBrowseDirectory?.let { File(it) }
                                 val selected = chooseDirectory(initialDir)
                                 if (selected != null) {
-                                    lastBrowseDirectory = selected.parent ?: selected.absolutePath
-                                    prefs.put(PREF_LAST_BROWSE_DIRECTORY, lastBrowseDirectory!!)
-                                    addWorkspaceRoot(selected.absolutePath)
+                                    state.updateLastBrowseDirectory(selected.parent ?: selected.absolutePath)
+                                    state.addWorkspaceRoot(selected.absolutePath)
                                 }
                             }) {
                                 Icon(Icons.Default.Add, contentDescription = "Add", modifier = Modifier.size(16.dp))
@@ -1198,7 +663,7 @@ fun App() {
                         }
                     }
 
-                    if (isLoadingTable) {
+                    if (state.isLoadingTable) {
                         Column(
                             modifier = Modifier.align(Alignment.Center),
                             horizontalAlignment = Alignment.CenterHorizontally
@@ -1209,7 +674,7 @@ fun App() {
                         }
                     }
 
-                    if (isStaleData && errorMsg == null) {
+                    if (state.isStaleData && state.errorMsg == null) {
                         Surface(
                             modifier = Modifier.align(Alignment.TopCenter).padding(8.dp),
                             shape = RoundedCornerShape(6.dp),
@@ -1236,7 +701,7 @@ fun App() {
                         }
                     }
 
-                    if (errorMsg != null) {
+                    if (state.errorMsg != null) {
                         Surface(
                             modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
                             shape = RoundedCornerShape(8.dp),
@@ -1248,17 +713,17 @@ fun App() {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    errorMsg!!,
+                                    state.errorMsg!!,
                                     color = MaterialTheme.colorScheme.onErrorContainer,
                                     fontSize = 13.sp,
                                     modifier = Modifier.weight(1f)
                                 )
-                                if (selectedTablePath != null) {
+                                if (state.selectedTablePath != null) {
                                     Spacer(Modifier.width(8.dp))
                                     TextButton(
                                         onClick = {
-                                            errorMsg = null
-                                            reloadCurrentTableFromFilesystem()
+                                            state.errorMsg = null
+                                            state.reloadCurrentTableFromFilesystem()
                                         },
                                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                                     ) {
@@ -1269,7 +734,7 @@ fun App() {
                                 }
                                 Spacer(Modifier.width(4.dp))
                                 IconButton(
-                                    onClick = { errorMsg = null },
+                                    onClick = { state.errorMsg = null },
                                     modifier = Modifier.size(24.dp)
                                 ) {
                                     Icon(
@@ -1283,6 +748,8 @@ fun App() {
                         }
                     }
                 }
+
+                // ═══ Right Pane ═══
 
                 if (rightTopId != null || rightBottomId != null) {
                     DraggableVerticalDivider(onDrag = { delta ->
@@ -1329,6 +796,8 @@ fun App() {
                     )
                 }
             }
+
+            // ═══ Bottom Pane ═══
 
             if (bottomLeftId != null || bottomRightId != null) {
                 DraggableHorizontalDivider(onDrag = { delta ->
@@ -1394,7 +863,6 @@ fun App() {
                     }
                 }
             } else if (bottomLeftButtons.isNotEmpty() || bottomRightButtons.isNotEmpty()) {
-                // Keep bottom-anchored toolwindow buttons reachable even when their panes are hidden.
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -1446,10 +914,12 @@ fun App() {
 
             }
 
+            // ═══ Dialogs & Overlays ═══
+
             if (showAboutDialog) {
                 AboutDialog(
                     onDismiss = { showAboutDialog = false },
-                    onError = { msg -> errorMsg = msg },
+                    onError = { msg -> state.errorMsg = msg },
                 )
             }
 
@@ -1522,38 +992,30 @@ fun App() {
     }
     }
 
-    LaunchedEffect(errorMsg) {
-        if (errorMsg != null) {
+    // ═══ LaunchedEffects (thin wrappers calling AppState methods) ═══
+
+    LaunchedEffect(state.errorMsg) {
+        if (state.errorMsg != null) {
             delay(ERROR_AUTO_DISMISS_MS)
-            errorMsg = null
+            state.errorMsg = null
         }
     }
 
-    LaunchedEffect(showRows) {
-        prefs.putBoolean(PREF_SHOW_ROWS, showRows)
+    LaunchedEffect(state.snapshotFilterOptions, state.selectedSnapshotFilterNodeIds) {
+        if (state.snapshotFilterOptions.isEmpty()) return@LaunchedEffect
+        state.persistSnapshotFilter()
     }
 
-    LaunchedEffect(snapshotFilterOptions, selectedSnapshotFilterNodeIds) {
-        if (snapshotFilterOptions.isEmpty()) return@LaunchedEffect
-        val snapshotIds = selectedSnapshotFilterNodeIds
-            .mapNotNull { nodeIdToSnapshotId[it] }
-            .toSet()
-        if (snapshotIds != selectedSnapshotFilterSnapshotIds) {
-            selectedSnapshotFilterSnapshotIds = snapshotIds
-            prefs.put(PREF_SELECTED_SNAPSHOT_IDS, encodeLongSet(snapshotIds))
-        }
-    }
-
-    LaunchedEffect(selectedTablePath, showRows) {
+    LaunchedEffect(state.selectedTablePath, state.showRows) {
         while (isActive) {
-            val tablePath = selectedTablePath
-            if (tablePath != null && !isLoadingTable) {
-                val cacheKey = "$tablePath-rows_$showRows"
-                val session = sessionCache[cacheKey]
+            val tablePath = state.selectedTablePath
+            if (tablePath != null && !state.isLoadingTable) {
+                val cacheKey = "$tablePath-rows_${state.showRows}"
+                val session = state.sessionCache[cacheKey]
                 if (session != null) {
-                    val currentFingerprint = withContext(Dispatchers.Default) { computeTableFingerprint(tablePath) }
+                    val currentFingerprint = withContext(Dispatchers.Default) { state.computeTableFingerprint(tablePath) }
                     if (currentFingerprint != session.fingerprint) {
-                        reloadCurrentTableFromFilesystem(preserveLayout = true)
+                        state.reloadCurrentTableFromFilesystem(preserveLayout = true)
                     }
                 }
             }
@@ -1561,17 +1023,17 @@ fun App() {
         }
     }
 
-    LaunchedEffect(workspaceItems) {
-        refreshWarehouseTables()
+    LaunchedEffect(state.workspaceItems) {
+        state.refreshWarehouseTables()
     }
 
     LaunchedEffect(Unit) {
-        val restoredTablePath = selectedTablePath
-        if (restoredTablePath != null && graphModel == null && !isLoadingTable) {
-            loadTable(tablePath = restoredTablePath, withRows = showRows)
+        val restoredTablePath = state.selectedTablePath
+        if (restoredTablePath != null && state.graphModel == null && !state.isLoadingTable) {
+            state.loadTable(tablePath = restoredTablePath, withRows = state.showRows)
         }
         while (isActive) {
-            refreshWarehouseTables()
+            state.refreshWarehouseTables()
             delay(FILESYSTEM_POLL_INTERVAL_MS)
         }
     }

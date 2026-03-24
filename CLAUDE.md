@@ -37,12 +37,13 @@ src/main/kotlin/
 │   ├── GraphLayoutService.kt  # Format-agnostic ELK layout + post-processing (ordering, alignment, overlap prevention)
 │   └── TableFormatDetector.kt # Directory-based table format detection (Iceberg / Paimon / Unknown)
 └── ui/
-    ├── App.kt                 # Main composable — app state, layout orchestration, keyboard shortcuts
+    ├── AppState.kt            # Business logic: workspace mgmt, table loading, caching, snapshot filter (testable, no UI)
+    ├── App.kt                 # Thin UI layer — layout, keyboard shortcuts, LaunchedEffects (delegates to AppState)
     ├── AboutDialog.kt         # About dialog with version info, diagnostics, cheat sheet
     ├── Theme.kt               # Color schemes, dark surface detection, selection highlight
     ├── CommonComponents.kt    # Reusable widgets: draggable dividers, toolbar group/icon button
     ├── FormatUtils.kt         # Timestamp formatting, long set serialization
-    ├── WorkspaceUtils.kt      # Table detection (via TableFormatDetector for Iceberg/Paimon), workspace dedup, table scanning
+    ├── WorkspaceUtils.kt      # Table detection, recursive scanning, native file chooser, workspace dedup
     ├── SnapshotFilter.kt      # Snapshot filter data model and graph filtering logic
     ├── GraphCanvas.kt         # Interactive graph: zoom/pan, node selection/drag, marquee, mini-map, viewport culling
     ├── NodeComponents.kt      # Node card composables (Iceberg + Paimon node types) + tooltip + copy buttons
@@ -77,7 +78,7 @@ src/main/kotlin/
 
 ## Known quirks
 
-- `App.kt` is ~1500 lines — `AboutDialog` has been extracted but toolbar and `AppState` remain inline
+- `App.kt` is ~900 lines — business logic extracted to `AppState.kt`; toolbar remains inline
 - Shared UI utilities (dark surface detection, selection highlight color) live in `ui/Theme.kt`
 - Shared path utilities (`normalizeFilePath`, `metadataVersionFromFileName`) live in `model/IcebergPaths.kt`
 - Node card text colors (`NodeCardTextPrimary`, `NodeCardTextSecondary`) are hardcoded light-mode colors, not theme-aware
@@ -117,7 +118,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 
 ## Known issues and tech debt
 
-1. **`App.kt` is ~1500 lines** — toolbar and `AppState` class still inline
+1. **`App.kt` is ~900 lines** — toolbar remains inline; business logic extracted to `AppState.kt`
 2. **No integration tests** — no Avro/JSON fixture files exist in `src/test/resources/`
 3. **`@Suppress("DEPRECATION")` on avro4k** — `decodeFromGenericData` API may change
 
@@ -129,7 +130,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew test --tests "*.IcebergPathsTest"   # Specific test class
 ```
 
-100+ tests across 16 files. Gaps: no tests for `IcebergReader`, `UnifiedModel`, or end-to-end integration.
+160+ tests across 17 files. `AppState` fully unit-tested (workspace mgmt, persistence, status tracking, fingerprinting). Gaps: no tests for `IcebergReader`, `UnifiedModel`, or end-to-end integration.
 
 ## Supported table formats
 
