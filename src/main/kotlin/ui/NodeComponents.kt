@@ -605,14 +605,16 @@ fun PaimonNodeCard(node: GraphNode, isSelected: Boolean = false) {
                 }
                 is GraphNode.PaimonDataFileNode -> {
                     val kindLabel = if (node.operationKind == 1) "DEL" else "ADD"
-                    Text("PFILE ${node.simpleId}: $kindLabel", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+                    Text("PAIMON FILE ${node.simpleId}: $kindLabel", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
                     Text(node.entry.file?.fileName ?: "N/A", fontSize = 8.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
                     val level = node.level
                     val rows = node.entry.file?.rowCount
                     Text("${rows ?: "?"} rows" + if (level != null) " L$level" else "", fontSize = 10.sp, color = nodeCardTextPrimary())
                 }
+                // PaimonNodeCard is only invoked from Paimon dispatch; non-Paimon types here would
+                // be a bug, so render the id but flag visibly with a "?" marker.
                 else -> {
-                    Text(node.id, fontSize = 10.sp, color = nodeCardTextPrimary())
+                    Text("?? ${node.id}", fontSize = 10.sp, color = nodeCardTextPrimary())
                 }
             }
         }

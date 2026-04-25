@@ -41,6 +41,7 @@ import model.GraphEdge
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.roundToInt
 
 private fun tonedEdgeColor(base: Color, sourceId: String): Color {
     val hash = sourceId.hashCode()
@@ -548,7 +549,8 @@ fun GraphCanvas(
             visibleNodes.forEach { node ->
                 Box(modifier = Modifier.offset {
                     val p = graph.getPosition(node.id)
-                    IntOffset(p.x.toInt(), p.y.toInt())
+                    // roundToInt() avoids 1px sub-pixel drift from truncation toward zero.
+                    IntOffset(p.x.roundToInt(), p.y.roundToInt())
                 }) {
                     var pickSelectionArmed by remember(node.id) { mutableStateOf(false) }
                     Box(

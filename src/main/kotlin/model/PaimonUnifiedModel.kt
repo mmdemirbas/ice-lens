@@ -106,14 +106,14 @@ private fun readSchemas(schemaDir: Path, errors: MutableList<UnifiedReadError>):
             .filter { it.fileName.toString().startsWith("schema-") }
             .toList()
     }.getOrElse { e ->
-        errors += UnifiedReadError("list-schema-files", schemaDir.toString(), e.message ?: "Unknown error", e.stackTraceToString())
+        errors += toError("list-schema-files", schemaDir.toString(), e)
         emptyList()
     }
 
     return files.mapNotNull { path ->
         runCatching { PaimonReader.readSchema(path.toString()) }
             .onFailure { e ->
-                errors += UnifiedReadError("read-schema", path.toString(), e.message ?: "Unknown error", e.stackTraceToString())
+                errors += toError("read-schema", path.toString(), e)
             }
             .getOrNull()
     }.sortedBy { it.id ?: Int.MAX_VALUE }
@@ -127,7 +127,7 @@ private fun listSnapshotFiles(snapshotDir: Path, errors: MutableList<UnifiedRead
             .filter { it.fileName.toString().startsWith("snapshot-") }
             .toList()
     }.getOrElse { e ->
-        errors += UnifiedReadError("list-snapshot-files", snapshotDir.toString(), e.message ?: "Unknown error", e.stackTraceToString())
+        errors += toError("list-snapshot-files", snapshotDir.toString(), e)
         emptyList()
     }
 }
@@ -140,7 +140,7 @@ private fun readPaimonSnapshot(
 ): PaimonUnifiedSnapshot? {
     val snapshot = runCatching { PaimonReader.readSnapshot(snapshotPath.toString()) }
         .onFailure { e ->
-            errors += UnifiedReadError("read-snapshot", snapshotPath.toString(), e.message ?: "Unknown error", e.stackTraceToString())
+            errors += toError("read-snapshot", snapshotPath.toString(), e)
         }
         .getOrNull() ?: return null
 
@@ -182,7 +182,7 @@ private fun readManifestList(
     }
     val result = runCatching { PaimonReader.readManifestList(resolvedPath.toString()) }
         .getOrElse { e ->
-            errors += UnifiedReadError(stage, resolvedPath.toString(), e.message ?: "Unknown error", e.stackTraceToString())
+            errors += toError(stage, resolvedPath.toString(), e)
             return emptyList()
         }
 
@@ -206,7 +206,7 @@ private fun readPaimonManifest(
     val entries = if (meta.fileName != null) {
         val result = runCatching { PaimonReader.readManifest(manifestPath.toString()) }
             .getOrElse { e ->
-                manifestErrors += UnifiedReadError("read-manifest", manifestPath.toString(), e.message ?: "Unknown error", e.stackTraceToString())
+                manifestErrors += toError("read-manifest", manifestPath.toString(), e)
                 AvroReader.ReadResult<PaimonManifestEntry>(entries = emptyList())
             }
 

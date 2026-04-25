@@ -27,7 +27,8 @@ object PaimonGraphBuilder {
 
     /**
      * Builds graph nodes and edges for the given Paimon table model.
-     * Does not perform layout — call [GraphLayoutService.layoutGraph] with the result.
+     * Does not perform layout — call [GraphLayoutService.layoutGraph] with the result
+     * (the public entry point that dispatches by format).
      */
     fun buildGraph(
         tableModel: PaimonUnifiedTableModel,

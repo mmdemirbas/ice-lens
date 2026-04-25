@@ -17,11 +17,27 @@ data class UnifiedReadError(
     val stackTrace: String? = null,
 )
 
-private fun toError(stage: String, path: Path, throwable: Throwable): UnifiedReadError {
+/**
+ * Builds a [UnifiedReadError] from a stage, path, and throwable. Falls back to the exception
+ * class name when the message is null (a bare NullPointerException would otherwise read as
+ * "Unknown error" with no diagnostic value).
+ */
+internal fun toError(stage: String, path: Path, throwable: Throwable): UnifiedReadError {
     val msg = throwable.message ?: (throwable::class.simpleName ?: "Unknown error")
     return UnifiedReadError(
         stage = stage,
         path = path.toString(),
+        message = msg,
+        stackTrace = throwable.stackTraceToString(),
+    )
+}
+
+/** String overload for callers that don't have a Path handy. */
+internal fun toError(stage: String, path: String, throwable: Throwable): UnifiedReadError {
+    val msg = throwable.message ?: (throwable::class.simpleName ?: "Unknown error")
+    return UnifiedReadError(
+        stage = stage,
+        path = path,
         message = msg,
         stackTrace = throwable.stackTraceToString(),
     )

@@ -113,11 +113,8 @@ private fun timelineContentRank(content: Int?): Int = when (content ?: 0) {
     else -> 3
 }
 
-private fun manifestContentRank(content: Int?): Int = when (content ?: 0) {
-    1 -> 0
-    0 -> 1
-    else -> 2
-}
+private fun manifestContentRank(content: Int?): Int =
+    service.IcebergGraphBuilder.manifestContentRank(content)
 
 private fun jsonToAnnotatedString(json: String, colors: androidx.compose.material3.ColorScheme): AnnotatedString {
     val stringStyle = SpanStyle(color = colors.secondary)
@@ -391,6 +388,16 @@ private fun RecursiveDataTableSection(
     )
 }
 
+/** Returns true when the path can be revealed via Desktop / Explorer (i.e. not a remote URI). */
+private fun isLocalPath(path: String): Boolean {
+    val trimmed = path.trim()
+    if (trimmed.isEmpty()) return false
+    // Cloud / remote schemes — Reveal silently fails on these.
+    val remotePrefixes = listOf("s3://", "s3a://", "s3n://", "hdfs://", "gs://", "abfs://", "abfss://", "wasb://", "wasbs://", "oss://")
+    if (remotePrefixes.any { trimmed.startsWith(it, ignoreCase = true) }) return false
+    return true
+}
+
 private fun openContainingDirectory(path: String?) {
     val raw = path?.trim().orEmpty()
     if (raw.isEmpty()) return
@@ -571,7 +578,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                     ) {
                         Text(nodeTitle(node), fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
                         val openPath = inspectorOpenPath(node)
-                        if (!openPath.isNullOrBlank()) {
+                        if (!openPath.isNullOrBlank() && isLocalPath(openPath)) {
                             TextButton(
                                 onClick = { openContainingDirectory(openPath) },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),

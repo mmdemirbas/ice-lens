@@ -38,11 +38,22 @@ fun AboutDialog(
                 Text("Iceberg Lens")
                 Spacer(Modifier.height(4.dp))
                 Row {
-                    TextButton(onClick = { aboutTab = 0 }) {
-                        Text("About", fontWeight = if (aboutTab == 0) FontWeight.Bold else FontWeight.Normal)
-                    }
-                    TextButton(onClick = { aboutTab = 1 }) {
-                        Text("Cheat Sheet", fontWeight = if (aboutTab == 1) FontWeight.Bold else FontWeight.Normal)
+                    val tabs = listOf("About", "Cheat Sheet")
+                    tabs.forEachIndexed { index, label ->
+                        val active = aboutTab == index
+                        TextButton(
+                            onClick = { aboutTab = index },
+                            colors = if (active) {
+                                ButtonDefaults.textButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            } else {
+                                ButtonDefaults.textButtonColors()
+                            }
+                        ) {
+                            Text(label, fontWeight = if (active) FontWeight.Bold else FontWeight.Normal)
+                        }
                     }
                 }
             }

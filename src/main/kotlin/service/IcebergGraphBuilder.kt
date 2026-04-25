@@ -24,7 +24,6 @@ object IcebergGraphBuilder {
     /** Max sample rows created per data file. */
     private const val MAX_ROWS_PER_FILE = 5
 
-    /** Result of building graph nodes and edges from a table model. */
     /**
      * Builds graph nodes and edges for the given Iceberg table model.
      * Does not perform layout — call [GraphLayoutService.layoutGraph] with the result.

@@ -79,7 +79,9 @@ class GraphLayoutServiceTest {
 
         graph.nodes.forEach { node ->
             val pos = graph.getPosition(node.id)
-            assertTrue(pos.x >= 0f || pos.y >= 0f, "Node ${node.id} should have a position")
+            // The original assertion used `||`, which trivially passed (any non-negative coord).
+            // ELK assigns both coordinates >= 0 within the layout area.
+            assertTrue(pos.x >= 0f && pos.y >= 0f, "Node ${node.id} should have non-negative position, got $pos")
         }
     }
 
