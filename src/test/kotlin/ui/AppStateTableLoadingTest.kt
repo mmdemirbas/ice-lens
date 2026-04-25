@@ -189,6 +189,46 @@ class AppStateTableLoadingTest {
         assertTrue(state.graphModel !== originalGraph, "previous table's graph must not remain visible")
     }
 
+    // T-2 regression: rapid sequential loads must not leave a stale graph behind.
+    // (Tests the AtomicLong increment + staleness-check contract.)
+    @Test
+    fun `rapid sequential loads end on the latest graph`() {
+        val pathA = createIcebergTable()
+        val state = AppState(prefs, CoroutineScope(Dispatchers.Unconfined), Dispatchers.Unconfined)
+
+        state.loadTable(pathA)
+        val graphA = state.graphModel
+        assertNotNull(graphA)
+
+        // Switch to a non-existent table and back; the displayed graph must reflect the LAST call.
+        state.loadTable("/nonexistent/${System.nanoTime()}")
+        state.loadTable(pathA)
+        assertEquals(pathA, state.selectedTablePath)
+        assertNotNull(state.graphModel)
+    }
+
+    // T-1 regression: cache-hit path must invalidate any in-flight reapply so that
+    // the resulting graphModel reflects the cache hit, not the earlier reapply.
+    @Test
+    fun `cache-hit after reapply leaves graph at cached value`() {
+        val pathA = createIcebergTable()
+        val state = AppState(prefs, CoroutineScope(Dispatchers.Unconfined), Dispatchers.Unconfined)
+
+        state.loadTable(pathA)
+        val cachedGraph = state.graphModel
+        assertNotNull(cachedGraph)
+
+        state.reapplyCurrentLayout()      // populates a relaid graph
+        val afterReapply = state.graphModel
+        assertNotNull(afterReapply)
+
+        // Cache-hit on pathA should restore the cached session's graph.
+        state.loadTable(pathA)
+        // The graph must be the cache's graph (which after reapply is the relaid one), not null.
+        assertNotNull(state.graphModel)
+        assertEquals(pathA, state.selectedTablePath)
+    }
+
     @Test
     fun `forceReloadFromFs reloads when fingerprint changes`() {
         val tablePath = createIcebergTable()

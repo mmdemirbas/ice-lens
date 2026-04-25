@@ -19,6 +19,7 @@ import java.nio.file.NoSuchFileException
 import java.nio.file.Paths
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import java.util.prefs.Preferences
 import kotlin.coroutines.coroutineContext
 
@@ -94,7 +95,7 @@ class AppState(
     // ═══════════════════════════════════════════════════════════════
 
     val sessionCache = ConcurrentHashMap<String, TableSession>()
-    @Volatile private var loadRequestId = 0L
+    private val loadRequestId = AtomicLong(0L)
 
     // ═══════════════════════════════════════════════════════════════
     //  Derived State
@@ -432,6 +433,8 @@ class AppState(
         val cachedSession = if (!forceRelayout && !forceReloadFromFs) sessionCache[cacheKey] else null
         if (cachedSession != null) {
             logger.debug("Cache hit for table: {}", normalizedTablePath)
+            // Bump request id so any in-flight load/reapply detects staleness and bails out.
+            loadRequestId.incrementAndGet()
             setGraphModelAndBump(cachedSession.graph)
             selectedNodeIds = cachedSession.selectedNodeIds
             errorMsg = null
@@ -443,8 +446,7 @@ class AppState(
             normalizedTablePath, withRows, forceRelayout, forceReloadFromFs, preservePositions)
         isLoadingTable = true
         errorMsg = null
-        val requestId = loadRequestId + 1
-        loadRequestId = requestId
+        val requestId = loadRequestId.incrementAndGet()
 
         coroutineScope.launch {
             try {
@@ -459,13 +461,8 @@ class AppState(
                         return@withContext previousSession
                     }
                     coroutineContext.ensureActive()
-                    val tablePath = Paths.get(normalizedTablePath)
-                    val format = TableFormatDetector.detect(tablePath.toFile())
+                    val tableModel = loadTableModel(normalizedTablePath)
                     coroutineContext.ensureActive()
-                    val tableModel: FormatTableModel = when (format) {
-                        TableFormat.PAIMON -> PaimonUnifiedTableModel(tablePath)
-                        else -> UnifiedTableModel(tablePath)
-                    }
                     var newGraph = GraphLayoutService.layoutGraph(tableModel, withRows)
                     if (preservePositions && previousSession != null) {
                         val oldInitial = previousSession.graph.initialPositions
@@ -483,7 +480,7 @@ class AppState(
                     )
                 }
 
-                if (requestId != loadRequestId) return@launch
+                if (requestId != loadRequestId.get()) return@launch
                 sessionCache[cacheKey] = reloaded
                 logger.info("Table loaded successfully: {} ({} nodes, {} edges)",
                     normalizedTablePath, reloaded.graph.nodes.size, reloaded.graph.edges.size)
@@ -496,7 +493,7 @@ class AppState(
                 errorMsg = null
                 isStaleData = false
             } catch (e: NoSuchFileException) {
-                if (requestId != loadRequestId) return@launch
+                if (requestId != loadRequestId.get()) return@launch
                 logger.warn("Table path no longer exists: {}", normalizedTablePath)
                 val cached = sessionCache[cacheKey]
                 if (cached != null) {
@@ -511,14 +508,14 @@ class AppState(
                     setGraphModelAndBump(null)
                 }
             } catch (e: Exception) {
-                if (requestId != loadRequestId) return@launch
+                if (requestId != loadRequestId.get()) return@launch
                 errorMsg = e.message
                 logger.error("Failed to load table: {}", normalizedTablePath, e)
                 if (sessionCache[cacheKey] == null) {
                     setGraphModelAndBump(null)
                 }
             } finally {
-                if (requestId == loadRequestId) {
+                if (requestId == loadRequestId.get()) {
                     isLoadingTable = false
                 }
             }
@@ -526,37 +523,47 @@ class AppState(
     }
 
     fun reapplyCurrentLayout() {
-        val currentGraph = graphModel
-        if (selectedSnapshotFilterNodeIds.isNotEmpty() && currentGraph != null) {
+        if (selectedSnapshotFilterNodeIds.isNotEmpty() && graphModel != null) {
             val tablePath = selectedTablePath ?: return
             val cacheKey = "$tablePath-rows_$showRows"
             isLoadingTable = true
             errorMsg = null
-            val requestId = loadRequestId + 1
-            loadRequestId = requestId
+            val requestId = loadRequestId.incrementAndGet()
 
             coroutineScope.launch {
                 try {
                     val existingSession = sessionCache[cacheKey]
-                    val fingerprint = withContext(backgroundDispatcher) { computeTableFingerprint(tablePath) }
-                    val model = existingSession?.tableModel ?: loadTableModel(tablePath)
+                    val fingerprint = withContext(backgroundDispatcher) {
+                        coroutineContext.ensureActive()
+                        computeTableFingerprint(tablePath)
+                    }
+                    coroutineContext.ensureActive()
+                    val model = existingSession?.tableModel ?: withContext(backgroundDispatcher) {
+                        coroutineContext.ensureActive()
+                        loadTableModel(tablePath)
+                    }
+                    coroutineContext.ensureActive()
                     val fullyLaidOut = withContext(backgroundDispatcher) {
+                        coroutineContext.ensureActive()
                         GraphLayoutService.layoutGraph(model, showRows)
                     }
-                    if (requestId != loadRequestId) return@launch
+                    if (requestId != loadRequestId.get()) return@launch
+                    // T-1: re-read graphModel on the main thread after the staleness check —
+                    // it may have been replaced via a cache hit since this coroutine started.
+                    val activeGraph = graphModel ?: return@launch
 
-                    val mergedPositions = currentGraph.initialPositions.toMutableMap()
-                    mergedPositions.putAll(currentGraph.positions)
-                    currentGraph.nodes.forEach { node ->
+                    val mergedPositions = activeGraph.initialPositions.toMutableMap()
+                    mergedPositions.putAll(activeGraph.positions)
+                    activeGraph.nodes.forEach { node ->
                         if (node.id in visibleNodeIds) {
                             fullyLaidOut.initialPositions[node.id]?.let { mergedPositions[node.id] = it }
                         }
                     }
                     val relaid = GraphModel(
-                        nodes = currentGraph.nodes,
-                        edges = currentGraph.edges,
-                        width = currentGraph.nodes.maxOfOrNull { (mergedPositions[it.id]?.x?.toDouble() ?: 0.0) + it.width } ?: 1.0,
-                        height = currentGraph.nodes.maxOfOrNull { (mergedPositions[it.id]?.y?.toDouble() ?: 0.0) + it.height } ?: 1.0,
+                        nodes = activeGraph.nodes,
+                        edges = activeGraph.edges,
+                        width = activeGraph.nodes.maxOfOrNull { (mergedPositions[it.id]?.x?.toDouble() ?: 0.0) + it.width } ?: 1.0,
+                        height = activeGraph.nodes.maxOfOrNull { (mergedPositions[it.id]?.y?.toDouble() ?: 0.0) + it.height } ?: 1.0,
                         initialPositions = mergedPositions
                     )
                     setGraphModelAndBump(relaid)
@@ -569,10 +576,10 @@ class AppState(
                     )
                     errorMsg = null
                 } catch (e: Exception) {
-                    if (requestId != loadRequestId) return@launch
+                    if (requestId != loadRequestId.get()) return@launch
                     errorMsg = e.message
                 } finally {
-                    if (requestId == loadRequestId) {
+                    if (requestId == loadRequestId.get()) {
                         isLoadingTable = false
                     }
                 }
@@ -585,29 +592,37 @@ class AppState(
 
         isLoadingTable = true
         errorMsg = null
-        val requestId = loadRequestId + 1
-        loadRequestId = requestId
+        val requestId = loadRequestId.incrementAndGet()
 
         coroutineScope.launch {
             try {
                 val existingSession = sessionCache[cacheKey]
-                val fingerprint = withContext(backgroundDispatcher) { computeTableFingerprint(tablePath) }
-                val model = existingSession?.tableModel ?: withContext(backgroundDispatcher) { loadTableModel(tablePath) }
+                val fingerprint = withContext(backgroundDispatcher) {
+                    coroutineContext.ensureActive()
+                    computeTableFingerprint(tablePath)
+                }
+                coroutineContext.ensureActive()
+                val model = existingSession?.tableModel ?: withContext(backgroundDispatcher) {
+                    coroutineContext.ensureActive()
+                    loadTableModel(tablePath)
+                }
+                coroutineContext.ensureActive()
                 val newGraph = withContext(backgroundDispatcher) {
+                    coroutineContext.ensureActive()
                     GraphLayoutService.layoutGraph(model, showRows)
                 }
 
-                if (requestId != loadRequestId) return@launch
+                if (requestId != loadRequestId.get()) return@launch
                 val session = TableSession(tableModel = model, graph = newGraph, fingerprint = fingerprint)
                 sessionCache[cacheKey] = session
                 setGraphModelAndBump(newGraph)
                 selectedNodeIds = emptySet()
                 errorMsg = null
             } catch (e: Exception) {
-                if (requestId != loadRequestId) return@launch
+                if (requestId != loadRequestId.get()) return@launch
                 errorMsg = e.message
             } finally {
-                if (requestId == loadRequestId) {
+                if (requestId == loadRequestId.get()) {
                     isLoadingTable = false
                 }
             }
