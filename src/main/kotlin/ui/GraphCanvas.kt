@@ -135,59 +135,60 @@ fun GraphCanvas(
 
     val latestSelectedNodeIds by rememberUpdatedState(selectedNodeIds)
 
-    val snapshotManifestOutLaneByEdgeId = remember(graph.nodes, graph.edges) {
-        val bySource = graph.edges.groupBy { it.fromId }
-        buildMap<String, Int> {
-            bySource.forEach { (sourceId, sourceEdges) ->
-                val sourceNode = nodeById[sourceId] ?: return@forEach
-                if (sourceNode !is GraphNode.SnapshotNode) return@forEach
-                val ranked = sourceEdges
-                    .mapNotNull { edge ->
-                        val targetNode = nodeById[edge.toId] ?: return@mapNotNull null
-                        if (targetNode !is GraphNode.ManifestNode) return@mapNotNull null
-                        edge to nodeY(targetNode)
-                    }
-                    .sortedBy { it.second }
-                ranked.forEachIndexed { index, (edge, _) ->
-                    put(edge.id, index)
+    // Per-edge data for snapshot→manifest fan-in/out lane indexing AND counts.
+    // Computed once per (nodes, edges) change; replaces O(E) `count {…}` scans inside drawEdge.
+    data class SnapshotManifestLanes(
+        val outLane: Map<String, Int>,
+        val inLane: Map<String, Int>,
+        val outCountBySource: Map<String, Int>,
+        val inCountByTarget: Map<String, Int>,
+    )
+    val snapshotManifestLanes = remember(graph.nodes, graph.edges) {
+        val outLane = mutableMapOf<String, Int>()
+        val inLane = mutableMapOf<String, Int>()
+        val outCount = mutableMapOf<String, Int>()
+        val inCount = mutableMapOf<String, Int>()
+        graph.edges.groupBy { it.fromId }.forEach { (sourceId, sourceEdges) ->
+            val sourceNode = nodeById[sourceId] ?: return@forEach
+            if (sourceNode !is GraphNode.SnapshotNode) return@forEach
+            val ranked = sourceEdges
+                .mapNotNull { edge ->
+                    val target = nodeById[edge.toId] ?: return@mapNotNull null
+                    if (target !is GraphNode.ManifestNode) return@mapNotNull null
+                    // Sort by initial position (stable across drags) so lane assignment doesn't drift.
+                    edge to (graph.initialPositions[target.id]?.y ?: 0f)
                 }
-            }
+                .sortedBy { it.second }
+            outCount[sourceId] = ranked.size
+            ranked.forEachIndexed { index, (edge, _) -> outLane[edge.id] = index }
         }
+        graph.edges.groupBy { it.toId }.forEach { (targetId, targetEdges) ->
+            val targetNode = nodeById[targetId] ?: return@forEach
+            if (targetNode !is GraphNode.ManifestNode) return@forEach
+            val ranked = targetEdges
+                .mapNotNull { edge ->
+                    val source = nodeById[edge.fromId] ?: return@mapNotNull null
+                    if (source !is GraphNode.SnapshotNode) return@mapNotNull null
+                    edge to (graph.initialPositions[source.id]?.y ?: 0f)
+                }
+                .sortedBy { it.second }
+            inCount[targetId] = ranked.size
+            ranked.forEachIndexed { index, (edge, _) -> inLane[edge.id] = index }
+        }
+        SnapshotManifestLanes(outLane, inLane, outCount, inCount)
     }
 
-    val snapshotManifestInLaneByEdgeId = remember(graph.nodes, graph.edges) {
-        val byTarget = graph.edges.groupBy { it.toId }
-        buildMap<String, Int> {
-            byTarget.forEach { (targetId, targetEdges) ->
-                val targetNode = nodeById[targetId] ?: return@forEach
-                if (targetNode !is GraphNode.ManifestNode) return@forEach
-                val ranked = targetEdges
-                    .mapNotNull { edge ->
-                        val sourceNode = nodeById[edge.fromId] ?: return@mapNotNull null
-                        if (sourceNode !is GraphNode.SnapshotNode) return@mapNotNull null
-                        edge to nodeY(sourceNode)
-                    }
-                    .sortedBy { it.second }
-                ranked.forEachIndexed { index, (edge, _) ->
-                    put(edge.id, index)
-                }
-            }
-        }
-    }
+    // Reusable Path for edge drawing — avoids per-edge per-frame allocation.
+    val edgePath = remember { Path() }
 
     fun DrawScope.drawEdge(edge: GraphEdge, source: GraphNode, target: GraphNode, color: Color, strokeWidth: Float) {
         val isSnapshotToManifest = source is GraphNode.SnapshotNode && target is GraphNode.ManifestNode
-        val outIndex = snapshotManifestOutLaneByEdgeId[edge.id] ?: 0
-        val inIndex = snapshotManifestInLaneByEdgeId[edge.id] ?: 0
-        val outCount = if (isSnapshotToManifest) {
-            graph.edges.count { it.fromId == edge.fromId && nodeById[it.toId] is GraphNode.ManifestNode }
-        } else 1
-        val inCount = if (isSnapshotToManifest) {
-            graph.edges.count { it.toId == edge.toId && nodeById[it.fromId] is GraphNode.SnapshotNode }
-        } else 1
+        val outIndex = snapshotManifestLanes.outLane[edge.id] ?: 0
+        val inIndex = snapshotManifestLanes.inLane[edge.id] ?: 0
+        val outCount = if (isSnapshotToManifest) snapshotManifestLanes.outCountBySource[edge.fromId] ?: 1 else 1
+        val inCount = if (isSnapshotToManifest) snapshotManifestLanes.inCountByTarget[edge.toId] ?: 1 else 1
         val outCentered = outIndex - ((outCount - 1) / 2f)
         val inCentered = inIndex - ((inCount - 1) / 2f)
-        val laneYSpacing = 8f
         val laneXSpacing = 14f
 
         // Always use right-center -> left-center anchors.
@@ -207,21 +208,13 @@ fun GraphCanvas(
         val laneShift = if (isSnapshotToManifest) (outCentered + inCentered) * 0.5f * laneXSpacing else 0f
         val c1x = (baseC1x + laneShift).coerceAtLeast(startStubX + 4f)
         val c2x = (baseC2x + laneShift).coerceAtMost(endStubX - 4f)
-        val path = Path().apply {
-            moveTo(startX, startY)
-            lineTo(startStubX, startY)
-            cubicTo(
-                c1x,
-                startY,
-                c2x,
-                endY,
-                endStubX,
-                endY
-            )
-            lineTo(endX, endY)
-        }
+        edgePath.reset()
+        edgePath.moveTo(startX, startY)
+        edgePath.lineTo(startStubX, startY)
+        edgePath.cubicTo(c1x, startY, c2x, endY, endStubX, endY)
+        edgePath.lineTo(endX, endY)
         drawPath(
-            path = path,
+            path = edgePath,
             color = color,
             style = Stroke(width = strokeWidth)
         )

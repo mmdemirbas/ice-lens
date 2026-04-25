@@ -513,51 +513,55 @@ object GraphLayoutService {
             }
         }
 
+        // Single pass to partition nodes by type — replaces 10 full-list filterIsInstance scans.
+        val byType = nodesById.values.groupBy { it::class }
+        fun typed(cls: kotlin.reflect.KClass<out GraphNode>): List<GraphNode> = byType[cls].orEmpty()
+
         // Iceberg layers
         alignLayer(
-            parents = nodesById.values.filterIsInstance<GraphNode.FileNode>(),
+            parents = typed(GraphNode.FileNode::class),
             upstreamFilter = { it is GraphNode.ManifestNode },
             childFilter = { it is GraphNode.RowNode }
         )
         alignLayer(
-            parents = nodesById.values.filterIsInstance<GraphNode.ManifestNode>(),
+            parents = typed(GraphNode.ManifestNode::class),
             upstreamFilter = { it is GraphNode.SnapshotNode },
             childFilter = { it is GraphNode.FileNode }
         )
         alignLayer(
-            parents = nodesById.values.filterIsInstance<GraphNode.SnapshotNode>(),
+            parents = typed(GraphNode.SnapshotNode::class),
             upstreamFilter = { it is GraphNode.MetadataNode },
             childFilter = { it is GraphNode.ManifestNode }
         )
         alignLayer(
-            parents = nodesById.values.filterIsInstance<GraphNode.MetadataNode>(),
+            parents = typed(GraphNode.MetadataNode::class),
             upstreamFilter = { it is GraphNode.TableNode },
             childFilter = { it is GraphNode.SnapshotNode }
         )
         alignLayer(
-            parents = nodesById.values.filterIsInstance<GraphNode.TableNode>(),
+            parents = typed(GraphNode.TableNode::class),
             upstreamFilter = { false },
             childFilter = { it is GraphNode.MetadataNode || it is GraphNode.PaimonSnapshotNode }
         )
 
         // Paimon layers
         alignLayer(
-            parents = nodesById.values.filterIsInstance<GraphNode.PaimonDataFileNode>(),
+            parents = typed(GraphNode.PaimonDataFileNode::class),
             upstreamFilter = { it is GraphNode.PaimonManifestNode },
             childFilter = { it is GraphNode.RowNode }
         )
         alignLayer(
-            parents = nodesById.values.filterIsInstance<GraphNode.PaimonManifestNode>(),
+            parents = typed(GraphNode.PaimonManifestNode::class),
             upstreamFilter = { it is GraphNode.PaimonManifestListNode },
             childFilter = { it is GraphNode.PaimonDataFileNode }
         )
         alignLayer(
-            parents = nodesById.values.filterIsInstance<GraphNode.PaimonManifestListNode>(),
+            parents = typed(GraphNode.PaimonManifestListNode::class),
             upstreamFilter = { it is GraphNode.PaimonSnapshotNode },
             childFilter = { it is GraphNode.PaimonManifestNode }
         )
         alignLayer(
-            parents = nodesById.values.filterIsInstance<GraphNode.PaimonSnapshotNode>(),
+            parents = typed(GraphNode.PaimonSnapshotNode::class),
             upstreamFilter = { it is GraphNode.TableNode },
             childFilter = { it is GraphNode.PaimonManifestListNode }
         )
@@ -578,18 +582,22 @@ object GraphLayoutService {
             }
         }
 
-        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.TableNode>())
-        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.MetadataNode>())
-        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.SnapshotNode>())
-        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.ManifestNode>())
-        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.FileNode>(), margin = 2.0)
-        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.RowNode>(), margin = 2.0)
+        // Single pass to partition by class — replaces 11 full-list filterIsInstance scans.
+        val byType = nodesById.values.groupBy { it::class }
+        fun typed(cls: kotlin.reflect.KClass<out GraphNode>): List<GraphNode> = byType[cls].orEmpty()
+
+        preventOverlapsInLayer(typed(GraphNode.TableNode::class))
+        preventOverlapsInLayer(typed(GraphNode.MetadataNode::class))
+        preventOverlapsInLayer(typed(GraphNode.SnapshotNode::class))
+        preventOverlapsInLayer(typed(GraphNode.ManifestNode::class))
+        preventOverlapsInLayer(typed(GraphNode.FileNode::class), margin = 2.0)
+        preventOverlapsInLayer(typed(GraphNode.RowNode::class), margin = 2.0)
         // Paimon layers
-        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.PaimonSnapshotNode>())
-        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.PaimonSchemaNode>())
-        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.PaimonManifestListNode>())
-        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.PaimonManifestNode>())
-        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.PaimonDataFileNode>(), margin = 2.0)
+        preventOverlapsInLayer(typed(GraphNode.PaimonSnapshotNode::class))
+        preventOverlapsInLayer(typed(GraphNode.PaimonSchemaNode::class))
+        preventOverlapsInLayer(typed(GraphNode.PaimonManifestListNode::class))
+        preventOverlapsInLayer(typed(GraphNode.PaimonManifestNode::class))
+        preventOverlapsInLayer(typed(GraphNode.PaimonDataFileNode::class), margin = 2.0)
     }
 
     private fun createElkNode(parent: ElkNode, id: String, w: Double, h: Double): ElkNode {

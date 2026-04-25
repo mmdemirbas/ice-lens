@@ -22,6 +22,7 @@ import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.awt.event.WindowStateListener
 import java.util.prefs.Preferences
+import javax.swing.Timer
 
 private val prefs = Preferences.userRoot().node("com.github.mmdemirbas.icelens.window")
 private const val PREF_WINDOW_X = "window_x"
@@ -168,24 +169,32 @@ fun main() = application {
             if (w == null) {
                 onDispose {}
             } else {
-                val componentListener = object : ComponentAdapter() {
-                    override fun componentMoved(e: ComponentEvent?) {
-                        persistWindowState(w, windowState.placement == WindowPlacement.Maximized)
-                    }
+                // Debounce persistence: componentMoved fires per pixel during a drag.
+                // Coalesce events into a single delayed flush.
+                val persistDelayMs = 500
+                val persistTimer = Timer(persistDelayMs) {
+                    persistWindowState(w, windowState.placement == WindowPlacement.Maximized)
+                }.apply { isRepeats = false }
+                fun schedulePersist() {
+                    persistTimer.restart()
+                }
 
-                    override fun componentResized(e: ComponentEvent?) {
-                        persistWindowState(w, windowState.placement == WindowPlacement.Maximized)
-                    }
+                val componentListener = object : ComponentAdapter() {
+                    override fun componentMoved(e: ComponentEvent?) = schedulePersist()
+                    override fun componentResized(e: ComponentEvent?) = schedulePersist()
                 }
                 w.addComponentListener(componentListener)
 
                 val frame = w as? java.awt.Frame
                 val stateListener = WindowStateListener {
+                    // Maximize/restore is a discrete event — flush immediately.
+                    persistTimer.stop()
                     persistWindowState(w, windowState.placement == WindowPlacement.Maximized)
                 }
                 frame?.addWindowStateListener(stateListener)
 
                 onDispose {
+                    persistTimer.stop()
                     w.removeComponentListener(componentListener)
                     frame?.removeWindowStateListener(stateListener)
                     persistWindowState(w, windowState.placement == WindowPlacement.Maximized)

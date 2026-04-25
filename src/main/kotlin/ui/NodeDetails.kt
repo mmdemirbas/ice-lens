@@ -103,9 +103,7 @@ private fun manifestContentRank(content: Int?): Int = when (content ?: 0) {
     else -> 2
 }
 
-@Composable
-private fun jsonToAnnotatedString(json: String): AnnotatedString {
-    val colors = MaterialTheme.colorScheme
+private fun jsonToAnnotatedString(json: String, colors: androidx.compose.material3.ColorScheme): AnnotatedString {
     val stringStyle = SpanStyle(color = colors.secondary)
     val numberStyle = SpanStyle(color = colors.primary)
     val keywordStyle = SpanStyle(color = colors.tertiary, fontWeight = FontWeight.SemiBold)
@@ -927,6 +925,8 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                         if (!rawJson.isNullOrBlank()) {
                             val rawJsonScrollX = rememberScrollState()
                             val rawJsonScrollY = rememberScrollState()
+                            // H-4: highlight once per (rawJson, theme), not on every recomposition.
+                            val highlightedJson = remember(rawJson, colors) { jsonToAnnotatedString(rawJson, colors) }
                             Box(
                                 Modifier
                                     .fillMaxWidth()
@@ -939,7 +939,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                     .padding(8.dp)
                             ) {
                                 Text(
-                                    text = jsonToAnnotatedString(rawJson),
+                                    text = highlightedJson,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.sp
                                 )
