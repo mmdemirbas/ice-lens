@@ -9,6 +9,8 @@ private val REMOTE_SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
  * Normalizes a file path for consistent comparison and deduplication.
  *
  * - `file:` URIs are converted to local paths via [URI.getPath].
+ * - `file://host/share/...` URIs (non-empty, non-localhost authority) are
+ *   reconstructed as UNC `//host/share/...` so the host isn't silently dropped.
  * - Cloud/remote URIs (`s3://`, `hdfs://`, `gs://`, `abfs://`, etc.) are returned as-is.
  * - Windows backslashes are converted to forward slashes.
  * - UNC paths (`\\server\share\...`) are preserved with `//server/share/...` form.
@@ -19,8 +21,19 @@ fun normalizeFilePath(path: String): String {
 
     // file: URIs → convert to local path
     if (trimmed.startsWith("file:")) {
-        val local = runCatching { URI(trimmed).path }.getOrDefault(trimmed.removePrefix("file:"))
-        return local.replace("\\", "/")
+        val parsed = runCatching { URI(trimmed) }.getOrNull()
+        if (parsed != null) {
+            val host = parsed.host
+            val rawPath = parsed.path.orEmpty()
+            val local = if (!host.isNullOrEmpty() && !host.equals("localhost", ignoreCase = true)) {
+                // file://server/share/path -> //server/share/path (UNC-style)
+                "//$host$rawPath"
+            } else {
+                rawPath
+            }
+            return local.replace("\\", "/")
+        }
+        return trimmed.removePrefix("file:").replace("\\", "/")
     }
 
     // Cloud/remote URIs (s3://, hdfs://, gs://, abfs://, etc.) → return as-is

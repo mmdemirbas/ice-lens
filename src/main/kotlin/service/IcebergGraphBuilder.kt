@@ -465,8 +465,8 @@ object IcebergGraphBuilder {
     )
 
     internal val unifiedManifestComparator: Comparator<UnifiedManifest> = compareBy(
-        { it.metadata.sequenceNumber ?: Int.MAX_VALUE },
-        { it.metadata.minSequenceNumber ?: Int.MAX_VALUE },
+        { it.metadata.sequenceNumber ?: Long.MAX_VALUE },
+        { it.metadata.minSequenceNumber ?: Long.MAX_VALUE },
         { it.metadata.addedSnapshotId ?: Long.MAX_VALUE },
         { manifestContentRank(it.metadata.content) },
         { it.metadata.manifestPath ?: "" },

@@ -45,7 +45,7 @@ class PerformanceTest {
                         metadata = ManifestListEntry(
                             manifestPath = "/test/metadata/manifest_${globalSnapshotIdx}_$manIdx.avro",
                             content = if (manIdx % 3 == 0) 1 else 0,
-                            sequenceNumber = globalSnapshotIdx,
+                            sequenceNumber = globalSnapshotIdx.toLong(),
                             addedSnapshotId = globalSnapshotIdx.toLong(),
                             addedFilesCount = filesPerManifest,
                         ),

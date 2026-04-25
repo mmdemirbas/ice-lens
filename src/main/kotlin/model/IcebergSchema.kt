@@ -113,8 +113,8 @@ data class ManifestListEntry(
     @SerialName("manifest_length") val manifestLength: Long? = null,
     @SerialName("partition_spec_id") val partitionSpecId: Int? = null,
     @SerialName("content") val content: Int? = null, // 0=Data, 1=Deletes
-    @SerialName("sequence_number") val sequenceNumber: Int? = null,
-    @SerialName("min_sequence_number") val minSequenceNumber: Int? = null,
+    @SerialName("sequence_number") val sequenceNumber: Long? = null,
+    @SerialName("min_sequence_number") val minSequenceNumber: Long? = null,
     @SerialName("added_snapshot_id") val addedSnapshotId: Long? = null,
     @SerialName("added_files_count") val addedFilesCount: Int? = null,
     @SerialName("existing_files_count") val existingFilesCount: Int? = null,

@@ -10,6 +10,20 @@ class IcebergSchemaTest {
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    // H-7 regression: ManifestListEntry sequence numbers must accept Long values.
+    // The Iceberg spec defines sequence_number / min_sequence_number as int64.
+    @Test
+    fun `ManifestListEntry sequence numbers accept values larger than Int MAX_VALUE`() {
+        val largeSeq = Int.MAX_VALUE.toLong() + 100L
+        val entry = ManifestListEntry(
+            manifestPath = "/m.avro",
+            sequenceNumber = largeSeq,
+            minSequenceNumber = largeSeq,
+        )
+        assertEquals(largeSeq, entry.sequenceNumber)
+        assertEquals(largeSeq, entry.minSequenceNumber)
+    }
+
     @Test
     fun `parse minimal TableMetadata`() {
         val input = """{"format-version": 2, "table-uuid": "abc-123"}"""

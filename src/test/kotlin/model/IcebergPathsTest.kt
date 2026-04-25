@@ -74,6 +74,25 @@ class IcebergPathsTest {
         assertTrue(result.startsWith("//"), "UNC path should start with // but got: $result")
     }
 
+    // H-6 regression: file://host/share/path must not silently drop the host.
+    @Test
+    fun `normalizeFilePath preserves authority for file URI with host`() {
+        // file://server/share/data/file.parquet -> //server/share/data/file.parquet
+        val result = normalizeFilePath("file://server/share/data/file.parquet")
+        assertEquals("//server/share/data/file.parquet", result)
+    }
+
+    @Test
+    fun `normalizeFilePath strips localhost authority for file URI`() {
+        // file://localhost/data/file.parquet is equivalent to file:///data/file.parquet
+        assertEquals("/data/file.parquet", normalizeFilePath("file://localhost/data/file.parquet"))
+    }
+
+    @Test
+    fun `normalizeFilePath empty-host file URI returns local path`() {
+        assertEquals("/data/file.parquet", normalizeFilePath("file:///data/file.parquet"))
+    }
+
     @Test
     fun `metadataVersionFromFileName parses versioned files`() {
         assertEquals(1, metadataVersionFromFileName("v1.metadata.json"))

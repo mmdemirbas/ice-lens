@@ -179,10 +179,13 @@ object GraphLayoutService {
 
         fun parsePosition(data: Map<String, Any>): Int? {
             val raw = data["pos"] ?: data["position"] ?: return null
-            return when (raw) {
-                is Number -> raw.toInt()
-                else -> raw.toString().toLongOrNull()?.toInt()
+            val asLong = when (raw) {
+                is Number -> raw.toLong()
+                else -> raw.toString().toLongOrNull() ?: return null
             }
+            // Reject out-of-range values rather than silently truncating Long → Int.
+            if (asLong < 0 || asLong > Int.MAX_VALUE.toLong()) return null
+            return asLong.toInt()
         }
 
         val metadataNodes = nodesById.values.filterIsInstance<GraphNode.MetadataNode>()
