@@ -205,6 +205,7 @@ private fun collectDescendantRows(node: GraphNode, graphModel: GraphModel): List
                     }
                 }
                 is GraphNode.FileNode -> visit(child.id, child)
+                is GraphNode.PaimonDataFileNode -> visit(child.id, currentFile)
                 else -> visit(child.id, currentFile)
             }
         }
@@ -1241,6 +1242,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Changelog Manifest List", node.data.changelogManifestList ?: "N/A", copyable = true)
                             DetailRow("Index Manifest", node.data.indexManifest ?: "N/A", copyable = true)
                         }
+                        RecursiveDataTableSection(node = node, graphModel = currentGraph)
                     }
                     is GraphNode.PaimonSchemaNode -> {
                         DetailTable {
@@ -1276,6 +1278,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Kind", node.kind)
                             DetailRow("Path", node.localPath ?: "N/A", copyable = true)
                         }
+                        RecursiveDataTableSection(node = node, graphModel = currentGraph)
                     }
                     is GraphNode.PaimonManifestNode -> {
                         DetailTable {
@@ -1286,6 +1289,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Deleted Files", "${node.data.numDeletedFiles ?: "N/A"}")
                             DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
                         }
+                        RecursiveDataTableSection(node = node, graphModel = currentGraph)
                     }
                     is GraphNode.PaimonDataFileNode -> {
                         val file = node.entry.file
@@ -1303,6 +1307,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Max Seq", "${file?.maxSequenceNumber ?: "N/A"}")
                             DetailRow("Creation Time", ui.formatTimestamp(file?.creationTime))
                         }
+                        RecursiveDataTableSection(node = node, graphModel = currentGraph)
                     }
                 }
             }

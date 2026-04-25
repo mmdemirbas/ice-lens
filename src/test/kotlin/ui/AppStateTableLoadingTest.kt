@@ -171,6 +171,24 @@ class AppStateTableLoadingTest {
         assertFalse(state.isLoadingTable)
     }
 
+    // T-3 regression: when a table is deleted with no cached session, loading it again
+    // with forceReloadFromFs must NOT leave the previous table's graph on screen.
+    @Test
+    fun `loadTable replaces graph when switching to missing table with forceReloadFromFs`() {
+        val state = AppState(prefs, CoroutineScope(Dispatchers.Unconfined), Dispatchers.Unconfined)
+        val tablePath = createIcebergTable()
+        state.loadTable(tablePath)
+        val originalGraph = state.graphModel
+        assertNotNull(originalGraph, "Initial table populates graph")
+
+        // Now request a different (non-existent) table with forceReloadFromFs=true and no cache.
+        val deletedPath = "/nonexistent/deleted-table-${System.nanoTime()}"
+        state.loadTable(deletedPath, forceReloadFromFs = true)
+
+        assertEquals(deletedPath, state.selectedTablePath)
+        assertTrue(state.graphModel !== originalGraph, "previous table's graph must not remain visible")
+    }
+
     @Test
     fun `forceReloadFromFs reloads when fingerprint changes`() {
         val tablePath = createIcebergTable()

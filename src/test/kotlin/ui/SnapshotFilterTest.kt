@@ -3,11 +3,14 @@ package ui
 import model.GraphEdge
 import model.GraphModel
 import model.GraphNode
+import model.PaimonSnapshot
 import model.Snapshot
 import model.TableSummary
 import model.FileTimeRange
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SnapshotFilterTest {
@@ -91,5 +94,54 @@ class SnapshotFilterTest {
         val allIds = graph.nodes.map { it.id }.toSet()
         val filtered = filteredGraphModel(graph, allIds)
         assertTrue(filtered === graph, "should return same instance when no filtering needed")
+    }
+
+    // --- C-1 regression: snapshot filter must work for Paimon ---
+
+    @Test
+    fun `asSnapshotFilterOption maps Iceberg SnapshotNode`() {
+        val node = GraphNode.SnapshotNode("s1", snapshot(42), simpleId = 1)
+        val opt = node.asSnapshotFilterOption()
+        assertNotNull(opt)
+        assertEquals("s1", opt.nodeId)
+        assertEquals(42L, opt.snapshotId)
+    }
+
+    @Test
+    fun `asSnapshotFilterOption maps Paimon PaimonSnapshotNode`() {
+        val paimonSnap = PaimonSnapshot(id = 7L, timeMillis = 12345L, schemaId = 0)
+        val node = GraphNode.PaimonSnapshotNode("ps1", paimonSnap, simpleId = 1)
+        val opt = node.asSnapshotFilterOption()
+        assertNotNull(opt)
+        assertEquals("ps1", opt.nodeId)
+        assertEquals(7L, opt.snapshotId)
+        assertEquals(12345L, opt.timestampMs)
+    }
+
+    @Test
+    fun `asSnapshotFilterOption returns null for non-snapshot nodes`() {
+        assertNull(GraphNode.TableNode("t1", tableSummary()).asSnapshotFilterOption())
+    }
+
+    @Test
+    fun `selecting a Paimon snapshot includes ancestors and descendants`() {
+        val paimonSnap1 = PaimonSnapshot(id = 1L, timeMillis = 1000L, schemaId = 0)
+        val paimonSnap2 = PaimonSnapshot(id = 2L, timeMillis = 2000L, schemaId = 0)
+        val graph = GraphModel(
+            nodes = listOf(
+                GraphNode.TableNode("t1", tableSummary()),
+                GraphNode.PaimonSnapshotNode("ps1", paimonSnap1, simpleId = 1),
+                GraphNode.PaimonSnapshotNode("ps2", paimonSnap2, simpleId = 2),
+            ),
+            edges = listOf(
+                GraphEdge("e1", "t1", "ps1"),
+                GraphEdge("e2", "t1", "ps2"),
+            ),
+            width = 100.0, height = 100.0
+        )
+        val result = computeVisibleNodeIdsForSnapshotFilter(graph, setOf("ps1"))
+        assertTrue("t1" in result, "ancestor should be visible")
+        assertTrue("ps1" in result, "selected Paimon snapshot should be visible")
+        assertTrue("ps2" !in result, "unrelated snapshot should not be visible")
     }
 }

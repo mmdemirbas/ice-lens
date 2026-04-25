@@ -214,8 +214,19 @@ private fun readPaimonManifest(
             UnifiedReadError("decode-manifest-entry", manifestPath.toString(), error.message, error.stackTrace)
         }
 
+        val normalizedTableRoot = runCatching { tablePath.toAbsolutePath().normalize() }
+            .getOrElse { tablePath.normalize() }
         result.entries.map { entry ->
             val dataFilePath = resolveDataFilePath(tablePath, entry)
+            val normalizedResolved = runCatching { dataFilePath.toAbsolutePath().normalize() }
+                .getOrElse { dataFilePath.normalize() }
+            if (!normalizedResolved.startsWith(normalizedTableRoot)) {
+                manifestErrors += UnifiedReadError(
+                    stage = "path-traversal-check",
+                    path = entry.file?.fileName.orEmpty(),
+                    message = "Data file path resolves outside the table directory: $normalizedResolved",
+                )
+            }
             PaimonUnifiedDataFile(path = dataFilePath, metadata = entry)
         }
     } else {

@@ -266,4 +266,80 @@ class PaimonGraphBuilderTest {
         // pml_* -> pman_*
         assertTrue(result.edges.any { it.fromId.startsWith("pml_") && it.toId.startsWith("pman_") })
     }
+
+    // T-4 regression: each manifest list under the same snapshot must have its own simpleId
+    @Test
+    fun `manifest list nodes get distinct simpleIds`() {
+        val baseManifest = minimalManifest("manifest-base-0")
+        val deltaManifest = minimalManifest("manifest-delta-0")
+        val model = minimalTableModel(
+            snapshots = listOf(
+                minimalSnapshot(
+                    baseManifests = listOf(baseManifest),
+                    deltaManifests = listOf(deltaManifest),
+                )
+            ),
+        )
+        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+
+        val mlNodes = result.nodes.filterIsInstance<GraphNode.PaimonManifestListNode>()
+        assertEquals(2, mlNodes.size)
+        val simpleIds = mlNodes.map { it.simpleId }.toSet()
+        assertEquals(2, simpleIds.size, "each manifest list must have a unique simpleId")
+    }
+
+    // M-12 regression: same manifest file referenced from multiple lists must produce one node
+    @Test
+    fun `same manifest referenced from multiple lists is deduplicated`() {
+        val sharedManifest = minimalManifest("shared-manifest-0")
+        val model = minimalTableModel(
+            snapshots = listOf(
+                minimalSnapshot(
+                    baseManifests = listOf(sharedManifest),
+                    deltaManifests = listOf(sharedManifest),
+                )
+            ),
+        )
+        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+
+        val manifestNodes = result.nodes.filterIsInstance<GraphNode.PaimonManifestNode>()
+        assertEquals(1, manifestNodes.size, "shared manifest must produce a single node")
+
+        // Two manifest lists, both with edges to the same manifest node
+        val manEdges = result.edges.filter { it.toId == manifestNodes[0].id }
+        assertEquals(2, manEdges.size, "shared manifest reachable via both manifest lists")
+    }
+
+    // M-11 regression: delete entries must be counted in summary
+    @Test
+    fun `summary counts delete files via kind`() {
+        val addFile = minimalDataFile("data-add.orc", kind = 0, rowCount = 100)
+        val delFile1 = minimalDataFile("data-del-1.orc", kind = 1, rowCount = 0)
+        val delFile2 = minimalDataFile("data-del-2.orc", kind = 1, rowCount = 0)
+        val deleteManifest = PaimonUnifiedManifest(
+            path = Paths.get("/tmp/test-paimon-table/manifest/manifest-del"),
+            metadata = PaimonManifestFileMeta(
+                fileName = "manifest-del",
+                fileSize = 1024,
+                numAddedFiles = 0,
+                numDeletedFiles = 2,
+            ),
+            entries = listOf(delFile1, delFile2),
+        )
+        val addManifest = minimalManifest("manifest-add", entries = listOf(addFile))
+        val model = minimalTableModel(
+            snapshots = listOf(
+                minimalSnapshot(
+                    baseManifests = listOf(addManifest),
+                    deltaManifests = listOf(deleteManifest),
+                )
+            ),
+        )
+        val summary = PaimonGraphBuilder.buildGraph(model, showRows = false).summary
+
+        assertEquals(2, summary.posDeleteFileCount, "two delete entries")
+        assertEquals(1, summary.dataFileCount, "one add entry")
+        assertEquals(1, summary.deleteManifestCount)
+        assertEquals(1, summary.dataManifestCount)
+    }
 }

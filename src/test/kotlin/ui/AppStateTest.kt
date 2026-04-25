@@ -401,6 +401,51 @@ class AppStateTest {
         }
     }
 
+    // C-2 regression: Paimon fingerprint must reflect snapshot/schema files,
+    // not always be "missing". Without this, cache invalidation never fires.
+    @Test
+    fun `computeTableFingerprint detects Paimon snapshot files`() {
+        val tmpDir = kotlin.io.path.createTempDirectory("fp-paimon").toFile()
+        try {
+            val snapshotDir = File(tmpDir, "snapshot").apply { mkdirs() }
+            val schemaDir = File(tmpDir, "schema").apply { mkdirs() }
+            File(snapshotDir, "snapshot-1").writeText("{}")
+            File(schemaDir, "schema-0").writeText("{}")
+
+            val fp1 = state.computeTableFingerprint(tmpDir.absolutePath)
+            assertNotEquals("missing", fp1)
+            assertNotEquals("empty", fp1)
+
+            // New snapshot file -> fingerprint changes
+            Thread.sleep(10)
+            File(snapshotDir, "snapshot-2").writeText("{}")
+            val fp2 = state.computeTableFingerprint(tmpDir.absolutePath)
+            assertNotEquals(fp1, fp2)
+        } finally {
+            tmpDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `computeTableFingerprint changes when Paimon schema file changes`() {
+        val tmpDir = kotlin.io.path.createTempDirectory("fp-paimon-schema").toFile()
+        try {
+            val snapshotDir = File(tmpDir, "snapshot").apply { mkdirs() }
+            val schemaDir = File(tmpDir, "schema").apply { mkdirs() }
+            File(snapshotDir, "snapshot-1").writeText("{}")
+            val schemaFile = File(schemaDir, "schema-0")
+            schemaFile.writeText("{\"id\": 0}")
+
+            val fp1 = state.computeTableFingerprint(tmpDir.absolutePath)
+            Thread.sleep(50)
+            schemaFile.writeText("{\"id\": 0, \"comment\": \"updated\"}")
+            val fp2 = state.computeTableFingerprint(tmpDir.absolutePath)
+            assertNotEquals(fp1, fp2)
+        } finally {
+            tmpDir.deleteRecursively()
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  Show Rows Toggle
     // ═══════════════════════════════════════════════════════════════

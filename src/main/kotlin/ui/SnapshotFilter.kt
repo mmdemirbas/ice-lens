@@ -10,6 +10,23 @@ data class SnapshotFilterOption(
     val timestampMs: Long?,
 )
 
+/** Maps any snapshot-like node (Iceberg or Paimon) into a uniform filter option. */
+fun GraphNode.asSnapshotFilterOption(): SnapshotFilterOption? = when (this) {
+    is GraphNode.SnapshotNode -> SnapshotFilterOption(
+        nodeId = id,
+        snapshotId = data.snapshotId,
+        sequenceNumber = data.sequenceNumber,
+        timestampMs = data.timestampMs,
+    )
+    is GraphNode.PaimonSnapshotNode -> SnapshotFilterOption(
+        nodeId = id,
+        snapshotId = data.id,
+        sequenceNumber = null,
+        timestampMs = data.timeMillis,
+    )
+    else -> null
+}
+
 fun snapshotFilterLabel(option: SnapshotFilterOption): String {
     val seq = option.sequenceNumber?.toString() ?: "N/A"
     val sid = option.snapshotId?.toString() ?: "N/A"
@@ -23,8 +40,7 @@ fun computeVisibleNodeIdsForSnapshotFilter(
     if (selectedSnapshotNodeIds.isEmpty()) return graph.nodes.map { it.id }.toSet()
 
     val validSnapshotIds = graph.nodes
-        .filterIsInstance<GraphNode.SnapshotNode>()
-        .map { it.id }
+        .mapNotNull { it.asSnapshotFilterOption()?.nodeId }
         .toHashSet()
     val selected = selectedSnapshotNodeIds.filterTo(mutableSetOf()) { it in validSnapshotIds }
     if (selected.isEmpty()) return graph.nodes.map { it.id }.toSet()

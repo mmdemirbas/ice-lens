@@ -103,20 +103,12 @@ class AppState(
     val snapshotFilterOptions: List<SnapshotFilterOption> by derivedStateOf {
         graphModel
             ?.nodes
-            ?.filterIsInstance<GraphNode.SnapshotNode>()
+            ?.mapNotNull { it.asSnapshotFilterOption() }
             ?.sortedWith(
-                compareBy<GraphNode.SnapshotNode> { it.data.sequenceNumber ?: Long.MAX_VALUE }
-                    .thenBy { it.data.timestampMs ?: Long.MAX_VALUE }
-                    .thenBy { it.data.snapshotId ?: Long.MAX_VALUE }
+                compareBy<SnapshotFilterOption> { it.sequenceNumber ?: Long.MAX_VALUE }
+                    .thenBy { it.timestampMs ?: Long.MAX_VALUE }
+                    .thenBy { it.snapshotId ?: Long.MAX_VALUE }
             )
-            ?.map {
-                SnapshotFilterOption(
-                    nodeId = it.id,
-                    snapshotId = it.data.snapshotId,
-                    sequenceNumber = it.data.sequenceNumber,
-                    timestampMs = it.data.timestampMs
-                )
-            }
             .orEmpty()
     }
 
@@ -368,16 +360,40 @@ class AppState(
     }
 
     fun computeTableFingerprint(tablePath: String): String {
-        val metadataDir = File(tablePath, "metadata")
-        if (!metadataDir.exists() || !metadataDir.isDirectory) return "missing"
-        val trackedFiles = metadataDir.listFiles()?.filter { file ->
-            file.isFile && (file.name.endsWith(".metadata.json") || file.name == "version-hint.text")
-        }?.sortedBy { it.name }.orEmpty()
+        val tableDir = File(tablePath)
+        if (!tableDir.exists() || !tableDir.isDirectory) return "missing"
+        // Iceberg first; fall back to Paimon. UNKNOWN treated as a present-but-empty directory.
+        val trackedFiles = icebergTrackedFiles(tableDir)
+            .ifEmpty { paimonTrackedFiles(tableDir) }
         if (trackedFiles.isEmpty()) return "empty"
         val signature = trackedFiles.joinToString("|") { file ->
             "${file.name}:${file.length()}:${file.lastModified()}"
         }
         return signature.hashCode().toString()
+    }
+
+    private fun icebergTrackedFiles(tableDir: File): List<File> {
+        val metadataDir = File(tableDir, "metadata")
+        if (!metadataDir.exists() || !metadataDir.isDirectory) return emptyList()
+        return metadataDir.listFiles()
+            ?.filter { it.isFile && (it.name.endsWith(".metadata.json") || it.name == "version-hint.text") }
+            ?.sortedBy { it.name }
+            .orEmpty()
+    }
+
+    private fun paimonTrackedFiles(tableDir: File): List<File> {
+        val snapshotDir = File(tableDir, "snapshot")
+        val schemaDir = File(tableDir, "schema")
+        if (!snapshotDir.isDirectory && !schemaDir.isDirectory) return emptyList()
+        val snapshotFiles = snapshotDir.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("snapshot-") }
+            ?.sortedBy { it.name }
+            .orEmpty()
+        val schemaFiles = schemaDir.listFiles()
+            ?.filter { it.isFile && it.name.startsWith("schema-") }
+            ?.sortedBy { it.name }
+            .orEmpty()
+        return snapshotFiles + schemaFiles
     }
 
     fun updateShowRows(value: Boolean) {
@@ -492,15 +508,13 @@ class AppState(
                     isStaleData = true
                 } else {
                     errorMsg = "Table was deleted from filesystem and no cached snapshot is available."
-                    if (!forceReloadFromFs) {
-                        setGraphModelAndBump(null)
-                    }
+                    setGraphModelAndBump(null)
                 }
             } catch (e: Exception) {
                 if (requestId != loadRequestId) return@launch
                 errorMsg = e.message
                 logger.error("Failed to load table: {}", normalizedTablePath, e)
-                if (!forceReloadFromFs) {
+                if (sessionCache[cacheKey] == null) {
                     setGraphModelAndBump(null)
                 }
             } finally {

@@ -3,8 +3,7 @@ package service
 import model.*
 import org.slf4j.LoggerFactory
 import java.io.File
-import java.net.URI
-import java.util.*
+import java.util.UUID
 
 private val logger = LoggerFactory.getLogger(PaimonGraphBuilder::class.java)
 
@@ -28,7 +27,7 @@ object PaimonGraphBuilder {
 
     /**
      * Builds graph nodes and edges for the given Paimon table model.
-     * Does not perform layout — call [GraphLayoutService.layoutNodes] with the result.
+     * Does not perform layout — call [GraphLayoutService.layoutGraph] with the result.
      */
     fun buildGraph(
         tableModel: PaimonUnifiedTableModel,
@@ -37,13 +36,15 @@ object PaimonGraphBuilder {
         val logicalNodes = mutableMapOf<String, GraphNode>()
         val edges = mutableListOf<GraphEdge>()
         val edgeIds = mutableSetOf<String>()
-        val processedManifests = mutableSetOf<String>()
+        val manifestPathToId = mutableMapOf<String, String>()
+        val processedManifestEntries = mutableSetOf<String>()
         val tableNodeId = "table_root"
 
         val tableSummary = buildTableSummary(tableModel)
         logicalNodes[tableNodeId] = GraphNode.TableNode(tableNodeId, tableSummary)
 
         var nextManifestSimpleId = 1
+        var nextManifestListSimpleId = 1
         var nextFileSimpleId = 1
         var nextSnapshotSimpleId = 1
         var nextSchemaSimpleId = 1
@@ -136,7 +137,7 @@ object PaimonGraphBuilder {
                     logicalNodes[mlId] = GraphNode.PaimonManifestListNode(
                         id = mlId,
                         kind = kind,
-                        simpleId = simpleId,
+                        simpleId = nextManifestListSimpleId++,
                         localPath = snap.let {
                             when (kind) {
                                 "base" -> it.baseManifestList
@@ -155,10 +156,14 @@ object PaimonGraphBuilder {
 
                 manifests.forEach { unifiedManifest ->
                     val manifestKey = unifiedManifest.metadata.fileName ?: UUID.randomUUID().toString()
-                    val manId = "pman_${nextManifestSimpleId}"
-                    val manSimpleId = nextManifestSimpleId++
-
-                    if (!logicalNodes.containsKey(manId)) {
+                    val existingId = manifestPathToId[manifestKey]
+                    val manId: String
+                    if (existingId != null) {
+                        manId = existingId
+                    } else {
+                        val manSimpleId = nextManifestSimpleId++
+                        manId = "pman_${manSimpleId}"
+                        manifestPathToId[manifestKey] = manId
                         logicalNodes[manId] = GraphNode.PaimonManifestNode(
                             id = manId,
                             data = unifiedManifest.metadata,
@@ -172,12 +177,12 @@ object PaimonGraphBuilder {
                         edges.add(GraphEdge(manEdgeId, mlId, manId))
                     }
 
-                    // Manifest-level errors
+                    // Manifest-level errors (reported once per unique manifest)
                     unifiedManifest.readErrors.forEach { error ->
                         addErrorNode(manId, "MANIFEST READ ERROR", error)
                     }
 
-                    if (processedManifests.add(manifestKey)) {
+                    if (processedManifestEntries.add(manifestKey)) {
                         unifiedManifest.entries.take(MAX_FILES_PER_MANIFEST).forEachIndexed { fileIndex, unifiedDataFile ->
                             val entry = unifiedDataFile.metadata
                             val fileSimpleId = nextFileSimpleId++
@@ -258,17 +263,29 @@ object PaimonGraphBuilder {
 
     internal fun buildTableSummary(tableModel: PaimonUnifiedTableModel): TableSummary {
         var snapshotCount = 0
-        var manifestCount = 0
+        var manifestEntryCount = 0
         var dataFileCount = 0
+        var deleteFileCount = 0
         var totalRecordCount = 0L
+        val uniqueManifestKeys = mutableSetOf<String>()
+        var dataManifestCount = 0
+        var deleteManifestCount = 0
 
         tableModel.snapshots.forEach { snapshot ->
             snapshotCount++
             val allManifests = snapshot.baseManifests + snapshot.deltaManifests + snapshot.changelogManifests
             allManifests.forEach { manifest ->
-                manifestCount++
+                val key = manifest.metadata.fileName ?: "path:${manifest.path}"
+                if (uniqueManifestKeys.add(key)) {
+                    val numDeleted = manifest.metadata.numDeletedFiles ?: 0L
+                    if (numDeleted > 0) deleteManifestCount++ else dataManifestCount++
+                }
                 manifest.entries.forEach { entry ->
-                    dataFileCount++
+                    manifestEntryCount++
+                    when (entry.metadata.kind ?: 0) {
+                        1 -> deleteFileCount++
+                        else -> dataFileCount++
+                    }
                     totalRecordCount += entry.metadata.file?.rowCount ?: 0L
                 }
             }
@@ -289,13 +306,13 @@ object PaimonGraphBuilder {
             metadataFileCount = 0,
             snapshotCount = snapshotCount,
             snapshotManifestListFileCount = snapshotCount,
-            manifestCount = manifestCount,
-            dataManifestCount = manifestCount,
-            deleteManifestCount = 0,
-            manifestEntryCount = dataFileCount,
+            manifestCount = uniqueManifestKeys.size,
+            dataManifestCount = dataManifestCount,
+            deleteManifestCount = deleteManifestCount,
+            manifestEntryCount = manifestEntryCount,
             uniqueDataFileCount = dataFileCount,
             dataFileCount = dataFileCount,
-            posDeleteFileCount = 0,
+            posDeleteFileCount = deleteFileCount,
             eqDeleteFileCount = 0,
             totalRecordCount = totalRecordCount,
             metadataFileTimes = FileTimeRange(),

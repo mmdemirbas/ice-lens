@@ -377,6 +377,35 @@ class PaimonPipelineTest {
         assertEquals(100L, node0.entry.file?.rowCount)
     }
 
+    // M-9 regression: Paimon data file path traversal attempt must be flagged.
+    @Test
+    fun `paimon data file with path traversal attempt is flagged`() {
+        val schemaDir = File(tmpDir, "schema").apply { mkdirs() }
+        val snapshotDir = File(tmpDir, "snapshot").apply { mkdirs() }
+        val manifestDir = File(tmpDir, "manifest").apply { mkdirs() }
+
+        File(schemaDir, "schema-0").writeText("""{"id": 0, "fields": [{"id": 0, "name": "k", "type": "INT"}]}""")
+        File(snapshotDir, "snapshot-1").writeText("""
+            {"id": 1, "schemaId": 0, "baseManifestList": "manifest-list-base-0", "commitKind": "APPEND", "timeMillis": 1700000000000}
+        """.trimIndent())
+
+        writeManifestListAvro(
+            File(manifestDir, "manifest-list-base-0"),
+            listOf(ManifestListEntry(fileName = "manifest-traversal", fileSize = 1024, numAddedFiles = 1, numDeletedFiles = 0, schemaId = 0))
+        )
+        // Malicious filename with traversal sequence
+        writeManifestAvro(
+            File(manifestDir, "manifest-traversal"),
+            listOf(ManifestEntryData(kind = 0, bucket = 0, fileName = "../../../etc/passwd", fileSize = 0, rowCount = 0, level = 0))
+        )
+
+        val model = PaimonUnifiedTableModel(tmpDir.toPath())
+        val manifest = model.snapshots[0].baseManifests[0]
+        val traversalErrors = manifest.readErrors.filter { it.stage == "path-traversal-check" }
+        assertTrue(traversalErrors.isNotEmpty(),
+            "Path traversal attempt must be flagged. errors=${manifest.readErrors}")
+    }
+
     @Test
     fun `manifest list in manifest subdirectory is resolved correctly`() {
         // Regression test: Paimon stores manifest lists in manifest/ subdir,
