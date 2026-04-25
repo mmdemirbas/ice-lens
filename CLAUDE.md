@@ -72,19 +72,24 @@ src/main/kotlin/
 - Graph layout flow: `FormatTableModel` → `GraphLayoutService.layoutGraph()` dispatches to format-specific builder → `GraphBuildResult` → `layoutNodes()` → `GraphModel` → `GraphCanvas`
 - `GraphModel.nodeById` provides a lazy `Map<String, GraphNode>` — use it instead of `nodes.find`/`nodes.associateBy`
 - File paths are resolved relative to the metadata directory using `resolveForceRelative()`
-- Workspace serialization uses a simple `W|path` / `T|path` format joined by `;`
-- `normalizeFilePath` handles `file:` URIs, Windows backslashes, UNC paths, and passes through cloud URIs as-is
+- Workspace serialization uses `W|path` / `T|path` items joined by `;`. The path component
+  percent-encodes `%`, `;`, and `|` so paths containing those characters round-trip safely.
+- `normalizeFilePath` handles `file:` URIs (including `file://host/path` authority,
+  reconstructed UNC-style as `//host/path`), Windows backslashes, UNC paths, and passes
+  through cloud URIs (`s3://`, `hdfs://`, `gs://`, `abfs://`, …) as-is
+- `loadRequestId` is an `AtomicLong`; the cache-hit branch in `loadTable` also bumps it so
+  any in-flight load/reapply coroutine fails its staleness check and bails out
 
 ## Known quirks
 
-- `App.kt` is ~900 lines — business logic extracted to `AppState.kt`; toolbar remains inline
 - Shared UI utilities (dark surface detection, selection highlight color) live in `ui/Theme.kt`
 - Shared path utilities (`normalizeFilePath`, `metadataVersionFromFileName`) live in `model/IcebergPaths.kt`
 - Node card text colors (`NodeCardTextPrimary`, `NodeCardTextSecondary`) are hardcoded light-mode colors, not theme-aware
 - `GraphNode.x`/`y` are plain `var Double` used during layout only; UI reads from `GraphModel.positions` (Compose-observable `mutableStateMapOf`)
 - `GraphModel.initialPositions` (immutable Map) is thread-safe for background layout; `positions` must only be written on the main thread
 - `SampleRowReader` uses a `synchronized` lock for DuckDB connection safety across threads
-- `sessionCache` is a `ConcurrentHashMap` for safe access from coroutines
+- `sessionCache` is a 5-entry LRU (`Collections.synchronizedMap` over a `LinkedHashMap`
+  with `removeEldestEntry`) — bounds memory across many table switches
 - Dependencies are managed via Gradle version catalog (`gradle/libs.versions.toml`)
 - ProGuard is enabled for release builds with keep rules in `proguard-rules.pro`
 - Tests use JUnit 5 via `kotlin-test-junit5`; run with `./gradlew test`
@@ -117,9 +122,8 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 
 ## Known issues and tech debt
 
-1. **`App.kt` is ~900 lines** — toolbar remains inline; business logic extracted to `AppState.kt`
-2. **No integration tests** — no Avro/JSON fixture files exist in `src/test/resources/`
-3. **`@Suppress("DEPRECATION")` on avro4k** — `decodeFromGenericData` API may change
+1. **`App.kt` is ~1k lines** — toolbar still inline; business logic already extracted to `AppState.kt`. Toolbar extraction tracked in `TODO.md`.
+2. **`@Suppress("DEPRECATION")` on avro4k** — `decodeFromGenericData` API may change
 
 ## Testing
 
@@ -129,7 +133,10 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew test --tests "*.IcebergPathsTest"   # Specific test class
 ```
 
-270+ tests across 23 files covering full pipelines for both formats, error recovery, layout post-processing, AppState lifecycle, and SampleRowReader with real Parquet files.
+~290 tests across 23 files covering full pipelines for both formats (Avro fixtures
+written at runtime via `avro4k`), error recovery, layout post-processing, AppState
+lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
+Parquet files. Paimon end-to-end fixtures live in `src/test/resources/paimon-fixtures/`.
 
 ## Supported table formats
 
@@ -143,6 +150,10 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 - Reader: `PaimonReader` (JSON snapshots/schemas + Avro manifest lists/manifests via `AvroReader`)
 - Model: `PaimonUnifiedTableModel` → `PaimonGraphBuilder` → `GraphLayoutService`
 - Key differences from Iceberg: manifest lists split into base (accumulated) and delta (new changes); LSM tree levels on data files; commitKind (APPEND/COMPACT/OVERWRITE/ANALYZE)
+- Manifest entries carry `_KIND` (0=ADD, 1=DELETE log entry). Paimon does NOT have
+  positional/equality delete files like Iceberg, so `TableSummary.posDeleteFileCount` and
+  `eqDeleteFileCount` stay 0; `dataFileCount` counts ADD entries only. DELETE log entries
+  remain visible via `manifestEntryCount` and `deleteManifestCount`.
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.
@@ -166,6 +177,6 @@ Steps 1-7 are clean single-point changes. Steps 8-12 require adding `when` cases
 ## Related documentation
 
 - `docs/ARCHITECTURE.md` — layer diagram, data flow, threading model, extension points
-- `docs/REVIEW_CHECKLIST.md` — 8 structured code review rounds
 - `TODO.md` — bugs, feature ideas, infrastructure tasks
 - `CHANGELOG.md` — version history
+- `REVIEW.md` — current code-review backlog with status per finding

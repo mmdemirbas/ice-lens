@@ -69,7 +69,9 @@ ice-lens is a single-module Kotlin Compose Desktop application. All code lives i
 ┌──────────────────────────────────────────┐
 │  LAYOUT ENGINE (format-agnostic)         │
 │                                          │
-│  GraphLayoutService.layoutNodes()        │
+│  GraphLayoutService.layoutGraph()        │  ← public entry; dispatches by format
+│    → format-specific buildGraph()        │
+│    → layoutNodes(): generic ELK pass     │
 │    1. Create ELK graph from nodes/edges  │  ← generic
 │    2. Run ELK layered layout             │  ← generic
 │    3. enforceChronologicalVerticalOrder   │  ← generic post-processing
@@ -212,7 +214,8 @@ WorkspaceItem (sealed class)
 └── SingleTable  Directory containing a metadata/ subdirectory
 ```
 
-Serialized to preferences as `W|/path` or `T|/path`, separated by `;`.
+Serialized to preferences as `W|/path` or `T|/path`, joined by `;`. Path values percent-encode
+`%`, `;`, and `|` so paths containing those characters round-trip safely.
 
 Detection logic (via `TableFormatDetector`):
 - `TableFormat.ICEBERG`: has `metadata/` subdirectory with `*.metadata.json`
@@ -236,14 +239,14 @@ To add a new table format (e.g., Delta Lake, Hudi), follow the pattern establish
 
 ### Graph construction
 - Create `*GraphBuilder.kt` following the `IcebergGraphBuilder`/`PaimonGraphBuilder` pattern
-- `GraphLayoutService.layoutNodes()` is format-agnostic — accepts any list of nodes + edges
+- `GraphLayoutService.layoutGraph()` dispatches by format and calls back into the format-specific builder; `layoutNodes()` is the format-agnostic ELK pass
 - Add post-processing cases (ordering, alignment, overlap) for new node types in `GraphLayoutService`
 
 ### UI rendering
 - `NodeComponents.kt` — add node card rendering + colors for new `GraphNode` subtypes
 - `NodeDetails.kt` — add inspector panels for new node types
 - `Sidebar.kt` — add format badge in `WorkspaceRootItem`
-- `App.kt` — add format detection and layout dispatch in the 3 layout call sites
+- `AppState.loadTableModel()` — single dispatch point for table model construction; add the new format here
 
 ## File format handling
 

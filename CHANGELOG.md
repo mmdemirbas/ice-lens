@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Snapshot filter now works for Paimon tables (previously Iceberg-only); `asSnapshotFilterOption()` extension unifies both formats
+- Sample-row inspector for Paimon nodes (`RecursiveDataTableSection` invoked from every Paimon inspector branch; `collectDescendantRows` descends through `PaimonDataFileNode`)
+- 5-entry LRU session cache (was unbounded — could OOM after enough table switches)
+- `formatTimestampShort()` — single-line timestamp for fixed-width table cells
+- `HoverTooltip` shared composable; tool-window bar icons now show their title on hover
+- Multi-select inspector renders a per-node summary table (type + key field per node type)
+- Snapshot-filter dropdown is scrollable (`heightIn(max=420dp).verticalScroll`) for tables with many snapshots
+- Stack-trace inspector panel: bounded scroll (`heightIn(max=320dp)`) + Copy button
+- Toolbar tooltips include keyboard shortcut hints
+- Hover cursor on draggable workspace items
 - Apache Paimon table format support (data model, reader, unified model, graph types, graph builder)
 - `PaimonSchema.kt` — `@Serializable` data classes for Paimon snapshots, schemas, manifest lists, and manifest entries
 - `PaimonReader.kt` — reads Paimon snapshot/schema JSON and manifest list/manifest Avro files
@@ -51,6 +61,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflow running tests on all platforms
 
 ### Changed
+- `loadRequestId` is now `AtomicLong` (was `@Volatile var Long` with non-atomic increment); cache-hit branch also bumps it so any in-flight load/reapply bails out
+- `reapplyCurrentLayout` re-reads `graphModel` after the staleness check (was using a captured reference that could go stale)
+- `loadTable` and `reapplyCurrentLayout` route format dispatch through `loadTableModel()` (single dispatch point)
+- `sessionCache` field type is now `MutableMap<String, TableSession>` backed by a synchronized LRU
+- `WorkspaceItem` serialization percent-encodes `%`, `;`, `|` in path values for safe round-trip
+- `ManifestListEntry.sequenceNumber` and `minSequenceNumber` are now `Long?` (Iceberg spec is int64); manifest comparator sentinels widened to `Long.MAX_VALUE`
+- `normalizeFilePath` reconstructs `file://host/path` URIs as UNC `//host/path` instead of dropping the host
+- `GraphLayoutService.parsePosition` rejects values outside `Int` range instead of silently truncating
+- `GraphLayoutService` post-processing partitions nodes by class once per pass (was ~20 `filterIsInstance` scans of the full node list)
+- `Path` and snapshot→manifest fan-in/out counts are reused / pre-cached in `GraphCanvas` (eliminates per-edge per-frame allocation and O(E) scans)
+- `jsonToAnnotatedString` is wrapped in `remember(rawJson, colors)` so the highlighter no longer runs on every recomposition
+- Window position/size persistence is debounced (500ms via `javax.swing.Timer`) instead of one Preferences write per `componentMoved` event
+- Paimon `PaimonManifestListNode` uses a dedicated `simpleId` counter (was reusing the snapshot's `simpleId`)
+- Paimon manifest nodes deduplicate by `fileName` via `manifestPathToId` (mirrors Iceberg)
+- Paimon `TableSummary.dataFileCount` counts ADD entries; `posDeleteFileCount` and `eqDeleteFileCount` stay 0 (Paimon has no positional/equality delete files like Iceberg)
+- Paimon `resolveDataFilePath` flags resolved paths that escape the table directory (mirrors Iceberg's path-traversal check)
+- `computeTableFingerprint` detects Paimon (`snapshot/` + `schema/`) — was always returning `"missing"` for Paimon, breaking cache invalidation
 - `GraphLayoutService` is now layout-only — graph construction delegated to `IcebergGraphBuilder`
 - `UnifiedSnapshot.manifestLists` renamed to `manifests` — field now correctly describes its contents
 - `UnifiedManifest.manifests` renamed to `dataFiles` — field now correctly describes its contents
@@ -66,6 +93,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sorting comparators moved to `IcebergGraphBuilder`
 
 ### Fixed
+- Stale graph displayed when switching to a deleted table with `forceReloadFromFs` and no cached session (prior fix branch was conditional on `forceReloadFromFs`)
+- `Reveal` button hidden for cloud paths (`s3://`, `hdfs://`, `gs://`, `abfs://`, …) where it would silently fail
+- About-dialog tab indicators now have a background colour on the active tab (was distinguishable only by font weight, easy to miss)
+- `PropertiesEvolutionSection` no longer double-counts keys present in both compared metadata versions
 - `DataFile` and `KeyValuePairBytes` now use structural `ByteArray` comparison in `equals`/`hashCode` — fixes broken deduplication in sets/maps
 - Manifest node IDs use stable incrementing counter instead of `hashCode()`-based IDs — eliminates potential hash collision bugs
 - `SampleRowReader` (formerly `ParquetReader`) uses parameterized queries and validates file existence/extension — fixes SQL injection risk

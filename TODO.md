@@ -10,7 +10,8 @@
 
 ## Code quality
 
-- **Split `App.kt` further** — currently ~1500 lines. Extract: `Toolbar` composable (~250 lines), `AppState` state holder class (consolidate ~30 state vars and ~10 inner functions). `AboutDialog` has already been extracted.
+- **Extract `Toolbar` from `App.kt`** — `App.kt` is ~1k lines; the toolbar (~250 lines) is the
+  largest remaining inline block. `AppState` and `AboutDialog` have already been extracted.
 
 ---
 
@@ -58,15 +59,14 @@
 
 - **Telemetry (opt-in)** — anonymous usage analytics to inform feature prioritization.
 
-- **Apache Paimon support** — second table format. Architecture is prepared: `IcebergGraphBuilder` extracted, `TableFormatDetector` in place, `GraphLayoutService.layoutNodes()` is format-agnostic.
-
 ---
 
 ## Testing
 
-- **Integration tests** — create minimal Iceberg table fixtures (metadata JSON + manifest Avro) in `src/test/resources/` and test the full pipeline: read -> model -> layout -> verify node/edge counts.
-
-- **IcebergReader tests** — test Avro deserialization with real manifest list and manifest file samples.
+- **Iceberg pipeline fixtures on disk** — Iceberg pipeline tests currently write Avro
+  fixtures at runtime via `avro4k`. Snapshotting representative fixtures into
+  `src/test/resources/iceberg-fixtures/` (alongside the existing Paimon fixtures) would
+  speed up tests and pin Avro schema details against drift.
 
 ---
 
@@ -77,7 +77,5 @@
 - **Reproducible builds** — pin transitive dependency versions via Gradle lockfiles.
 
 - **Documentation site** — GitHub Pages with installation guide, user guide with annotated screenshots, and troubleshooting FAQ.
-
-- **.idea/ cleanup** — IDE-specific files tracked in git from before `.gitignore` rule. Run `git rm -r --cached .idea/` to untrack.
 
 - **Monitor `material-icons-extended-desktop`** — pinned to `1.7.3` (latest available) while rest of Compose is `1.10.x`. Update when a newer version is published.
