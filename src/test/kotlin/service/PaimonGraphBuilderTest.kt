@@ -310,9 +310,11 @@ class PaimonGraphBuilderTest {
         assertEquals(2, manEdges.size, "shared manifest reachable via both manifest lists")
     }
 
-    // M-11 regression: delete entries must be counted in summary
+    // M-11 regression: ADD vs DELETE entries are distinguished at the manifest level.
+    // Paimon has no positional/equality delete files like Iceberg — posDeleteFileCount stays 0;
+    // delete log entries are visible via deleteManifestCount + manifestEntryCount.
     @Test
-    fun `summary counts delete files via kind`() {
+    fun `summary classifies add vs delete entries correctly for paimon`() {
         val addFile = minimalDataFile("data-add.orc", kind = 0, rowCount = 100)
         val delFile1 = minimalDataFile("data-del-1.orc", kind = 1, rowCount = 0)
         val delFile2 = minimalDataFile("data-del-2.orc", kind = 1, rowCount = 0)
@@ -337,8 +339,14 @@ class PaimonGraphBuilderTest {
         )
         val summary = PaimonGraphBuilder.buildGraph(model, showRows = false).summary
 
-        assertEquals(2, summary.posDeleteFileCount, "two delete entries")
-        assertEquals(1, summary.dataFileCount, "one add entry")
+        // Paimon doesn't have pos/eq delete files — both stay 0.
+        assertEquals(0, summary.posDeleteFileCount)
+        assertEquals(0, summary.eqDeleteFileCount)
+        // ADD entries count as data files (1 ADD entry across the two manifests).
+        assertEquals(1, summary.dataFileCount)
+        // DELETE log entries do contribute to manifestEntryCount (1 ADD + 2 DELETE = 3).
+        assertEquals(3, summary.manifestEntryCount)
+        // Manifests are split by their numDeletedFiles header.
         assertEquals(1, summary.deleteManifestCount)
         assertEquals(1, summary.dataManifestCount)
     }

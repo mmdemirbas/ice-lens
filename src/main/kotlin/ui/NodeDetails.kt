@@ -1584,7 +1584,8 @@ private fun PropertiesEvolutionSection(metadataChildren: List<GraphNode.Metadata
     for (i in 0 until versions.size - 1) {
         val oldV = versions[i]
         val newV = versions[i + 1]
-        val bothKeys = (oldV.props.keys + newV.props.keys)
+        // Use a set to avoid double-reporting keys present in both versions.
+        val bothKeys = oldV.props.keys union newV.props.keys
         bothKeys.forEach { key ->
             val oldVal = oldV.props[key]
             val newVal = newV.props[key]

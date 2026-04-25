@@ -265,8 +265,7 @@ object PaimonGraphBuilder {
     internal fun buildTableSummary(tableModel: PaimonUnifiedTableModel): TableSummary {
         var snapshotCount = 0
         var manifestEntryCount = 0
-        var dataFileCount = 0
-        var deleteFileCount = 0
+        var addEntryCount = 0
         var totalRecordCount = 0L
         val uniqueManifestKeys = mutableSetOf<String>()
         var dataManifestCount = 0
@@ -283,10 +282,11 @@ object PaimonGraphBuilder {
                 }
                 manifest.entries.forEach { entry ->
                     manifestEntryCount++
-                    when (entry.metadata.kind ?: 0) {
-                        1 -> deleteFileCount++
-                        else -> dataFileCount++
-                    }
+                    // kind: 0=ADD, 1=DELETE (a manifest log entry recording removal).
+                    // Paimon does not have positional/equality delete files like Iceberg, so
+                    // posDeleteFileCount / eqDeleteFileCount stay 0; dataFileCount counts the
+                    // ADD entries (files added to the table).
+                    if ((entry.metadata.kind ?: 0) == 0) addEntryCount++
                     totalRecordCount += entry.metadata.file?.rowCount ?: 0L
                 }
             }
@@ -311,9 +311,9 @@ object PaimonGraphBuilder {
             dataManifestCount = dataManifestCount,
             deleteManifestCount = deleteManifestCount,
             manifestEntryCount = manifestEntryCount,
-            uniqueDataFileCount = dataFileCount,
-            dataFileCount = dataFileCount,
-            posDeleteFileCount = deleteFileCount,
+            uniqueDataFileCount = addEntryCount,
+            dataFileCount = addEntryCount,
+            posDeleteFileCount = 0,
             eqDeleteFileCount = 0,
             totalRecordCount = totalRecordCount,
             metadataFileTimes = FileTimeRange(),

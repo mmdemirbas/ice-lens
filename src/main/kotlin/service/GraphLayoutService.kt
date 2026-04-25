@@ -151,8 +151,8 @@ object GraphLayoutService {
             val ma = (a as? GraphNode.ManifestNode)?.data
             val mb = (b as? GraphNode.ManifestNode)?.data
             compareValuesBy(ma, mb,
-                { it?.sequenceNumber ?: Int.MAX_VALUE },
-                { it?.minSequenceNumber ?: Int.MAX_VALUE },
+                { it?.sequenceNumber ?: Long.MAX_VALUE },
+                { it?.minSequenceNumber ?: Long.MAX_VALUE },
                 { it?.addedSnapshotId ?: Long.MAX_VALUE },
                 { IcebergGraphBuilder.manifestContentRank(it?.content) },
                 { it?.manifestPath ?: "" }
