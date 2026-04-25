@@ -159,6 +159,16 @@ fun formatTimestamp(ms: Long?): String {
     }
 }
 
+/** Single-line timestamp in local time — for fixed-width table cells where the 3-line form overflows. */
+fun formatTimestampShort(ms: Long?): String {
+    if (ms == null) return "N/A"
+    return try {
+        timestampFormatter.format(Instant.ofEpochMilli(ms))
+    } catch (e: Exception) {
+        "$ms"
+    }
+}
+
 @Composable
 fun DetailTable(
     modifier: Modifier = Modifier,

@@ -288,7 +288,7 @@ fun App() {
                 ToolbarGroup {
                     ToolbarIconButton(
                         icon = Icons.Default.ZoomOut,
-                        tooltip = "Zoom Out",
+                        tooltip = "Zoom Out (Ctrl/Cmd + −)",
                         onClick = {
                             zoom = (zoom / 1.2f).coerceAtLeast(MIN_ZOOM)
                             prefs.putFloat(PREF_ZOOM, zoom)
@@ -305,7 +305,7 @@ fun App() {
                     Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
                     ToolbarIconButton(
                         icon = Icons.Default.ZoomIn,
-                        tooltip = "Zoom In",
+                        tooltip = "Zoom In (Ctrl/Cmd + =)",
                         onClick = {
                             zoom = (zoom * 1.2f).coerceAtMost(MAX_ZOOM)
                             prefs.putFloat(PREF_ZOOM, zoom)
@@ -315,7 +315,7 @@ fun App() {
                     Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
                     ToolbarIconButton(
                         icon = Icons.Default.ZoomOutMap,
-                        tooltip = "Original Size (100%)",
+                        tooltip = "Reset Zoom to 100% (Ctrl/Cmd + 0)",
                         onClick = {
                             zoom = 1f
                             prefs.putFloat(PREF_ZOOM, zoom)
@@ -329,7 +329,7 @@ fun App() {
                 ToolbarGroup {
                     ToolbarIconButton(
                         icon = Icons.Default.FullscreenExit,
-                        tooltip = "Fit Graph",
+                        tooltip = "Fit Graph (Ctrl/Cmd + Shift + F)",
                         onClick = {
                             if (state.visibleGraphModel != null) fitGraphRequest++
                         },
@@ -338,7 +338,7 @@ fun App() {
                     Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
                     ToolbarIconButton(
                         icon = Icons.Default.Schema,
-                        tooltip = "Re-apply Layout",
+                        tooltip = "Re-apply Layout (Ctrl/Cmd + L)",
                         onClick = { state.reapplyCurrentLayout() },
                         modifier = Modifier.size(32.dp)
                     )
@@ -418,38 +418,46 @@ fun App() {
                                     onClick = {}
                                 )
                             } else {
-                                state.snapshotFilterOptions.forEach { option ->
-                                    val isSelected = option.nodeId in state.selectedSnapshotFilterNodeIds
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Checkbox(
-                                                    checked = isSelected,
-                                                    onCheckedChange = null
-                                                )
-                                                Spacer(Modifier.width(8.dp))
-                                                Column {
-                                                    Text(snapshotFilterLabel(option), fontSize = 12.sp)
-                                                    Text(
-                                                        formatAppTimestamp(option.timestampMs),
-                                                        fontSize = 10.sp,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                // H-10: cap height + scroll so long snapshot lists don't overflow the screen.
+                                val filterScroll = rememberScrollState()
+                                Column(
+                                    Modifier
+                                        .heightIn(max = 420.dp)
+                                        .verticalScroll(filterScroll)
+                                ) {
+                                    state.snapshotFilterOptions.forEach { option ->
+                                        val isSelected = option.nodeId in state.selectedSnapshotFilterNodeIds
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Checkbox(
+                                                        checked = isSelected,
+                                                        onCheckedChange = null
                                                     )
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Column {
+                                                        Text(snapshotFilterLabel(option), fontSize = 12.sp)
+                                                        Text(
+                                                            formatAppTimestamp(option.timestampMs),
+                                                            fontSize = 10.sp,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
                                                 }
+                                            },
+                                            onClick = {
+                                                val updated = if (isSelected) {
+                                                    state.selectedSnapshotFilterNodeIds - option.nodeId
+                                                } else {
+                                                    state.selectedSnapshotFilterNodeIds + option.nodeId
+                                                }
+                                                state.updateSnapshotFilterSelection(updated)
                                             }
-                                        },
-                                        onClick = {
-                                            val updated = if (isSelected) {
-                                                state.selectedSnapshotFilterNodeIds - option.nodeId
-                                            } else {
-                                                state.selectedSnapshotFilterNodeIds + option.nodeId
-                                            }
-                                            state.updateSnapshotFilterSelection(updated)
-                                        }
-                                    )
+                                        )
+                                    }
                                 }
                             }
                         }

@@ -39,6 +39,22 @@ import java.awt.Desktop
 import java.io.File
 import java.net.URI
 
+/** One-line key per node type, used in the multi-select inspector. */
+private fun multiSelectKey(node: GraphNode): String = when (node) {
+    is GraphNode.TableNode -> node.summary.tablePath
+    is GraphNode.MetadataNode -> node.fileName
+    is GraphNode.SnapshotNode -> "${node.data.snapshotId ?: "?"} @ ${node.data.timestampMs?.let { formatTimestamp(it).substringBefore('\n') } ?: "?"}"
+    is GraphNode.ManifestNode -> node.data.manifestPath?.substringAfterLast('/') ?: "?"
+    is GraphNode.FileNode -> "${node.data.filePath?.substringAfterLast('/') ?: "?"} (${node.data.recordCount ?: "?"} rows)"
+    is GraphNode.RowNode -> "row_idx=${node.data["row_idx"] ?: "?"} file_no=${node.data["file_no"] ?: "?"}"
+    is GraphNode.ErrorNode -> node.message
+    is GraphNode.PaimonSnapshotNode -> "${node.data.id ?: "?"} @ ${node.data.timeMillis?.let { formatTimestamp(it).substringBefore('\n') } ?: "?"}"
+    is GraphNode.PaimonSchemaNode -> "schema-${node.data.id ?: "?"}"
+    is GraphNode.PaimonManifestListNode -> node.kind
+    is GraphNode.PaimonManifestNode -> node.data.fileName ?: "?"
+    is GraphNode.PaimonDataFileNode -> "${node.entry.file?.fileName ?: "?"} (${node.entry.file?.rowCount ?: "?"} rows)"
+}
+
 private fun nodeTitle(node: GraphNode): String = when (node) {
     is GraphNode.TableNode -> "TABLE ${node.summary.tableName}"
     is GraphNode.MetadataNode -> "METADATA ${node.simpleId}"
@@ -490,7 +506,7 @@ private fun WideTableRow(cells: List<String>, columns: Int, columnWidth: Dp, isH
 private fun renderSnapshotLogRows(items: List<SnapshotLogEntry>): List<List<String>> =
     items.sortedBy { it.timestampMs ?: Long.MAX_VALUE }.map { entry ->
         listOf(
-            formatTimestamp(entry.timestampMs),
+            formatTimestampShort(entry.timestampMs),
             "${entry.snapshotId ?: "N/A"}"
         )
     }
@@ -498,7 +514,7 @@ private fun renderSnapshotLogRows(items: List<SnapshotLogEntry>): List<List<Stri
 private fun renderMetadataLogRows(items: List<MetadataLogEntry>): List<List<String>> =
     items.sortedBy { it.timestampMs ?: Long.MAX_VALUE }.map { entry ->
         listOf(
-            formatTimestamp(entry.timestampMs),
+            formatTimestampShort(entry.timestampMs),
             normalizeText(entry.metadataFile)
         )
     }
@@ -518,13 +534,21 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                 return@CompositionLocalProvider
             }
             if (selectedNodeIds.size > 1) {
+                val multiGraph = graphModel
                 Column(Modifier.padding(8.dp)) {
                     Text("${selectedNodeIds.size} Nodes Selected", fontWeight = FontWeight.Bold)
-                    Text(
-                        "Drag any selected node to move the group together.",
-                        fontSize = 12.sp,
-                        color = colors.onSurfaceVariant
-                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (multiGraph == null) {
+                        Text("(graph not loaded)", fontSize = 12.sp, color = colors.onSurfaceVariant)
+                    } else {
+                        DetailTable {
+                            DetailRow("Type / ID", "Key", isHeader = true)
+                            selectedNodeIds.forEach { id ->
+                                val n = multiGraph.nodeById[id] ?: return@forEach
+                                DetailRow(nodeTitle(n), multiSelectKey(n))
+                            }
+                        }
+                    }
                 }
                 return@CompositionLocalProvider
             }
@@ -583,8 +607,8 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                         metadataNode?.id ?: "N/A",
                                         version.fileName,
                                         "${version.version ?: "N/A"}",
-                                        formatTimestamp(version.fileLastModifiedMs),
-                                        formatTimestamp(version.metadataLastUpdatedMs),
+                                        formatTimestampShort(version.fileLastModifiedMs),
+                                        formatTimestampShort(version.metadataLastUpdatedMs),
                                         "${version.snapshotCount}",
                                         currentSnapshotLabel(version.currentSnapshotId)
                                     )
@@ -600,7 +624,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                             metadataNode.fileName,
                                             "N/A",
                                             "N/A",
-                                            formatTimestamp(metadataNode.data.lastUpdatedMs),
+                                            formatTimestampShort(metadataNode.data.lastUpdatedMs),
                                             "${metadataNode.data.snapshots.size}",
                                             currentSnapshotLabel(metadataNode.data.currentSnapshotId)
                                         )
@@ -865,7 +889,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                         "${snapshot.parentSnapshotId ?: "None"}",
                                         "${snapshot.sequenceNumber ?: "N/A"}",
                                         "${snapshot.schemaId ?: "N/A"}",
-                                        formatTimestamp(snapshot.timestampMs),
+                                        formatTimestampShort(snapshot.timestampMs),
                                         normalizeText(snapshot.manifestList),
                                         snapshot.summary["operation"] ?: "N/A",
                                         if (snapshot.summary.isEmpty()) "N/A"
@@ -1207,13 +1231,32 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Message", node.message)
                         }
                         Spacer(Modifier.height(12.dp))
-                        SectionTitle("Stack Trace")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SectionTitle("Stack Trace")
+                            Spacer(Modifier.weight(1f))
+                            val trace = node.stackTrace
+                            if (!trace.isNullOrBlank()) {
+                                TextButton(
+                                    onClick = {
+                                        val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                                        clipboard.setContents(java.awt.datatransfer.StringSelection(trace), null)
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(24.dp)
+                                ) {
+                                    Text("Copy", fontSize = 11.sp)
+                                }
+                            }
+                        }
+                        val stackScroll = rememberScrollState()
                         Box(
                             Modifier
                                 .fillMaxWidth()
+                                .heightIn(max = 320.dp)
                                 .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
                                 .border(1.dp, colors.outlineVariant, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
                                 .background(colors.surfaceVariant)
+                                .verticalScroll(stackScroll)
                                 .padding(8.dp)
                         ) {
                             Text(

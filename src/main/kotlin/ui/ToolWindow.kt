@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package ui
 
 import androidx.compose.foundation.background
@@ -55,6 +57,7 @@ fun ToolWindowBar(
             windows.forEach { (id, icon) ->
                 val isActive = id == activeWindowId
                 var iconBounds by remember { mutableStateOf<Rect?>(null) }
+                HoverTooltip(tooltip = id.replaceFirstChar { it.titlecase() }) {
                 Box(
                     modifier = Modifier
                         .size(32.dp)
@@ -90,6 +93,7 @@ fun ToolWindowBar(
                         tint = if (isActive) colors.primary else colors.onSurfaceVariant
                     )
                 }
+                }
             }
         }
     } else {
@@ -103,6 +107,7 @@ fun ToolWindowBar(
             windows.forEach { (id, icon) ->
                 val isActive = id == activeWindowId
                 var iconBounds by remember { mutableStateOf<Rect?>(null) }
+                HoverTooltip(tooltip = id.replaceFirstChar { it.titlecase() }) {
                 Box(
                     modifier = Modifier
                         .size(32.dp)
@@ -137,6 +142,7 @@ fun ToolWindowBar(
                         modifier = Modifier.size(20.dp),
                         tint = if (isActive) colors.primary else colors.onSurfaceVariant
                     )
+                }
                 }
             }
         }

@@ -80,6 +80,31 @@ fun ToolbarIconButton(
     isSelected: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    HoverTooltip(tooltip = tooltip) {
+        IconButton(
+            onClick = onClick,
+            modifier = modifier,
+            colors = if (isSelected) IconButtonDefaults.filledIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            ) else IconButtonDefaults.iconButtonColors()
+        ) {
+            Icon(icon, contentDescription = tooltip, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+/** Wraps any content with a hover tooltip styled consistently across the app. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun HoverTooltip(
+    tooltip: String,
+    placement: TooltipPlacement = TooltipPlacement.CursorPoint(
+        alignment = Alignment.BottomEnd,
+        offset = DpOffset(0.dp, 16.dp)
+    ),
+    content: @Composable () -> Unit,
+) {
     TooltipArea(
         tooltip = {
             Box(
@@ -92,20 +117,7 @@ fun ToolbarIconButton(
             }
         },
         delayMillis = TOOLTIP_DELAY_MS,
-        tooltipPlacement = TooltipPlacement.CursorPoint(
-            alignment = Alignment.BottomEnd,
-            offset = DpOffset(0.dp, 16.dp)
-        )
-    ) {
-        IconButton(
-            onClick = onClick,
-            modifier = modifier,
-            colors = if (isSelected) IconButtonDefaults.filledIconButtonColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-            ) else IconButtonDefaults.iconButtonColors()
-        ) {
-            Icon(icon, contentDescription = tooltip, modifier = Modifier.size(20.dp))
-        }
-    }
+        tooltipPlacement = placement,
+        content = content
+    )
 }

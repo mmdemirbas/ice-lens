@@ -113,7 +113,7 @@ object IcebergGraphBuilder {
             sortedSnapshots.forEach { snapshot ->
                 val manifests = snapshot.manifests.sortedWith(unifiedManifestComparator)
                 manifests.forEach { unifiedManifest ->
-                    val fallbackSeq = unifiedManifest.metadata.sequenceNumber?.toLong() ?: Long.MAX_VALUE
+                    val fallbackSeq = unifiedManifest.metadata.sequenceNumber ?: Long.MAX_VALUE
                     val unifiedDataFiles = unifiedManifest.dataFiles.sortedWith(unifiedDataFileComparator(fallbackSeq))
                     unifiedDataFiles.forEach { unifiedDataFile ->
                         val rawPath = unifiedDataFile.metadata.dataFile?.filePath.orEmpty()
@@ -192,7 +192,7 @@ object IcebergGraphBuilder {
                     if (processedManifests.add(manId)) {
                         val manifestPath = manifest.manifestPath
                         if (manifestPath != null) {
-                            val fallbackSeq = manifest.sequenceNumber?.toLong() ?: Long.MAX_VALUE
+                            val fallbackSeq = manifest.sequenceNumber ?: Long.MAX_VALUE
                             val unifiedDataFiles = unifiedManifest.dataFiles.sortedWith(unifiedDataFileComparator(fallbackSeq))
                             unifiedDataFiles.take(MAX_FILES_PER_MANIFEST).forEachIndexed { fileIndex, unifiedDataFile ->
                                 val entry = unifiedDataFile.metadata

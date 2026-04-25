@@ -10,6 +10,19 @@ class FormatUtilsTest {
         assertEquals("N/A", formatAppTimestamp(null))
     }
 
+    // M-5: short timestamp must be single-line (no embedded newlines from the 3-line variant).
+    @Test
+    fun `formatTimestampShort returns single line`() {
+        val short = formatTimestampShort(1700000000000L)
+        assert(!short.contains('\n')) { "Short timestamp must be single-line: $short" }
+        assert(short.isNotBlank())
+    }
+
+    @Test
+    fun `formatTimestampShort returns NA for null`() {
+        assertEquals("N/A", formatTimestampShort(null))
+    }
+
     @Test
     fun `formatAppTimestamp formats epoch zero`() {
         val result = formatAppTimestamp(0L)
