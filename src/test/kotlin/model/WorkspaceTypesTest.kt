@@ -60,4 +60,34 @@ class WorkspaceTypesTest {
             tmpDir.deleteRecursively()
         }
     }
+
+    // M-8 regression: path containing the outer separator `;` must round-trip.
+    @Test
+    fun `paths containing semicolons round-trip safely`() {
+        val original = WorkspaceItem.Warehouse("/data/ware;house/odd", "odd")
+        val serialized = original.serialize()
+        // Outer separator is `;` — it must not appear unencoded in serialized form.
+        assert(!serialized.removePrefix("W|").contains(';')) {
+            "serialized path must not contain a raw `;`: $serialized"
+        }
+        val restored = WorkspaceItem.deserialize(serialized)
+        assertIs<WorkspaceItem.Warehouse>(restored)
+        assertEquals("/data/ware;house/odd", restored.path)
+    }
+
+    @Test
+    fun `paths containing pipes round-trip safely`() {
+        val original = WorkspaceItem.SingleTable("/data/odd|table", "odd|table")
+        val restored = WorkspaceItem.deserialize(original.serialize())
+        assertIs<WorkspaceItem.SingleTable>(restored)
+        assertEquals("/data/odd|table", restored.path)
+    }
+
+    @Test
+    fun `paths containing percent characters round-trip safely`() {
+        val original = WorkspaceItem.SingleTable("/data/100%/table", "table")
+        val restored = WorkspaceItem.deserialize(original.serialize())
+        assertIs<WorkspaceItem.SingleTable>(restored)
+        assertEquals("/data/100%/table", restored.path)
+    }
 }

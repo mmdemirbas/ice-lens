@@ -24,6 +24,12 @@ object SampleRowReader {
     @Volatile private var connection: Connection? = null
     private val lock = Any()
 
+    /**
+     * Returns a live DuckDB connection. Must be called while holding [lock] —
+     * the function reads and writes [connection] without re-acquiring the lock,
+     * so callers must serialize access. [querySampleRows] does this correctly;
+     * future callers should not invoke this directly outside the synchronized block.
+     */
     private fun getConnection(): Connection {
         val conn = connection
         if (conn != null && !conn.isClosed) return conn

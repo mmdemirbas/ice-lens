@@ -18,7 +18,7 @@ import java.io.File
 import java.nio.file.NoSuchFileException
 import java.nio.file.Paths
 import org.slf4j.LoggerFactory
-import java.util.concurrent.ConcurrentHashMap
+import java.util.Collections
 import java.util.concurrent.atomic.AtomicLong
 import java.util.prefs.Preferences
 import kotlin.coroutines.coroutineContext
@@ -94,7 +94,17 @@ class AppState(
     //  Session Cache
     // ═══════════════════════════════════════════════════════════════
 
-    val sessionCache = ConcurrentHashMap<String, TableSession>()
+    /**
+     * LRU session cache. Each session can hold a 50–100 MB graph for large tables;
+     * an unbounded cache OOMs after switching across enough tables in one run.
+     */
+    private val maxCachedSessions = 5
+    val sessionCache: MutableMap<String, TableSession> = Collections.synchronizedMap(
+        object : LinkedHashMap<String, TableSession>(maxCachedSessions + 1, 0.75f, true) {
+            override fun removeEldestEntry(eldest: Map.Entry<String, TableSession>): Boolean =
+                size > maxCachedSessions
+        }
+    )
     private val loadRequestId = AtomicLong(0L)
 
     // ═══════════════════════════════════════════════════════════════

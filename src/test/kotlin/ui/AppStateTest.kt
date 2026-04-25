@@ -511,6 +511,23 @@ class AppStateTest {
         // Should not throw
     }
 
+    // M-7 regression: session cache must be bounded so unbounded table-switching doesn't OOM.
+    @Test
+    fun `session cache evicts oldest entry past max size`() {
+        // Pre-load synthetic sessions to test bounding without going through loadTable.
+        val cache = state.sessionCache
+        val graph = model.GraphModel(emptyList(), emptyList(), 1.0, 1.0)
+        // The implementation caps at 5; insert 7 distinct keys.
+        for (i in 1..7) {
+            cache["key-$i"] = TableSession(graph = graph, fingerprint = "fp-$i")
+        }
+        assertTrue(cache.size <= 5, "session cache must not grow unbounded; size=${cache.size}")
+        // The two oldest keys (1, 2) should have been evicted.
+        assertNull(cache["key-1"])
+        assertNull(cache["key-2"])
+        assertNotNull(cache["key-7"])
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  Error State
     // ═══════════════════════════════════════════════════════════════
