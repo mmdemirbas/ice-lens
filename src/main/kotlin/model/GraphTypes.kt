@@ -51,6 +51,43 @@ data class MetadataVersionInfo(
     val currentSnapshotId: Long?,
 )
 
+/**
+ * File, record and byte figures over one deduplicated set of manifests.
+ *
+ * Deduplication is not an optimization here, it is the definition. Table formats share
+ * structure on purpose: one Iceberg manifest is referenced by every snapshot that carries
+ * its files forward, and every snapshot is re-listed in every `metadata.json` written after
+ * it. Counting per traversal therefore multiplies with commit history rather than with data.
+ *
+ * [manifestEntryCount] counts every entry in the covered manifests regardless of status,
+ * because it measures how much a reader has to scan. The file counts, record counts and
+ * byte totals cover live entries only, because they describe the table's contents.
+ * Delete-file records are counted in [deleteRecordCount], never in [recordCount] — a
+ * positional delete file's `record_count` is a number of delete records, not of table rows.
+ */
+data class ContentStats(
+    val dataManifestCount: Int = 0,
+    val deleteManifestCount: Int = 0,
+    val manifestEntryCount: Int = 0,
+    /**
+     * Entries recording a file's removal — Iceberg `status=DELETED`, Paimon `_KIND=1`. These
+     * are counted in [manifestEntryCount] but contribute no files, records or bytes.
+     */
+    val deletedEntryCount: Int = 0,
+    val dataFileCount: Int = 0,
+    val posDeleteFileCount: Int = 0,
+    val eqDeleteFileCount: Int = 0,
+    val recordCount: Long = 0L,
+    val deleteRecordCount: Long = 0L,
+    val dataSizeBytes: Long = 0L,
+    val deleteSizeBytes: Long = 0L,
+) {
+    val manifestCount: Int get() = dataManifestCount + deleteManifestCount
+    val deleteFileCount: Int get() = posDeleteFileCount + eqDeleteFileCount
+    val fileCount: Int get() = dataFileCount + deleteFileCount
+    val totalSizeBytes: Long get() = dataSizeBytes + deleteSizeBytes
+}
+
 data class TableSummary(
     val tableName: String,
     val tablePath: String,
@@ -66,15 +103,19 @@ data class TableSummary(
     val metadataFileCount: Int,
     val snapshotCount: Int,
     val snapshotManifestListFileCount: Int,
-    val manifestCount: Int,
-    val dataManifestCount: Int,
-    val deleteManifestCount: Int,
-    val manifestEntryCount: Int,
-    val uniqueDataFileCount: Int,
-    val dataFileCount: Int,
-    val posDeleteFileCount: Int,
-    val eqDeleteFileCount: Int,
-    val totalRecordCount: Long,
+    /**
+     * The table as it is now: the manifest closure of `current-snapshot-id`, live entries
+     * only. [ContentStats.recordCount] here is the figure a `SELECT count(*)` should agree
+     * with, before delete files are applied. All-zero when the table has no current snapshot.
+     */
+    val current: ContentStats = ContentStats(),
+    /**
+     * Everything still reachable from any retained snapshot, deduplicated by manifest path
+     * and by data-file path. This is the "what is still on disk / what can I not expire yet"
+     * view, so it counts entries of every status — a file removed in a later commit still
+     * occupies storage until the snapshot referencing it expires.
+     */
+    val history: ContentStats = ContentStats(),
     val metadataFileTimes: FileTimeRange,
     val snapshotManifestListFileTimes: FileTimeRange,
     val manifestFileTimes: FileTimeRange,

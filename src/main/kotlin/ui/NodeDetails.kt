@@ -680,29 +680,53 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                         }
 
                         Spacer(Modifier.height(16.dp))
-                        SectionTitle("Manifest Files")
-                        DetailTable {
-                            DetailRow("Metric", "Value", isHeader = true)
-                            DetailRow("File Count", "${summary.manifestCount}")
-                            DetailRow("Known", "${summary.manifestFileTimes.knownCount}")
-                            DetailRow("Missing", "${summary.manifestFileTimes.missingCount}")
-                            DetailRow("Breakdown", "${summary.dataManifestCount} data / ${summary.deleteManifestCount} delete")
-                            DetailRow("Oldest", formatTimestamp(summary.manifestFileTimes.oldestMs))
-                            DetailRow("Latest", formatTimestamp(summary.manifestFileTimes.newestMs))
-                            DetailRow("Manifest Entries", "${summary.manifestEntryCount}")
+                        SectionTitle("Current Snapshot")
+                        val current = summary.current
+                        if (summary.currentSnapshotId == null) {
+                            DetailTable {
+                                DetailRow("Metric", "Value", isHeader = true)
+                                DetailRow("State", "No current snapshot — the table has no committed data")
+                            }
+                        } else {
+                            DetailTable {
+                                DetailRow("Metric", "Value", isHeader = true)
+                                DetailRow("Snapshot ID", currentSnapshotLabel(summary.currentSnapshotId))
+                                DetailRow("Records", formatCount(current.recordCount))
+                                DetailRow("Data Files", "${formatCount(current.dataFileCount)}  (${formatBytes(current.dataSizeBytes)})")
+                                DetailRow(
+                                    "Delete Files",
+                                    "${formatCount(current.deleteFileCount)}  (${formatBytes(current.deleteSizeBytes)})" +
+                                        " — ${formatCount(current.posDeleteFileCount)} pos / ${formatCount(current.eqDeleteFileCount)} eq"
+                                )
+                                DetailRow("Delete Records", formatCount(current.deleteRecordCount))
+                                DetailRow("Total Size", formatBytes(current.totalSizeBytes))
+                                DetailRow("Manifests", "${formatCount(current.manifestCount)}  (${formatCount(current.dataManifestCount)} data / ${formatCount(current.deleteManifestCount)} delete)")
+                                DetailRow("Manifest Entries", "${formatCount(current.manifestEntryCount)}  (${formatCount(current.deletedEntryCount)} recording a removal)")
+                            }
                         }
 
                         Spacer(Modifier.height(16.dp))
-                        SectionTitle("Data Files")
+                        SectionTitle("All Retained History")
+                        val history = summary.history
                         DetailTable {
                             DetailRow("Metric", "Value", isHeader = true)
-                            DetailRow("File Count", "${summary.uniqueDataFileCount}")
-                            DetailRow("Known", "${summary.dataFileTimes.knownCount}")
-                            DetailRow("Missing", "${summary.dataFileTimes.missingCount}")
-                            DetailRow("Breakdown", "${summary.dataFileCount} data / ${summary.posDeleteFileCount} pos-del / ${summary.eqDeleteFileCount} eq-del")
-                            DetailRow("Oldest", formatTimestamp(summary.dataFileTimes.oldestMs))
-                            DetailRow("Latest", formatTimestamp(summary.dataFileTimes.newestMs))
-                            DetailRow("Total Records", "${summary.totalRecordCount}")
+                            DetailRow("Snapshots", formatCount(summary.snapshotCount))
+                            DetailRow("Metadata Versions", formatCount(summary.metadataFileCount))
+                            DetailRow(
+                                "Manifests",
+                                "${formatCount(history.manifestCount)}  (${formatCount(history.dataManifestCount)} data / ${formatCount(history.deleteManifestCount)} delete)"
+                            )
+                            DetailRow("Manifest Entries", "${formatCount(history.manifestEntryCount)}  (${formatCount(history.deletedEntryCount)} recording a removal)")
+                            DetailRow("Distinct Data Files", "${formatCount(history.dataFileCount)}  (${formatBytes(history.dataSizeBytes)})")
+                            DetailRow(
+                                "Distinct Delete Files",
+                                "${formatCount(history.deleteFileCount)}  (${formatBytes(history.deleteSizeBytes)})"
+                            )
+                            DetailRow("Referenced Bytes", formatBytes(history.totalSizeBytes))
+                            DetailRow("Manifest Files Known / Missing", "${summary.manifestFileTimes.knownCount} / ${summary.manifestFileTimes.missingCount}")
+                            DetailRow("Manifest Files Oldest / Latest", "${formatTimestamp(summary.manifestFileTimes.oldestMs)}  →  ${formatTimestamp(summary.manifestFileTimes.newestMs)}")
+                            DetailRow("Data Files Known / Missing", "${summary.dataFileTimes.knownCount} / ${summary.dataFileTimes.missingCount}")
+                            DetailRow("Data Files Oldest / Latest", "${formatTimestamp(summary.dataFileTimes.oldestMs)}  →  ${formatTimestamp(summary.dataFileTimes.newestMs)}")
                         }
 
                         if (mergedMetadataRows.isNotEmpty()) {

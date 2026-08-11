@@ -321,6 +321,92 @@ object IcebergGraphBuilder {
         }
     }
 
+    /** Identity of a manifest file, for deduplicating the same manifest across snapshots. */
+    private fun manifestKey(manifest: UnifiedManifest): String =
+        manifest.metadata.manifestPath
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::normalizeFilePath)
+            ?: "path:${manifest.path}"
+
+    /** Identity of a data file, for deduplicating the same file across manifests. */
+    private fun dataFileKey(dataFile: UnifiedDataFile): String =
+        dataFile.metadata.dataFile?.filePath
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::normalizeFilePath)
+            ?: "path:${dataFile.path}"
+
+    /**
+     * Accumulates [ContentStats] over manifests fed in any order, ignoring any manifest or
+     * data file it has already counted. The deduplication is what makes the figures describe
+     * the table rather than the traversal — see [ContentStats].
+     *
+     * With [liveEntriesOnly] the accumulator skips `DELETED` manifest entries, which is the
+     * right reading for "what does my table contain now"; without it every referenced file is
+     * counted once, which is the right reading for "what is still on disk".
+     */
+    private class ContentStatsAccumulator(private val liveEntriesOnly: Boolean) {
+        private val seenManifests = mutableSetOf<String>()
+        private val seenFiles = mutableSetOf<String>()
+
+        private var dataManifests = 0
+        private var deleteManifests = 0
+        private var entries = 0
+        private var deletedEntries = 0
+        private var dataFiles = 0
+        private var posDeleteFiles = 0
+        private var eqDeleteFiles = 0
+        private var records = 0L
+        private var deleteRecords = 0L
+        private var dataBytes = 0L
+        private var deleteBytes = 0L
+
+        /** Counts a manifest and its entries. Returns false if this manifest was already counted. */
+        fun addManifest(manifest: UnifiedManifest): Boolean {
+            if (!seenManifests.add(manifestKey(manifest))) return false
+            if (manifest.metadata.content == ManifestContent.DELETES) deleteManifests++ else dataManifests++
+            manifest.dataFiles.forEach(::addEntry)
+            return true
+        }
+
+        private fun addEntry(unifiedDataFile: UnifiedDataFile) {
+            // Every entry counts toward scan cost, including the ones recording a removal.
+            entries++
+            val isRemoval = unifiedDataFile.metadata.status == ManifestEntryStatus.DELETED
+            if (isRemoval) deletedEntries++
+            if (liveEntriesOnly && isRemoval) return
+            if (!seenFiles.add(dataFileKey(unifiedDataFile))) return
+
+            val dataFile = unifiedDataFile.metadata.dataFile
+            val rows = dataFile?.recordCount ?: 0L
+            val bytes = dataFile?.fileSizeInBytes ?: 0L
+            when (dataFile?.content ?: DataFileContent.DATA) {
+                DataFileContent.POSITION_DELETES -> {
+                    posDeleteFiles++; deleteRecords += rows; deleteBytes += bytes
+                }
+                DataFileContent.EQUALITY_DELETES -> {
+                    eqDeleteFiles++; deleteRecords += rows; deleteBytes += bytes
+                }
+                else -> {
+                    dataFiles++; records += rows; dataBytes += bytes
+                }
+            }
+        }
+
+        fun build(): ContentStats = ContentStats(
+            dataManifestCount = dataManifests,
+            deleteManifestCount = deleteManifests,
+            manifestEntryCount = entries,
+            deletedEntryCount = deletedEntries,
+            dataFileCount = dataFiles,
+            posDeleteFileCount = posDeleteFiles,
+            eqDeleteFileCount = eqDeleteFiles,
+            recordCount = records,
+            deleteRecordCount = deleteRecords,
+            dataSizeBytes = dataBytes,
+            deleteSizeBytes = deleteBytes,
+        )
+    }
+
     internal fun buildTableSummary(tableModel: UnifiedTableModel): TableSummary {
         val mtimeCache = mutableMapOf<String, Long?>()
         val metadataTimes = FileTimeAccumulator()
@@ -330,16 +416,9 @@ object IcebergGraphBuilder {
 
         val uniqueSnapshotKeys = mutableSetOf<String>()
         val uniqueSnapshotManifestListKeys = mutableSetOf<String>()
-        val uniqueManifestKeys = mutableSetOf<String>()
         val uniqueDataFileKeys = mutableSetOf<String>()
 
-        var dataManifestCount = 0
-        var deleteManifestCount = 0
-        var manifestEntryCount = 0
-        var dataFileCount = 0
-        var posDeleteFileCount = 0
-        var eqDeleteFileCount = 0
-        var totalRecordCount = 0L
+        val historyStats = ContentStatsAccumulator(liveEntriesOnly = false)
 
         val metadataVersions = tableModel.metadatas.map { unifiedMetadata ->
             val fileName = unifiedMetadata.path.fileName.toString()
@@ -374,38 +453,13 @@ object IcebergGraphBuilder {
                 }
 
                 unifiedSnapshot.manifests.forEach { unifiedManifest ->
-                    val manifestMeta = unifiedManifest.metadata
-                    val manifestKey = manifestMeta.manifestPath
-                        ?.takeIf { it.isNotBlank() }
-                        ?: "path:${unifiedManifest.path}"
-
-                    if (uniqueManifestKeys.add(manifestKey)) {
-                        if (manifestMeta.content == 1) {
-                            deleteManifestCount++
-                        } else {
-                            dataManifestCount++
-                        }
+                    if (historyStats.addManifest(unifiedManifest)) {
                         manifestTimes.add(fileLastModifiedMs(unifiedManifest.path, mtimeCache))
-                    }
 
-                    unifiedManifest.dataFiles.forEach { unifiedDataFile ->
-                        val entry = unifiedDataFile.metadata
-                        val dataFile = entry.dataFile
-
-                        manifestEntryCount++
-                        when (dataFile?.content ?: 0) {
-                            1 -> posDeleteFileCount++
-                            2 -> eqDeleteFileCount++
-                            else -> dataFileCount++
-                        }
-                        totalRecordCount += dataFile?.recordCount ?: 0L
-
-                        val dataFileKey = dataFile?.filePath
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let(::normalizeFilePath)
-                            ?: "path:${unifiedDataFile.path}"
-                        if (uniqueDataFileKeys.add(dataFileKey)) {
-                            dataFileTimes.add(fileLastModifiedMs(unifiedDataFile.path, mtimeCache))
+                        unifiedManifest.dataFiles.forEach { unifiedDataFile ->
+                            if (uniqueDataFileKeys.add(dataFileKey(unifiedDataFile))) {
+                                dataFileTimes.add(fileLastModifiedMs(unifiedDataFile.path, mtimeCache))
+                            }
                         }
                     }
                 }
@@ -423,6 +477,18 @@ object IcebergGraphBuilder {
         val location = latestMetadata?.location
             ?: tableModel.metadatas.asReversed().firstNotNullOfOrNull { it.metadata.location }
 
+        // The table as it is now: the manifest closure of the current snapshot, live entries
+        // only. Absent when the table has never been committed to, or when the snapshot the
+        // latest metadata points at is no longer present in any metadata file we could read.
+        val currentSnapshot = latestMetadata?.currentSnapshotId?.let { snapshotId ->
+            tableModel.metadatas.asReversed().firstNotNullOfOrNull { unifiedMetadata ->
+                unifiedMetadata.snapshots.firstOrNull { it.metadata.snapshotId == snapshotId }
+            }
+        }
+        val currentStats = ContentStatsAccumulator(liveEntriesOnly = true)
+            .apply { currentSnapshot?.manifests?.forEach { addManifest(it) } }
+            .build()
+
         return TableSummary(
             tableName = tableModel.name,
             tablePath = tableModel.path.toString(),
@@ -438,15 +504,8 @@ object IcebergGraphBuilder {
             metadataFileCount = tableModel.metadatas.size,
             snapshotCount = uniqueSnapshotKeys.size,
             snapshotManifestListFileCount = uniqueSnapshotManifestListKeys.size,
-            manifestCount = uniqueManifestKeys.size,
-            dataManifestCount = dataManifestCount,
-            deleteManifestCount = deleteManifestCount,
-            manifestEntryCount = manifestEntryCount,
-            uniqueDataFileCount = uniqueDataFileKeys.size,
-            dataFileCount = dataFileCount,
-            posDeleteFileCount = posDeleteFileCount,
-            eqDeleteFileCount = eqDeleteFileCount,
-            totalRecordCount = totalRecordCount,
+            current = currentStats,
+            history = historyStats.build(),
             metadataFileTimes = metadataTimes.asRange(),
             snapshotManifestListFileTimes = snapshotManifestListTimes.asRange(),
             manifestFileTimes = manifestTimes.asRange(),

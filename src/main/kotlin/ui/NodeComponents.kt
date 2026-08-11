@@ -287,10 +287,12 @@ fun NodeTooltip(node: GraphNode) {
             when (node) {
                 is GraphNode.TableNode -> {
                     DetailRow("Name", node.summary.tableName, isDark = true)
-                    DetailRow("Metadata", "${node.summary.metadataFileCount}", isDark = true)
-                    DetailRow("Snapshots", "${node.summary.snapshotCount}", isDark = true)
-                    DetailRow("Manifests", "${node.summary.manifestCount}", isDark = true)
-                    DetailRow("Data Files", "${node.summary.manifestEntryCount}", isDark = true)
+                    DetailRow("Snapshots", formatCount(node.summary.snapshotCount), isDark = true)
+                    // The card shows the table as it is now; "All Retained History" figures
+                    // live in the inspector, where they can be labelled as such.
+                    DetailRow("Data Files", formatCount(node.summary.current.dataFileCount), isDark = true)
+                    DetailRow("Records", formatCount(node.summary.current.recordCount), isDark = true)
+                    DetailRow("Size", formatBytes(node.summary.current.totalSizeBytes), isDark = true)
                 }
                 is GraphNode.MetadataNode -> {
                     DetailRow("File Name", node.fileName, isDark = true)

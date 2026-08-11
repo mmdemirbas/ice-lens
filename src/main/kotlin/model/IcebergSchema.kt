@@ -106,6 +106,26 @@ data class Snapshot(
     val summary: Map<String, String> = emptyMap(),
 )
 
+/** `manifest_file.content` values from the Iceberg table spec. */
+object ManifestContent {
+    const val DATA = 0
+    const val DELETES = 1
+}
+
+/** `manifest_entry.status` values from the Iceberg table spec. */
+object ManifestEntryStatus {
+    const val EXISTING = 0
+    const val ADDED = 1
+    const val DELETED = 2
+}
+
+/** `data_file.content` values from the Iceberg table spec. */
+object DataFileContent {
+    const val DATA = 0
+    const val POSITION_DELETES = 1
+    const val EQUALITY_DELETES = 2
+}
+
 // --- Manifest List (Avro) ---
 @Serializable
 data class ManifestListEntry(

@@ -7,7 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Table summary counts described the traversal, not the table.** `manifestEntryCount`,
+  `dataFileCount`, `posDeleteFileCount`, `eqDeleteFileCount` and `totalRecordCount` were
+  incremented per visit while walking metadata → snapshots → manifests → files. Because
+  Iceberg shares structure on purpose — one manifest is referenced by every snapshot that
+  carries its files forward, and every snapshot is re-listed in every later `metadata.json` —
+  these figures multiplied with commit history. A two-commit fixture reported 4 manifest
+  entries where 2 exist; the error grows with the number of retained metadata versions.
+- `status=DELETED` manifest entries were counted as live data files.
+- Delete files' `record_count` (a count of delete records) was added to the table's row count.
+- Paimon current-state figures counted every ADD entry ever written instead of applying the
+  snapshot's delta manifest list over its base, so a compacted table reported every file it
+  had ever held.
+- Table node card labelled `manifestEntryCount` as "Data Files".
+
 ### Added
+- `TableSummary.current` / `TableSummary.history` (`ContentStats`) — the table as it is now
+  (manifest closure of `current-snapshot-id`, live entries only; `recordCount` is the figure
+  `SELECT count(*)` should agree with before deletes are applied) alongside everything still
+  reachable from any retained snapshot (deduplicated by manifest and data-file path — the
+  "what can I not expire yet" view). The inspector renders both under their own headings.
+- File and record byte totals: `dataSizeBytes` / `deleteSizeBytes` per group, so table size on
+  disk is visible without leaving the app.
+- `ContentStats.deletedEntryCount` — entries recording a removal (Iceberg `status=DELETED`,
+  Paimon `_KIND=1`), counted toward scan cost but contributing no files, records or bytes.
+- `formatCount()` / `formatBytes()` — thousands separators and binary byte units for the
+  figures a data engineer compares against engine output.
+- Named spec constants `ManifestContent`, `ManifestEntryStatus`, `DataFileContent`,
+  `PaimonEntryKind` replacing bare 0/1/2 literals at the sites touched by this change.
+- `TableSummaryAccuracyTest` — pins all three miscounts against fixtures laid out the way the
+  formats actually write them.
 - Snapshot filter now works for Paimon tables (previously Iceberg-only); `asSnapshotFilterOption()` extension unifies both formats
 - Sample-row inspector for Paimon nodes (`RecursiveDataTableSection` invoked from every Paimon inspector branch; `collectDescendantRows` descends through `PaimonDataFileNode`)
 - 5-entry LRU session cache (was unbounded — could OOM after enough table switches)

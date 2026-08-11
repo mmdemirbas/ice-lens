@@ -56,6 +56,15 @@ data class PaimonManifestFileMeta(
     // _PARTITION_STATS is complex binary — skip for now
 )
 
+/**
+ * `_KIND` values in a Paimon manifest entry. [DELETE] records the removal of a file from the
+ * table; it is not an Iceberg-style positional or equality delete file.
+ */
+object PaimonEntryKind {
+    const val ADD = 0
+    const val DELETE = 1
+}
+
 /** Paimon manifest entry (Avro), one record per data file ADD/DELETE operation. */
 @Serializable
 data class PaimonManifestEntry(

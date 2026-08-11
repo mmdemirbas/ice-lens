@@ -205,9 +205,39 @@ class PaimonGraphBuilderTest {
 
         assertEquals("test-paimon-table", result.summary.tableName)
         assertEquals(1, result.summary.snapshotCount)
-        assertEquals(1, result.summary.manifestCount)
-        assertEquals(2, result.summary.dataFileCount)
-        assertEquals(80L, result.summary.totalRecordCount)
+        assertEquals(1, result.summary.current.manifestCount)
+        assertEquals(2, result.summary.current.dataFileCount)
+        assertEquals(80L, result.summary.current.recordCount)
+        assertEquals(1, result.summary.history.manifestCount)
+        assertEquals(2, result.summary.history.dataFileCount)
+    }
+
+    /**
+     * Paimon applies a snapshot's delta manifest list over its base: a `_KIND=1` entry removes
+     * a file the base still lists. A summary that only counted ADD entries would report every
+     * file the table ever held, which is the number a user is least likely to want.
+     */
+    @Test
+    fun `current stats apply the delta over the base rather than counting every ADD`() {
+        val kept = minimalDataFile("data-kept.orc", kind = 0, rowCount = 70)
+        val superseded = minimalDataFile("data-superseded.orc", kind = 0, rowCount = 40)
+        val base = minimalManifest("manifest-base", entries = listOf(kept, superseded))
+        // The compaction commit removes the superseded file from the table.
+        val removal = minimalDataFile("data-superseded.orc", kind = 1, rowCount = 40)
+        val delta = minimalManifest("manifest-delta", entries = listOf(removal))
+
+        val model = minimalTableModel(
+            snapshots = listOf(minimalSnapshot(baseManifests = listOf(base), deltaManifests = listOf(delta))),
+        )
+        val summary = PaimonGraphBuilder.buildGraph(model, showRows = false).summary
+
+        assertEquals(1, summary.current.dataFileCount, "the superseded file is no longer in the table")
+        assertEquals(70L, summary.current.recordCount, "only the kept file's rows count")
+        assertEquals(3, summary.current.manifestEntryCount, "two base entries plus the removal")
+        assertEquals(1, summary.current.deletedEntryCount)
+
+        // Both files remain on disk until the snapshot referencing them expires.
+        assertEquals(2, summary.history.dataFileCount)
     }
 
     @Test
@@ -312,7 +342,7 @@ class PaimonGraphBuilderTest {
 
     // M-11 regression: ADD vs DELETE entries are distinguished at the manifest level.
     // Paimon has no positional/equality delete files like Iceberg — posDeleteFileCount stays 0;
-    // delete log entries are visible via deleteManifestCount + manifestEntryCount.
+    // removals are visible via deletedEntryCount + manifestEntryCount.
     @Test
     fun `summary classifies add vs delete entries correctly for paimon`() {
         val addFile = minimalDataFile("data-add.orc", kind = 0, rowCount = 100)
@@ -339,15 +369,18 @@ class PaimonGraphBuilderTest {
         )
         val summary = PaimonGraphBuilder.buildGraph(model, showRows = false).summary
 
-        // Paimon doesn't have pos/eq delete files — both stay 0.
-        assertEquals(0, summary.posDeleteFileCount)
-        assertEquals(0, summary.eqDeleteFileCount)
-        // ADD entries count as data files (1 ADD entry across the two manifests).
-        assertEquals(1, summary.dataFileCount)
-        // DELETE log entries do contribute to manifestEntryCount (1 ADD + 2 DELETE = 3).
-        assertEquals(3, summary.manifestEntryCount)
-        // Manifests are split by their numDeletedFiles header.
-        assertEquals(1, summary.deleteManifestCount)
-        assertEquals(1, summary.dataManifestCount)
+        // Paimon doesn't have pos/eq delete files — both stay 0 by definition, not for lack
+        // of parsing.
+        assertEquals(0, summary.current.posDeleteFileCount)
+        assertEquals(0, summary.current.eqDeleteFileCount)
+        // The two removals name files the base never listed, so only the ADD survives.
+        assertEquals(1, summary.current.dataFileCount)
+        assertEquals(100L, summary.current.recordCount)
+        // Removals are still entries a reader has to scan (1 ADD + 2 DELETE = 3).
+        assertEquals(3, summary.current.manifestEntryCount)
+        assertEquals(2, summary.current.deletedEntryCount)
+        // Paimon has no data/delete manifest split — every manifest carries both kinds.
+        assertEquals(0, summary.current.deleteManifestCount)
+        assertEquals(2, summary.current.dataManifestCount)
     }
 }

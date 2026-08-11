@@ -13,10 +13,7 @@ class GraphTypesTest {
         formatVersion = 2, currentSnapshotId = null, currentMetadataVersion = null,
         versionHintText = "1", tableCreationMs = null, tableLastUpdateMs = null,
         lastUpdatedMs = null, metadataFileCount = 0, snapshotCount = 0,
-        snapshotManifestListFileCount = 0, manifestCount = 0, dataManifestCount = 0,
-        deleteManifestCount = 0, manifestEntryCount = 0, uniqueDataFileCount = 0,
-        dataFileCount = 0, posDeleteFileCount = 0, eqDeleteFileCount = 0,
-        totalRecordCount = 0, metadataFileTimes = FileTimeRange(),
+        snapshotManifestListFileCount = 0, metadataFileTimes = FileTimeRange(),
         snapshotManifestListFileTimes = FileTimeRange(),
         manifestFileTimes = FileTimeRange(), dataFileTimes = FileTimeRange()
     )

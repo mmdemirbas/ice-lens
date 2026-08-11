@@ -262,35 +262,91 @@ object PaimonGraphBuilder {
         )
     }
 
-    internal fun buildTableSummary(tableModel: PaimonUnifiedTableModel): TableSummary {
-        var snapshotCount = 0
-        var manifestEntryCount = 0
-        var addEntryCount = 0
-        var totalRecordCount = 0L
-        val uniqueManifestKeys = mutableSetOf<String>()
-        var dataManifestCount = 0
-        var deleteManifestCount = 0
+    /** Identity of a Paimon manifest file, for deduplicating it across snapshots. */
+    private fun manifestKey(manifest: PaimonUnifiedManifest): String =
+        manifest.metadata.fileName?.takeIf { it.isNotBlank() } ?: "path:${manifest.path}"
 
-        tableModel.snapshots.forEach { snapshot ->
-            snapshotCount++
-            val allManifests = snapshot.baseManifests + snapshot.deltaManifests + snapshot.changelogManifests
-            allManifests.forEach { manifest ->
-                val key = manifest.metadata.fileName ?: "path:${manifest.path}"
-                if (uniqueManifestKeys.add(key)) {
-                    val numDeleted = manifest.metadata.numDeletedFiles ?: 0L
-                    if (numDeleted > 0) deleteManifestCount++ else dataManifestCount++
-                }
-                manifest.entries.forEach { entry ->
-                    manifestEntryCount++
-                    // kind: 0=ADD, 1=DELETE (a manifest log entry recording removal).
-                    // Paimon does not have positional/equality delete files like Iceberg, so
-                    // posDeleteFileCount / eqDeleteFileCount stay 0; dataFileCount counts the
-                    // ADD entries (files added to the table).
-                    if ((entry.metadata.kind ?: 0) == 0) addEntryCount++
-                    totalRecordCount += entry.metadata.file?.rowCount ?: 0L
+    /** Identity of a Paimon data file, for deduplicating it across manifests. */
+    private fun dataFileKey(entry: PaimonUnifiedDataFile): String =
+        entry.metadata.file?.fileName?.takeIf { it.isNotBlank() } ?: "path:${entry.path}"
+
+    /**
+     * The set of data files the latest snapshot actually exposes.
+     *
+     * Paimon splits a snapshot's manifest lists into a *base* (the accumulated state carried
+     * forward) and a *delta* (this commit's changes), and the delta is applied over the base:
+     * a `_KIND=1` entry removes a file the base still lists. Counting ADD entries alone would
+     * therefore report every file the table has ever held. The changelog manifest list is
+     * deliberately excluded — it carries the change stream, not the table's contents.
+     */
+    private fun currentStatsFor(snapshot: PaimonUnifiedSnapshot?): ContentStats {
+        if (snapshot == null) return ContentStats()
+
+        val liveFiles = LinkedHashMap<String, PaimonDataFileMeta?>()
+        val countedManifests = mutableSetOf<String>()
+        var entries = 0
+        var deletedEntries = 0
+
+        (snapshot.baseManifests + snapshot.deltaManifests).forEach { manifest ->
+            if (!countedManifests.add(manifestKey(manifest))) return@forEach
+            manifest.entries.forEach { entry ->
+                entries++
+                if ((entry.metadata.kind ?: PaimonEntryKind.ADD) == PaimonEntryKind.DELETE) {
+                    deletedEntries++
+                    liveFiles.remove(dataFileKey(entry))
+                } else {
+                    liveFiles[dataFileKey(entry)] = entry.metadata.file
                 }
             }
         }
+
+        return ContentStats(
+            // Paimon has no data/delete manifest split — every manifest carries both kinds of
+            // entry — so all manifests are data manifests and removals show as deletedEntryCount.
+            dataManifestCount = countedManifests.size,
+            manifestEntryCount = entries,
+            deletedEntryCount = deletedEntries,
+            dataFileCount = liveFiles.size,
+            recordCount = liveFiles.values.sumOf { it?.rowCount ?: 0L },
+            dataSizeBytes = liveFiles.values.sumOf { it?.fileSize ?: 0L },
+        )
+    }
+
+    internal fun buildTableSummary(tableModel: PaimonUnifiedTableModel): TableSummary {
+        val seenManifests = mutableSetOf<String>()
+        val seenFiles = mutableSetOf<String>()
+        var manifestEntryCount = 0
+        var deletedEntryCount = 0
+        var historyRecordCount = 0L
+        var historySizeBytes = 0L
+
+        tableModel.snapshots.forEach { snapshot ->
+            val allManifests = snapshot.baseManifests + snapshot.deltaManifests + snapshot.changelogManifests
+            allManifests.forEach { manifest ->
+                if (!seenManifests.add(manifestKey(manifest))) return@forEach
+                manifest.entries.forEach { entry ->
+                    manifestEntryCount++
+                    if ((entry.metadata.kind ?: PaimonEntryKind.ADD) == PaimonEntryKind.DELETE) {
+                        deletedEntryCount++
+                    }
+                    if (seenFiles.add(dataFileKey(entry))) {
+                        historyRecordCount += entry.metadata.file?.rowCount ?: 0L
+                        historySizeBytes += entry.metadata.file?.fileSize ?: 0L
+                    }
+                }
+            }
+        }
+
+        // Paimon does not have Iceberg's positional/equality delete files, so those counts
+        // stay 0 for every Paimon table by definition, not for lack of parsing.
+        val history = ContentStats(
+            dataManifestCount = seenManifests.size,
+            manifestEntryCount = manifestEntryCount,
+            deletedEntryCount = deletedEntryCount,
+            dataFileCount = seenFiles.size,
+            recordCount = historyRecordCount,
+            dataSizeBytes = historySizeBytes,
+        )
 
         return TableSummary(
             tableName = tableModel.name,
@@ -305,17 +361,10 @@ object PaimonGraphBuilder {
             tableLastUpdateMs = tableModel.snapshots.lastOrNull()?.metadata?.timeMillis,
             lastUpdatedMs = tableModel.snapshots.lastOrNull()?.metadata?.timeMillis,
             metadataFileCount = 0,
-            snapshotCount = snapshotCount,
-            snapshotManifestListFileCount = snapshotCount,
-            manifestCount = uniqueManifestKeys.size,
-            dataManifestCount = dataManifestCount,
-            deleteManifestCount = deleteManifestCount,
-            manifestEntryCount = manifestEntryCount,
-            uniqueDataFileCount = addEntryCount,
-            dataFileCount = addEntryCount,
-            posDeleteFileCount = 0,
-            eqDeleteFileCount = 0,
-            totalRecordCount = totalRecordCount,
+            snapshotCount = tableModel.snapshots.size,
+            snapshotManifestListFileCount = tableModel.snapshots.size,
+            current = currentStatsFor(tableModel.snapshots.lastOrNull()),
+            history = history,
             metadataFileTimes = FileTimeRange(),
             snapshotManifestListFileTimes = FileTimeRange(),
             manifestFileTimes = FileTimeRange(),
