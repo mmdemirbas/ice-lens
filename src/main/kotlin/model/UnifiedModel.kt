@@ -71,7 +71,9 @@ fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
         }
     }
 
-    // Parse snapshots once to avoid duplicate parsing of the same snapshots
+    // Parse snapshots once to avoid duplicate parsing of the same snapshots, and share one
+    // manifest cache across all of them — see [ManifestCache].
+    val manifestCache = ManifestCache()
     val parsedSnapshots = parsedMetadata
         .map { it.second }
         .flatMap { it.snapshots }
@@ -81,6 +83,7 @@ fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
             snapshot.snapshotId to UnifiedSnapshot(
                 resolveForceRelative(metadataDir, snapshot.manifestList),
                 snapshot,
+                manifestCache,
             )
         }
 
@@ -145,7 +148,35 @@ fun resolveForceRelative(start: Path, pathToTakeOnlyLastPart: String?): Path {
     return start.resolve(tail)
 }
 
-fun UnifiedSnapshot(snapshotPath: Path, snapshot: Snapshot): UnifiedSnapshot {
+/**
+ * Reads each manifest file at most once per table load.
+ *
+ * A commit rewrites the manifest list but carries most manifests forward unchanged, so after
+ * N commits the same manifest file is referenced by N snapshots. Constructing a
+ * [UnifiedManifest] per (snapshot, manifest) pair therefore re-parses the same Avro file once
+ * per referencing snapshot, and load time scales with commit history instead of with the
+ * table. Measured at 7.3x for an 8x increase in snapshot count over identical contents
+ * (`LoadPathScalabilityTest`).
+ *
+ * Sharing the parsed result is sound because a manifest file is immutable, and the
+ * `manifest_file` entry describing it — sequence numbers, added-snapshot id, counts — is
+ * written when the manifest is added and carried forward verbatim.
+ *
+ * Not thread-safe: one instance belongs to one table load, which happens on a single
+ * background coroutine.
+ */
+class ManifestCache {
+    private val byPath = mutableMapOf<String, UnifiedManifest>()
+
+    fun manifestAt(path: Path, entry: ManifestListEntry): UnifiedManifest =
+        byPath.getOrPut(path.toString()) { UnifiedManifest(path, entry) }
+}
+
+fun UnifiedSnapshot(
+    snapshotPath: Path,
+    snapshot: Snapshot,
+    manifestCache: ManifestCache = ManifestCache(),
+): UnifiedSnapshot {
     val manifestListResult = runCatching { IcebergReader.readManifestList(snapshotPath.toString()) }
     val snapshotReadErrors = mutableListOf<UnifiedReadError>()
     val manifestList = manifestListResult.getOrElse { e ->
@@ -165,7 +196,7 @@ fun UnifiedSnapshot(snapshotPath: Path, snapshot: Snapshot): UnifiedSnapshot {
         metadata = snapshot,
         manifests = manifestList.entries.map { manifest ->
             val metadataDir = snapshotPath.parent
-            UnifiedManifest(
+            manifestCache.manifestAt(
                 resolveForceRelative(metadataDir, manifest.manifestPath),
                 manifest,
             )

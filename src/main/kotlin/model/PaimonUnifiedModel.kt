@@ -72,8 +72,12 @@ fun PaimonUnifiedTableModel(tablePath: Path): PaimonUnifiedTableModel {
     val snapshotFiles = listSnapshotFiles(snapshotDir, errors)
     logger.info("  Snapshot files found: {}", snapshotFiles.size)
 
+    // One cache for the whole load: a snapshot's base manifest list carries manifests forward
+    // from earlier commits, so without it each shared manifest is re-parsed once per snapshot
+    // that references it. Same defect as the Iceberg side — see [ManifestCache].
+    val manifestCache = PaimonManifestCache()
     val snapshots = snapshotFiles.mapNotNull { snapshotPath ->
-        readPaimonSnapshot(tablePath, snapshotPath, schemasById, errors)
+        readPaimonSnapshot(tablePath, snapshotPath, schemasById, errors, manifestCache)
     }.sortedBy { it.metadata.id ?: Long.MAX_VALUE }
 
     val totalManifests = snapshots.sumOf { it.baseManifests.size + it.deltaManifests.size + it.changelogManifests.size }
@@ -132,11 +136,28 @@ private fun listSnapshotFiles(snapshotDir: Path, errors: MutableList<UnifiedRead
     }
 }
 
+/**
+ * Reads each Paimon manifest file at most once per table load, keyed by the file name the
+ * manifest list records. The Paimon counterpart of [ManifestCache]; the same carry-forward
+ * shape and the same cost without it.
+ *
+ * Not thread-safe: one instance belongs to one table load.
+ */
+class PaimonManifestCache {
+    private val byName = mutableMapOf<String, PaimonUnifiedManifest>()
+
+    fun manifestFor(meta: PaimonManifestFileMeta, read: () -> PaimonUnifiedManifest): PaimonUnifiedManifest {
+        val key = meta.fileName ?: return read()
+        return byName.getOrPut(key) { read() }
+    }
+}
+
 private fun readPaimonSnapshot(
     tablePath: Path,
     snapshotPath: Path,
     schemasById: Map<Int?, PaimonSchema>,
     errors: MutableList<UnifiedReadError>,
+    manifestCache: PaimonManifestCache,
 ): PaimonUnifiedSnapshot? {
     val snapshot = runCatching { PaimonReader.readSnapshot(snapshotPath.toString()) }
         .onFailure { e ->
@@ -147,9 +168,9 @@ private fun readPaimonSnapshot(
     val schema = schemasById[snapshot.schemaId]
     val snapshotErrors = mutableListOf<UnifiedReadError>()
 
-    val baseManifests = readManifestList(tablePath, snapshot.baseManifestList, "base-manifest-list", snapshotErrors)
-    val deltaManifests = readManifestList(tablePath, snapshot.deltaManifestList, "delta-manifest-list", snapshotErrors)
-    val changelogManifests = readManifestList(tablePath, snapshot.changelogManifestList, "changelog-manifest-list", snapshotErrors)
+    val baseManifests = readManifestList(tablePath, snapshot.baseManifestList, "base-manifest-list", snapshotErrors, manifestCache)
+    val deltaManifests = readManifestList(tablePath, snapshot.deltaManifestList, "delta-manifest-list", snapshotErrors, manifestCache)
+    val changelogManifests = readManifestList(tablePath, snapshot.changelogManifestList, "changelog-manifest-list", snapshotErrors, manifestCache)
 
     return PaimonUnifiedSnapshot(
         path = snapshotPath,
@@ -167,6 +188,7 @@ private fun readManifestList(
     manifestListPath: String?,
     stage: String,
     errors: MutableList<UnifiedReadError>,
+    manifestCache: PaimonManifestCache,
 ): List<PaimonUnifiedManifest> {
     if (manifestListPath.isNullOrBlank()) return emptyList()
 
@@ -191,7 +213,7 @@ private fun readManifestList(
     }
 
     return result.entries.map { meta ->
-        readPaimonManifest(tablePath, meta, errors)
+        manifestCache.manifestFor(meta) { readPaimonManifest(tablePath, meta, errors) }
     }
 }
 
