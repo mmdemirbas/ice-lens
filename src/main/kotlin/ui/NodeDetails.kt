@@ -26,9 +26,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import model.DataFile
+import model.DataFileContent
 import model.GraphModel
 import model.GraphNode
 import model.KeyValuePairBytes
+import model.ManifestEntryStatus
 import model.KeyValuePairLong
 import model.MetadataLogEntry
 import model.SnapshotLogEntry
@@ -104,13 +107,6 @@ private fun currentSnapshotLabel(currentSnapshotId: Long?): String = when (curre
     null -> "None"
     -1L -> "None (-1)"
     else -> currentSnapshotId.toString()
-}
-
-private fun timelineContentRank(content: Int?): Int = when (content ?: 0) {
-    2 -> 0
-    0 -> 1
-    1 -> 2
-    else -> 3
 }
 
 private fun manifestContentRank(content: Int?): Int =
@@ -648,7 +644,11 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Format Version", "${summary.formatVersion ?: "N/A"}")
                             DetailRow("Current Snapshot ID", currentSnapshotLabel(summary.currentSnapshotId))
                             DetailRow("Current Metadata Version", "${summary.currentMetadataVersion ?: "N/A"}")
-                            DetailRow("version-hint.text", summary.versionHintText.ifBlank { "N/A" })
+                            DetailRow(
+                                "version-hint.text",
+                                summary.versionHintText?.takeIf { it.isNotBlank() }
+                                    ?: "Not present — normal unless the table is HadoopCatalog-managed"
+                            )
                             DetailRow("Table Created (Inferred)", formatTimestamp(summary.tableCreationMs))
                             DetailRow("Table Last Updated (Inferred)", formatTimestamp(summary.tableLastUpdateMs))
                             DetailRow("Last Updated (UI)", formatTimestamp(summary.lastUpdatedMs))
@@ -1113,20 +1113,23 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 
-                        val fileChildren = children
-                            .filterIsInstance<GraphNode.FileNode>()
-                            .sortedWith(
-                                compareBy(
-                                    { it.data.dataSequenceNumber ?: it.entry.sequenceNumber ?: Long.MAX_VALUE },
-                                    { it.entry.fileSequenceNumber ?: Long.MAX_VALUE },
-                                    { timelineContentRank(it.data.content) },
-                                    { it.simpleId }
-                                )
-                            )
+                        // Every entry, not just the ones the graph drew. The graph caps child
+                        // nodes per manifest so a manifest holding thousands of files stays
+                        // readable; the inspector is a table and has no such constraint.
+                        val manifestEntries = node.entries
 
-                        if (fileChildren.isNotEmpty()) {
+                        if (manifestEntries.isNotEmpty()) {
                             Spacer(Modifier.height(16.dp))
-                            SectionTitle("Manifest Entries (Data File Details)")
+                            SectionTitle("Manifest Entries (${formatCount(manifestEntries.size)})")
+                            if (node.hiddenEntryCount > 0) {
+                                Text(
+                                    "The graph draws the first ${formatCount(node.shownEntryCount)}; " +
+                                        "all ${formatCount(manifestEntries.size)} are listed here.",
+                                    fontSize = 11.sp,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                            }
                             WideTable(
                                 headers = listOf(
                                     "Apply Order",
@@ -1152,31 +1155,31 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                     "Equality IDs",
                                     "Sort Order ID"
                                 ),
-                                rows = fileChildren.mapIndexed { index, fileNode ->
-                                    val data = fileNode.data
-                                    val status = when (fileNode.entry.status) {
-                                        0 -> "EXISTING (0)"
-                                        1 -> "ADDED (1)"
-                                        2 -> "DELETED (2)"
-                                        else -> "Unknown (${fileNode.entry.status})"
+                                rows = manifestEntries.mapIndexed { index, view ->
+                                    val data = view.entry.dataFile ?: DataFile(filePath = "unknown")
+                                    val status = when (view.entry.status) {
+                                        ManifestEntryStatus.EXISTING -> "EXISTING (0)"
+                                        ManifestEntryStatus.ADDED -> "ADDED (1)"
+                                        ManifestEntryStatus.DELETED -> "DELETED (2)"
+                                        else -> "Unknown (${view.entry.status})"
                                     }
-                                    val content = when (data.content ?: 0) {
-                                        1 -> "Position Delete (1)"
-                                        2 -> "Equality Delete (2)"
+                                    val content = when (data.content ?: DataFileContent.DATA) {
+                                        DataFileContent.POSITION_DELETES -> "Position Delete (1)"
+                                        DataFileContent.EQUALITY_DELETES -> "Equality Delete (2)"
                                         else -> "Data (0)"
                                     }
                                     listOf(
                                         "${index + 1}",
-                                        "${fileNode.simpleId}",
+                                        "${view.simpleId}",
                                         status,
                                         content,
-                                        "${fileNode.entry.snapshotId ?: "N/A"}",
-                                        "${fileNode.entry.sequenceNumber ?: "N/A"}",
-                                        "${fileNode.entry.fileSequenceNumber ?: "N/A"}",
+                                        "${view.entry.snapshotId ?: "N/A"}",
+                                        "${view.entry.sequenceNumber ?: "N/A"}",
+                                        "${view.entry.fileSequenceNumber ?: "N/A"}",
                                         normalizeText(data.filePath),
                                         data.fileFormat ?: "N/A",
-                                        "${data.recordCount ?: 0}",
-                                        "${data.fileSizeInBytes ?: 0}",
+                                        formatCount(data.recordCount ?: 0L),
+                                        formatBytes(data.fileSizeInBytes ?: 0L),
                                         "N/A",
                                         kvLongs(data.columnSizes),
                                         kvLongs(data.valueCounts),

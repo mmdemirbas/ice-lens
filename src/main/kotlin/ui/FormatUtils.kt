@@ -13,25 +13,27 @@ fun formatAppTimestamp(ms: Long?): String =
     ms?.let { appDateTimeFormatter.format(Instant.ofEpochMilli(it)) } ?: "N/A"
 
 /**
- * Thousands-separated count: `48102336` → `"48,102,336"`.
+ * Thousands-separated count: `48102336` → `"48,102,336"`, null → `"N/A"`.
  *
  * [Locale.US] is pinned deliberately, as everywhere else in this app: the audience reads
  * these figures next to engine output and query plans that are themselves US-formatted.
  */
-fun formatCount(value: Long): String = String.format(Locale.US, "%,d", value)
+fun formatCount(value: Long?): String = value?.let { String.format(Locale.US, "%,d", it) } ?: "N/A"
 
-fun formatCount(value: Int): String = formatCount(value.toLong())
+fun formatCount(value: Int?): String = formatCount(value?.toLong())
 
 private val BYTE_UNITS = listOf("KiB", "MiB", "GiB", "TiB", "PiB", "EiB")
 
 /**
- * Human-readable byte size in binary units: `4089446400` → `"3.81 GiB"`.
+ * Compact byte size in binary units: `4089446400` → `"3.81 GiB"`. For cards and dense table
+ * cells, where the exact figure would not fit.
  *
- * Binary rather than decimal units because every engine and object store in this space
- * reports binary, and a size that disagrees with `ls -lh` costs the reader a detour.
+ * Binary rather than decimal units, and labelled as such, because every engine and object
+ * store in this space reports binary — a size that disagrees with `ls -lh` costs the reader
+ * a detour, and a "GB" that is really a GiB costs them a wrong conclusion.
  */
-fun formatBytes(bytes: Long): String {
-    if (bytes < 0) return "N/A"
+fun formatBytes(bytes: Long?): String {
+    if (bytes == null || bytes < 0) return "N/A"
     if (bytes < 1024) return "$bytes B"
     var value = bytes.toDouble() / 1024
     var unitIndex = 0
@@ -41,6 +43,17 @@ fun formatBytes(bytes: Long): String {
     }
     val precision = if (value >= 100) 0 else if (value >= 10) 1 else 2
     return String.format(Locale.US, "%.${precision}f %s", value, BYTE_UNITS[unitIndex])
+}
+
+/**
+ * Exact byte size with its compact form alongside: `4096` → `"4,096 B (4.00 KiB)"`. For the
+ * inspector, where the reader is comparing against the literal `file_size_in_bytes` a
+ * manifest recorded.
+ */
+fun formatBytesExact(bytes: Long?): String {
+    if (bytes == null || bytes < 0) return "N/A"
+    if (bytes < 1024) return "$bytes B"
+    return "${formatCount(bytes)} B (${formatBytes(bytes)})"
 }
 
 fun parseLongSet(raw: String): Set<Long> =

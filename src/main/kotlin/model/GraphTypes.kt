@@ -96,7 +96,8 @@ data class TableSummary(
     val formatVersion: Int?,
     val currentSnapshotId: Long?,
     val currentMetadataVersion: Int?,
-    val versionHintText: String,
+    /** `metadata/version-hint.text`, or null when absent — normal for catalog-managed tables. */
+    val versionHintText: String?,
     val tableCreationMs: Long?,
     val tableLastUpdateMs: Long?,
     val lastUpdatedMs: Long?,
@@ -121,6 +122,23 @@ data class TableSummary(
     val manifestFileTimes: FileTimeRange,
     val dataFileTimes: FileTimeRange,
     val metadataVersions: List<MetadataVersionInfo> = emptyList(),
+)
+
+/**
+ * One manifest entry as the inspector shows it: the entry itself, the stable per-file number
+ * the graph labels it with, and where the file resolved to on disk.
+ */
+data class ManifestEntryView(
+    val simpleId: Int,
+    val entry: ManifestEntry,
+    val localPath: String,
+)
+
+/** Paimon counterpart of [ManifestEntryView]. */
+data class PaimonManifestEntryView(
+    val simpleId: Int,
+    val entry: PaimonManifestEntry,
+    val localPath: String,
 )
 
 /**
@@ -169,10 +187,23 @@ sealed class GraphNode(
         override val id: String,
         val data: ManifestListEntry,
         val simpleId: Int,
+        /**
+         * Every entry in this manifest, in apply order.
+         *
+         * The graph renders at most a handful of them as child [FileNode]s so a manifest with
+         * thousands of files stays readable, but the inspector lists all of them — a cap that
+         * hides data without saying so is indistinguishable from a manifest that really is
+         * that small.
+         */
+        val entries: List<ManifestEntryView> = emptyList(),
+        /** How many of [entries] were given a child node in the graph. */
+        val shownEntryCount: Int = 0,
         val localPath: String? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 200.0, 80.0)
+    ) : GraphNode(id, initialX, initialY, 200.0, 80.0) {
+        val hiddenEntryCount: Int get() = (entries.size - shownEntryCount).coerceAtLeast(0)
+    }
 
     data class FileNode(
         override val id: String,
@@ -240,10 +271,16 @@ sealed class GraphNode(
         override val id: String,
         val data: PaimonManifestFileMeta,
         val simpleId: Int,
+        /** Every entry in this manifest — see [ManifestNode.entries] for why all of them. */
+        val entries: List<PaimonManifestEntryView> = emptyList(),
+        /** How many of [entries] were given a child node in the graph. */
+        val shownEntryCount: Int = 0,
         val localPath: String? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 200.0, 80.0)
+    ) : GraphNode(id, initialX, initialY, 200.0, 80.0) {
+        val hiddenEntryCount: Int get() = (entries.size - shownEntryCount).coerceAtLeast(0)
+    }
 
     /** Paimon data file node. */
     data class PaimonDataFileNode(

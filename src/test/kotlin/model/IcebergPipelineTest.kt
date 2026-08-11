@@ -131,14 +131,38 @@ class IcebergPipelineTest {
         assertEquals("1", model.versionHint)
     }
 
+    /**
+     * `version-hint.text` is written only by HadoopCatalog / HadoopTables. Tables managed by
+     * Hive, Glue, REST or Nessie catalogs never have one, so its absence must not surface as
+     * a read error — doing so put a red TABLE READ ERROR node on the majority of real tables.
+     */
     @Test
-    fun `UnifiedTableModel handles missing version-hint`() {
+    fun `UnifiedTableModel treats an absent version-hint as normal, not an error`() {
         val table = createTableDir(
             metadataJsons = mapOf("v1.metadata.json" to metadataJson())
         )
         val model = UnifiedTableModel(table)
-        // Missing version hint → error collected but not fatal
-        assertTrue(model.readErrors.any { it.stage == "read-version-hint" })
+        assertNull(model.versionHint)
+        assertTrue(
+            model.readErrors.none { it.stage == "read-version-hint" },
+            "Absent version-hint.text reported as an error: ${model.readErrors}",
+        )
+    }
+
+    @Test
+    fun `UnifiedTableModel reports a version-hint that exists but cannot be read`() {
+        val table = createTableDir(
+            metadataJsons = mapOf("v1.metadata.json" to metadataJson())
+        )
+        // A directory where the file is expected: exists, but readText fails.
+        File(table.toFile(), "metadata/version-hint.text").mkdirs()
+
+        val model = UnifiedTableModel(table)
+        assertNull(model.versionHint)
+        assertTrue(
+            model.readErrors.any { it.stage == "read-version-hint" },
+            "Unreadable version-hint.text should still be reported: ${model.readErrors}",
+        )
     }
 
     @Test
@@ -218,8 +242,7 @@ class IcebergPipelineTest {
         assertEquals(100L, manifest.dataFiles[0].metadata.dataFile?.recordCount)
         assertEquals(200L, manifest.dataFiles[1].metadata.dataFile?.recordCount)
 
-        // Only version-hint error (expected — no version-hint.text file)
-        assertTrue(model.readErrors.all { it.stage == "read-version-hint" }, "Unexpected top-level errors: ${model.readErrors}")
+        assertEquals(0, model.readErrors.size, "Unexpected top-level errors: ${model.readErrors}")
         assertEquals(0, snap.readErrors.size, "Snapshot errors: ${snap.readErrors}")
         assertEquals(0, manifest.readErrors.size, "Manifest errors: ${manifest.readErrors}")
     }

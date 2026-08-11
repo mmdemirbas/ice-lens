@@ -169,9 +169,21 @@ object PaimonGraphBuilder {
                             id = manId,
                             data = unifiedManifest.metadata,
                             simpleId = manSimpleId,
+                            // Numbered for every entry, not just the ones the graph draws, so
+                            // the inspector can list the whole manifest.
+                            entries = unifiedManifest.entries.map { unifiedDataFile ->
+                                PaimonManifestEntryView(
+                                    simpleId = nextFileSimpleId++,
+                                    entry = unifiedDataFile.metadata,
+                                    localPath = unifiedDataFile.path.toString(),
+                                )
+                            },
+                            shownEntryCount = minOf(unifiedManifest.entries.size, MAX_FILES_PER_MANIFEST),
                             localPath = unifiedManifest.path.toString(),
                         )
                     }
+                    val manifestEntryViews =
+                        (logicalNodes[manId] as? GraphNode.PaimonManifestNode)?.entries.orEmpty()
 
                     val manEdgeId = "e_man_${mlId}_to_$manId"
                     if (edgeIds.add(manEdgeId)) {
@@ -186,7 +198,7 @@ object PaimonGraphBuilder {
                     if (processedManifestEntries.add(manifestKey)) {
                         unifiedManifest.entries.take(MAX_FILES_PER_MANIFEST).forEachIndexed { fileIndex, unifiedDataFile ->
                             val entry = unifiedDataFile.metadata
-                            val fileSimpleId = nextFileSimpleId++
+                            val fileSimpleId = manifestEntryViews.getOrNull(fileIndex)?.simpleId ?: (fileIndex + 1)
                             val fId = "pdf_${manId}_${fileSimpleId}_$fileIndex"
 
                             if (!logicalNodes.containsKey(fId)) {
@@ -356,7 +368,7 @@ object PaimonGraphBuilder {
             formatVersion = null,
             currentSnapshotId = tableModel.snapshots.lastOrNull()?.metadata?.id,
             currentMetadataVersion = null,
-            versionHintText = "",
+            versionHintText = null,
             tableCreationMs = tableModel.snapshots.firstOrNull()?.metadata?.timeMillis,
             tableLastUpdateMs = tableModel.snapshots.lastOrNull()?.metadata?.timeMillis,
             lastUpdatedMs = tableModel.snapshots.lastOrNull()?.metadata?.timeMillis,

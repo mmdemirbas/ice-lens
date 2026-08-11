@@ -2,8 +2,6 @@ package service
 
 import model.*
 import org.slf4j.LoggerFactory
-import java.io.File
-import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.*
@@ -170,12 +168,22 @@ object IcebergGraphBuilder {
                     val manifest = unifiedManifest.metadata
                     val rawManPath = manifest.manifestPath ?: "unknown_${UUID.randomUUID()}"
                     val manId = manifestPathToId.getOrPut(rawManPath) { "man_${manifestPathToId.size + 1}" }
+                    val fallbackSeq = manifest.sequenceNumber ?: Long.MAX_VALUE
+                    val unifiedDataFiles = unifiedManifest.dataFiles.sortedWith(unifiedDataFileComparator(fallbackSeq))
                     if (!logicalNodes.containsKey(manId)) {
                         val simpleManifestId = nextManifestSimpleId++
                         logicalNodes[manId] = GraphNode.ManifestNode(
                             id = manId,
                             data = manifest,
                             simpleId = simpleManifestId,
+                            entries = unifiedDataFiles.map { unifiedDataFile ->
+                                ManifestEntryView(
+                                    simpleId = assignSimpleId(unifiedDataFile.metadata.dataFile?.filePath.orEmpty()),
+                                    entry = unifiedDataFile.metadata,
+                                    localPath = unifiedDataFile.path.toString(),
+                                )
+                            },
+                            shownEntryCount = minOf(unifiedDataFiles.size, MAX_FILES_PER_MANIFEST),
                             localPath = unifiedManifest.path.toString()
                         )
                     }
@@ -191,8 +199,6 @@ object IcebergGraphBuilder {
                     if (processedManifests.add(manId)) {
                         val manifestPath = manifest.manifestPath
                         if (manifestPath != null) {
-                            val fallbackSeq = manifest.sequenceNumber ?: Long.MAX_VALUE
-                            val unifiedDataFiles = unifiedManifest.dataFiles.sortedWith(unifiedDataFileComparator(fallbackSeq))
                             unifiedDataFiles.take(MAX_FILES_PER_MANIFEST).forEachIndexed { fileIndex, unifiedDataFile ->
                                 val entry = unifiedDataFile.metadata
                                 val dataFile = entry.dataFile ?: DataFile(filePath = "unknown")
@@ -214,18 +220,12 @@ object IcebergGraphBuilder {
                                 edges.add(GraphEdge(edgeId, manId, fId))
 
                                 if (showRows) {
-                                    val pathWithoutScheme =
-                                        if (rawPath.startsWith("file:")) URI(rawPath).path else rawPath
-                                    val tableMarker = "/${tableModel.name}/"
-
-                                    val localFile = if (pathWithoutScheme.contains(tableMarker)) {
-                                        val relativePart = pathWithoutScheme.substringAfter(tableMarker)
-                                        File("${tableModel.path}/$relativePart")
-                                    } else {
-                                        File(pathWithoutScheme)
-                                    }
-
-                                    if (localFile.exists()) {
+                                    // UnifiedManifest already resolved this file against the table
+                                    // directory, and UnifiedDataFile.rows reads from that same
+                                    // path. Re-deriving it here from a "/<tableName>/" marker gave
+                                    // a second answer that could disagree with the first, and when
+                                    // it did the rows were silently dropped for a file that exists.
+                                    if (Files.isRegularFile(unifiedDataFile.path)) {
                                         val contentType = entry.dataFile?.content ?: 0
                                         val maxRows = MAX_ROWS_PER_FILE
                                         for (rIdx in 0 until maxRows) {

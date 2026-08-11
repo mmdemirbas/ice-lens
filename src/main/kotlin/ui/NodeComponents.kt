@@ -76,21 +76,13 @@ private fun fileNameFromPath(path: String?): String {
     return candidate.ifEmpty { normalized }
 }
 
-private fun formatCount(value: Long?): String =
-    value?.let { NumberFormat.getIntegerInstance(Locale.US).format(it) } ?: "N/A"
-
-private fun formatBytes(bytes: Long?): String {
-    if (bytes == null) return "N/A"
-    val units = arrayOf("B", "KB", "MB", "GB", "TB")
-    var value = bytes.toDouble()
-    var unitIndex = 0
-    while (value >= 1024.0 && unitIndex < units.lastIndex) {
-        value /= 1024.0
-        unitIndex++
-    }
-    val compact = if (unitIndex == 0) String.format(Locale.US, "%.0f", value) else String.format(Locale.US, "%.1f", value)
-    return "${formatCount(bytes)} bytes ($compact ${units[unitIndex]})"
-}
+/**
+ * Entry count for a manifest card, saying so when the graph is showing fewer child nodes than
+ * the manifest holds. A cap that hides entries without naming itself is indistinguishable
+ * from a manifest that really is that small — see the inspector for the full list.
+ */
+private fun manifestEntryCountLabel(total: Int, shown: Int): String =
+    if (shown < total) "${formatCount(shown)} of ${formatCount(total)} shown" else formatCount(total)
 
 @Composable
 fun nodeCardTextPrimary(): Color =
@@ -310,8 +302,9 @@ fun NodeTooltip(node: GraphNode) {
                 is GraphNode.ManifestNode -> {
                     val manifestPath = node.data.manifestPath
                     DetailRow("File Name", fileNameFromPath(manifestPath), isDark = true)
-                    DetailRow("Added", "${node.data.addedFilesCount} files", isDark = true)
-                    DetailRow("Deleted", "${node.data.deletedFilesCount} files", isDark = true)
+                    DetailRow("Entries", manifestEntryCountLabel(node.entries.size, node.shownEntryCount), isDark = true)
+                    DetailRow("Added", "${formatCount(node.data.addedFilesCount)} files", isDark = true)
+                    DetailRow("Deleted", "${formatCount(node.data.deletedFilesCount)} files", isDark = true)
                     DetailRow("Sequence", "${node.data.sequenceNumber ?: "N/A"}", isDark = true)
                 }
                 is GraphNode.FileNode -> {
@@ -354,8 +347,9 @@ fun NodeTooltip(node: GraphNode) {
                 }
                 is GraphNode.PaimonManifestNode -> {
                     DetailRow("File", node.data.fileName ?: "N/A", isDark = true)
-                    DetailRow("Added", "${node.data.numAddedFiles ?: 0} files", isDark = true)
-                    DetailRow("Deleted", "${node.data.numDeletedFiles ?: 0} files", isDark = true)
+                    DetailRow("Entries", manifestEntryCountLabel(node.entries.size, node.shownEntryCount), isDark = true)
+                    DetailRow("Added", "${formatCount(node.data.numAddedFiles)} files", isDark = true)
+                    DetailRow("Deleted", "${formatCount(node.data.numDeletedFiles)} files", isDark = true)
                 }
                 is GraphNode.PaimonDataFileNode -> {
                     DetailRow("File", node.entry.file?.fileName ?: "N/A", isDark = true)

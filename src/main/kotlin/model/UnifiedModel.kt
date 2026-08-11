@@ -84,12 +84,21 @@ fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
             )
         }
 
+    // version-hint.text is written only by HadoopCatalog / HadoopTables. A table managed by a
+    // Hive, Glue, REST or Nessie catalog never has one — the current version lives in the
+    // catalog instead — so its absence is normal, not a fault. Reporting it as a read error
+    // put a red TABLE READ ERROR node on the majority of real tables. Only a file that exists
+    // and cannot be read is worth surfacing.
     val versionHintPath = metadataDir.resolve("version-hint.text")
-    val versionHint = runCatching { versionHintPath.readText().trim() }
-        .getOrElse { e ->
-            tableReadErrors += toError("read-version-hint", versionHintPath, e)
-            "N/A"
-        }
+    val versionHint = if (Files.exists(versionHintPath)) {
+        runCatching { versionHintPath.readText().trim() }
+            .getOrElse { e ->
+                tableReadErrors += toError("read-version-hint", versionHintPath, e)
+                null
+            }
+    } else {
+        null
+    }
 
     val orderedMetadatas = parsedMetadata.map { (path, metadata) ->
             UnifiedMetadata(
@@ -214,7 +223,9 @@ fun UnifiedManifest(manifestPath: Path, manifest: ManifestListEntry): UnifiedMan
 data class UnifiedTableModel(
     override val path: Path,
     override val name: String,
-    val versionHint: String,
+    /** Contents of `metadata/version-hint.text`, or null when the file is absent (the norm
+     *  for catalog-managed tables). */
+    val versionHint: String?,
     val metadatas: List<UnifiedMetadata>,
     override val readErrors: List<UnifiedReadError> = emptyList(),
 ) : FormatTableModel {
