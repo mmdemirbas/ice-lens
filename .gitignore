@@ -8,3 +8,7 @@
 *.log
 *.tmp
 *.bak
+# oku report build output and kit symlink
+docs/reports/dist/
+docs/reports/_oku
+docs/reports/index.html
