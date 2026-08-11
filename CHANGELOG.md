@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A missing `version-hint.text` was reported as a table read error.** The file is written
+  only by HadoopCatalog / HadoopTables; tables managed by Hive, Glue, REST or Nessie catalogs
+  never have one, so the majority of real Iceberg tables opened with a red TABLE READ ERROR
+  node attached. Absence is now normal; a file that exists but cannot be read is still
+  reported. `versionHint` / `TableSummary.versionHintText` are nullable.
+- **Per-manifest caps hid entries silently.** The graph draws at most
+  `MAX_FILES_PER_MANIFEST` child nodes per manifest, and the inspector's entry table was built
+  from those same children — so a manifest holding 5,000 entries was indistinguishable from
+  one holding 10. Manifest nodes now carry every entry: the graph still draws the first ten,
+  the card says "10 of 5,231 shown", and the inspector lists all of them.
+- **The `showRows` branch re-derived data-file paths a second way**, from a `"/<tableName>/"`
+  string marker, while `UnifiedManifest` had already resolved them and the row loader read
+  from that resolved path. When the two disagreed, rows were silently dropped for files that
+  exist on disk.
 - **Table summary counts described the traversal, not the table.** `manifestEntryCount`,
   `dataFileCount`, `posDeleteFileCount`, `eqDeleteFileCount` and `totalRecordCount` were
   incremented per visit while walking metadata → snapshots → manifests → files. Because
@@ -32,8 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   disk is visible without leaving the app.
 - `ContentStats.deletedEntryCount` — entries recording a removal (Iceberg `status=DELETED`,
   Paimon `_KIND=1`), counted toward scan cost but contributing no files, records or bytes.
-- `formatCount()` / `formatBytes()` — thousands separators and binary byte units for the
-  figures a data engineer compares against engine output.
+- `formatCount()` / `formatBytes()` / `formatBytesExact()` in `FormatUtils` — thousands
+  separators and binary byte units for the figures a data engineer compares against engine
+  output. Folds in the private copies that lived in `NodeComponents`, whose byte formatter
+  divided by 1024 and labelled the result KB/MB/GB.
 - Named spec constants `ManifestContent`, `ManifestEntryStatus`, `DataFileContent`,
   `PaimonEntryKind` replacing bare 0/1/2 literals at the sites touched by this change.
 - `TableSummaryAccuracyTest` — pins all three miscounts against fixtures laid out the way the

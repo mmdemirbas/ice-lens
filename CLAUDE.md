@@ -24,7 +24,7 @@ src/main/kotlin/
 │   ├── UnifiedModel.kt        # Aggregated data layer — reads & links all Iceberg artifacts into a tree
 │   ├── PaimonSchema.kt        # @Serializable Paimon data classes (snapshot, schema, manifest list, manifest entry)
 │   ├── PaimonUnifiedModel.kt  # Aggregated Paimon data layer — reads & links snapshots, schemas, manifests
-│   ├── GraphTypes.kt          # GraphModel (with nodeById), GraphNode (sealed incl. Paimon types), GraphEdge
+│   ├── GraphTypes.kt          # GraphModel (with nodeById), GraphNode (sealed incl. Paimon types), GraphEdge, TableSummary/ContentStats
 │   ├── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 │   └── ToolWindowTypes.kt     # ToolWindowAnchor enum, ToolWindowConfig
 ├── service/
@@ -42,7 +42,7 @@ src/main/kotlin/
     ├── AboutDialog.kt         # About dialog with version info, diagnostics, cheat sheet
     ├── Theme.kt               # Color schemes, dark surface detection, selection highlight
     ├── CommonComponents.kt    # Reusable widgets: draggable dividers, toolbar group/icon button
-    ├── FormatUtils.kt         # Timestamp formatting, long set serialization
+    ├── FormatUtils.kt         # Timestamp/count/byte formatting, long set serialization
     ├── WorkspaceUtils.kt      # Table detection, recursive scanning, native file chooser, workspace dedup
     ├── SnapshotFilter.kt      # Snapshot filter data model and graph filtering logic
     ├── GraphCanvas.kt         # Interactive graph: zoom/pan, node selection/drag, marquee, mini-map, viewport culling
@@ -79,6 +79,24 @@ src/main/kotlin/
   through cloud URIs (`s3://`, `hdfs://`, `gs://`, `abfs://`, …) as-is
 - `loadRequestId` is an `AtomicLong`; the cache-hit branch in `loadTable` also bumps it so
   any in-flight load/reapply coroutine fails its staleness check and bails out
+- **Summary figures are always deduplicated.** Both formats share structure on purpose (one
+  manifest is referenced by every snapshot that carries its files forward; every Iceberg
+  snapshot is re-listed in every later metadata.json), so a per-visit counter multiplies with
+  commit history. `TableSummary` carries two `ContentStats`: `current` (manifest closure of
+  `current-snapshot-id`, live entries only) and `history` (everything reachable from any
+  retained snapshot, deduplicated by manifest and data-file path). `manifestEntryCount` is
+  status-blind in both — it measures scan cost — while file/record/byte totals cover live
+  entries only. Delete-file `record_count` goes to `deleteRecordCount`, never `recordCount`.
+- Spec constants live in `IcebergSchema.kt` (`ManifestContent`, `ManifestEntryStatus`,
+  `DataFileContent`) and `PaimonSchema.kt` (`PaimonEntryKind`). Prefer them over 0/1/2 literals
+- `versionHint` is nullable — `version-hint.text` exists only for HadoopCatalog/HadoopTables
+  tables, so absence is normal and must not be reported as a read error
+- Graph builders cap child nodes per manifest (`MAX_FILES_PER_MANIFEST`), but `ManifestNode`
+  and `PaimonManifestNode` carry *every* entry in `entries` with `shownEntryCount` recording
+  how many the graph drew. The inspector lists all of them; cards disclose the cap. Never add
+  a cap that isn't visible in the UI
+- `formatCount` / `formatBytes` / `formatBytesExact` live in `ui/FormatUtils.kt` — do not add
+  private copies to a UI file. Byte units are binary and labelled as such (KiB, not KB)
 
 ## Known quirks
 
@@ -133,7 +151,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew test --tests "*.IcebergPathsTest"   # Specific test class
 ```
 
-~290 tests across 23 files covering full pipelines for both formats (Avro fixtures
+~300 tests across 24 files covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `src/test/resources/paimon-fixtures/`.
@@ -151,9 +169,14 @@ Parquet files. Paimon end-to-end fixtures live in `src/test/resources/paimon-fix
 - Model: `PaimonUnifiedTableModel` → `PaimonGraphBuilder` → `GraphLayoutService`
 - Key differences from Iceberg: manifest lists split into base (accumulated) and delta (new changes); LSM tree levels on data files; commitKind (APPEND/COMPACT/OVERWRITE/ANALYZE)
 - Manifest entries carry `_KIND` (0=ADD, 1=DELETE log entry). Paimon does NOT have
-  positional/equality delete files like Iceberg, so `TableSummary.posDeleteFileCount` and
-  `eqDeleteFileCount` stay 0; `dataFileCount` counts ADD entries only. DELETE log entries
-  remain visible via `manifestEntryCount` and `deleteManifestCount`.
+  positional/equality delete files like Iceberg, so `posDeleteFileCount` and
+  `eqDeleteFileCount` stay 0 by definition; removals surface as `deletedEntryCount`.
+- A snapshot's **delta manifest list is applied over its base** — a `_KIND=1` entry removes a
+  file the base still lists — so `current` stats replay add/remove rather than summing ADD
+  entries. The changelog manifest list is excluded from `current`: it carries the change
+  stream, not the table's contents.
+- Paimon has no data/delete manifest split (every manifest carries both kinds of entry), so
+  all manifests count as `dataManifestCount`.
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

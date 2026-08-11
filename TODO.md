@@ -2,6 +2,48 @@
 
 ---
 
+## Format coverage gaps
+
+These are the differences between "renders the metadata tree" and "answers the questions a
+table-format engineer opens a debugger for". Ordered by how often the question comes up.
+
+- **Partition values are invisible.** `data_file.partition` is a nested Avro record whose
+  schema is derived from the table's partition spec, so a static `@Serializable` class cannot
+  model it — it has to be read off the `GenericRecord` against the spec in the metadata. The
+  inspector's Partition column is hardcoded `"N/A"` today. This is the single most-requested
+  field when debugging why a query read the files it read.
+
+- **Manifest field summaries are not read.** `manifest_file.partitions` carries per-partition-
+  field lower/upper bounds and null/NaN flags — the data that decides whether a manifest is
+  skipped during planning. Without it the tool can show *that* a manifest exists but not *why*
+  the planner would or would not open it.
+
+- **Iceberg v3 is unmodelled.** Parsed without error (unknown JSON keys are ignored, unknown
+  Avro fields are dropped) but none of its additions are surfaced: deletion vectors
+  (`content_offset` / `content_size_in_bytes` / `referenced_data_file` on the data file, with
+  the vector living in a Puffin blob), row lineage (`first-row-id`, `added-rows`,
+  `_row_id`, `_last_updated_sequence_number`), and the variant / geometry / geography /
+  timestamp_ns types.
+
+- **Snapshot lineage is not drawn.** `parent-snapshot-id` is parsed and shown as a field, but
+  no edge connects a snapshot to its parent, so branch and tag topology (`refs`) is invisible
+  as structure. For a tool whose subject is commit history this is a notable absence.
+
+- **Statistics and partition-statistics files are untyped.** Held as `List<JsonElement>` and
+  rendered as raw JSON; the Puffin blobs they point at (NDV sketches, etc.) are never opened.
+
+- **`TableMetadata.lastSequenceNumber` is `Int?`** where the spec says `long`. Unreachable in
+  practice (it would need 2^31 commits) but it is a plain type error against the spec.
+
+- **Two path-resolution strategies coexist.** `resolveForceRelative` deliberately discards the
+  recorded directory and re-resolves every manifest list and manifest against the local
+  `metadata/` dir, which is what makes a table copied down from S3 openable. It also means a
+  table using `write.metadata.path`, or any layout where metadata does not sit beside the
+  data, resolves to the wrong place and reports a missing file. Worth trying the recorded path
+  first and falling back.
+
+---
+
 ## Bugs
 
 - **Pinch zoom not working** — trackpad two-finger pinch gesture doesn't fire on all platforms. Needs platform-specific testing.

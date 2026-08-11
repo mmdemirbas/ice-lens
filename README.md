@@ -6,12 +6,33 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3-blue)](https://kotlinlang.org/)
 [![Compose](https://img.shields.io/badge/Compose_Desktop-1.10-blue)](https://www.jetbrains.com/lp/compose-multiplatform/)
 
-Read-only desktop UI to inspect Apache Iceberg table structure from local filesystems.
+Read-only desktop UI for inspecting **Apache Iceberg** and **Apache Paimon** table internals
+from a local filesystem — the metadata tree, snapshot by snapshot, down to sample rows.
+
+Point it at a table directory and it renders the structure engines walk on every query:
+metadata files, snapshots, manifest lists, manifests, data and delete files, and the rows
+inside them — as a graph you can click through, next to an inspector showing every field the
+format records.
 
 - **Read-only** -- never modifies tables or metadata
 - **Local-first** -- loads tables from folders on your machine
 - **Offline-friendly** -- works without external services or catalogs
+- **Two formats** -- Apache Iceberg (v1/v2) and Apache Paimon, auto-detected per directory
 - **Cross-platform** -- macOS, Windows, Linux
+
+### What the numbers mean
+
+Table-format figures are easy to state and easy to get wrong, because both formats share
+structure on purpose: one manifest is referenced by every snapshot that carries its files
+forward. Iceberg Lens reports two sets side by side, each labelled:
+
+| Group | Answers |
+|---|---|
+| **Current snapshot** | What the table holds now — the manifest closure of `current-snapshot-id`, live entries only. Its record count is what `SELECT count(*)` should agree with, before delete files are applied. |
+| **All retained history** | What is still on disk — every manifest and data file reachable from any retained snapshot, deduplicated. This is the "what can I not expire yet" view. |
+
+Caps are always named. When the graph draws a subset of a manifest's entries, the card says
+so and the inspector lists all of them.
 
 ## Screenshots
 
@@ -21,18 +42,31 @@ Read-only desktop UI to inspect Apache Iceberg table structure from local filesy
 
 ## Features
 
-- Interactive graph visualization of Iceberg table structure (metadata, snapshots, manifests, data files, delete files, sample rows)
-- Inspector panel with detailed node info, parent/child navigation, JSON highlighting, and copy-to-clipboard buttons
+- Interactive graph of the metadata tree — metadata files, snapshots, manifest lists, manifests, data files, delete files, sample rows
+- Inspector panel with every field the format records, parent/child navigation, JSON highlighting, and copy-to-clipboard buttons
 - Schema evolution view -- diffs between schema versions (added/dropped/renamed columns, type changes)
 - Table properties inspector -- property changes tracked across metadata versions
 - Snapshot filtering -- select snapshots to isolate their subgraph
-- Workspace tree for multiple warehouses and tables
+- Workspace tree for multiple warehouses and tables, with a format badge per table
 - Movable, dockable tool window panels (left/right/top/bottom)
 - Dark mode with theme-aware node colors
 - Keyboard shortcuts for zoom, fit, re-layout, and undo
 - Auto-reload from filesystem
 - In-app cheat sheet (About > Cheat Sheet)
 - Viewport culling for large graph performance
+
+### Format coverage
+
+| | Iceberg | Paimon |
+|---|---|---|
+| Detection | `metadata/` with `*.metadata.json` | `snapshot/` + `schema/` |
+| Metadata | metadata.json, snapshot log, metadata log, refs, partition specs, sort orders, statistics entries | `snapshot/snapshot-N`, `schema/schema-N` |
+| Manifests | manifest list (Avro) → manifest (Avro), data / delete split | base / delta / changelog manifest lists → manifests |
+| Files | data, positional-delete, equality-delete | data files with LSM level and bucket |
+| Rows | Parquet / ORC / Avro via DuckDB, capped at 50 per file | same |
+
+Paimon has no Iceberg-style positional or equality delete files; removals are `_KIND=1`
+manifest entries, reported as *entries recording a removal* rather than as delete files.
 
 ## Quick start
 
@@ -71,7 +105,7 @@ Prebuilt installers are available on [GitHub Releases](https://github.com/mmdemi
 ## Usage
 
 1. Click **Add to Workspace** (sidebar or empty state button).
-2. Choose a warehouse folder (contains multiple tables) or a single table folder (contains `metadata/`).
+2. Choose a warehouse folder (contains multiple tables) or a single table folder (`metadata/` for Iceberg, `snapshot/` + `schema/` for Paimon).
 3. Select a table from the Workspace panel.
 4. Explore graph nodes -- click to inspect, drag to rearrange.
 5. Click a node to see details in the **Inspector** panel.
@@ -107,8 +141,20 @@ Prebuilt installers are available on [GitHub Releases](https://github.com/mmdemi
 
 ## Limitations
 
-- Local filesystem only (no catalog integrations or remote object stores yet).
-- Sample rows are best-effort -- depends on file availability and format.
+Stated plainly, because a tool you inspect internals with has to be honest about its own:
+
+- **Local filesystem only.** No catalog integration (Hive, Glue, REST, Nessie, Polaris) and no
+  object-store reads (S3, GCS, ADLS, HDFS). Cloud URIs in metadata are shown as recorded but
+  not followed.
+- **Iceberg v1 and v2.** Format version 3 is parsed without error but its additions are not
+  modelled: deletion vectors, row lineage, and the variant / geometry / geography types.
+- **Partition values are not decoded.** `data_file.partition` is a spec-defined nested record
+  whose shape depends on the table's partition spec, and the reader does not yet read it. The
+  inspector's Partition column shows `N/A` for every entry.
+- **Manifest field summaries are not read.** `manifest_file.partitions` — the per-field bounds
+  that drive manifest pruning — is not modelled, so you cannot see why a manifest was skipped.
+- Sample rows are best-effort: they depend on the file being present locally and readable by
+  DuckDB, and are capped at 50 rows per file.
 - Row loading may be slow for tables with many data files when "Show Rows" is enabled.
 
 ## Release
