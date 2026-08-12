@@ -12,3 +12,9 @@
 docs/reports/dist/
 docs/reports/_oku
 docs/reports/index.html
+
+# Eclipse/JDT artifacts (created by language servers, not by the build)
+.classpath
+.project
+.settings/
+bin/
