@@ -46,6 +46,10 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    if (providers.gradleProperty("benchJvm").isPresent) {
+        maxHeapSize = "4g"
+        jvmArgs("-Xss16m")
+    }
 }
 
 // Generate a version.properties file accessible at runtime
