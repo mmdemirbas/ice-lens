@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import model.DataFile
 import model.DataFileContent
 import model.DecodedPartition
+import model.StatsDerivation
 import model.DecodedValue
 import model.GraphModel
 import model.GraphNode
@@ -556,6 +557,68 @@ private fun WideTableRow(cells: List<String>, columns: Int, widths: List<Dp>, is
     HorizontalDivider(color = colors.outlineVariant, thickness = 0.5.dp)
 }
 
+/** A contribution's delta, signed, because a Paimon delta manifest can take files back out. */
+private fun deltaCell(value: Long): String = when {
+    value > 0 -> "+${formatCount(value)}"
+    else -> formatCount(value)
+}
+
+private fun deltaBytesCell(value: Long): String = when {
+    value > 0 -> "+${formatBytes(value)}"
+    value < 0 -> "-${formatBytes(-value)}"
+    else -> formatBytes(0)
+}
+
+/**
+ * The ledger a figure above was folded from: one row per manifest, in traversal order.
+ *
+ * This is the section that makes a count checkable rather than asserted. The figures in the
+ * table above are the sum of this table's delta columns — not a number computed next to it — so
+ * a reader who doubts "4 data files" can add the column up, and a reader who wonders why twelve
+ * snapshots did not produce twelve times the files can read the rows that contributed nothing
+ * and see which snapshot counted each manifest first.
+ */
+@Composable
+private fun DerivationSection(title: String, derivation: StatsDerivation) {
+    if (derivation.contributions.isEmpty()) return
+    val counted = derivation.contributions.count { !it.isRepeat }
+    Spacer(Modifier.height(8.dp))
+    SectionTitle("$title — ${formatCount(counted)} counted, ${formatCount(derivation.repeats.size)} already counted")
+    Text(
+        "One row per manifest as the traversal reached it. The figures above are this table's " +
+            "delta columns summed; a manifest a later snapshot re-lists contributes nothing and " +
+            "names where it was counted first.",
+        fontSize = 11.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 4.dp)
+    )
+    WideTable(
+        // Counted sits second, before the numbers. A repeat contributes nothing, so its delta
+        // cells are all dashes — and a row of dashes with no nearby word for why is the same
+        // failure as a value column pushed off the panel edge. The snapshot that counted it
+        // first is the detail behind the flag, so it goes last.
+        headers = listOf(
+            "Manifest", "Counted", "Data Files", "Records", "Bytes",
+            "Entries", "Duplicate Entries", "First Counted In"
+        ),
+        columnWidths = listOf(200.dp, 70.dp, 90.dp, 90.dp, 110.dp, 80.dp, 130.dp, 240.dp),
+        rows = derivation.contributions.map { contribution ->
+            val delta = contribution.delta
+            fun cell(value: () -> String) = if (contribution.isRepeat) "-" else value()
+            listOf(
+                contribution.manifestPath.substringAfterLast('/'),
+                if (contribution.isRepeat) "repeat" else "yes",
+                cell { deltaCell(delta.dataFileCount.toLong()) },
+                cell { deltaCell(delta.recordCount) },
+                cell { deltaBytesCell(delta.totalSizeBytes) },
+                cell { formatCount(delta.manifestEntryCount) },
+                cell { formatCount(contribution.entriesSuppressedAsDuplicate) },
+                contribution.firstCountedIn ?: "-",
+            )
+        }
+    )
+}
+
 private fun renderSnapshotLogRows(items: List<SnapshotLogEntry>): List<List<String>> =
     items.sortedBy { it.timestampMs ?: Long.MAX_VALUE }.map { entry ->
         listOf(
@@ -753,6 +816,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                 DetailRow("Manifests", "${formatCount(current.manifestCount)}  (${formatCount(current.dataManifestCount)} data / ${formatCount(current.deleteManifestCount)} delete)")
                                 DetailRow("Manifest Entries", "${formatCount(current.manifestEntryCount)}  (${formatCount(current.deletedEntryCount)} recording a removal)")
                             }
+                            DerivationSection("How the current figures were derived", summary.currentDerivation)
                         }
 
                         Spacer(Modifier.height(16.dp))
@@ -786,6 +850,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Data Files Oldest", formatTimestamp(summary.dataFileTimes.oldestMs))
                             DetailRow("Data Files Latest", formatTimestamp(summary.dataFileTimes.newestMs))
                         }
+                        DerivationSection("How the history figures were derived", summary.historyDerivation)
 
                         if (mergedMetadataRows.isNotEmpty()) {
                             Spacer(Modifier.height(16.dp))

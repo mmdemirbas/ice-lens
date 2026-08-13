@@ -65,7 +65,7 @@ class InspectorRenderTest {
         val graph = partedGraph()
         val table = graph.nodes.filterIsInstance<GraphNode.TableNode>().firstOrNull()
         assertNotNull(table, "graph should contain a table root")
-        renderInspector(graph, table.id, "table-node", height = 7200)
+        renderInspector(graph, table.id, "table-node", height = 10400)
     }
 
     @Test
