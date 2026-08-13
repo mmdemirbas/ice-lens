@@ -44,6 +44,24 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 
 ---
 
+## Derivation traces
+
+The table summary's `current` and `history` figures are folded from a per-manifest ledger and
+the inspector prints it (see `StatsDerivation` in `model/GraphTypes.kt`). Nothing else is
+covered yet, and each of these is a computed number a reader currently has to trust:
+
+- **Manifest node summaries** — the per-manifest counts on `ManifestNode` and its card.
+- **Column statistics** — a bound is decoded from bytes against a schema; the trace would name
+  the schema key, the field id and the raw bytes it came from. The raw bytes are already shown,
+  which is half of it.
+- **Snapshot summary counters** — read from the snapshot's own `summary` map, so the trace is
+  provenance ("Iceberg wrote this") rather than derivation. Worth marking as such: it is the
+  one place where a number the tool shows was not computed by the tool.
+- **Drill-down below a manifest** — the design allows re-running the accumulator scoped to one
+  manifest, giving a per-entry ledger on demand. Not wired up.
+
+---
+
 ## Code quality
 
 - **Extract `Toolbar` from `App.kt`** — `App.kt` is ~1k lines; the toolbar (~250 lines) is the
@@ -116,6 +134,12 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   **Still missing, in value order:** a merge-on-read table with both positional and equality
   delete files; several commits including a compaction; a v3 table. Delete files are the
   largest Iceberg issue theme upstream and nothing in the suite exercises them.
+
+- **The rendered inspector is checked by eye, not asserted.** `InspectorRenderTest` proves the
+  panel composes without throwing and writes PNGs to look at, but its only assertion about the
+  drawing is that the image is not blank. Layout invariants worth pinning numerically: the
+  scrollbar exists exactly when the table is wider than the panel, and the leading columns fit
+  within the panel width. Neither is expressible without measuring the composition.
 
 - **Iceberg pipeline fixtures on disk** — Iceberg pipeline tests currently write Avro
   fixtures at runtime via `avro4k`. Snapshotting representative fixtures into

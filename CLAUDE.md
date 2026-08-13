@@ -106,6 +106,14 @@ desktop/src/main/kotlin/
   through cloud URIs (`s3://`, `hdfs://`, `gs://`, `abfs://`, …) as-is
 - `loadRequestId` is an `AtomicLong`; the cache-hit branch in `loadTable` also bumps it so
   any in-flight load/reapply coroutine fails its staleness check and bails out
+- **A computed figure is folded from its explanation, never stored beside it.**
+  `TableSummary.current` / `.history` are getters over `currentDerivation.total` /
+  `historyDerivation.total`; `StatsDerivation.total` folds a `List<ManifestContribution>`.
+  Adding a new aggregate follows the same shape — an explanation computed separately is a second
+  implementation of the number, and two implementations drift. One contribution per *manifest*,
+  not per entry, so memory tracks manifests while drill-down stays available by re-running the
+  accumulator scoped to one. Contributions may be negative (Paimon's delta manifest list removes
+  files its base still lists), so never clamp a delta at zero
 - **Summary figures are always deduplicated.** Both formats share structure on purpose (one
   manifest is referenced by every snapshot that carries its files forward; every Iceberg
   snapshot is re-listed in every later metadata.json), so a per-visit counter multiplies with
@@ -132,6 +140,12 @@ desktop/src/main/kotlin/
   a cap that isn't visible in the UI
 - `formatCount` / `formatBytes` / `formatBytesExact` live in `ui/FormatUtils.kt` — do not add
   private copies to a UI file. Byte units are binary and labelled as such (KiB, not KB)
+- **`WideTable` column order is load-bearing, and so are its widths.** The inspector panel is
+  far narrower than the table, and the reader sees the leftmost columns and nothing else until
+  they scroll — so the answer goes first and identifiers follow it. Pass `columnWidths`: one
+  width for every column spends the panel on the narrow ones and truncates the wide ones. The
+  scrollbar appears only when the content overflows, and it is the only signal that more columns
+  exist — do not remove it
 
 ## Known quirks
 
@@ -186,10 +200,18 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~354 tests across 31 files (273 in :core, 81 in :desktop) covering full pipelines for both formats (Avro fixtures
+~362 tests across 33 files (278 in :core, 84 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
+
+**The UI is verified by rendering it, not by screenshotting a window.** `InspectorRenderTest`
+draws `NodeDetailsContent` into an off-screen Compose scene and writes PNGs to
+`desktop/build/reports/inspector/` — no window, no Screen Recording permission, which matters
+because screen capture on this machine returns bare wallpaper for every application. Open those
+files after any inspector change. The scene is rendered twice before encoding: a control whose
+visibility depends on state that layout writes (the `WideTable` scrollbar) is absent from the
+first frame, so a single-frame capture shows a panel the running app never draws.
 
 **The runtime-written Avro fixtures are not an oracle.** They are written with
 `Avro.schema<T>()` — the schema derived from the very class under test — so writer and reader

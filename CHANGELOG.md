@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Summary figures explain themselves.** `TableSummary.current` and `.history` are no longer
+  stored numbers; they are folded from a per-manifest ledger (`StatsDerivation` /
+  `ManifestContribution`) and exposed as getters over it, so a figure cannot disagree with its
+  explanation. Each contribution records what one manifest added, how many of its entries named
+  a file another manifest had already counted, and — for a manifest a later snapshot re-lists —
+  which snapshot counted it first. The table inspector prints the ledger directly under each set
+  of figures. Paimon contributions can be negative, because it applies a snapshot's delta
+  manifest list over its base and a fold has no other way to express a removal.
+- **The inspector renders off-screen in the test suite.** `InspectorRenderTest` draws the panel
+  into an image with no window and no screen-capture permission, writing PNGs to
+  `desktop/build/reports/inspector/`. It is both a regression check no data-level test can make
+  — a composable that throws while measuring fails here and nowhere else — and the way the
+  drawing can be looked at on a machine where screen capture is unavailable.
 - **Partition values are decoded and readable.** `data_file.partition` is a nested Avro record
   whose schema comes from the table's own partition spec, so avro4k's static decode could not
   reach it and the inspector's Partition column had shown a hardcoded `"N/A"`. The file
@@ -50,6 +63,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ImageVector`).
 
 ### Fixed
+- **The inspector's wide tables hid their most important columns.** Partition and Column
+  Statistics both led with `Field ID` at the same 180dp every other column got, which in a
+  700dp panel left the decoded value and both bounds off the right edge — with no cut, shadow
+  or scrollbar to say the table continued. Columns are now sized individually and ordered so
+  the answer precedes the identifiers, and a horizontal scrollbar appears when the content
+  overflows. Found by rendering the panel and looking at it.
+- **The table summary's Oldest / Latest rows were unreadable.** Two three-line timestamps were
+  joined into one cell, so the second block's first line ran onto the first block's last, the
+  arrow between them landed mid-paragraph, and the second epoch was pushed past `maxLines` and
+  never drawn. Split into one row each.
+- **Build output was tracked in git.** `.gitignore` carried a root-anchored `/build/`, which
+  stopped covering anything when the tree split into `:core` and `:desktop`; 839 build
+  artifacts had been committed and every build dirtied the working tree. Now `**/build/`.
 - **A manifest whose records carry no `partition` field failed to decode entirely.** Avro
   1.12's `GenericRecord.get(String)` throws for an unknown field rather than returning null, so
   reaching for a field the writer never wrote failed every record in the file — the manifest
