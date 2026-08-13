@@ -57,7 +57,42 @@ object AvroReader {
      * Records that fail to decode are collected as errors rather than aborting.
      */
     inline fun <reified T : Any> readAvro(localPath: String): ReadResult<T> {
-        logger.debug("Reading Avro file: {} (type={})", localPath, T::class.simpleName)
+        val schema = Avro.schema<T>()
+        return read(localPath, T::class.simpleName) { record ->
+            @Suppress("DEPRECATION") Avro.decodeFromGenericData<T>(schema, record)
+        }
+    }
+
+    /**
+     * Reads an Avro file like [readAvro], but also hands each raw [GenericRecord] to [combine]
+     * alongside the decoded [T], so a caller can keep something avro4k cannot type.
+     *
+     * This exists for `data_file.partition`: its Avro schema is derived from the table's own
+     * partition spec, so no static `@Serializable` class can model it. [combine] runs while the
+     * record is still in hand and only its result is retained — no `GenericRecord` outlives the
+     * read, which matters for a manifest holding thousands of entries.
+     */
+    inline fun <reified T : Any, R> readAvroWithRecord(
+        localPath: String,
+        crossinline combine: (T, GenericRecord) -> R,
+    ): ReadResult<R> {
+        val schema = Avro.schema<T>()
+        return read(localPath, T::class.simpleName) { record ->
+            @Suppress("DEPRECATION") combine(Avro.decodeFromGenericData<T>(schema, record), record)
+        }
+    }
+
+    /**
+     * The shared read loop. [decode] carries the reified type from the inlined caller, so this
+     * stays a single implementation rather than one copy per entry point.
+     */
+    @PublishedApi
+    internal fun <R> read(
+        localPath: String,
+        typeName: String?,
+        decode: (GenericRecord) -> R,
+    ): ReadResult<R> {
+        logger.debug("Reading Avro file: {} (type={})", localPath, typeName)
         val file = when {
             localPath.startsWith("file:") -> File(URI(localPath))
             localPath.matches(URI_SCHEME_PATTERN) -> {
@@ -68,14 +103,13 @@ object AvroReader {
         }
 
         return DataFileReader(file, GenericDatumReader<GenericRecord>()).use { reader ->
-            val entries = mutableListOf<T>()
+            val entries = mutableListOf<R>()
             val errors = mutableListOf<ReadError>()
-            val schema = Avro.schema<T>()
             var rowIndex = 0
 
             reader.forEach { record ->
                 try {
-                    @Suppress("DEPRECATION") entries.add(Avro.decodeFromGenericData(schema, record))
+                    entries.add(decode(record))
                 } catch (e: Exception) {
                     val details = e.message ?: e::class.simpleName ?: "Unknown decode error"
                     logger.warn("Avro decode error in {}, record #{}: {}", localPath, rowIndex, details)

@@ -3,6 +3,8 @@ package model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 // --- Metadata JSON ---
 @Serializable
@@ -42,7 +44,14 @@ data class PartitionField(
     @SerialName("field-id") val fieldId: Int? = null,
     val name: String? = null,
     val transform: JsonElement? = null,
-)
+) {
+    /**
+     * The transform as the spec writes it — `identity`, `bucket[4]`, `truncate[3]`, `day`,
+     * `hour`, `month`, `year`, `void`. Kept as a string rather than an enum so an unrecognised
+     * transform is still shown by name instead of dropping the field.
+     */
+    val transformName: String get() = (transform as? JsonPrimitive)?.contentOrNull.orEmpty()
+}
 
 @Serializable
 data class SortOrder(

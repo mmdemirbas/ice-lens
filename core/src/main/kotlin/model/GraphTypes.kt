@@ -130,6 +130,8 @@ data class ManifestEntryView(
     val simpleId: Int,
     val entry: ManifestEntry,
     val localPath: String,
+    /** This entry's partition tuple, decoded against the manifest's own spec. */
+    val partition: DecodedPartition? = null,
 )
 
 /** Paimon counterpart of [ManifestEntryView]. */
@@ -213,6 +215,8 @@ sealed class GraphNode(
         val simpleId: Int,
         /** The schema of the manifest this entry came from. See [ManifestNode.schema]. */
         val schema: IcebergSchemaModel? = null,
+        /** This file's partition tuple, decoded against the manifest's own spec. */
+        val partition: DecodedPartition? = null,
         val localPath: String? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,

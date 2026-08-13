@@ -1,0 +1,111 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "5718ec8b-0178-4caa-a666-ed0ab4f247c6",
+  "location" : "/wh/default/parted",
+  "last-sequence-number" : 0,
+  "last-updated-ms" : 1786659230163,
+  "last-column-id" : 7,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "amount",
+      "required" : false,
+      "type" : "decimal(9, 2)"
+    }, {
+      "id" : 4,
+      "name" : "d",
+      "required" : false,
+      "type" : "date"
+    }, {
+      "id" : 5,
+      "name" : "ts_h",
+      "required" : false,
+      "type" : "timestamptz"
+    }, {
+      "id" : 6,
+      "name" : "ts_m",
+      "required" : false,
+      "type" : "timestamptz"
+    }, {
+      "id" : 7,
+      "name" : "ts_y",
+      "required" : false,
+      "type" : "timestamptz"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ {
+      "name" : "name",
+      "transform" : "identity",
+      "source-id" : 2,
+      "field-id" : 1000
+    }, {
+      "name" : "amount",
+      "transform" : "identity",
+      "source-id" : 3,
+      "field-id" : 1001
+    }, {
+      "name" : "id_bucket",
+      "transform" : "bucket[4]",
+      "source-id" : 1,
+      "field-id" : 1002
+    }, {
+      "name" : "name_trunc",
+      "transform" : "truncate[3]",
+      "source-id" : 2,
+      "field-id" : 1003
+    }, {
+      "name" : "d_day",
+      "transform" : "day",
+      "source-id" : 4,
+      "field-id" : 1004
+    }, {
+      "name" : "ts_h_hour",
+      "transform" : "hour",
+      "source-id" : 5,
+      "field-id" : 1005
+    }, {
+      "name" : "ts_m_month",
+      "transform" : "month",
+      "source-id" : 6,
+      "field-id" : 1006
+    }, {
+      "name" : "ts_y_year",
+      "transform" : "year",
+      "source-id" : 7,
+      "field-id" : 1007
+    } ]
+  } ],
+  "last-partition-id" : 1007,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ ]
+}

@@ -225,12 +225,22 @@ fun UnifiedManifest(manifestPath: Path, manifest: ManifestListEntry): UnifiedMan
 
     val manifestSchema = dataFiles.fileMetadata[service.AvroReader.MetaKeys.SCHEMA]
         ?.let(::parseIcebergSchema)
+    val manifestSpec = dataFiles.fileMetadata[service.AvroReader.MetaKeys.PARTITION_SPEC]
+        ?.let { spec ->
+            parsePartitionSpec(
+                spec,
+                specId = dataFiles.fileMetadata[service.AvroReader.MetaKeys.PARTITION_SPEC_ID]?.toIntOrNull()
+                    ?: manifest.partitionSpecId,
+            )
+        }
 
     return UnifiedManifest(
         path = manifestPath,
         metadata = manifest,
         schema = manifestSchema,
-        dataFiles = dataFiles.entries.map { dataFile ->
+        partitionSpec = manifestSpec,
+        dataFiles = dataFiles.entries.map { record ->
+            val dataFile = record.entry
             val metadataDirPrefix = manifest.manifestPath.orEmpty().substringBeforeLast('/')
             val tableDirPrefix = metadataDirPrefix.substringBeforeLast('/')
             val dataFilePathInFile = dataFile.dataFile?.filePath.orEmpty()
@@ -249,7 +259,11 @@ fun UnifiedManifest(manifestPath: Path, manifest: ManifestListEntry): UnifiedMan
                 )
             }
 
-            UnifiedDataFile(path = dataFilePathResolved, metadata = dataFile)
+            UnifiedDataFile(
+                path = dataFilePathResolved,
+                metadata = dataFile,
+                partition = decodePartition(record.partition, manifestSpec, manifestSchema),
+            )
         },
         readErrors = manifestReadErrors,
     )
@@ -295,11 +309,20 @@ data class UnifiedManifest(
      * silently rather than failing.
      */
     val schema: IcebergSchemaModel? = null,
+    /**
+     * The partition spec this manifest was written against, from its own Avro file metadata.
+     *
+     * Same rule as [schema]: a table can be repartitioned, and every manifest keeps the spec in
+     * force when it was written. Null means the spec could not be read, not "unpartitioned".
+     */
+    val partitionSpec: PartitionSpec? = null,
 )
 
 data class UnifiedDataFile(
     val path: Path,
     val metadata: ManifestEntry,
+    /** This file's partition tuple, decoded against the manifest's own spec and schema. */
+    val partition: DecodedPartition? = null,
     private val rowsLoader: () -> List<UnifiedRow> = {
         SampleRowReader.querySampleRows(path.toString()).map { UnifiedRow(it) }
     },
