@@ -15,18 +15,40 @@
 
 ## Architecture
 
+Two Gradle modules. The split is load-bearing, not cosmetic: `core` is the engine every future
+shell sits over (server, CLI, IDE plugin), and it may not depend on a UI toolkit. A Gradle check
+(`:core:noComposeOnCoreClasspath`) fails the build if a Compose or AndroidX artifact reaches
+core's compile classpath, because a convention that is only written down erodes.
+
 ```
-src/main/kotlin/
-├── Main.kt                    # Entry point, window state persistence (multi-monitor aware)
+core/     — headless engine. Readers, decoders, model, analysis, ELK layout. No UI.
+desktop/  — shell #1. Compose Desktop over core, in-process: direct java.nio and DuckDB JDBC,
+            no server, no network. Adding `server/` and `cli/` means siblings here.
+```
+
+Where the boundary sits, and why:
+
+- **Layout positions are core; drags are shell.** `GraphModel.layoutPositions` is an immutable
+  `Map<String, Point>` — `Point` exists so core needs no toolkit geometry type. The user's drags
+  live in `ui/NodePositions`, which is Compose-observable and main-thread-only. That keeps a
+  `GraphModel` cacheable, comparable, serialisable and safe to build off-thread.
+- **`SnapshotFilter` is core**, not UI: it manipulates the graph, and the desktop shell is only
+  one of its callers.
+- **`ToolWindowTypes` is desktop**, because it holds an `ImageVector`.
+
+```
+core/src/main/kotlin/
 ├── model/
 │   ├── IcebergSchema.kt       # @Serializable Iceberg data classes (metadata, snapshot, manifest, data file)
 │   ├── IcebergPaths.kt        # Shared path utilities (normalizeFilePath, metadataVersionFromFileName)
 │   ├── UnifiedModel.kt        # Aggregated data layer — reads & links all Iceberg artifacts into a tree
 │   ├── PaimonSchema.kt        # @Serializable Paimon data classes (snapshot, schema, manifest list, manifest entry)
 │   ├── PaimonUnifiedModel.kt  # Aggregated Paimon data layer — reads & links snapshots, schemas, manifests
-│   ├── GraphTypes.kt          # GraphModel (with nodeById), GraphNode (sealed incl. Paimon types), GraphEdge, TableSummary/ContentStats
-│   ├── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
-│   └── ToolWindowTypes.kt     # ToolWindowAnchor enum, ToolWindowConfig
+│   ├── GraphTypes.kt          # Point, GraphModel (nodeById, layoutPositions), GraphNode (sealed incl. Paimon types), GraphEdge, TableSummary/ContentStats
+│   ├── IcebergTypes.kt        # Iceberg type model + parser (field-id → type, from a manifest's own schema)
+│   ├── SingleValueDecoder.kt  # Appendix D: bytes + type → DecodedValue (bounds, partition values)
+│   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
+│   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 ├── service/
 │   ├── AvroReader.kt          # Shared Avro file reader (reified readAvro<T>), used by both Iceberg and Paimon
 │   ├── IcebergReader.kt       # Iceberg JSON/Avro reading (delegates Avro to AvroReader)
@@ -36,15 +58,19 @@ src/main/kotlin/
 │   ├── PaimonGraphBuilder.kt  # Paimon-specific graph construction: PaimonUnifiedTableModel → nodes + edges
 │   ├── GraphLayoutService.kt  # Format-agnostic ELK layout + post-processing (ordering, alignment, overlap prevention)
 │   └── TableFormatDetector.kt # Directory-based table format detection (Iceberg / Paimon / Unknown)
+
+desktop/src/main/kotlin/
+├── Main.kt                    # Entry point, window state persistence (multi-monitor aware)
 └── ui/
     ├── AppState.kt            # Business logic: workspace mgmt, table loading, caching, snapshot filter (testable, no UI)
     ├── App.kt                 # Thin UI layer — layout, keyboard shortcuts, LaunchedEffects (delegates to AppState)
+    ├── NodePositions.kt       # Drag state layered over core's immutable layout positions (Compose-observable)
+    ├── ToolWindowTypes.kt     # ToolWindowAnchor enum, ToolWindowConfig (holds an ImageVector → shell, not core)
     ├── AboutDialog.kt         # About dialog with version info, diagnostics, cheat sheet
     ├── Theme.kt               # Color schemes, dark surface detection, selection highlight
     ├── CommonComponents.kt    # Reusable widgets: draggable dividers, toolbar group/icon button
     ├── FormatUtils.kt         # Timestamp/count/byte formatting, long set serialization
     ├── WorkspaceUtils.kt      # Table detection, recursive scanning, native file chooser, workspace dedup
-    ├── SnapshotFilter.kt      # Snapshot filter data model and graph filtering logic
     ├── GraphCanvas.kt         # Interactive graph: zoom/pan, node selection/drag, marquee, mini-map, viewport culling
     ├── NodeComponents.kt      # Node card composables (Iceberg + Paimon node types) + tooltip + copy buttons
     ├── NodeDetails.kt         # Inspector panel — detailed metadata, JSON highlighting, changelogs, sample rows
@@ -58,9 +84,9 @@ src/main/kotlin/
 ```bash
 ./gradlew run          # Run the application
 ./gradlew build        # Build
-./gradlew packageDmg   # macOS installer
-./gradlew packageMsi   # Windows installer
-./gradlew packageDeb   # Linux installer
+./gradlew :desktop:packageDmg   # macOS installer
+./gradlew :desktop:packageMsi   # Windows installer
+./gradlew :desktop:packageDeb   # Linux installer
 ```
 
 ## Key conventions
@@ -147,14 +173,14 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 
 ```bash
 ./gradlew test                                # All tests
-./gradlew test --tests "*.PerformanceTest"    # Specific test class
-./gradlew test --tests "*.IcebergPathsTest"   # Specific test class
+./gradlew :core:test --tests "*.PerformanceTest"   # Specific test class
+./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~300 tests across 24 files covering full pipelines for both formats (Avro fixtures
+~340 tests across 27 files (259 in :core, 81 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
-Parquet files. Paimon end-to-end fixtures live in `src/test/resources/paimon-fixtures/`.
+Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
 
 ## Supported table formats
 

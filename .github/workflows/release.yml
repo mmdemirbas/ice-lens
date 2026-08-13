@@ -30,12 +30,12 @@ jobs:
           java-version: "17"
 
       - name: Build DMG
-        run: ./gradlew packageReleaseDmg --stacktrace
+        run: ./gradlew :desktop:packageReleaseDmg --stacktrace
 
       - name: Collect macOS artifact
         run: |
           mkdir -p release-assets
-          find build/compose/binaries -type f -name "*.dmg" -exec cp {} release-assets/ \;
+          find desktop/build/compose/binaries -type f -name "*.dmg" -exec cp {} release-assets/ \;
           ls -la release-assets
 
       - name: Upload macOS artifact
@@ -61,13 +61,13 @@ jobs:
 
       - name: Build MSI
         shell: bash
-        run: ./gradlew packageReleaseMsi --stacktrace
+        run: ./gradlew :desktop:packageReleaseMsi --stacktrace
 
       - name: Collect Windows artifact
         shell: bash
         run: |
           mkdir -p release-assets
-          find build/compose/binaries -type f -name "*.msi" -exec cp {} release-assets/ \;
+          find desktop/build/compose/binaries -type f -name "*.msi" -exec cp {} release-assets/ \;
           ls -la release-assets
 
       - name: Upload Windows artifact
@@ -92,12 +92,12 @@ jobs:
           java-version: "17"
 
       - name: Build DEB
-        run: ./gradlew packageReleaseDeb --stacktrace
+        run: ./gradlew :desktop:packageReleaseDeb --stacktrace
 
       - name: Collect Linux artifact
         run: |
           mkdir -p release-assets
-          find build/compose/binaries -type f -name "*.deb" -exec cp {} release-assets/ \;
+          find desktop/build/compose/binaries -type f -name "*.deb" -exec cp {} release-assets/ \;
           ls -la release-assets
 
       - name: Upload Linux artifact

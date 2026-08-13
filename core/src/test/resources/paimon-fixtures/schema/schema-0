@@ -1,0 +1,14 @@
+{
+  "id": 0,
+  "fields": [
+    {"id": 0, "name": "k", "type": "INT NOT NULL"},
+    {"id": 1, "name": "v", "type": "STRING"}
+  ],
+  "highestFieldId": 1,
+  "partitionKeys": [],
+  "primaryKeys": ["k"],
+  "options": {
+    "merge-engine": "deduplicate",
+    "bucket": "1"
+  }
+}

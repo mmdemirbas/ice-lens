@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="model.PaimonPipelineTest" tests="23" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:12.578Z" hostname="muhammed-mbp" time="0.096">
+  <properties/>
+  <testcase name="PaimonReader reads schema from fixture()" classname="model.PaimonPipelineTest" time="0.006"/>
+  <testcase name="full pipeline graph builder preserves data file metadata()" classname="model.PaimonPipelineTest" time="0.02"/>
+  <testcase name="PaimonReader reads minimal snapshot with all defaults()" classname="model.PaimonPipelineTest" time="0.001"/>
+  <testcase name="PaimonReader throws on non-existent snapshot file()" classname="model.PaimonPipelineTest" time="0.001"/>
+  <testcase name="PaimonUnifiedTableModel handles empty table()" classname="model.PaimonPipelineTest" time="0.002"/>
+  <testcase name="full pipeline handles DELETE kind entries in manifest()" classname="model.PaimonPipelineTest" time="0.005"/>
+  <testcase name="full pipeline with multiple snapshots and schema evolution()" classname="model.PaimonPipelineTest" time="0.011"/>
+  <testcase name="PaimonUnifiedTableModel handles snapshot with non-existent schema id()" classname="model.PaimonPipelineTest" time="0.003"/>
+  <testcase name="paimon data file with path traversal attempt is flagged()" classname="model.PaimonPipelineTest" time="0.005"/>
+  <testcase name="full pipeline reads manifest list and manifest Avro files()" classname="model.PaimonPipelineTest" time="0.005"/>
+  <testcase name="PaimonUnifiedTableModel reads and links snapshots to schemas()" classname="model.PaimonPipelineTest" time="0.002"/>
+  <testcase name="PaimonUnifiedTableModel handles malformed snapshot JSON()" classname="model.PaimonPipelineTest" time="0.005"/>
+  <testcase name="PaimonReader reads snapshot with unknown fields gracefully()" classname="model.PaimonPipelineTest" time="0.001"/>
+  <testcase name="PaimonReader throws on non-existent schema file()" classname="model.PaimonPipelineTest" time="0.001"/>
+  <testcase name="PaimonReader reads snapshot from fixture()" classname="model.PaimonPipelineTest" time="0.001"/>
+  <testcase name="manifest list in manifest subdirectory is resolved correctly()" classname="model.PaimonPipelineTest" time="0.006"/>
+  <testcase name="PaimonUnifiedTableModel handles missing schema directory()" classname="model.PaimonPipelineTest" time="0.002"/>
+  <testcase name="PaimonUnifiedTableModel reads schemas from directory()" classname="model.PaimonPipelineTest" time="0.002"/>
+  <testcase name="PaimonUnifiedTableModel handles null manifest list paths()" classname="model.PaimonPipelineTest" time="0.002"/>
+  <testcase name="PaimonUnifiedTableModel collects errors for missing manifest lists()" classname="model.PaimonPipelineTest" time="0.002"/>
+  <testcase name="PaimonUnifiedTableModel handles malformed schema JSON()" classname="model.PaimonPipelineTest" time="0.002"/>
+  <testcase name="full pipeline produces correct graph structure()" classname="model.PaimonPipelineTest" time="0.004"/>
+  <testcase name="PaimonUnifiedTableModel handles missing snapshot directory()" classname="model.PaimonPipelineTest" time="0.001"/>
+  <system-out><![CDATA[00:47:12.581 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /Users/md/dev/mmdemirbas/iceberg-lens/core/build/resources/test/paimon-fixtures/schema/schema-0
+00:47:12.584 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=2
+00:47:12.593 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3746252889639455957
+00:47:12.593 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3746252889639455957/schema/schema-0
+00:47:12.594 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=2
+00:47:12.594 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.594 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:12.595 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3746252889639455957/snapshot/snapshot-1
+00:47:12.596 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:12.596 [Test worker] DEBUG model.PaimonUnifiedModel -- Manifest list not in manifest/ subdir, falling back to table root: manifest/manifest-list-base-0
+00:47:12.596 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3746252889639455957/manifest/manifest-list-base-0
+00:47:12.596 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3746252889639455957/manifest/manifest-list-base-0 (type=PaimonManifestFileMeta)
+00:47:12.597 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3746252889639455957/manifest/manifest-list-base-0 (1 entries, 0 errors)
+00:47:12.597 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3746252889639455957/manifest/manifest-0
+00:47:12.598 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3746252889639455957/manifest/manifest-0 (type=PaimonManifestEntry)
+00:47:12.599 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3746252889639455957/manifest/manifest-0 (2 entries, 0 errors)
+00:47:12.600 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: data-0.parquet
+00:47:12.600 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: data-1.parquet
+00:47:12.601 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 1 manifests, 2 data files, 0 errors
+00:47:12.607 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10563617577132434791/snapshot-test
+00:47:12.607 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=null, schemaId=null, commitKind=null
+00:47:12.608 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /nonexistent/snapshot-1
+00:47:12.608 [Test worker] ERROR service.PaimonReader -- Paimon snapshot file not found: /nonexistent/snapshot-1
+00:47:12.609 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test12196975287913851619
+00:47:12.609 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 0
+00:47:12.609 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 0
+00:47:12.610 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 0 snapshots, 0 manifests, 0 data files, 0 errors
+00:47:12.612 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11010088220115974904
+00:47:12.612 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11010088220115974904/schema/schema-0
+00:47:12.612 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=1
+00:47:12.612 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.612 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:12.613 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11010088220115974904/snapshot/snapshot-1
+00:47:12.613 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=COMPACT
+00:47:12.613 [Test worker] DEBUG model.PaimonUnifiedModel -- Manifest list not in manifest/ subdir, falling back to table root: manifest/manifest-list-delta-0
+00:47:12.613 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11010088220115974904/manifest/manifest-list-delta-0
+00:47:12.613 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11010088220115974904/manifest/manifest-list-delta-0 (type=PaimonManifestFileMeta)
+00:47:12.613 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11010088220115974904/manifest/manifest-list-delta-0 (1 entries, 0 errors)
+00:47:12.613 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11010088220115974904/manifest/manifest-0
+00:47:12.613 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11010088220115974904/manifest/manifest-0 (type=PaimonManifestEntry)
+00:47:12.614 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11010088220115974904/manifest/manifest-0 (2 entries, 0 errors)
+00:47:12.614 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: added.parquet
+00:47:12.614 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: deleted.parquet
+00:47:12.614 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 1 manifests, 2 data files, 0 errors
+00:47:12.618 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852
+00:47:12.618 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/schema/schema-0
+00:47:12.619 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=1
+00:47:12.619 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/schema/schema-1
+00:47:12.619 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=1, fields=2
+00:47:12.619 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 2
+00:47:12.619 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 2
+00:47:12.619 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/snapshot/snapshot-2
+00:47:12.619 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=2, schemaId=1, commitKind=COMPACT
+00:47:12.619 [Test worker] DEBUG model.PaimonUnifiedModel -- Manifest list not in manifest/ subdir, falling back to table root: manifest/manifest-list-base-1
+00:47:12.619 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/manifest/manifest-list-base-1
+00:47:12.619 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/manifest/manifest-list-base-1 (type=PaimonManifestFileMeta)
+00:47:12.620 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/manifest/manifest-list-base-1 (1 entries, 0 errors)
+00:47:12.620 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/manifest/manifest-1
+00:47:12.620 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/manifest/manifest-1 (type=PaimonManifestEntry)
+00:47:12.621 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/manifest/manifest-1 (1 entries, 0 errors)
+00:47:12.621 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: data-1.parquet
+00:47:12.621 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/snapshot/snapshot-1
+00:47:12.621 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:12.621 [Test worker] DEBUG model.PaimonUnifiedModel -- Manifest list not in manifest/ subdir, falling back to table root: manifest/manifest-list-base-0
+00:47:12.621 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/manifest/manifest-list-base-0
+00:47:12.621 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/manifest/manifest-list-base-0 (type=PaimonManifestFileMeta)
+00:47:12.621 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/manifest/manifest-list-base-0 (1 entries, 0 errors)
+00:47:12.621 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/manifest/manifest-0
+00:47:12.621 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/manifest/manifest-0 (type=PaimonManifestEntry)
+00:47:12.624 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8087536940742674852/manifest/manifest-0 (1 entries, 0 errors)
+00:47:12.625 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: data-0.parquet
+00:47:12.625 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 2 snapshots, 2 manifests, 2 data files, 0 errors
+00:47:12.627 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test17851361334811981567
+00:47:12.627 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test17851361334811981567/schema/schema-0
+00:47:12.627 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=0
+00:47:12.627 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.628 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:12.628 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test17851361334811981567/snapshot/snapshot-1
+00:47:12.628 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=99, commitKind=APPEND
+00:47:12.628 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 0 manifests, 0 data files, 0 errors
+00:47:12.632 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10852380970634404469
+00:47:12.632 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10852380970634404469/schema/schema-0
+00:47:12.632 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=1
+00:47:12.632 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.632 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:12.632 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10852380970634404469/snapshot/snapshot-1
+00:47:12.632 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:12.632 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10852380970634404469/manifest/manifest-list-base-0
+00:47:12.632 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10852380970634404469/manifest/manifest-list-base-0 (type=PaimonManifestFileMeta)
+00:47:12.633 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10852380970634404469/manifest/manifest-list-base-0 (1 entries, 0 errors)
+00:47:12.633 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10852380970634404469/manifest/manifest-traversal
+00:47:12.633 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10852380970634404469/manifest/manifest-traversal (type=PaimonManifestEntry)
+00:47:12.633 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10852380970634404469/manifest/manifest-traversal (1 entries, 0 errors)
+00:47:12.634 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: ../../../etc/passwd
+00:47:12.634 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 1 manifests, 1 data files, 1 errors
+00:47:12.634 [Test worker] WARN model.PaimonUnifiedModel --   Manifest read error [path-traversal-check] ../../../etc/passwd: Data file path resolves outside the table directory: /var/folders/mt/etc/passwd
+00:47:12.636 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8204554868721429276
+00:47:12.636 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8204554868721429276/schema/schema-0
+00:47:12.636 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=2
+00:47:12.636 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.637 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:12.637 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8204554868721429276/snapshot/snapshot-1
+00:47:12.637 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:12.637 [Test worker] DEBUG model.PaimonUnifiedModel -- Manifest list not in manifest/ subdir, falling back to table root: manifest/manifest-list-base-0
+00:47:12.637 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8204554868721429276/manifest/manifest-list-base-0
+00:47:12.637 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8204554868721429276/manifest/manifest-list-base-0 (type=PaimonManifestFileMeta)
+00:47:12.637 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8204554868721429276/manifest/manifest-list-base-0 (1 entries, 0 errors)
+00:47:12.637 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8204554868721429276/manifest/manifest-0
+00:47:12.637 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8204554868721429276/manifest/manifest-0 (type=PaimonManifestEntry)
+00:47:12.638 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test8204554868721429276/manifest/manifest-0 (2 entries, 0 errors)
+00:47:12.638 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: data-0.parquet
+00:47:12.638 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: data-1.parquet
+00:47:12.638 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 1 manifests, 2 data files, 0 errors
+00:47:12.640 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11392058983369887737
+00:47:12.640 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11392058983369887737/schema/schema-0
+00:47:12.640 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=1
+00:47:12.640 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.640 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 2
+00:47:12.641 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11392058983369887737/snapshot/snapshot-2
+00:47:12.641 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=2, schemaId=0, commitKind=COMPACT
+00:47:12.641 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test11392058983369887737/snapshot/snapshot-1
+00:47:12.641 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:12.641 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 2 snapshots, 0 manifests, 0 data files, 0 errors
+00:47:12.643 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10927502727618204619
+00:47:12.643 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10927502727618204619/schema/schema-0
+00:47:12.643 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=0
+00:47:12.643 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.644 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 3
+00:47:12.644 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10927502727618204619/snapshot/snapshot-3
+00:47:12.644 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=3, schemaId=0, commitKind=COMPACT
+00:47:12.644 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10927502727618204619/snapshot/snapshot-2
+00:47:12.644 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10927502727618204619/snapshot/snapshot-1
+00:47:12.645 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:12.645 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 2 snapshots, 0 manifests, 0 data files, 1 errors
+00:47:12.645 [Test worker] WARN model.PaimonUnifiedModel --   Read error [read-snapshot] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test10927502727618204619/snapshot/snapshot-2: Unexpected JSON token at offset 0: Expected start of the object '{', but had 'N' instead at path: $
+JSON input: NOT VALID JSON
+00:47:12.647 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test6196374524622382926/snapshot-test
+00:47:12.647 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=99, schemaId=0, commitKind=OVERWRITE
+00:47:12.648 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /nonexistent/schema-0
+00:47:12.648 [Test worker] ERROR service.PaimonReader -- Paimon schema file not found: /nonexistent/schema-0
+00:47:12.649 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /Users/md/dev/mmdemirbas/iceberg-lens/core/build/resources/test/paimon-fixtures/snapshot/snapshot-1
+00:47:12.649 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:12.651 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9325494513961279598
+00:47:12.652 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9325494513961279598/schema/schema-0
+00:47:12.652 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=1
+00:47:12.652 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.652 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:12.652 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9325494513961279598/snapshot/snapshot-1
+00:47:12.652 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:12.652 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9325494513961279598/manifest/manifest-list-base-0
+00:47:12.652 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9325494513961279598/manifest/manifest-list-base-0 (type=PaimonManifestFileMeta)
+00:47:12.653 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9325494513961279598/manifest/manifest-list-base-0 (1 entries, 0 errors)
+00:47:12.653 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9325494513961279598/manifest/manifest-0
+00:47:12.653 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9325494513961279598/manifest/manifest-0 (type=PaimonManifestEntry)
+00:47:12.654 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9325494513961279598/manifest/manifest-0 (1 entries, 0 errors)
+00:47:12.654 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: data-0.parquet
+00:47:12.654 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 1 manifests, 1 data files, 0 errors
+00:47:12.657 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test14799197794259361554
+00:47:12.657 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 0
+00:47:12.657 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:12.657 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test14799197794259361554/snapshot/snapshot-1
+00:47:12.657 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=null, commitKind=null
+00:47:12.657 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 0 manifests, 0 data files, 1 errors
+00:47:12.657 [Test worker] WARN model.PaimonUnifiedModel --   Read error [list-schema-files] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test14799197794259361554/schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test14799197794259361554/schema
+00:47:12.659 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test16044298852490531357
+00:47:12.659 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test16044298852490531357/schema/schema-0
+00:47:12.659 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=1
+00:47:12.659 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test16044298852490531357/schema/schema-1
+00:47:12.659 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=1, fields=2
+00:47:12.659 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 2
+00:47:12.659 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 0
+00:47:12.659 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 0 snapshots, 0 manifests, 0 data files, 0 errors
+00:47:12.661 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3287345777945107630
+00:47:12.661 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3287345777945107630/schema/schema-0
+00:47:12.661 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=0
+00:47:12.661 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.661 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:12.661 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3287345777945107630/snapshot/snapshot-1
+00:47:12.661 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=null
+00:47:12.661 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 0 manifests, 0 data files, 0 errors
+00:47:12.663 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3508065244469951877
+00:47:12.663 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3508065244469951877/schema/schema-0
+00:47:12.663 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=0
+00:47:12.663 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.664 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:12.664 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3508065244469951877/snapshot/snapshot-1
+00:47:12.664 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=null
+00:47:12.664 [Test worker] DEBUG model.PaimonUnifiedModel -- Manifest list not in manifest/ subdir, falling back to table root: manifest/manifest-list-base-0
+00:47:12.664 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3508065244469951877/manifest/manifest-list-base-0
+00:47:12.664 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3508065244469951877/manifest/manifest-list-base-0 (type=PaimonManifestFileMeta)
+00:47:12.664 [Test worker] DEBUG model.PaimonUnifiedModel -- Manifest list not in manifest/ subdir, falling back to table root: manifest/manifest-list-delta-0
+00:47:12.664 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3508065244469951877/manifest/manifest-list-delta-0
+00:47:12.664 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3508065244469951877/manifest/manifest-list-delta-0 (type=PaimonManifestFileMeta)
+00:47:12.664 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 0 manifests, 0 data files, 2 errors
+00:47:12.664 [Test worker] WARN model.PaimonUnifiedModel --   Snapshot read error [base-manifest-list] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3508065244469951877/manifest/manifest-list-base-0: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3508065244469951877/manifest/manifest-list-base-0 (No such file or directory)
+00:47:12.664 [Test worker] WARN model.PaimonUnifiedModel --   Snapshot read error [delta-manifest-list] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3508065244469951877/manifest/manifest-list-delta-0: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test3508065244469951877/manifest/manifest-list-delta-0 (No such file or directory)
+00:47:12.666 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9143514065793596482
+00:47:12.666 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9143514065793596482/schema/schema-0
+00:47:12.666 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=0
+00:47:12.666 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9143514065793596482/schema/schema-1
+00:47:12.667 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.667 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:12.667 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9143514065793596482/snapshot/snapshot-1
+00:47:12.667 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=null
+00:47:12.667 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 0 manifests, 0 data files, 1 errors
+00:47:12.667 [Test worker] WARN model.PaimonUnifiedModel --   Read error [read-schema] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test9143514065793596482/schema/schema-1: Unexpected JSON token at offset 0: Expected start of the object '{', but had 'I' instead at path: $
+JSON input: INVALID JSON
+00:47:12.670 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test6951241028717638869
+00:47:12.670 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test6951241028717638869/schema/schema-0
+00:47:12.670 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=2
+00:47:12.670 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.670 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:12.670 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test6951241028717638869/snapshot/snapshot-1
+00:47:12.670 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:12.670 [Test worker] DEBUG model.PaimonUnifiedModel -- Manifest list not in manifest/ subdir, falling back to table root: manifest/manifest-list-base-0
+00:47:12.670 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test6951241028717638869/manifest/manifest-list-base-0
+00:47:12.670 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test6951241028717638869/manifest/manifest-list-base-0 (type=PaimonManifestFileMeta)
+00:47:12.671 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test6951241028717638869/manifest/manifest-list-base-0 (1 entries, 0 errors)
+00:47:12.671 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test6951241028717638869/manifest/manifest-0
+00:47:12.671 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test6951241028717638869/manifest/manifest-0 (type=PaimonManifestEntry)
+00:47:12.671 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test6951241028717638869/manifest/manifest-0 (2 entries, 0 errors)
+00:47:12.671 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: data-0.parquet
+00:47:12.672 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: data-1.parquet
+00:47:12.672 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 1 manifests, 2 data files, 0 errors
+00:47:12.674 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test16299729104485968499
+00:47:12.674 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test16299729104485968499/schema/schema-0
+00:47:12.674 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=0
+00:47:12.674 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:12.674 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 0
+00:47:12.674 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 0 snapshots, 0 manifests, 0 data files, 1 errors
+00:47:12.674 [Test worker] WARN model.PaimonUnifiedModel --   Read error [list-snapshot-files] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test16299729104485968499/snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon-pipeline-test16299729104485968499/snapshot
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

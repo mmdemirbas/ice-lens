@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="service.ElkScalingBench" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:12.825Z" hostname="muhammed-mbp" time="35.179">
+  <properties/>
+  <testcase name="tuned config scaling on default stack()" classname="service.ElkScalingBench" time="9.547"/>
+  <testcase name="elk scaling by node count()" classname="service.ElkScalingBench" time="7.935"/>
+  <testcase name="elk option sensitivity at 4400 nodes()" classname="service.ElkScalingBench" time="11.571"/>
+  <testcase name="which placement strategy overflows default stack()" classname="service.ElkScalingBench" time="6.126"/>
+  <system-out><![CDATA[=== POLYLINE + thoroughness=1 + BRANDES_KOEPF (default JVM stack) ===
+nodes=1114  layout=80ms
+nodes=4452  layout=660ms
+nodes=8902  layout=503ms
+nodes=17802  layout=961ms
+nodes=35602  layout=2804ms
+nodes=71202  layout=4095ms
+=== ELK layered, SPLINES, defaults (warmed) ===
+nodes=113  edges=112  layout=3ms
+nodes=447  edges=446  layout=32ms
+nodes=1114  edges=1113  layout=38ms
+nodes=2227  edges=2226  layout=128ms
+nodes=4452  edges=4451  layout=254ms
+nodes=8902  edges=8901  layout=528ms
+nodes=17802  edges=17801  layout=1379ms
+nodes=35602  edges=35601  layout=5508ms
+=== option sensitivity, ~4.4k nodes ===
+SPLINES  + defaults             nodes=4452  layout=180ms
+ORTHOGONAL + defaults           nodes=4452  layout=524ms
+POLYLINE + defaults             nodes=4452  layout=111ms
+SPLINES  + SIMPLE placement     FAILED: OutOfMemoryError: Java heap space
+SPLINES  + BRANDES_KOEPF        nodes=4452  layout=160ms
+SPLINES  + NETWORK_SIMPLEX      nodes=4452  layout=3656ms
+SPLINES  + LINEAR_SEGMENTS      nodes=4452  layout=724ms
+SPLINES  + thoroughness=1       nodes=4452  layout=157ms
+SPLINES  + crossMin=NONE        nodes=4452  layout=137ms
+ORTHO + SIMPLE + thorough=1     nodes=4452  layout=950ms
+SIMPLE nodes=4452 layout=1494ms OK
+BRANDES_KOEPF nodes=4452 layout=159ms OK
+NETWORK_SIMPLEX nodes=4452 layout=3550ms OK
+LINEAR_SEGMENTS nodes=4452 layout=915ms OK
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

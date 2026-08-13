@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ui.WorkspaceUtilsTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:54.061Z" hostname="muhammed-mbp" time="0.011">
+  <properties/>
+  <testcase name="scanForTables finds nested tables recursively()" classname="ui.WorkspaceUtilsTest" time="0.003"/>
+  <testcase name="initialWarehouseTableStatuses creates EXISTING entries()" classname="ui.WorkspaceUtilsTest" time="0.0"/>
+  <testcase name="isTableDirectory returns false for plain directory()" classname="ui.WorkspaceUtilsTest" time="0.0"/>
+  <testcase name="isTableDirectory returns false for non-existent directory()" classname="ui.WorkspaceUtilsTest" time="0.0"/>
+  <testcase name="deduplicateWorkspaceItems removes duplicates()" classname="ui.WorkspaceUtilsTest" time="0.001"/>
+  <testcase name="scanForTables skips hidden directories()" classname="ui.WorkspaceUtilsTest" time="0.002"/>
+  <testcase name="scanForTables returns empty for non-existent directory()" classname="ui.WorkspaceUtilsTest" time="0.0"/>
+  <testcase name="isTableDirectory returns true for Iceberg directory()" classname="ui.WorkspaceUtilsTest" time="0.001"/>
+  <testcase name="isTableDirectory returns true for Paimon directory()" classname="ui.WorkspaceUtilsTest" time="0.001"/>
+  <testcase name="scanForTables finds iceberg tables()" classname="ui.WorkspaceUtilsTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

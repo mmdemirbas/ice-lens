@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="model.PaimonSchemaTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:12.675Z" hostname="muhammed-mbp" time="0.005">
+  <properties/>
+  <testcase name="snapshot defaults for all-null input()" classname="model.PaimonSchemaTest" time="0.0"/>
+  <testcase name="all commitKind values deserialize()" classname="model.PaimonSchemaTest" time="0.001"/>
+  <testcase name="deserialize schema with missing optional fields()" classname="model.PaimonSchemaTest" time="0.0"/>
+  <testcase name="deserialize schema from fixture file()" classname="model.PaimonSchemaTest" time="0.002"/>
+  <testcase name="deserialize field()" classname="model.PaimonSchemaTest" time="0.0"/>
+  <testcase name="deserialize snapshot with unknown fields()" classname="model.PaimonSchemaTest" time="0.001"/>
+  <testcase name="deserialize schema JSON()" classname="model.PaimonSchemaTest" time="0.0"/>
+  <testcase name="deserialize snapshot from fixture file()" classname="model.PaimonSchemaTest" time="0.0"/>
+  <testcase name="deserialize snapshot JSON()" classname="model.PaimonSchemaTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

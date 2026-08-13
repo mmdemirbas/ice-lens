@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="service.PaimonGraphBuilderTest" tests="15" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:48.494Z" hostname="muhammed-mbp" time="0.003">
+  <properties/>
+  <testcase name="node IDs follow Paimon conventions()" classname="service.PaimonGraphBuilderTest" time="0.001"/>
+  <testcase name="snapshot with schema creates schema node and sibling edge()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <testcase name="manifest entries create manifest and data file nodes()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <testcase name="table summary has correct counts()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <testcase name="same manifest referenced from multiple lists is deduplicated()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <testcase name="manifest list nodes get distinct simpleIds()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <testcase name="error nodes are created for read errors()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <testcase name="base and delta manifest lists create manifest list nodes()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <testcase name="current stats apply the delta over the base rather than counting every ADD()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <testcase name="single snapshot produces table and snapshot nodes()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <testcase name="DELETE operation kind is propagated to file node()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <testcase name="empty table produces only table node()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <testcase name="summary classifies add vs delete entries correctly for paimon()" classname="service.PaimonGraphBuilderTest" time="0.001"/>
+  <testcase name="edges connect correct node pairs()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <testcase name="multiple snapshots produce correct node counts()" classname="service.PaimonGraphBuilderTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

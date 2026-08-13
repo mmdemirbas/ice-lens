@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="service.IcebergGraphBuilderTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:48.115Z" hostname="muhammed-mbp" time="0.002">
+  <properties/>
+  <testcase name="buildTableSummary computes correct counts()" classname="service.IcebergGraphBuilderTest" time="0.0"/>
+  <testcase name="buildGraph handles errors gracefully()" classname="service.IcebergGraphBuilderTest" time="0.001"/>
+  <testcase name="buildGraph with snapshots creates snapshot nodes()" classname="service.IcebergGraphBuilderTest" time="0.0"/>
+  <testcase name="buildGraph edge IDs are unique()" classname="service.IcebergGraphBuilderTest" time="0.0"/>
+  <testcase name="buildGraph produces edges between table and metadata()" classname="service.IcebergGraphBuilderTest" time="0.0"/>
+  <testcase name="buildGraph produces table and metadata nodes()" classname="service.IcebergGraphBuilderTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,174 @@
+C00:47:52.873 INFO  [ui.AppState] Loading persisted workspace state
+Ê00:47:52.898 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test1224116852076018837 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+û00:47:52.915 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test1224116852076018837
+h00:47:52.935 INFO  [model.UnifiedModel]   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
+®00:47:52.935 WARN  [model.UnifiedModel]   Read error [read-metadata-json] /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test1224116852076018837/metadata/v1.metadata.json: Unexpected JSON token at offset 0: Expected start of the object '{', but had 'N' instead at path: $
+JSON input: NOT JSON
+Æ00:47:53.273 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test1224116852076018837 (2 nodes, 1 edges)
+C00:47:53.489 INFO  [ui.AppState] Loading persisted workspace state
+Ê00:47:53.490 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test6942607845482632723 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+û00:47:53.491 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test6942607845482632723
+h00:47:53.524 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+Æ00:47:53.533 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test6942607845482632723 (5 nodes, 4 edges)
+Â00:47:53.590 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test6942607845482632723 (showRows=true, forceRelayout=false, forceReloadFromFs=true, preservePositions=false)
+û00:47:53.591 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test6942607845482632723
+h00:47:53.595 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+Æ00:47:53.599 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test6942607845482632723 (5 nodes, 4 edges)
+C00:47:53.604 INFO  [ui.AppState] Loading persisted workspace state
+Á00:47:53.604 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test10967207302315005953 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+ü00:47:53.605 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test10967207302315005953
+h00:47:53.608 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+Ø00:47:53.612 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test10967207302315005953 (5 nodes, 4 edges)
+C00:47:53.613 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.621 INFO  [ui.AppState] Loading persisted workspace state
+Ê00:47:53.621 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test2468296768094363069 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+ü00:47:53.624 INFO  [m.PaimonUnifiedModel] Loading Paimon table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test2468296768094363069
+>00:47:53.627 INFO  [m.PaimonUnifiedModel]   Schemas loaded: 1
+D00:47:53.627 INFO  [m.PaimonUnifiedModel]   Snapshot files found: 1
+r00:47:53.633 INFO  [m.PaimonUnifiedModel]   Paimon table loaded: 1 snapshots, 1 manifests, 1 data files, 0 errors
+Æ00:47:53.643 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test2468296768094363069 (6 nodes, 5 edges)
+C00:47:53.647 INFO  [ui.AppState] Loading persisted workspace state
+ü00:47:53.648 INFO  [ui.AppState] Loading table: /nonexistent/table/path (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+W00:47:53.648 INFO  [model.UnifiedModel] Loading Iceberg table: /nonexistent/table/path
+h00:47:53.649 INFO  [model.UnifiedModel]   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
+é00:47:53.649 WARN  [model.UnifiedModel]   Read error [list-metadata-files] /nonexistent/table/path/metadata: /nonexistent/table/path/metadata
+g00:47:53.651 INFO  [ui.AppState] Table loaded successfully: /nonexistent/table/path (2 nodes, 1 edges)
+C00:47:53.654 INFO  [ui.AppState] Loading persisted workspace state
+Ê00:47:53.655 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4477046345672521748 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+û00:47:53.656 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4477046345672521748
+h00:47:53.660 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+Æ00:47:53.663 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4477046345672521748 (5 nodes, 4 edges)
+±00:47:53.664 INFO  [ui.AppState] Loading table: /nonexistent/deleted-table-105668497002250 (showRows=true, forceRelayout=false, forceReloadFromFs=true, preservePositions=false)
+j00:47:53.665 INFO  [model.UnifiedModel] Loading Iceberg table: /nonexistent/deleted-table-105668497002250
+h00:47:53.665 INFO  [model.UnifiedModel]   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
+¥00:47:53.665 WARN  [model.UnifiedModel]   Read error [list-metadata-files] /nonexistent/deleted-table-105668497002250/metadata: /nonexistent/deleted-table-105668497002250/metadata
+z00:47:53.667 INFO  [ui.AppState] Table loaded successfully: /nonexistent/deleted-table-105668497002250 (2 nodes, 1 edges)
+C00:47:53.672 INFO  [ui.AppState] Loading persisted workspace state
+Ê00:47:53.672 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test5079200580605276847 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+û00:47:53.673 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test5079200580605276847
+h00:47:53.676 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+Æ00:47:53.679 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test5079200580605276847 (5 nodes, 4 edges)
+	C00:47:53.684 INFO  [ui.AppState] Loading persisted workspace state
+	Ê00:47:53.685 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test7455597797647558824 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+	û00:47:53.686 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test7455597797647558824
+	h00:47:53.689 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+	Æ00:47:53.693 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test7455597797647558824 (5 nodes, 4 edges)
+	Â00:47:53.693 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test7455597797647558824 (showRows=true, forceRelayout=true, forceReloadFromFs=false, preservePositions=false)
+	û00:47:53.694 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test7455597797647558824
+	h00:47:53.696 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+	Æ00:47:53.699 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test7455597797647558824 (5 nodes, 4 edges)
+
+C00:47:53.703 INFO  [ui.AppState] Loading persisted workspace state
+
+Ê00:47:53.704 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test9852107602934345022 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+
+ü00:47:53.705 INFO  [m.PaimonUnifiedModel] Loading Paimon table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test9852107602934345022
+
+>00:47:53.705 INFO  [m.PaimonUnifiedModel]   Schemas loaded: 1
+
+D00:47:53.705 INFO  [m.PaimonUnifiedModel]   Snapshot files found: 1
+
+r00:47:53.708 INFO  [m.PaimonUnifiedModel]   Paimon table loaded: 1 snapshots, 1 manifests, 1 data files, 0 errors
+
+Æ00:47:53.711 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test9852107602934345022 (6 nodes, 5 edges)
+C00:47:53.716 INFO  [ui.AppState] Loading persisted workspace state
+Á00:47:53.716 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test13991535694072076269 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+ü00:47:53.717 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test13991535694072076269
+h00:47:53.720 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+Ø00:47:53.722 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test13991535694072076269 (5 nodes, 4 edges)
+C00:47:53.732 INFO  [ui.AppState] Loading persisted workspace state
+Á00:47:53.733 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16700904853258509924 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+ü00:47:53.733 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16700904853258509924
+h00:47:53.735 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+Ø00:47:53.738 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16700904853258509924 (5 nodes, 4 edges)
+Ê00:47:53.739 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16700904853258509924 (showRows=true, forceRelayout=false, forceReloadFromFs=true, preservePositions=false)
+Ø00:47:53.739 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16700904853258509924 (5 nodes, 4 edges)
+C00:47:53.743 INFO  [ui.AppState] Loading persisted workspace state
+Á00:47:53.744 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test18119911977611037752 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+ü00:47:53.745 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test18119911977611037752
+h00:47:53.747 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+Ø00:47:53.750 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test18119911977611037752 (5 nodes, 4 edges)
+§00:47:53.751 INFO  [ui.AppState] Loading table: /nonexistent/105668583652958 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+\00:47:53.751 INFO  [model.UnifiedModel] Loading Iceberg table: /nonexistent/105668583652958
+h00:47:53.752 INFO  [model.UnifiedModel]   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
+ò00:47:53.752 WARN  [model.UnifiedModel]   Read error [list-metadata-files] /nonexistent/105668583652958/metadata: /nonexistent/105668583652958/metadata
+l00:47:53.753 INFO  [ui.AppState] Table loaded successfully: /nonexistent/105668583652958 (2 nodes, 1 edges)
+C00:47:53.758 INFO  [ui.AppState] Loading persisted workspace state
+Á00:47:53.759 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test17955676840805414049 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+ü00:47:53.760 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test17955676840805414049
+h00:47:53.762 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+Ø00:47:53.764 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test17955676840805414049 (5 nodes, 4 edges)
+C00:47:53.769 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.772 INFO  [ui.AppState] Loading persisted workspace state
+ô00:47:53.774 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test15857796390067391037 (Warehouse)
+?00:47:53.774 INFO  [ui.AppState]   Found 0 tables in warehouse
+C00:47:53.778 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.780 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.798 INFO  [ui.AppState] Loading persisted workspace state
+ö00:47:53.800 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test7415109990670638950 (SingleTable)
+C00:47:53.806 INFO  [ui.AppState] Loading persisted workspace state
+õ00:47:53.807 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test10685620389116022334 (SingleTable)
+C00:47:53.813 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.819 INFO  [ui.AppState] Loading persisted workspace state
+ò00:47:53.820 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test3056815489503016555 (Warehouse)
+?00:47:53.820 INFO  [ui.AppState]   Found 0 tables in warehouse
+C00:47:53.824 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.826 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.828 INFO  [ui.AppState] Loading persisted workspace state
+ê00:47:53.829 WARN  [ui.AppState] Cannot add workspace root ‚Äî path does not exist or is not a directory: /nonexistent/path/that/does/not/exist
+C00:47:53.830 INFO  [ui.AppState] Loading persisted workspace state
+ò00:47:53.831 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test5711848310988281203 (Warehouse)
+?00:47:53.831 INFO  [ui.AppState]   Found 0 tables in warehouse
+C00:47:53.834 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.836 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.839 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.840 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.842 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.845 INFO  [ui.AppState] Loading persisted workspace state
+C00:47:53.850 INFO  [ui.AppState] Loading persisted workspace state
+ò00:47:53.851 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test2632415536938587430 (Warehouse)
+?00:47:53.851 INFO  [ui.AppState]   Found 0 tables in warehouse
+ C00:47:53.858 INFO  [ui.AppState] Loading persisted workspace state
+ ò00:47:53.861 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test5377506965713089894 (Warehouse)
+ ?00:47:53.861 INFO  [ui.AppState]   Found 2 tables in warehouse
+!C00:47:53.866 INFO  [ui.AppState] Loading persisted workspace state
+!ô00:47:53.867 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test13914199741834811465 (Warehouse)
+!?00:47:53.867 INFO  [ui.AppState]   Found 0 tables in warehouse
+!C00:47:53.869 INFO  [ui.AppState] Loading persisted workspace state
+"C00:47:53.871 INFO  [ui.AppState] Loading persisted workspace state
+#C00:47:53.925 INFO  [ui.AppState] Loading persisted workspace state
+#ô00:47:53.926 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test275677199859083139 (SingleTable)
+$C00:47:53.929 INFO  [ui.AppState] Loading persisted workspace state
+$ò00:47:53.930 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test5682586396799222050 (Warehouse)
+$?00:47:53.930 INFO  [ui.AppState]   Found 0 tables in warehouse
+$C00:47:53.931 INFO  [ui.AppState] Loading persisted workspace state
+%C00:47:53.933 INFO  [ui.AppState] Loading persisted workspace state
+&C00:47:53.935 INFO  [ui.AppState] Loading persisted workspace state
+&ô00:47:53.936 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test15524729591254150588 (Warehouse)
+&?00:47:53.936 INFO  [ui.AppState]   Found 1 tables in warehouse
+'C00:47:53.939 INFO  [ui.AppState] Loading persisted workspace state
+(C00:47:54.003 INFO  [ui.AppState] Loading persisted workspace state
+(ó00:47:54.004 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test397343002507095140 (Warehouse)
+(?00:47:54.005 INFO  [ui.AppState]   Found 0 tables in warehouse
+)C00:47:54.008 INFO  [ui.AppState] Loading persisted workspace state
+)C00:47:54.010 INFO  [ui.AppState] Loading persisted workspace state
+*C00:47:54.018 INFO  [ui.AppState] Loading persisted workspace state
+*ô00:47:54.019 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test13827435338210431048 (Warehouse)
+*?00:47:54.019 INFO  [ui.AppState]   Found 1 tables in warehouse
++C00:47:54.022 INFO  [ui.AppState] Loading persisted workspace state
++ö00:47:54.023 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test-15579455924869875487 (Warehouse)
++?00:47:54.023 INFO  [ui.AppState]   Found 0 tables in warehouse
+,C00:47:54.025 INFO  [ui.AppState] Loading persisted workspace state
+-C00:47:54.026 INFO  [ui.AppState] Loading persisted workspace state
+-ò00:47:54.027 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test4250737965906274588 (Warehouse)
+-?00:47:54.027 INFO  [ui.AppState]   Found 0 tables in warehouse
+.C00:47:54.029 INFO  [ui.AppState] Loading persisted workspace state
+/C00:47:54.031 INFO  [ui.AppState] Loading persisted workspace state
+/ò00:47:54.032 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test-139110232640769105 (Warehouse)
+/?00:47:54.032 INFO  [ui.AppState]   Found 0 tables in warehouse
+/ö00:47:54.033 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test-26403535287207780747 (Warehouse)
+/?00:47:54.033 INFO  [ui.AppState]   Found 0 tables in warehouse
+0C00:47:54.035 INFO  [ui.AppState] Loading persisted workspace state
+1C00:47:54.037 INFO  [ui.AppState] Loading persisted workspace state
+1ô00:47:54.038 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test623295158792056051 (SingleTable)
+2C00:47:54.040 INFO  [ui.AppState] Loading persisted workspace state

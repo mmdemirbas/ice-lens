@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ui.SchemaEvolutionTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:54.058Z" hostname="muhammed-mbp" time="0.003">
+  <properties/>
+  <testcase name="detect required change()" classname="ui.SchemaEvolutionTest" time="0.001"/>
+  <testcase name="no changes between identical schemas()" classname="ui.SchemaEvolutionTest" time="0.0"/>
+  <testcase name="detect type change()" classname="ui.SchemaEvolutionTest" time="0.0"/>
+  <testcase name="detect rename()" classname="ui.SchemaEvolutionTest" time="0.0"/>
+  <testcase name="detect added field()" classname="ui.SchemaEvolutionTest" time="0.001"/>
+  <testcase name="detect multiple changes()" classname="ui.SchemaEvolutionTest" time="0.0"/>
+  <testcase name="detect dropped field()" classname="ui.SchemaEvolutionTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

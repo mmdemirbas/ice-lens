@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<meta http-equiv="x-ua-compatible" content="IE=edge"/>
+<title>Test results - ErrorScenariosTest</title>
+<link href="../css/base-style.css" rel="stylesheet" type="text/css"/>
+<link href="../css/style.css" rel="stylesheet" type="text/css"/>
+<script src="../js/report.js" type="text/javascript"></script>
+</head>
+<body>
+<div id="content">
+<h1>ErrorScenariosTest</h1>
+<div class="breadcrumbs">
+<a href="../index.html">all</a> &gt; 
+<a href="../packages/service.html">service</a> &gt; ErrorScenariosTest</div>
+<div id="summary">
+<table>
+<tr>
+<td>
+<div class="summaryGroup">
+<table>
+<tr>
+<td>
+<div class="infoBox" id="tests">
+<div class="counter">20</div>
+<p>tests</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="failures">
+<div class="counter">0</div>
+<p>failures</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="ignored">
+<div class="counter">0</div>
+<p>ignored</p>
+</div>
+</td>
+<td>
+<div class="infoBox" id="duration">
+<div class="counter">0.053s</div>
+<p>duration</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+</td>
+<td>
+<div class="infoBox success" id="successRate">
+<div class="percent">100%</div>
+<p>successful</p>
+</div>
+</td>
+</tr>
+</table>
+</div>
+<div class="tab-container">
+<ul class="tabLinks">
+<li>
+<a href="#">Tests</a>
+</li>
+<li>
+<a href="#">Standard output</a>
+</li>
+</ul>
+<div class="tab">
+<h2>Tests</h2>
+<table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Duration</th>
+<th>Result</th>
+</tr>
+</thead>
+<tr>
+<td class="success">AvroReader handles file URI for non-existent file()</td>
+<td class="success">0s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">AvroReader reads valid Avro via file URI()</td>
+<td class="success">0.002s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">AvroReader rejects unsupported URI schemes()</td>
+<td class="success">0.002s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">AvroReader returns empty result for valid Avro with zero records()</td>
+<td class="success">0.002s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">AvroReader throws on completely invalid file()</td>
+<td class="success">0.001s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">AvroReader throws on empty file()</td>
+<td class="success">0s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">AvroReader throws on non-existent file()</td>
+<td class="success">0.001s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">AvroReader throws on truncated file()</td>
+<td class="success">0.012s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Iceberg errors propagate from reader through model to graph()</td>
+<td class="success">0.003s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Iceberg graph builder creates error nodes for read errors()</td>
+<td class="success">0.001s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Iceberg pipeline handles mix of valid and corrupt metadata JSONs()</td>
+<td class="success">0.002s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Iceberg pipeline handles snapshot with null manifest-list()</td>
+<td class="success">0.002s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Iceberg pipeline recovers from corrupt manifest Avro()</td>
+<td class="success">0.002s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Iceberg pipeline recovers from corrupt manifest list Avro()</td>
+<td class="success">0.004s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Paimon errors propagate from reader through model to graph()</td>
+<td class="success">0.002s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Paimon graph builder creates error nodes for read errors()</td>
+<td class="success">0.005s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Paimon pipeline handles mix of valid and invalid snapshots()</td>
+<td class="success">0.002s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Paimon pipeline handles snapshot with only changelog manifests()</td>
+<td class="success">0.004s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Paimon pipeline recovers from corrupt manifest Avro()</td>
+<td class="success">0.003s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">Paimon pipeline recovers from corrupt manifest list Avro()</td>
+<td class="success">0.003s</td>
+<td class="success">passed</td>
+</tr>
+</table>
+</div>
+<div class="tab">
+<h2>Standard output</h2>
+<span class="code">
+<pre>00:47:48.006 [Test worker] DEBUG service.AvroReader -- Reading Avro file: s3://bucket/path/file.avro (type=ManifestListEntry)
+00:47:48.006 [Test worker] ERROR service.AvroReader -- Unsupported URI scheme in Avro path: s3://bucket/path/file.avro
+00:47:48.006 [Test worker] DEBUG service.AvroReader -- Reading Avro file: hdfs://namenode/path/file.avro (type=ManifestListEntry)
+00:47:48.006 [Test worker] ERROR service.AvroReader -- Unsupported URI scheme in Avro path: hdfs://namenode/path/file.avro
+00:47:48.006 [Test worker] DEBUG service.AvroReader -- Reading Avro file: gs://bucket/path/file.avro (type=ManifestListEntry)
+00:47:48.006 [Test worker] ERROR service.AvroReader -- Unsupported URI scheme in Avro path: gs://bucket/path/file.avro
+00:47:48.008 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14591883471817995631
+00:47:48.009 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14591883471817995631/schema/schema-0
+00:47:48.009 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=0
+00:47:48.009 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:48.009 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:48.009 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14591883471817995631/snapshot/snapshot-1
+00:47:48.009 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:48.009 [Test worker] DEBUG model.PaimonUnifiedModel -- Manifest list not in manifest/ subdir, falling back to table root: manifest/manifest-list-changelog-0
+00:47:48.009 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14591883471817995631/manifest/manifest-list-changelog-0
+00:47:48.009 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14591883471817995631/manifest/manifest-list-changelog-0 (type=PaimonManifestFileMeta)
+00:47:48.010 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14591883471817995631/manifest/manifest-list-changelog-0 (1 entries, 0 errors)
+00:47:48.010 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14591883471817995631/manifest/manifest-0
+00:47:48.010 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14591883471817995631/manifest/manifest-0 (type=PaimonManifestEntry)
+00:47:48.010 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14591883471817995631/manifest/manifest-0 (1 entries, 0 errors)
+00:47:48.010 [Test worker] DEBUG model.PaimonUnifiedModel -- Data file not found in bucket-0, falling back to table root: data-0.parquet
+00:47:48.010 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 1 manifests, 1 data files, 0 errors
+00:47:48.011 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /nonexistent/file.avro (type=ManifestListEntry)
+00:47:48.012 [Test worker] DEBUG service.AvroReader -- Reading Avro file: file:/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test15785221512646654487/via-uri.avro (type=ManifestListEntry)
+00:47:48.013 [Test worker] DEBUG service.AvroReader -- Avro file read complete: file:/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test15785221512646654487/via-uri.avro (1 entries, 0 errors)
+00:47:48.014 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test7063109523093596819/truncated.avro (type=ManifestListEntry)
+00:47:48.026 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14254781764917103039
+00:47:48.027 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14254781764917103039/schema/schema-0
+00:47:48.027 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=0
+00:47:48.027 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:48.027 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 3
+00:47:48.027 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14254781764917103039/snapshot/snapshot-3
+00:47:48.027 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=3, schemaId=0, commitKind=COMPACT
+00:47:48.027 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14254781764917103039/snapshot/snapshot-2
+00:47:48.027 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14254781764917103039/snapshot/snapshot-1
+00:47:48.027 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:48.027 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 2 snapshots, 0 manifests, 0 data files, 1 errors
+00:47:48.027 [Test worker] WARN model.PaimonUnifiedModel --   Read error [read-snapshot] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test14254781764917103039/snapshot/snapshot-2: Unexpected JSON token at offset 0: Expected start of the object '{', but had 'C' instead at path: $
+JSON input: CORRUPT JSON
+00:47:48.029 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3615484409129466594
+00:47:48.029 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3615484409129466594/schema/schema-0
+00:47:48.030 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=0
+00:47:48.030 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:48.030 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:48.030 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3615484409129466594/snapshot/snapshot-1
+00:47:48.030 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:48.030 [Test worker] DEBUG model.PaimonUnifiedModel -- Manifest list not in manifest/ subdir, falling back to table root: manifest/manifest-list-base-0
+00:47:48.030 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3615484409129466594/manifest/manifest-list-base-0
+00:47:48.030 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3615484409129466594/manifest/manifest-list-base-0 (type=PaimonManifestFileMeta)
+00:47:48.030 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 0 manifests, 0 data files, 1 errors
+00:47:48.030 [Test worker] WARN model.PaimonUnifiedModel --   Snapshot read error [base-manifest-list] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3615484409129466594/manifest/manifest-list-base-0: Not an Avro data file.
+00:47:48.034 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test18304681840800351471
+00:47:48.034 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test18304681840800351471/metadata/v1.metadata.json
+00:47:48.034 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:47:48.034 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test18304681840800351471/metadata/snap-1.avro
+00:47:48.034 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test18304681840800351471/metadata/snap-1.avro (type=ManifestListEntry)
+00:47:48.034 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:47:48.036 [Test worker] DEBUG service.AvroReader -- Reading Avro file: file:///nonexistent/file.avro (type=ManifestListEntry)
+00:47:48.043 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test2279462547672733623
+00:47:48.043 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test2279462547672733623/schema/schema-0
+00:47:48.043 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=0
+00:47:48.043 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:48.043 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:48.043 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test2279462547672733623/snapshot/snapshot-1
+00:47:48.043 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:48.043 [Test worker] DEBUG model.PaimonUnifiedModel -- Manifest list not in manifest/ subdir, falling back to table root: manifest/manifest-list-base-0
+00:47:48.043 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test2279462547672733623/manifest/manifest-list-base-0
+00:47:48.044 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test2279462547672733623/manifest/manifest-list-base-0 (type=PaimonManifestFileMeta)
+00:47:48.044 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test2279462547672733623/manifest/manifest-list-base-0 (1 entries, 0 errors)
+00:47:48.044 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test2279462547672733623/manifest/manifest-0
+00:47:48.044 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test2279462547672733623/manifest/manifest-0 (type=PaimonManifestEntry)
+00:47:48.044 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 1 manifests, 0 data files, 1 errors
+00:47:48.044 [Test worker] WARN model.PaimonUnifiedModel --   Manifest read error [read-manifest] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test2279462547672733623/manifest/manifest-0: Not an Avro data file.
+00:47:48.046 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test18109248112059430070
+00:47:48.046 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test18109248112059430070/metadata/v1.metadata.json
+00:47:48.046 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:47:48.046 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test18109248112059430070/metadata/snap-1.avro
+00:47:48.046 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test18109248112059430070/metadata/snap-1.avro (type=ManifestListEntry)
+00:47:48.047 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:47:48.048 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test10783527395430211959/garbage.avro (type=ManifestListEntry)
+00:47:48.049 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3418483838950541552
+00:47:48.050 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3418483838950541552/schema/schema-0
+00:47:48.050 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=0
+00:47:48.050 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:47:48.050 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:47:48.050 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3418483838950541552/snapshot/snapshot-1
+00:47:48.050 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:47:48.050 [Test worker] DEBUG model.PaimonUnifiedModel -- Manifest list not in manifest/ subdir, falling back to table root: manifest/manifest-list-base-0
+00:47:48.050 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3418483838950541552/manifest/manifest-list-base-0
+00:47:48.050 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3418483838950541552/manifest/manifest-list-base-0 (type=PaimonManifestFileMeta)
+00:47:48.050 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 0 manifests, 0 data files, 1 errors
+00:47:48.050 [Test worker] WARN model.PaimonUnifiedModel --   Snapshot read error [base-manifest-list] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3418483838950541552/manifest/manifest-list-base-0: Not an Avro data file.
+00:47:48.052 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test18131748691271478161
+00:47:48.052 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test18131748691271478161/metadata/v1.metadata.json
+00:47:48.052 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:47:48.052 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test18131748691271478161/metadata
+00:47:48.052 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test18131748691271478161/metadata (type=ManifestListEntry)
+00:47:48.053 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:47:48.054 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test17028456246138081753
+00:47:48.055 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test17028456246138081753/metadata/v3.metadata.json
+00:47:48.055 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:47:48.055 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test17028456246138081753/metadata/v2.metadata.json
+00:47:48.055 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test17028456246138081753/metadata/v1.metadata.json
+00:47:48.055 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:47:48.055 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test17028456246138081753/metadata/snap-3.avro
+00:47:48.055 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test17028456246138081753/metadata/snap-3.avro (type=ManifestListEntry)
+00:47:48.055 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test17028456246138081753/metadata/snap-1.avro
+00:47:48.055 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test17028456246138081753/metadata/snap-1.avro (type=ManifestListEntry)
+00:47:48.056 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 2 snapshots, 1 errors
+00:47:48.056 [Test worker] WARN model.UnifiedModel --   Read error [read-metadata-json] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test17028456246138081753/metadata/v2.metadata.json: Unexpected JSON token at offset 0: Expected start of the object '{', but had 'C' instead at path: $
+JSON input: CORRUPT
+00:47:48.057 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test674924483429079010/empty.avro (type=ManifestListEntry)
+00:47:48.058 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test17654185996773832027/empty-records.avro (type=ManifestListEntry)
+00:47:48.058 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test17654185996773832027/empty-records.avro (0 entries, 0 errors)
+00:47:48.059 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3739906771966608112
+00:47:48.059 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3739906771966608112/metadata/v1.metadata.json
+00:47:48.060 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:47:48.060 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3739906771966608112/metadata/snap-1.avro
+00:47:48.060 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3739906771966608112/metadata/snap-1.avro (type=ManifestListEntry)
+00:47:48.060 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3739906771966608112/metadata/snap-1.avro (1 entries, 0 errors)
+00:47:48.060 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3739906771966608112/metadata/manifest-1.avro
+00:47:48.060 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/error-test3739906771966608112/metadata/manifest-1.avro (type=ManifestEntry)
+00:47:48.061 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+</pre>
+</span>
+</div>
+</div>
+<div id="footer">
+<p>
+<div>
+<label class="hidden" id="label-for-line-wrapping-toggle" for="line-wrapping-toggle">Wrap lines
+<input id="line-wrapping-toggle" type="checkbox" autocomplete="off"/>
+</label>
+</div>Generated by 
+<a href="https://www.gradle.org">Gradle 9.0.0</a> at Aug 14, 2026, 12:47:51 AM</p>
+</div>
+</div>
+</body>
+</html>

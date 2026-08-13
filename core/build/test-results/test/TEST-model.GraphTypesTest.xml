@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="model.GraphTypesTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:12.086Z" hostname="muhammed-mbp" time="0.029">
+  <properties/>
+  <testcase name="RowNode resolvedData uses loader when provided()" classname="model.GraphTypesTest" time="0.021"/>
+  <testcase name="GraphNode x and y are excluded from data class equals()" classname="model.GraphTypesTest" time="0.003"/>
+  <testcase name="RowNode resolvedData falls back to data when loader returns empty map()" classname="model.GraphTypesTest" time="0.001"/>
+  <testcase name="layoutPosition falls back to the origin for a node layout never placed()" classname="model.GraphTypesTest" time="0.002"/>
+  <testcase name="RowNode resolvedData falls back to data when no loader()" classname="model.GraphTypesTest" time="0.0"/>
+  <testcase name="layoutPosition returns where layout put the node()" classname="model.GraphTypesTest" time="0.0"/>
+  <testcase name="GraphModel nodeById provides fast lookup()" classname="model.GraphTypesTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

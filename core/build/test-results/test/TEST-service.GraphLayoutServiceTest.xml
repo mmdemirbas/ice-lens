@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="service.GraphLayoutServiceTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:48.106Z" hostname="muhammed-mbp" time="0.008">
+  <properties/>
+  <testcase name="layoutGraph populates positions for all nodes()" classname="service.GraphLayoutServiceTest" time="0.001"/>
+  <testcase name="layoutGraph with multiple metadata versions()" classname="service.GraphLayoutServiceTest" time="0.001"/>
+  <testcase name="layoutGraph produces table node()" classname="service.GraphLayoutServiceTest" time="0.001"/>
+  <testcase name="layoutGraph assigns unique manifest node IDs even for hashCode-colliding paths()" classname="service.GraphLayoutServiceTest" time="0.001"/>
+  <testcase name="layoutGraph has no duplicate edge IDs()" classname="service.GraphLayoutServiceTest" time="0.001"/>
+  <testcase name="layoutGraph produces metadata nodes()" classname="service.GraphLayoutServiceTest" time="0.001"/>
+  <testcase name="layoutGraph creates edges between table and metadata()" classname="service.GraphLayoutServiceTest" time="0.001"/>
+  <testcase name="layoutGraph handles read errors gracefully()" classname="service.GraphLayoutServiceTest" time="0.0"/>
+  <system-out><![CDATA[00:47:48.107 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
+00:47:48.107 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 2 nodes, 1 edges
+00:47:48.108 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: multi
+00:47:48.109 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 3 nodes, 2 edges
+00:47:48.110 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
+00:47:48.110 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 2 nodes, 1 edges
+00:47:48.111 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: collision
+00:47:48.111 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 6 nodes, 5 edges
+00:47:48.112 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
+00:47:48.112 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 2 nodes, 1 edges
+00:47:48.113 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
+00:47:48.113 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 2 nodes, 1 edges
+00:47:48.114 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
+00:47:48.114 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 2 nodes, 1 edges
+00:47:48.115 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: errors
+00:47:48.115 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 2 nodes, 1 edges
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

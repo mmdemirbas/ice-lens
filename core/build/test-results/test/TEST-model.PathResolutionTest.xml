@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="model.PathResolutionTest" tests="14" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:12.680Z" hostname="muhammed-mbp" time="0.033">
+  <properties/>
+  <testcase name="data file with path traversal attempt is flagged()" classname="model.PathResolutionTest" time="0.006"/>
+  <testcase name="resolveForceRelative handles empty path()" classname="model.PathResolutionTest" time="0.0"/>
+  <testcase name="data file with relative path resolves from table root()" classname="model.PathResolutionTest" time="0.003"/>
+  <testcase name="resolveForceRelative handles null path()" classname="model.PathResolutionTest" time="0.0"/>
+  <testcase name="resolveForceRelative handles blank path()" classname="model.PathResolutionTest" time="0.001"/>
+  <testcase name="resolveForceRelative strips trailing slash()" classname="model.PathResolutionTest" time="0.0"/>
+  <testcase name="resolveForceRelative extracts last component from s3 path()" classname="model.PathResolutionTest" time="0.001"/>
+  <testcase name="data file with empty filePath produces no path traversal error()" classname="model.PathResolutionTest" time="0.004"/>
+  <testcase name="multiple data files with different paths all resolve()" classname="model.PathResolutionTest" time="0.004"/>
+  <testcase name="resolveForceRelative extracts last component from absolute path()" classname="model.PathResolutionTest" time="0.0"/>
+  <testcase name="resolveForceRelative handles path with only slashes()" classname="model.PathResolutionTest" time="0.001"/>
+  <testcase name="resolveForceRelative handles simple filename()" classname="model.PathResolutionTest" time="0.0"/>
+  <testcase name="data file with absolute path matching table prefix resolves correctly()" classname="model.PathResolutionTest" time="0.005"/>
+  <testcase name="data file with cloud URI path resolves last component()" classname="model.PathResolutionTest" time="0.005"/>
+  <system-out><![CDATA[00:47:12.682 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test8699191874012883427
+00:47:12.682 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test8699191874012883427/metadata/v1.metadata.json
+00:47:12.683 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:47:12.683 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test8699191874012883427/metadata/snap-1.avro
+00:47:12.683 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test8699191874012883427/metadata/snap-1.avro (type=ManifestListEntry)
+00:47:12.683 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test8699191874012883427/metadata/snap-1.avro (1 entries, 0 errors)
+00:47:12.683 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test8699191874012883427/metadata/manifest-1.avro
+00:47:12.683 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test8699191874012883427/metadata/manifest-1.avro (type=ManifestEntry)
+00:47:12.685 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test8699191874012883427/metadata/manifest-1.avro (1 entries, 0 errors)
+00:47:12.685 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:47:12.688 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11556046197612843356
+00:47:12.688 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11556046197612843356/metadata/v1.metadata.json
+00:47:12.689 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:47:12.689 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11556046197612843356/metadata/snap-1.avro
+00:47:12.689 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11556046197612843356/metadata/snap-1.avro (type=ManifestListEntry)
+00:47:12.689 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11556046197612843356/metadata/snap-1.avro (1 entries, 0 errors)
+00:47:12.689 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11556046197612843356/metadata/manifest-1.avro
+00:47:12.689 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11556046197612843356/metadata/manifest-1.avro (type=ManifestEntry)
+00:47:12.690 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11556046197612843356/metadata/manifest-1.avro (1 entries, 0 errors)
+00:47:12.690 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:47:12.694 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test5146788930607085389
+00:47:12.695 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test5146788930607085389/metadata/v1.metadata.json
+00:47:12.695 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:47:12.695 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test5146788930607085389/metadata/snap-1.avro
+00:47:12.695 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test5146788930607085389/metadata/snap-1.avro (type=ManifestListEntry)
+00:47:12.695 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test5146788930607085389/metadata/snap-1.avro (1 entries, 0 errors)
+00:47:12.695 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test5146788930607085389/metadata/manifest-1.avro
+00:47:12.695 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test5146788930607085389/metadata/manifest-1.avro (type=ManifestEntry)
+00:47:12.696 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test5146788930607085389/metadata/manifest-1.avro (1 entries, 0 errors)
+00:47:12.696 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:47:12.699 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11653693222129985729
+00:47:12.699 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11653693222129985729/metadata/v1.metadata.json
+00:47:12.699 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:47:12.699 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11653693222129985729/metadata/snap-1.avro
+00:47:12.699 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11653693222129985729/metadata/snap-1.avro (type=ManifestListEntry)
+00:47:12.700 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11653693222129985729/metadata/snap-1.avro (1 entries, 0 errors)
+00:47:12.700 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11653693222129985729/metadata/manifest-1.avro
+00:47:12.700 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11653693222129985729/metadata/manifest-1.avro (type=ManifestEntry)
+00:47:12.701 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test11653693222129985729/metadata/manifest-1.avro (3 entries, 0 errors)
+00:47:12.701 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:47:12.705 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test17434034807185345699
+00:47:12.706 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test17434034807185345699/metadata/v1.metadata.json
+00:47:12.706 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:47:12.706 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test17434034807185345699/metadata/snap-1.avro
+00:47:12.706 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test17434034807185345699/metadata/snap-1.avro (type=ManifestListEntry)
+00:47:12.706 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test17434034807185345699/metadata/snap-1.avro (1 entries, 0 errors)
+00:47:12.707 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test17434034807185345699/metadata/manifest-1.avro
+00:47:12.707 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test17434034807185345699/metadata/manifest-1.avro (type=ManifestEntry)
+00:47:12.707 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test17434034807185345699/metadata/manifest-1.avro (1 entries, 0 errors)
+00:47:12.708 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:47:12.710 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test16602256810623440916
+00:47:12.710 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test16602256810623440916/metadata/v1.metadata.json
+00:47:12.710 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:47:12.710 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test16602256810623440916/metadata/snap-1.avro
+00:47:12.710 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test16602256810623440916/metadata/snap-1.avro (type=ManifestListEntry)
+00:47:12.711 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test16602256810623440916/metadata/snap-1.avro (1 entries, 0 errors)
+00:47:12.711 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test16602256810623440916/metadata/manifest-1.avro
+00:47:12.711 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test16602256810623440916/metadata/manifest-1.avro (type=ManifestEntry)
+00:47:12.712 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/path-resolve-test16602256810623440916/metadata/manifest-1.avro (1 entries, 0 errors)
+00:47:12.712 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

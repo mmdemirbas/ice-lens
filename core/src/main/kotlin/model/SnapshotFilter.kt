@@ -1,0 +1,94 @@
+package model
+
+
+data class SnapshotFilterOption(
+    val nodeId: String,
+    val snapshotId: Long?,
+    val sequenceNumber: Long?,
+    val timestampMs: Long?,
+)
+
+/** Maps any snapshot-like node (Iceberg or Paimon) into a uniform filter option. */
+fun GraphNode.asSnapshotFilterOption(): SnapshotFilterOption? = when (this) {
+    is GraphNode.SnapshotNode -> SnapshotFilterOption(
+        nodeId = id,
+        snapshotId = data.snapshotId,
+        sequenceNumber = data.sequenceNumber,
+        timestampMs = data.timestampMs,
+    )
+    is GraphNode.PaimonSnapshotNode -> SnapshotFilterOption(
+        nodeId = id,
+        snapshotId = data.id,
+        sequenceNumber = null,
+        timestampMs = data.timeMillis,
+    )
+    else -> null
+}
+
+fun snapshotFilterLabel(option: SnapshotFilterOption): String {
+    val seq = option.sequenceNumber?.toString() ?: "N/A"
+    val sid = option.snapshotId?.toString() ?: "N/A"
+    return "Seq $seq | Snapshot $sid"
+}
+
+fun computeVisibleNodeIdsForSnapshotFilter(
+    graph: GraphModel,
+    selectedSnapshotNodeIds: Set<String>
+): Set<String> {
+    if (selectedSnapshotNodeIds.isEmpty()) return graph.nodes.map { it.id }.toSet()
+
+    val validSnapshotIds = graph.nodes
+        .mapNotNull { it.asSnapshotFilterOption()?.nodeId }
+        .toHashSet()
+    val selected = selectedSnapshotNodeIds.filterTo(mutableSetOf()) { it in validSnapshotIds }
+    if (selected.isEmpty()) return graph.nodes.map { it.id }.toSet()
+
+    val childrenByParent = graph.edges
+        .groupBy { it.fromId }
+        .mapValues { (_, edges) -> edges.map { it.toId } }
+    val parentsByChild = graph.edges
+        .groupBy { it.toId }
+        .mapValues { (_, edges) -> edges.map { it.fromId } }
+
+    val visible = mutableSetOf<String>()
+
+    fun walk(start: String, next: (String) -> List<String>) {
+        val queue = ArrayDeque<String>()
+        val seen = mutableSetOf<String>()
+        queue.add(start)
+        while (queue.isNotEmpty()) {
+            val current = queue.removeFirst()
+            if (!seen.add(current)) continue
+            visible += current
+            next(current).forEach(queue::addLast)
+        }
+    }
+
+    selected.forEach { snapshotId ->
+        walk(snapshotId) { id -> parentsByChild[id].orEmpty() }
+        walk(snapshotId) { id -> childrenByParent[id].orEmpty() }
+    }
+
+    return visible
+}
+
+fun filteredGraphModel(graph: GraphModel, visibleNodeIds: Set<String>): GraphModel {
+    if (visibleNodeIds.isEmpty()) return GraphModel(emptyList(), emptyList(), 1.0, 1.0)
+    if (visibleNodeIds.size == graph.nodes.size) return graph
+
+    val nodes = graph.nodes.filter { it.id in visibleNodeIds }
+    val edges = graph.edges.filter { it.fromId in visibleNodeIds && it.toId in visibleNodeIds }
+    // Copy positions from the original graph's current state
+    val filteredPositions = nodes.associate { node ->
+        node.id to graph.layoutPosition(node.id)
+    }
+    val width = nodes.maxOfOrNull { (filteredPositions[it.id]?.x?.toDouble() ?: 0.0) + it.width } ?: 1.0
+    val height = nodes.maxOfOrNull { (filteredPositions[it.id]?.y?.toDouble() ?: 0.0) + it.height } ?: 1.0
+    return GraphModel(
+        nodes = nodes,
+        edges = edges,
+        width = width,
+        height = height,
+        layoutPositions = filteredPositions
+    )
+}

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ui.FormatUtilsTest" tests="11" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:54.046Z" hostname="muhammed-mbp" time="0.005">
+  <properties/>
+  <testcase name="formatTimestampShort returns NA for null()" classname="ui.FormatUtilsTest" time="0.002"/>
+  <testcase name="encodeLongSet returns empty string for empty set()" classname="ui.FormatUtilsTest" time="0.0"/>
+  <testcase name="parseLongSet returns empty for blank()" classname="ui.FormatUtilsTest" time="0.0"/>
+  <testcase name="parseLongSet parses semicolon-separated values()" classname="ui.FormatUtilsTest" time="0.0"/>
+  <testcase name="parseLongSet and encodeLongSet round-trip()" classname="ui.FormatUtilsTest" time="0.001"/>
+  <testcase name="parseLongSet handles whitespace()" classname="ui.FormatUtilsTest" time="0.0"/>
+  <testcase name="formatAppTimestamp returns NA for null()" classname="ui.FormatUtilsTest" time="0.0"/>
+  <testcase name="formatAppTimestamp formats epoch zero()" classname="ui.FormatUtilsTest" time="0.0"/>
+  <testcase name="parseLongSet skips invalid entries()" classname="ui.FormatUtilsTest" time="0.001"/>
+  <testcase name="formatTimestampShort returns single line()" classname="ui.FormatUtilsTest" time="0.0"/>
+  <testcase name="encodeLongSet produces sorted semicolon-separated values()" classname="ui.FormatUtilsTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
