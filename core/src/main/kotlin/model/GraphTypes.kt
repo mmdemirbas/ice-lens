@@ -141,8 +141,10 @@ data class PaimonManifestEntryView(
 
 /**
  * Graph node base class. Subclasses are data classes for clean equality/hashing.
- * `x` and `y` are plain mutable vars used during layout computation (NOT Compose state).
- * The UI reads positions from `GraphModel.positions` (Compose-observable).
+ *
+ * `x` and `y` are scratch vars the layout engine writes while it works. The result it publishes
+ * is [GraphModel.layoutPositions]; a shell reads from there, and layers its own drag state over
+ * it rather than writing back here.
  */
 sealed class GraphNode(
     open val id: String,
@@ -196,6 +198,8 @@ sealed class GraphNode(
         val entries: List<ManifestEntryView> = emptyList(),
         /** How many of [entries] were given a child node in the graph. */
         val shownEntryCount: Int = 0,
+        /** The schema this manifest was written against — the only correct one for its bounds. */
+        val schema: IcebergSchemaModel? = null,
         val localPath: String? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
@@ -207,11 +211,16 @@ sealed class GraphNode(
         override val id: String,
         val entry: ManifestEntry,
         val simpleId: Int,
+        /** The schema of the manifest this entry came from. See [ManifestNode.schema]. */
+        val schema: IcebergSchemaModel? = null,
         val localPath: String? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 200.0, 60.0) {
         val data: DataFile get() = entry.dataFile ?: DataFile(filePath = "unknown")
+
+        /** Per-column statistics with bounds decoded against [schema]. */
+        val columnStats: List<ColumnStats> by lazy { columnStatsFor(data, schema) }
     }
 
     data class RowNode(

@@ -1,50 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="service.TableSummaryAccuracyTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:51.811Z" hostname="muhammed-mbp" time="0.019">
+<testsuite name="service.TableSummaryAccuracyTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:59:22.075Z" hostname="muhammed-mbp" time="0.023">
   <properties/>
-  <testcase name="summary counts files and records once, not once per snapshot that carries them()" classname="service.TableSummaryAccuracyTest" time="0.013"/>
-  <testcase name="summary keeps delete-file records out of the table record count()" classname="service.TableSummaryAccuracyTest" time="0.003"/>
+  <testcase name="summary counts files and records once, not once per snapshot that carries them()" classname="service.TableSummaryAccuracyTest" time="0.017"/>
+  <testcase name="summary keeps delete-file records out of the table record count()" classname="service.TableSummaryAccuracyTest" time="0.004"/>
   <testcase name="summary excludes DELETED manifest entries from live file and record counts()" classname="service.TableSummaryAccuracyTest" time="0.002"/>
-  <system-out><![CDATA[00:47:51.816 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204
-00:47:51.816 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/v2.metadata.json
-00:47:51.816 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=2
-00:47:51.817 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/v1.metadata.json
-00:47:51.817 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:51.817 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/snap-1.avro
-00:47:51.817 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:51.819 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/snap-1.avro (1 entries, 0 errors)
-00:47:51.819 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/manifest-1.avro
-00:47:51.819 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/manifest-1.avro (type=ManifestEntry)
-00:47:51.821 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/manifest-1.avro (1 entries, 0 errors)
-00:47:51.821 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/snap-2.avro
-00:47:51.821 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/snap-2.avro (type=ManifestListEntry)
-00:47:51.822 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/snap-2.avro (2 entries, 0 errors)
-00:47:51.822 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/manifest-2.avro
-00:47:51.822 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/manifest-2.avro (type=ManifestEntry)
-00:47:51.822 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test13439588046250109204/metadata/manifest-2.avro (1 entries, 0 errors)
-00:47:51.822 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 3 snapshots, 0 errors
-00:47:51.825 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test15364040953723151167
-00:47:51.825 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test15364040953723151167/metadata/v1.metadata.json
-00:47:51.826 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:51.826 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test15364040953723151167/metadata/snap-1.avro
-00:47:51.826 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test15364040953723151167/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:51.826 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test15364040953723151167/metadata/snap-1.avro (2 entries, 0 errors)
-00:47:51.826 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test15364040953723151167/metadata/data-manifest.avro
-00:47:51.826 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test15364040953723151167/metadata/data-manifest.avro (type=ManifestEntry)
-00:47:51.826 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test15364040953723151167/metadata/data-manifest.avro (1 entries, 0 errors)
-00:47:51.826 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test15364040953723151167/metadata/delete-manifest.avro
-00:47:51.826 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test15364040953723151167/metadata/delete-manifest.avro (type=ManifestEntry)
-00:47:51.827 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test15364040953723151167/metadata/delete-manifest.avro (1 entries, 0 errors)
-00:47:51.827 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:51.829 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test6132013894129260233
-00:47:51.829 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test6132013894129260233/metadata/v1.metadata.json
-00:47:51.829 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:51.829 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test6132013894129260233/metadata/snap-1.avro
-00:47:51.829 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test6132013894129260233/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:51.829 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test6132013894129260233/metadata/snap-1.avro (1 entries, 0 errors)
-00:47:51.829 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test6132013894129260233/metadata/manifest-1.avro
-00:47:51.829 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test6132013894129260233/metadata/manifest-1.avro (type=ManifestEntry)
-00:47:51.830 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test6132013894129260233/metadata/manifest-1.avro (2 entries, 0 errors)
-00:47:51.830 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+  <system-out><![CDATA[00:59:22.084 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577
+00:59:22.084 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/v2.metadata.json
+00:59:22.084 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=2
+00:59:22.084 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/v1.metadata.json
+00:59:22.084 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:59:22.084 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/snap-1.avro
+00:59:22.084 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/snap-1.avro (type=ManifestListEntry)
+00:59:22.087 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/snap-1.avro (1 entries, 0 errors)
+00:59:22.088 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/manifest-1.avro
+00:59:22.088 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/manifest-1.avro (type=ManifestEntry)
+00:59:22.088 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/manifest-1.avro (1 entries, 0 errors)
+00:59:22.088 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/snap-2.avro
+00:59:22.088 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/snap-2.avro (type=ManifestListEntry)
+00:59:22.089 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/snap-2.avro (2 entries, 0 errors)
+00:59:22.089 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/manifest-2.avro
+00:59:22.089 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/manifest-2.avro (type=ManifestEntry)
+00:59:22.089 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test3465479073049457577/metadata/manifest-2.avro (1 entries, 0 errors)
+00:59:22.090 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 3 snapshots, 0 errors
+00:59:22.094 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test7817018117851135018
+00:59:22.094 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test7817018117851135018/metadata/v1.metadata.json
+00:59:22.094 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:59:22.094 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test7817018117851135018/metadata/snap-1.avro
+00:59:22.094 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test7817018117851135018/metadata/snap-1.avro (type=ManifestListEntry)
+00:59:22.095 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test7817018117851135018/metadata/snap-1.avro (2 entries, 0 errors)
+00:59:22.095 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test7817018117851135018/metadata/data-manifest.avro
+00:59:22.095 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test7817018117851135018/metadata/data-manifest.avro (type=ManifestEntry)
+00:59:22.095 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test7817018117851135018/metadata/data-manifest.avro (1 entries, 0 errors)
+00:59:22.095 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test7817018117851135018/metadata/delete-manifest.avro
+00:59:22.095 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test7817018117851135018/metadata/delete-manifest.avro (type=ManifestEntry)
+00:59:22.095 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test7817018117851135018/metadata/delete-manifest.avro (1 entries, 0 errors)
+00:59:22.095 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:59:22.097 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test4755487979687259682
+00:59:22.097 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test4755487979687259682/metadata/v1.metadata.json
+00:59:22.097 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:59:22.097 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test4755487979687259682/metadata/snap-1.avro
+00:59:22.097 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test4755487979687259682/metadata/snap-1.avro (type=ManifestListEntry)
+00:59:22.098 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test4755487979687259682/metadata/snap-1.avro (1 entries, 0 errors)
+00:59:22.098 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test4755487979687259682/metadata/manifest-1.avro
+00:59:22.098 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test4755487979687259682/metadata/manifest-1.avro (type=ManifestEntry)
+00:59:22.098 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/summary-accuracy-test4755487979687259682/metadata/manifest-1.avro (2 entries, 0 errors)
+00:59:22.098 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
 ]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

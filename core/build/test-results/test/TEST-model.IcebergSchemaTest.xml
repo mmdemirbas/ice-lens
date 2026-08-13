@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="model.IcebergSchemaTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:12.572Z" hostname="muhammed-mbp" time="0.005">
+<testsuite name="model.IcebergSchemaTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:58:44.032Z" hostname="muhammed-mbp" time="0.005">
   <properties/>
-  <testcase name="parse TableMetadata ignores unknown keys()" classname="model.IcebergSchemaTest" time="0.0"/>
-  <testcase name="KeyValuePairBytes equals uses structural ByteArray comparison()" classname="model.IcebergSchemaTest" time="0.002"/>
+  <testcase name="parse TableMetadata ignores unknown keys()" classname="model.IcebergSchemaTest" time="0.001"/>
+  <testcase name="KeyValuePairBytes equals uses structural ByteArray comparison()" classname="model.IcebergSchemaTest" time="0.0"/>
   <testcase name="parse DataFile with content types()" classname="model.IcebergSchemaTest" time="0.0"/>
-  <testcase name="parse TableMetadata with snapshots()" classname="model.IcebergSchemaTest" time="0.001"/>
+  <testcase name="parse TableMetadata with snapshots()" classname="model.IcebergSchemaTest" time="0.0"/>
   <testcase name="parse minimal TableMetadata()" classname="model.IcebergSchemaTest" time="0.0"/>
-  <testcase name="DataFile equals uses structural ByteArray comparison()" classname="model.IcebergSchemaTest" time="0.001"/>
+  <testcase name="DataFile equals uses structural ByteArray comparison()" classname="model.IcebergSchemaTest" time="0.0"/>
   <testcase name="parse TableMetadata with schemas and identifier fields()" classname="model.IcebergSchemaTest" time="0.0"/>
   <testcase name="DataFile can be used in sets without ByteArray identity issues()" classname="model.IcebergSchemaTest" time="0.0"/>
-  <testcase name="DataFile equals handles null keyMetadata()" classname="model.IcebergSchemaTest" time="0.001"/>
+  <testcase name="DataFile equals handles null keyMetadata()" classname="model.IcebergSchemaTest" time="0.0"/>
   <testcase name="ManifestListEntry sequence numbers accept values larger than Int MAX_VALUE()" classname="model.IcebergSchemaTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>

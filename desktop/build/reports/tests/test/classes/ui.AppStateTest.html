@@ -41,7 +41,7 @@
 </td>
 <td>
 <div class="infoBox" id="duration">
-<div class="counter">0.263s</div>
+<div class="counter">0.284s</div>
 <p>duration</p>
 </div>
 </td>
@@ -79,47 +79,47 @@
 </thead>
 <tr>
 <td class="success">addWorkspaceRoot adds a SingleTable for Iceberg table directory()</td>
-<td class="success">0.003s</td>
+<td class="success">0.013s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">addWorkspaceRoot adds a SingleTable for Paimon table directory()</td>
-<td class="success">0.004s</td>
+<td class="success">0.003s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">addWorkspaceRoot adds a warehouse for non-table directory()</td>
-<td class="success">0.007s</td>
+<td class="success">0.010s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">addWorkspaceRoot auto-expands warehouse()</td>
-<td class="success">0.005s</td>
-<td class="success">passed</td>
-</tr>
-<tr>
-<td class="success">addWorkspaceRoot ignores duplicate paths()</td>
-<td class="success">0.006s</td>
-<td class="success">passed</td>
-</tr>
-<tr>
-<td class="success">addWorkspaceRoot ignores non-existent path()</td>
 <td class="success">0.002s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
+<td class="success">addWorkspaceRoot ignores duplicate paths()</td>
+<td class="success">0.005s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">addWorkspaceRoot ignores non-existent path()</td>
+<td class="success">0.001s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
 <td class="success">addWorkspaceRoot scans warehouse for nested tables()</td>
-<td class="success">0.009s</td>
+<td class="success">0.004s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">computeTableFingerprint changes when Paimon schema file changes()</td>
-<td class="success">0.054s</td>
+<td class="success">0.061s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">computeTableFingerprint changes when metadata file changes()</td>
-<td class="success">0.061s</td>
+<td class="success">0.059s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
@@ -134,27 +134,27 @@
 </tr>
 <tr>
 <td class="success">computeTableFingerprint returns empty for dir without metadata files()</td>
-<td class="success">0.002s</td>
-<td class="success">passed</td>
-</tr>
-<tr>
-<td class="success">computeTableFingerprint returns missing for non-existent dir()</td>
 <td class="success">0.001s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
+<td class="success">computeTableFingerprint returns missing for non-existent dir()</td>
+<td class="success">0.003s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
 <td class="success">error message can be set and cleared()</td>
-<td class="success">0.002s</td>
+<td class="success">0.008s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">expanded paths are persisted and restored()</td>
-<td class="success">0.004s</td>
+<td class="success">0.003s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">initial snapshot filter state is empty()</td>
-<td class="success">0.003s</td>
+<td class="success">0.001s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
@@ -164,17 +164,17 @@
 </tr>
 <tr>
 <td class="success">last browse directory is persisted and restored()</td>
-<td class="success">0.007s</td>
-<td class="success">passed</td>
-</tr>
-<tr>
-<td class="success">moveWorkspaceRoot clamps to bounds()</td>
 <td class="success">0.002s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
+<td class="success">moveWorkspaceRoot clamps to bounds()</td>
+<td class="success">0.003s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
 <td class="success">moveWorkspaceRoot reorders items()</td>
-<td class="success">0.004s</td>
+<td class="success">0.026s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
@@ -184,27 +184,27 @@
 </tr>
 <tr>
 <td class="success">refreshWarehouseTables detects new tables()</td>
-<td class="success">0.008s</td>
+<td class="success">0.004s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">removeWorkspaceRoot removes the item()</td>
-<td class="success">0.002s</td>
+<td class="success">0.004s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">saveCurrentSessionSelection does nothing without selected table()</td>
-<td class="success">0.002s</td>
+<td class="success">0.001s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">session cache evicts oldest entry past max size()</td>
-<td class="success">0.002s</td>
+<td class="success">0.001s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">session cache is initially empty()</td>
-<td class="success">0.002s</td>
+<td class="success">0.001s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
@@ -214,42 +214,42 @@
 </tr>
 <tr>
 <td class="success">setGraphModelAndBump with null clears graph()</td>
-<td class="success">0.003s</td>
+<td class="success">0.001s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">single table status is DELETED for missing path on restore()</td>
-<td class="success">0.014s</td>
-<td class="success">passed</td>
-</tr>
-<tr>
-<td class="success">single table status is EXISTING for valid path()</td>
-<td class="success">0.006s</td>
-<td class="success">passed</td>
-</tr>
-<tr>
-<td class="success">updateShowRows persists value()</td>
-<td class="success">0.003s</td>
-<td class="success">passed</td>
-</tr>
-<tr>
-<td class="success">updateSnapshotFilterSelection constrains to available nodes()</td>
 <td class="success">0.002s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
-<td class="success">warehouse table statuses initialized as EXISTING()</td>
-<td class="success">0.004s</td>
+<td class="success">single table status is EXISTING for valid path()</td>
+<td class="success">0.003s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
-<td class="success">workspace items are persisted and restored()</td>
+<td class="success">updateShowRows persists value()</td>
+<td class="success">0.002s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">updateSnapshotFilterSelection constrains to available nodes()</td>
 <td class="success">0.006s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
+<td class="success">warehouse table statuses initialized as EXISTING()</td>
+<td class="success">0.020s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
+<td class="success">workspace items are persisted and restored()</td>
+<td class="success">0.003s</td>
+<td class="success">passed</td>
+</tr>
+<tr>
 <td class="success">workspace items with missing paths are preserved on restore()</td>
-<td class="success">0.005s</td>
+<td class="success">0.003s</td>
 <td class="success">passed</td>
 </tr>
 </table>
@@ -257,80 +257,80 @@
 <div class="tab">
 <h2>Standard output</h2>
 <span class="code">
-<pre>00:47:53.769 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.772 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.774 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test15857796390067391037 (Warehouse)
-00:47:53.774 INFO  [ui.AppState]   Found 0 tables in warehouse
-00:47:53.778 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.780 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.798 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.800 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test7415109990670638950 (SingleTable)
-00:47:53.806 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.807 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test10685620389116022334 (SingleTable)
-00:47:53.813 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.819 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.820 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test3056815489503016555 (Warehouse)
-00:47:53.820 INFO  [ui.AppState]   Found 0 tables in warehouse
-00:47:53.824 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.826 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.828 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.829 WARN  [ui.AppState] Cannot add workspace root — path does not exist or is not a directory: /nonexistent/path/that/does/not/exist
-00:47:53.830 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.831 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test5711848310988281203 (Warehouse)
-00:47:53.831 INFO  [ui.AppState]   Found 0 tables in warehouse
-00:47:53.834 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.836 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.839 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.840 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.842 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.845 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.850 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.851 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test2632415536938587430 (Warehouse)
-00:47:53.851 INFO  [ui.AppState]   Found 0 tables in warehouse
-00:47:53.858 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.861 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test5377506965713089894 (Warehouse)
-00:47:53.861 INFO  [ui.AppState]   Found 2 tables in warehouse
-00:47:53.866 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.867 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test13914199741834811465 (Warehouse)
-00:47:53.867 INFO  [ui.AppState]   Found 0 tables in warehouse
-00:47:53.869 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.871 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.925 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.926 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test275677199859083139 (SingleTable)
-00:47:53.929 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.930 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test5682586396799222050 (Warehouse)
-00:47:53.930 INFO  [ui.AppState]   Found 0 tables in warehouse
-00:47:53.931 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.933 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.935 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.936 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test15524729591254150588 (Warehouse)
-00:47:53.936 INFO  [ui.AppState]   Found 1 tables in warehouse
-00:47:53.939 INFO  [ui.AppState] Loading persisted workspace state
-00:47:54.003 INFO  [ui.AppState] Loading persisted workspace state
-00:47:54.004 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test397343002507095140 (Warehouse)
-00:47:54.005 INFO  [ui.AppState]   Found 0 tables in warehouse
-00:47:54.008 INFO  [ui.AppState] Loading persisted workspace state
-00:47:54.010 INFO  [ui.AppState] Loading persisted workspace state
-00:47:54.018 INFO  [ui.AppState] Loading persisted workspace state
-00:47:54.019 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test13827435338210431048 (Warehouse)
-00:47:54.019 INFO  [ui.AppState]   Found 1 tables in warehouse
-00:47:54.022 INFO  [ui.AppState] Loading persisted workspace state
-00:47:54.023 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test-15579455924869875487 (Warehouse)
-00:47:54.023 INFO  [ui.AppState]   Found 0 tables in warehouse
-00:47:54.025 INFO  [ui.AppState] Loading persisted workspace state
-00:47:54.026 INFO  [ui.AppState] Loading persisted workspace state
-00:47:54.027 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test4250737965906274588 (Warehouse)
-00:47:54.027 INFO  [ui.AppState]   Found 0 tables in warehouse
-00:47:54.029 INFO  [ui.AppState] Loading persisted workspace state
-00:47:54.031 INFO  [ui.AppState] Loading persisted workspace state
-00:47:54.032 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test-139110232640769105 (Warehouse)
-00:47:54.032 INFO  [ui.AppState]   Found 0 tables in warehouse
-00:47:54.033 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test-26403535287207780747 (Warehouse)
-00:47:54.033 INFO  [ui.AppState]   Found 0 tables in warehouse
-00:47:54.035 INFO  [ui.AppState] Loading persisted workspace state
-00:47:54.037 INFO  [ui.AppState] Loading persisted workspace state
-00:47:54.038 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test623295158792056051 (SingleTable)
-00:47:54.040 INFO  [ui.AppState] Loading persisted workspace state
+<pre>00:59:26.923 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.925 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.926 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test11193127585574537635 (Warehouse)
+00:59:26.926 INFO  [ui.AppState]   Found 0 tables in warehouse
+00:59:26.933 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.935 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.953 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.954 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test3926286645711754784 (SingleTable)
+00:59:26.956 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.956 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test10261061726516963404 (SingleTable)
+00:59:26.957 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.958 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.958 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test14505719452279132933 (Warehouse)
+00:59:26.959 INFO  [ui.AppState]   Found 0 tables in warehouse
+00:59:26.960 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.962 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.963 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.963 WARN  [ui.AppState] Cannot add workspace root — path does not exist or is not a directory: /nonexistent/path/that/does/not/exist
+00:59:26.964 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.965 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test377007315843449934 (Warehouse)
+00:59:26.965 INFO  [ui.AppState]   Found 0 tables in warehouse
+00:59:26.966 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.967 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.968 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.969 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.970 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.971 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.973 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.973 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test8050392900906021330 (Warehouse)
+00:59:26.973 INFO  [ui.AppState]   Found 0 tables in warehouse
+00:59:26.976 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.978 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test7049680035299795772 (Warehouse)
+00:59:26.978 INFO  [ui.AppState]   Found 2 tables in warehouse
+00:59:26.981 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.981 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test2542867060255188811 (Warehouse)
+00:59:26.981 INFO  [ui.AppState]   Found 0 tables in warehouse
+00:59:26.982 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.984 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.046 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.046 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test4686434694973852732 (SingleTable)
+00:59:27.048 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.049 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test14517703268161351967 (Warehouse)
+00:59:27.049 INFO  [ui.AppState]   Found 0 tables in warehouse
+00:59:27.050 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.057 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.059 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.061 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test10042637091329768368 (Warehouse)
+00:59:27.061 INFO  [ui.AppState]   Found 1 tables in warehouse
+00:59:27.080 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.144 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.145 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test16636487009145294671 (Warehouse)
+00:59:27.146 INFO  [ui.AppState]   Found 0 tables in warehouse
+00:59:27.148 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.149 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.150 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.151 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test7640158134087054640 (Warehouse)
+00:59:27.151 INFO  [ui.AppState]   Found 1 tables in warehouse
+00:59:27.154 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.155 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test-15644563239118280586 (Warehouse)
+00:59:27.155 INFO  [ui.AppState]   Found 0 tables in warehouse
+00:59:27.157 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.159 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.159 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test3836514117763623664 (Warehouse)
+00:59:27.159 INFO  [ui.AppState]   Found 0 tables in warehouse
+00:59:27.162 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.167 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.171 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test-111540751839189834800 (Warehouse)
+00:59:27.172 INFO  [ui.AppState]   Found 0 tables in warehouse
+00:59:27.176 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test-25319835375024882399 (Warehouse)
+00:59:27.177 INFO  [ui.AppState]   Found 0 tables in warehouse
+00:59:27.194 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.203 INFO  [ui.AppState] Loading persisted workspace state
+00:59:27.204 INFO  [ui.AppState] Adding workspace root: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/ws-test8327248966541653201 (SingleTable)
+00:59:27.213 INFO  [ui.AppState] Loading persisted workspace state
 </pre>
 </span>
 </div>
@@ -342,7 +342,7 @@
 <input id="line-wrapping-toggle" type="checkbox" autocomplete="off"/>
 </label>
 </div>Generated by 
-<a href="https://www.gradle.org">Gradle 9.0.0</a> at Aug 14, 2026, 12:47:54 AM</p>
+<a href="https://www.gradle.org">Gradle 9.0.0</a> at Aug 14, 2026, 12:59:27 AM</p>
 </div>
 </div>
 </body>

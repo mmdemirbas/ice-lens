@@ -1,41 +1,41 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="service.ElkScalingBench" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:12.825Z" hostname="muhammed-mbp" time="35.179">
+<testsuite name="service.ElkScalingBench" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:58:44.345Z" hostname="muhammed-mbp" time="32.004">
   <properties/>
-  <testcase name="tuned config scaling on default stack()" classname="service.ElkScalingBench" time="9.547"/>
-  <testcase name="elk scaling by node count()" classname="service.ElkScalingBench" time="7.935"/>
-  <testcase name="elk option sensitivity at 4400 nodes()" classname="service.ElkScalingBench" time="11.571"/>
-  <testcase name="which placement strategy overflows default stack()" classname="service.ElkScalingBench" time="6.126"/>
+  <testcase name="tuned config scaling on default stack()" classname="service.ElkScalingBench" time="7.585"/>
+  <testcase name="elk scaling by node count()" classname="service.ElkScalingBench" time="7.412"/>
+  <testcase name="elk option sensitivity at 4400 nodes()" classname="service.ElkScalingBench" time="11.24"/>
+  <testcase name="which placement strategy overflows default stack()" classname="service.ElkScalingBench" time="5.767"/>
   <system-out><![CDATA[=== POLYLINE + thoroughness=1 + BRANDES_KOEPF (default JVM stack) ===
-nodes=1114  layout=80ms
-nodes=4452  layout=660ms
-nodes=8902  layout=503ms
-nodes=17802  layout=961ms
-nodes=35602  layout=2804ms
-nodes=71202  layout=4095ms
+nodes=1114  layout=124ms
+nodes=4452  layout=359ms
+nodes=8902  layout=436ms
+nodes=17802  layout=829ms
+nodes=35602  layout=1595ms
+nodes=71202  layout=3748ms
 === ELK layered, SPLINES, defaults (warmed) ===
 nodes=113  edges=112  layout=3ms
-nodes=447  edges=446  layout=32ms
-nodes=1114  edges=1113  layout=38ms
-nodes=2227  edges=2226  layout=128ms
-nodes=4452  edges=4451  layout=254ms
-nodes=8902  edges=8901  layout=528ms
-nodes=17802  edges=17801  layout=1379ms
-nodes=35602  edges=35601  layout=5508ms
+nodes=447  edges=446  layout=19ms
+nodes=1114  edges=1113  layout=36ms
+nodes=2227  edges=2226  layout=105ms
+nodes=4452  edges=4451  layout=271ms
+nodes=8902  edges=8901  layout=584ms
+nodes=17802  edges=17801  layout=1742ms
+nodes=35602  edges=35601  layout=4595ms
 === option sensitivity, ~4.4k nodes ===
-SPLINES  + defaults             nodes=4452  layout=180ms
-ORTHOGONAL + defaults           nodes=4452  layout=524ms
-POLYLINE + defaults             nodes=4452  layout=111ms
+SPLINES  + defaults             nodes=4452  layout=217ms
+ORTHOGONAL + defaults           nodes=4452  layout=380ms
+POLYLINE + defaults             nodes=4452  layout=92ms
 SPLINES  + SIMPLE placement     FAILED: OutOfMemoryError: Java heap space
-SPLINES  + BRANDES_KOEPF        nodes=4452  layout=160ms
-SPLINES  + NETWORK_SIMPLEX      nodes=4452  layout=3656ms
-SPLINES  + LINEAR_SEGMENTS      nodes=4452  layout=724ms
-SPLINES  + thoroughness=1       nodes=4452  layout=157ms
-SPLINES  + crossMin=NONE        nodes=4452  layout=137ms
-ORTHO + SIMPLE + thorough=1     nodes=4452  layout=950ms
-SIMPLE nodes=4452 layout=1494ms OK
-BRANDES_KOEPF nodes=4452 layout=159ms OK
-NETWORK_SIMPLEX nodes=4452 layout=3550ms OK
-LINEAR_SEGMENTS nodes=4452 layout=915ms OK
+SPLINES  + BRANDES_KOEPF        nodes=4452  layout=147ms
+SPLINES  + NETWORK_SIMPLEX      nodes=4452  layout=3389ms
+SPLINES  + LINEAR_SEGMENTS      nodes=4452  layout=596ms
+SPLINES  + thoroughness=1       nodes=4452  layout=236ms
+SPLINES  + crossMin=NONE        nodes=4452  layout=165ms
+ORTHO + SIMPLE + thorough=1     nodes=4452  layout=1016ms
+SIMPLE nodes=4452 layout=1901ms OK
+BRANDES_KOEPF nodes=4452 layout=163ms OK
+NETWORK_SIMPLEX nodes=4452 layout=3049ms OK
+LINEAR_SEGMENTS nodes=4452 layout=639ms OK
 ]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

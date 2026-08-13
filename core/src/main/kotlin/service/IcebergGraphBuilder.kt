@@ -184,6 +184,7 @@ object IcebergGraphBuilder {
                                 )
                             },
                             shownEntryCount = minOf(unifiedDataFiles.size, MAX_FILES_PER_MANIFEST),
+                            schema = unifiedManifest.schema,
                             localPath = unifiedManifest.path.toString()
                         )
                     }
@@ -211,6 +212,7 @@ object IcebergGraphBuilder {
                                         id = fId,
                                         entry = entry,
                                         simpleId = simpleId,
+                                        schema = unifiedManifest.schema,
                                         localPath = unifiedDataFile.path.toString()
                                     )
                                 }

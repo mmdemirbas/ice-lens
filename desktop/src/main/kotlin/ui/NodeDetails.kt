@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import model.DataFile
 import model.DataFileContent
+import model.DecodedValue
 import model.GraphModel
 import model.GraphNode
 import model.KeyValuePairBytes
@@ -99,6 +100,17 @@ private fun ByteArray.toHexShort(maxBytes: Int = 24): String {
 
 private fun kvBytes(values: List<KeyValuePairBytes>?): String =
     if (values.isNullOrEmpty()) "[]" else values.joinToString(", ") { "${it.key}:${it.value.toHexShort()}" }
+
+/**
+ * A decoded bound for a table cell. A value that failed to decode shows its hex with the reason
+ * appended rather than a bare "N/A" — the reader needs to know the difference between "no bound
+ * was recorded" and "a bound was recorded and we could not read it".
+ */
+private fun boundDisplay(bound: DecodedValue?): String = when {
+    bound == null -> "N/A"
+    bound.isError -> "${bound.display} — ${bound.error}"
+    else -> bound.display
+}
 
 private fun longs(values: List<Long>?): String =
     if (values.isNullOrEmpty()) "[]" else values.joinToString(", ")
@@ -1223,15 +1235,48 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Sort Order ID", "${node.data.sortOrderId ?: "N/A"}")
                             DetailRow("Split Offsets", longs(node.data.splitOffsets))
                             DetailRow("Equality IDs", node.data.equalityIds?.joinToString(", ") ?: "N/A")
-                            DetailRow("Partition", "N/A")
-                            DetailRow("Column Sizes", kvLongs(node.data.columnSizes))
-                            DetailRow("Value Counts", kvLongs(node.data.valueCounts))
-                            DetailRow("Null Value Counts", kvLongs(node.data.nullValueCounts))
-                            DetailRow("NaN Value Counts", kvLongs(node.data.nanValueCounts))
-                            DetailRow("Lower Bounds", kvBytes(node.data.lowerBounds))
-                            DetailRow("Upper Bounds", kvBytes(node.data.upperBounds))
                             val filePath = node.data.filePath
                             DetailRow("Path", "${filePath ?: "N/A"}", copyable = true)
+                        }
+
+                        // The five per-column statistics maps, pivoted into one row per column and
+                        // decoded against the schema this file's manifest was written with. Stored
+                        // as parallel maps keyed by field id, they are unreadable in their raw form.
+                        val columnStats = node.columnStats
+                        if (columnStats.isNotEmpty()) {
+                            Spacer(Modifier.height(16.dp))
+                            SectionTitle("Column Statistics (${formatCount(columnStats.size)})")
+                            if (node.schema == null) {
+                                Text(
+                                    "This manifest carried no schema, so bounds are shown as raw bytes. " +
+                                        "Decoding without a type would produce a plausible wrong value.",
+                                    fontSize = 11.sp,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                            }
+                            WideTable(
+                                headers = listOf(
+                                    "Field ID", "Column", "Type", "Lower Bound", "Upper Bound",
+                                    "Values", "Nulls", "NaNs", "Column Size", "Lower (raw)", "Upper (raw)"
+                                ),
+                                rows = columnStats.map { stat ->
+                                    listOf(
+                                        "${stat.fieldId}",
+                                        stat.displayName,
+                                        stat.type?.typeName ?: "unknown",
+                                        boundDisplay(stat.lowerBound),
+                                        boundDisplay(stat.upperBound),
+                                        stat.valueCount?.let { formatCount(it) } ?: "N/A",
+                                        stat.nullValueCount?.let { formatCount(it) }
+                                            ?.plus(if (stat.isAllNull) " (all)" else "") ?: "N/A",
+                                        stat.nanValueCount?.let { formatCount(it) } ?: "N/A",
+                                        stat.columnSizeBytes?.let { formatBytes(it) } ?: "N/A",
+                                        stat.lowerBound?.raw?.toHexShort() ?: "N/A",
+                                        stat.upperBound?.raw?.toHexShort() ?: "N/A",
+                                    )
+                                }
+                            )
                         }
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)

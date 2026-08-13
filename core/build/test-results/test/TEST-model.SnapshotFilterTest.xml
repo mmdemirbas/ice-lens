@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="model.SnapshotFilterTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:12.742Z" hostname="muhammed-mbp" time="0.006">
+<testsuite name="model.SnapshotFilterTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:58:44.224Z" hostname="muhammed-mbp" time="0.006">
   <properties/>
   <testcase name="filteredGraphModel removes invisible nodes and edges()" classname="model.SnapshotFilterTest" time="0.002"/>
   <testcase name="asSnapshotFilterOption maps Iceberg SnapshotNode()" classname="model.SnapshotFilterTest" time="0.001"/>
   <testcase name="filteredGraphModel returns same graph when all visible()" classname="model.SnapshotFilterTest" time="0.0"/>
-  <testcase name="selecting a snapshot includes ancestors and descendants()" classname="model.SnapshotFilterTest" time="0.002"/>
+  <testcase name="selecting a snapshot includes ancestors and descendants()" classname="model.SnapshotFilterTest" time="0.001"/>
   <testcase name="empty selection returns all node ids()" classname="model.SnapshotFilterTest" time="0.0"/>
   <testcase name="selecting a Paimon snapshot includes ancestors and descendants()" classname="model.SnapshotFilterTest" time="0.0"/>
   <testcase name="asSnapshotFilterOption maps Paimon PaimonSnapshotNode()" classname="model.SnapshotFilterTest" time="0.001"/>

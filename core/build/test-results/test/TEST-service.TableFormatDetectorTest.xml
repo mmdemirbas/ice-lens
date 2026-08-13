@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="service.TableFormatDetectorTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:51.803Z" hostname="muhammed-mbp" time="0.007">
+<testsuite name="service.TableFormatDetectorTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:59:22.061Z" hostname="muhammed-mbp" time="0.014">
   <properties/>
-  <testcase name="detect returns UNKNOWN for empty directory()" classname="service.TableFormatDetectorTest" time="0.001"/>
+  <testcase name="detect returns UNKNOWN for empty directory()" classname="service.TableFormatDetectorTest" time="0.004"/>
   <testcase name="detect returns UNKNOWN for non-directory()" classname="service.TableFormatDetectorTest" time="0.0"/>
   <testcase name="detect returns UNKNOWN for directory with metadata but no json files()" classname="service.TableFormatDetectorTest" time="0.001"/>
-  <testcase name="detect returns PAIMON for directory with snapshot and schema subdirs()" classname="service.TableFormatDetectorTest" time="0.001"/>
-  <testcase name="Iceberg takes precedence over Paimon when both markers exist()" classname="service.TableFormatDetectorTest" time="0.001"/>
+  <testcase name="detect returns PAIMON for directory with snapshot and schema subdirs()" classname="service.TableFormatDetectorTest" time="0.002"/>
+  <testcase name="Iceberg takes precedence over Paimon when both markers exist()" classname="service.TableFormatDetectorTest" time="0.002"/>
   <testcase name="isPaimonTable returns false for directory with only schema()" classname="service.TableFormatDetectorTest" time="0.001"/>
   <testcase name="detect returns ICEBERG for directory with metadata json()" classname="service.TableFormatDetectorTest" time="0.001"/>
-  <testcase name="isPaimonTable returns false for directory with only snapshot()" classname="service.TableFormatDetectorTest" time="0.0"/>
-  <system-out><![CDATA[00:47:51.806 [Test worker] DEBUG service.TableFormatDetector -- Detected PAIMON table at: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon17795948957258794639
-00:47:51.807 [Test worker] DEBUG service.TableFormatDetector -- Detected ICEBERG table at: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/both10761804843789832734
-00:47:51.809 [Test worker] DEBUG service.TableFormatDetector -- Detected ICEBERG table at: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg4747634455848060245
+  <testcase name="isPaimonTable returns false for directory with only snapshot()" classname="service.TableFormatDetectorTest" time="0.001"/>
+  <system-out><![CDATA[00:59:22.070 [Test worker] DEBUG service.TableFormatDetector -- Detected PAIMON table at: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/paimon3560678036219041856
+00:59:22.071 [Test worker] DEBUG service.TableFormatDetector -- Detected ICEBERG table at: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/both9994517983793426075
+00:59:22.074 [Test worker] DEBUG service.TableFormatDetector -- Detected ICEBERG table at: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg7197455385692621845
 ]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

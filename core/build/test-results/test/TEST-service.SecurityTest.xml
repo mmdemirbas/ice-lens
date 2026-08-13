@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="service.SecurityTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:51.800Z" hostname="muhammed-mbp" time="0.002">
+<testsuite name="service.SecurityTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:59:22.058Z" hostname="muhammed-mbp" time="0.002">
   <properties/>
   <testcase name="IcebergReader rejects ftp URI scheme()" classname="service.SecurityTest" time="0.001"/>
   <testcase name="IcebergReader accepts file URI scheme()" classname="service.SecurityTest" time="0.0"/>
@@ -8,17 +8,17 @@
   <testcase name="SampleRowReader rejects files with disallowed extensions()" classname="service.SecurityTest" time="0.001"/>
   <testcase name="SampleRowReader rejects directories()" classname="service.SecurityTest" time="0.0"/>
   <testcase name="IcebergReader rejects jar URI scheme()" classname="service.SecurityTest" time="0.0"/>
-  <system-out><![CDATA[00:47:51.800 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: ftp://evil.com/manifests/file.avro
-00:47:51.800 [Test worker] DEBUG service.AvroReader -- Reading Avro file: ftp://evil.com/manifests/file.avro (type=ManifestEntry)
-00:47:51.800 [Test worker] ERROR service.AvroReader -- Unsupported URI scheme in Avro path: ftp://evil.com/manifests/file.avro
-00:47:51.801 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: file:///nonexistent/manifest.avro
-00:47:51.801 [Test worker] DEBUG service.AvroReader -- Reading Avro file: file:///nonexistent/manifest.avro (type=ManifestListEntry)
-00:47:51.801 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: http://evil.com/malware.avro
-00:47:51.801 [Test worker] DEBUG service.AvroReader -- Reading Avro file: http://evil.com/malware.avro (type=ManifestListEntry)
-00:47:51.801 [Test worker] ERROR service.AvroReader -- Unsupported URI scheme in Avro path: http://evil.com/malware.avro
-00:47:51.802 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: jar:file:///tmp/evil.jar!/manifest.avro
-00:47:51.802 [Test worker] DEBUG service.AvroReader -- Reading Avro file: jar:file:///tmp/evil.jar!/manifest.avro (type=ManifestListEntry)
-00:47:51.802 [Test worker] ERROR service.AvroReader -- Unsupported URI scheme in Avro path: jar:file:///tmp/evil.jar!/manifest.avro
+  <system-out><![CDATA[00:59:22.058 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: ftp://evil.com/manifests/file.avro
+00:59:22.059 [Test worker] DEBUG service.AvroReader -- Reading Avro file: ftp://evil.com/manifests/file.avro (type=ManifestEntry)
+00:59:22.059 [Test worker] ERROR service.AvroReader -- Unsupported URI scheme in Avro path: ftp://evil.com/manifests/file.avro
+00:59:22.059 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: file:///nonexistent/manifest.avro
+00:59:22.059 [Test worker] DEBUG service.AvroReader -- Reading Avro file: file:///nonexistent/manifest.avro (type=ManifestListEntry)
+00:59:22.059 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: http://evil.com/malware.avro
+00:59:22.059 [Test worker] DEBUG service.AvroReader -- Reading Avro file: http://evil.com/malware.avro (type=ManifestListEntry)
+00:59:22.059 [Test worker] ERROR service.AvroReader -- Unsupported URI scheme in Avro path: http://evil.com/malware.avro
+00:59:22.060 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: jar:file:///tmp/evil.jar!/manifest.avro
+00:59:22.060 [Test worker] DEBUG service.AvroReader -- Reading Avro file: jar:file:///tmp/evil.jar!/manifest.avro (type=ManifestListEntry)
+00:59:22.060 [Test worker] ERROR service.AvroReader -- Unsupported URI scheme in Avro path: jar:file:///tmp/evil.jar!/manifest.avro
 ]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

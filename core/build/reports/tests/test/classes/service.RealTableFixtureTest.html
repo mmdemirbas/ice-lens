@@ -41,7 +41,7 @@
 </td>
 <td>
 <div class="infoBox" id="duration">
-<div class="counter">0.887s</div>
+<div class="counter">3.058s</div>
 <p>duration</p>
 </div>
 </td>
@@ -79,12 +79,12 @@
 </thead>
 <tr>
 <td class="success">the example Iceberg table decodes with no read errors()</td>
-<td class="success">0.023s</td>
+<td class="success">0.012s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">the example Paimon table decodes with no read errors()</td>
-<td class="success">0.864s</td>
+<td class="success">3.046s</td>
 <td class="success">passed</td>
 </tr>
 </table>
@@ -92,35 +92,35 @@
 <div class="tab">
 <h2>Standard output</h2>
 <span class="code">
-<pre>00:47:49.221 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test
-00:47:49.223 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/schema/schema-0
-00:47:49.224 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=2
-00:47:49.224 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
-00:47:49.224 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
-00:47:49.225 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/snapshot/snapshot-1
-00:47:49.225 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
-00:47:49.225 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-list-a36b40ad-a45e-49a7-902f-549076a72a01-0
-00:47:49.225 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-list-a36b40ad-a45e-49a7-902f-549076a72a01-0 (type=PaimonManifestFileMeta)
-00:47:49.229 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-list-a36b40ad-a45e-49a7-902f-549076a72a01-0 (0 entries, 0 errors)
-00:47:49.229 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-list-a36b40ad-a45e-49a7-902f-549076a72a01-1
-00:47:49.229 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-list-a36b40ad-a45e-49a7-902f-549076a72a01-1 (type=PaimonManifestFileMeta)
-00:47:50.083 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-list-a36b40ad-a45e-49a7-902f-549076a72a01-1 (1 entries, 0 errors)
-00:47:50.083 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-63cde940-c2d1-4bde-a380-22821d72df1c-0
-00:47:50.083 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-63cde940-c2d1-4bde-a380-22821d72df1c-0 (type=PaimonManifestEntry)
-00:47:50.084 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-63cde940-c2d1-4bde-a380-22821d72df1c-0 (1 entries, 0 errors)
-00:47:50.084 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 1 manifests, 1 data files, 0 errors
-00:47:50.085 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test
-00:47:50.086 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/v2.metadata.json
-00:47:50.089 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:50.089 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/v1.metadata.json
-00:47:50.089 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=0
-00:47:50.089 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro
-00:47:50.089 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro (type=ManifestListEntry)
-00:47:50.092 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro (1 entries, 0 errors)
-00:47:50.092 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro
-00:47:50.092 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro (type=ManifestEntry)
-00:47:50.100 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro (1 entries, 0 errors)
-00:47:50.101 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 1 snapshots, 0 errors
+<pre>00:59:17.467 [Test worker] INFO model.PaimonUnifiedModel -- Loading Paimon table: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test
+00:59:17.467 [Test worker] DEBUG service.PaimonReader -- Reading Paimon schema: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/schema/schema-0
+00:59:17.468 [Test worker] DEBUG service.PaimonReader -- Paimon schema read: id=0, fields=2
+00:59:17.468 [Test worker] INFO model.PaimonUnifiedModel --   Schemas loaded: 1
+00:59:17.468 [Test worker] INFO model.PaimonUnifiedModel --   Snapshot files found: 1
+00:59:17.468 [Test worker] DEBUG service.PaimonReader -- Reading Paimon snapshot: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/snapshot/snapshot-1
+00:59:17.468 [Test worker] DEBUG service.PaimonReader -- Paimon snapshot read: id=1, schemaId=0, commitKind=APPEND
+00:59:17.468 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-list-a36b40ad-a45e-49a7-902f-549076a72a01-0
+00:59:17.468 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-list-a36b40ad-a45e-49a7-902f-549076a72a01-0 (type=PaimonManifestFileMeta)
+00:59:17.469 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-list-a36b40ad-a45e-49a7-902f-549076a72a01-0 (0 entries, 0 errors)
+00:59:17.469 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest list: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-list-a36b40ad-a45e-49a7-902f-549076a72a01-1
+00:59:17.469 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-list-a36b40ad-a45e-49a7-902f-549076a72a01-1 (type=PaimonManifestFileMeta)
+00:59:20.511 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-list-a36b40ad-a45e-49a7-902f-549076a72a01-1 (1 entries, 0 errors)
+00:59:20.511 [Test worker] DEBUG service.PaimonReader -- Reading Paimon manifest: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-63cde940-c2d1-4bde-a380-22821d72df1c-0
+00:59:20.511 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-63cde940-c2d1-4bde-a380-22821d72df1c-0 (type=PaimonManifestEntry)
+00:59:20.512 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/paimon/db.db/test/manifest/manifest-63cde940-c2d1-4bde-a380-22821d72df1c-0 (1 entries, 0 errors)
+00:59:20.512 [Test worker] INFO model.PaimonUnifiedModel --   Paimon table loaded: 1 snapshots, 1 manifests, 1 data files, 0 errors
+00:59:20.513 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test
+00:59:20.513 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/v2.metadata.json
+00:59:20.514 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:59:20.514 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/v1.metadata.json
+00:59:20.514 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=0
+00:59:20.514 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro
+00:59:20.514 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro (type=ManifestListEntry)
+00:59:20.515 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro (1 entries, 0 errors)
+00:59:20.515 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro
+00:59:20.515 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro (type=ManifestEntry)
+00:59:20.517 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro (1 entries, 0 errors)
+00:59:20.517 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 1 snapshots, 0 errors
 </pre>
 </span>
 </div>
@@ -132,7 +132,7 @@
 <input id="line-wrapping-toggle" type="checkbox" autocomplete="off"/>
 </label>
 </div>Generated by 
-<a href="https://www.gradle.org">Gradle 9.0.0</a> at Aug 14, 2026, 12:47:51 AM</p>
+<a href="https://www.gradle.org">Gradle 9.0.0</a> at Aug 14, 2026, 12:59:22 AM</p>
 </div>
 </div>
 </body>

@@ -18,16 +18,39 @@ object AvroReader {
     @PublishedApi internal val logger = LoggerFactory.getLogger(AvroReader::class.java)
     @PublishedApi internal val URI_SCHEME_PATTERN = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:.*")
 
-    /** Result of reading an Avro file: successfully decoded entries plus per-record errors. */
+    /**
+     * Result of reading an Avro file: decoded entries, per-record errors, and the file's own
+     * key-value metadata.
+     *
+     * [fileMetadata] is not incidental. An Iceberg manifest records the schema its bounds were
+     * written against under a `schema` key, and its partition spec under `partition-spec` — and
+     * those are the only correct sources for decoding `lower_bounds`, `upper_bounds` and
+     * `partition`. Reading them from the table's *current* metadata.json instead appears to work
+     * and silently produces wrong values for any file written before a type change.
+     */
     data class ReadResult<T>(
         val entries: List<T>,
         val errors: List<ReadError> = emptyList(),
+        val fileMetadata: Map<String, String> = emptyMap(),
     )
 
     data class ReadError(
         val message: String,
         val stackTrace: String? = null,
     )
+
+    /** Avro file-metadata keys Iceberg writes into every manifest. */
+    object MetaKeys {
+        /** The Iceberg schema, as JSON, that this manifest's values were written against. */
+        const val SCHEMA = "schema"
+
+        /** The partition spec's fields, as JSON, for this manifest. */
+        const val PARTITION_SPEC = "partition-spec"
+
+        const val PARTITION_SPEC_ID = "partition-spec-id"
+        const val FORMAT_VERSION = "format-version"
+        const val CONTENT = "content"
+    }
 
     /**
      * Reads an Avro file and decodes each record into [T] using avro4k.
@@ -66,8 +89,14 @@ object AvroReader {
                 rowIndex++
             }
 
+            val fileMetadata = reader.metaKeys.associateWith { key ->
+                // Avro metadata values are bytes; Iceberg writes UTF-8 text. A value that is not
+                // text comes back as whatever the bytes decode to rather than failing the read.
+                runCatching { reader.getMetaString(key) }.getOrNull().orEmpty()
+            }
+
             logger.debug("Avro file read complete: {} ({} entries, {} errors)", localPath, entries.size, errors.size)
-            ReadResult(entries = entries, errors = errors)
+            ReadResult(entries = entries, errors = errors, fileMetadata = fileMetadata)
         }
     }
 }

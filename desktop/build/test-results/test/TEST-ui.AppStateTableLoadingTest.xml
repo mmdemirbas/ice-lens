@@ -1,112 +1,112 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="ui.AppStateTableLoadingTest" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:52.674Z" hostname="muhammed-mbp" time="1.095">
+<testsuite name="ui.AppStateTableLoadingTest" tests="13" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:59:25.842Z" hostname="muhammed-mbp" time="1.078">
   <properties/>
-  <testcase name="loadTable sets error for corrupt metadata()" classname="ui.AppStateTableLoadingTest" time="0.629"/>
-  <testcase name="forceReloadFromFs reloads when fingerprint changes()" classname="ui.AppStateTableLoadingTest" time="0.3"/>
-  <testcase name="loadTable persists selectedTablePath()" classname="ui.AppStateTableLoadingTest" time="0.014"/>
-  <testcase name="loadTable detects Paimon format correctly()" classname="ui.AppStateTableLoadingTest" time="0.031"/>
+  <testcase name="loadTable sets error for corrupt metadata()" classname="ui.AppStateTableLoadingTest" time="0.619"/>
+  <testcase name="forceReloadFromFs reloads when fingerprint changes()" classname="ui.AppStateTableLoadingTest" time="0.274"/>
+  <testcase name="loadTable persists selectedTablePath()" classname="ui.AppStateTableLoadingTest" time="0.013"/>
+  <testcase name="loadTable detects Paimon format correctly()" classname="ui.AppStateTableLoadingTest" time="0.03"/>
   <testcase name="loadTable handles non-existent table path gracefully()" classname="ui.AppStateTableLoadingTest" time="0.007"/>
   <testcase name="loadTable replaces graph when switching to missing table with forceReloadFromFs()" classname="ui.AppStateTableLoadingTest" time="0.016"/>
-  <testcase name="loadTable caches session and returns cache on second call()" classname="ui.AppStateTableLoadingTest" time="0.012"/>
-  <testcase name="loadTable with forceRelayout bypasses cache()" classname="ui.AppStateTableLoadingTest" time="0.019"/>
-  <testcase name="loadTable loads Paimon table and populates graph()" classname="ui.AppStateTableLoadingTest" time="0.011"/>
-  <testcase name="cache-hit after reapply leaves graph at cached value()" classname="ui.AppStateTableLoadingTest" time="0.016"/>
-  <testcase name="forceReloadFromFs skips reload if fingerprint unchanged()" classname="ui.AppStateTableLoadingTest" time="0.011"/>
-  <testcase name="rapid sequential loads end on the latest graph()" classname="ui.AppStateTableLoadingTest" time="0.015"/>
-  <testcase name="loadTable loads Iceberg table and populates graph()" classname="ui.AppStateTableLoadingTest" time="0.01"/>
-  <system-out><![CDATA[00:47:52.873 INFO  [ui.AppState] Loading persisted workspace state
-00:47:52.898 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test1224116852076018837 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:52.915 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test1224116852076018837
-00:47:52.935 INFO  [model.UnifiedModel]   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
-00:47:52.935 WARN  [model.UnifiedModel]   Read error [read-metadata-json] /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test1224116852076018837/metadata/v1.metadata.json: Unexpected JSON token at offset 0: Expected start of the object '{', but had 'N' instead at path: $
+  <testcase name="loadTable caches session and returns cache on second call()" classname="ui.AppStateTableLoadingTest" time="0.011"/>
+  <testcase name="loadTable with forceRelayout bypasses cache()" classname="ui.AppStateTableLoadingTest" time="0.018"/>
+  <testcase name="loadTable loads Paimon table and populates graph()" classname="ui.AppStateTableLoadingTest" time="0.013"/>
+  <testcase name="cache-hit after reapply leaves graph at cached value()" classname="ui.AppStateTableLoadingTest" time="0.017"/>
+  <testcase name="forceReloadFromFs skips reload if fingerprint unchanged()" classname="ui.AppStateTableLoadingTest" time="0.013"/>
+  <testcase name="rapid sequential loads end on the latest graph()" classname="ui.AppStateTableLoadingTest" time="0.023"/>
+  <testcase name="loadTable loads Iceberg table and populates graph()" classname="ui.AppStateTableLoadingTest" time="0.02"/>
+  <system-out><![CDATA[00:59:26.025 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.044 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4840206756986650314 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.058 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4840206756986650314
+00:59:26.083 INFO  [model.UnifiedModel]   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
+00:59:26.084 WARN  [model.UnifiedModel]   Read error [read-metadata-json] /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4840206756986650314/metadata/v1.metadata.json: Unexpected JSON token at offset 0: Expected start of the object '{', but had 'N' instead at path: $
 JSON input: NOT JSON
-00:47:53.273 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test1224116852076018837 (2 nodes, 1 edges)
-00:47:53.489 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.490 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test6942607845482632723 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.491 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test6942607845482632723
-00:47:53.524 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:53.533 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test6942607845482632723 (5 nodes, 4 edges)
-00:47:53.590 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test6942607845482632723 (showRows=true, forceRelayout=false, forceReloadFromFs=true, preservePositions=false)
-00:47:53.591 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test6942607845482632723
-00:47:53.595 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:53.599 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test6942607845482632723 (5 nodes, 4 edges)
-00:47:53.604 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.604 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test10967207302315005953 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.605 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test10967207302315005953
-00:47:53.608 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:53.612 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test10967207302315005953 (5 nodes, 4 edges)
-00:47:53.613 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.621 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.621 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test2468296768094363069 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.624 INFO  [m.PaimonUnifiedModel] Loading Paimon table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test2468296768094363069
-00:47:53.627 INFO  [m.PaimonUnifiedModel]   Schemas loaded: 1
-00:47:53.627 INFO  [m.PaimonUnifiedModel]   Snapshot files found: 1
-00:47:53.633 INFO  [m.PaimonUnifiedModel]   Paimon table loaded: 1 snapshots, 1 manifests, 1 data files, 0 errors
-00:47:53.643 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test2468296768094363069 (6 nodes, 5 edges)
-00:47:53.647 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.648 INFO  [ui.AppState] Loading table: /nonexistent/table/path (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.648 INFO  [model.UnifiedModel] Loading Iceberg table: /nonexistent/table/path
-00:47:53.649 INFO  [model.UnifiedModel]   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
-00:47:53.649 WARN  [model.UnifiedModel]   Read error [list-metadata-files] /nonexistent/table/path/metadata: /nonexistent/table/path/metadata
-00:47:53.651 INFO  [ui.AppState] Table loaded successfully: /nonexistent/table/path (2 nodes, 1 edges)
-00:47:53.654 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.655 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4477046345672521748 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.656 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4477046345672521748
-00:47:53.660 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:53.663 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4477046345672521748 (5 nodes, 4 edges)
-00:47:53.664 INFO  [ui.AppState] Loading table: /nonexistent/deleted-table-105668497002250 (showRows=true, forceRelayout=false, forceReloadFromFs=true, preservePositions=false)
-00:47:53.665 INFO  [model.UnifiedModel] Loading Iceberg table: /nonexistent/deleted-table-105668497002250
-00:47:53.665 INFO  [model.UnifiedModel]   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
-00:47:53.665 WARN  [model.UnifiedModel]   Read error [list-metadata-files] /nonexistent/deleted-table-105668497002250/metadata: /nonexistent/deleted-table-105668497002250/metadata
-00:47:53.667 INFO  [ui.AppState] Table loaded successfully: /nonexistent/deleted-table-105668497002250 (2 nodes, 1 edges)
-00:47:53.672 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.672 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test5079200580605276847 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.673 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test5079200580605276847
-00:47:53.676 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:53.679 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test5079200580605276847 (5 nodes, 4 edges)
-00:47:53.684 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.685 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test7455597797647558824 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.686 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test7455597797647558824
-00:47:53.689 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:53.693 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test7455597797647558824 (5 nodes, 4 edges)
-00:47:53.693 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test7455597797647558824 (showRows=true, forceRelayout=true, forceReloadFromFs=false, preservePositions=false)
-00:47:53.694 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test7455597797647558824
-00:47:53.696 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:53.699 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test7455597797647558824 (5 nodes, 4 edges)
-00:47:53.703 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.704 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test9852107602934345022 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.705 INFO  [m.PaimonUnifiedModel] Loading Paimon table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test9852107602934345022
-00:47:53.705 INFO  [m.PaimonUnifiedModel]   Schemas loaded: 1
-00:47:53.705 INFO  [m.PaimonUnifiedModel]   Snapshot files found: 1
-00:47:53.708 INFO  [m.PaimonUnifiedModel]   Paimon table loaded: 1 snapshots, 1 manifests, 1 data files, 0 errors
-00:47:53.711 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test9852107602934345022 (6 nodes, 5 edges)
-00:47:53.716 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.716 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test13991535694072076269 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.717 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test13991535694072076269
-00:47:53.720 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:53.722 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test13991535694072076269 (5 nodes, 4 edges)
-00:47:53.732 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.733 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16700904853258509924 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.733 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16700904853258509924
-00:47:53.735 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:53.738 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16700904853258509924 (5 nodes, 4 edges)
-00:47:53.739 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16700904853258509924 (showRows=true, forceRelayout=false, forceReloadFromFs=true, preservePositions=false)
-00:47:53.739 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16700904853258509924 (5 nodes, 4 edges)
-00:47:53.743 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.744 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test18119911977611037752 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.745 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test18119911977611037752
-00:47:53.747 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:53.750 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test18119911977611037752 (5 nodes, 4 edges)
-00:47:53.751 INFO  [ui.AppState] Loading table: /nonexistent/105668583652958 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.751 INFO  [model.UnifiedModel] Loading Iceberg table: /nonexistent/105668583652958
-00:47:53.752 INFO  [model.UnifiedModel]   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
-00:47:53.752 WARN  [model.UnifiedModel]   Read error [list-metadata-files] /nonexistent/105668583652958/metadata: /nonexistent/105668583652958/metadata
-00:47:53.753 INFO  [ui.AppState] Table loaded successfully: /nonexistent/105668583652958 (2 nodes, 1 edges)
-00:47:53.758 INFO  [ui.AppState] Loading persisted workspace state
-00:47:53.759 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test17955676840805414049 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
-00:47:53.760 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test17955676840805414049
-00:47:53.762 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:53.764 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test17955676840805414049 (5 nodes, 4 edges)
+00:59:26.436 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4840206756986650314 (2 nodes, 1 edges)
+00:59:26.625 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.626 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test10915563550977749132 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.627 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test10915563550977749132
+00:59:26.658 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:59:26.667 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test10915563550977749132 (5 nodes, 4 edges)
+00:59:26.725 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test10915563550977749132 (showRows=true, forceRelayout=false, forceReloadFromFs=true, preservePositions=false)
+00:59:26.726 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test10915563550977749132
+00:59:26.730 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:59:26.734 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test10915563550977749132 (5 nodes, 4 edges)
+00:59:26.740 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.740 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test15179237940108629002 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.741 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test15179237940108629002
+00:59:26.744 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:59:26.749 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test15179237940108629002 (5 nodes, 4 edges)
+00:59:26.749 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.756 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.757 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test3731574618033134927 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.759 INFO  [m.PaimonUnifiedModel] Loading Paimon table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test3731574618033134927
+00:59:26.761 INFO  [m.PaimonUnifiedModel]   Schemas loaded: 1
+00:59:26.762 INFO  [m.PaimonUnifiedModel]   Snapshot files found: 1
+00:59:26.767 INFO  [m.PaimonUnifiedModel]   Paimon table loaded: 1 snapshots, 1 manifests, 1 data files, 0 errors
+00:59:26.778 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test3731574618033134927 (6 nodes, 5 edges)
+00:59:26.782 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.783 INFO  [ui.AppState] Loading table: /nonexistent/table/path (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.783 INFO  [model.UnifiedModel] Loading Iceberg table: /nonexistent/table/path
+00:59:26.784 INFO  [model.UnifiedModel]   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
+00:59:26.784 WARN  [model.UnifiedModel]   Read error [list-metadata-files] /nonexistent/table/path/metadata: /nonexistent/table/path/metadata
+00:59:26.786 INFO  [ui.AppState] Table loaded successfully: /nonexistent/table/path (2 nodes, 1 edges)
+00:59:26.788 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.790 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16410128031850657261 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.791 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16410128031850657261
+00:59:26.794 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:59:26.798 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16410128031850657261 (5 nodes, 4 edges)
+00:59:26.799 INFO  [ui.AppState] Loading table: /nonexistent/deleted-table-106361681574666 (showRows=true, forceRelayout=false, forceReloadFromFs=true, preservePositions=false)
+00:59:26.800 INFO  [model.UnifiedModel] Loading Iceberg table: /nonexistent/deleted-table-106361681574666
+00:59:26.800 INFO  [model.UnifiedModel]   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
+00:59:26.800 WARN  [model.UnifiedModel]   Read error [list-metadata-files] /nonexistent/deleted-table-106361681574666/metadata: /nonexistent/deleted-table-106361681574666/metadata
+00:59:26.803 INFO  [ui.AppState] Table loaded successfully: /nonexistent/deleted-table-106361681574666 (2 nodes, 1 edges)
+00:59:26.807 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.807 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test5499791669070613276 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.808 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test5499791669070613276
+00:59:26.811 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:59:26.814 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test5499791669070613276 (5 nodes, 4 edges)
+00:59:26.819 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.819 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4251963415476340303 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.820 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4251963415476340303
+00:59:26.823 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:59:26.826 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4251963415476340303 (5 nodes, 4 edges)
+00:59:26.827 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4251963415476340303 (showRows=true, forceRelayout=true, forceReloadFromFs=false, preservePositions=false)
+00:59:26.827 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4251963415476340303
+00:59:26.830 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:59:26.833 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test4251963415476340303 (5 nodes, 4 edges)
+00:59:26.837 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.838 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test12424151919696945064 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.839 INFO  [m.PaimonUnifiedModel] Loading Paimon table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test12424151919696945064
+00:59:26.839 INFO  [m.PaimonUnifiedModel]   Schemas loaded: 1
+00:59:26.839 INFO  [m.PaimonUnifiedModel]   Snapshot files found: 1
+00:59:26.841 INFO  [m.PaimonUnifiedModel]   Paimon table loaded: 1 snapshots, 1 manifests, 1 data files, 0 errors
+00:59:26.845 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test12424151919696945064 (6 nodes, 5 edges)
+00:59:26.850 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.851 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test9492253755222251644 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.851 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test9492253755222251644
+00:59:26.854 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:59:26.858 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test9492253755222251644 (5 nodes, 4 edges)
+00:59:26.867 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.868 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test15545411810078597246 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.868 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test15545411810078597246
+00:59:26.871 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:59:26.875 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test15545411810078597246 (5 nodes, 4 edges)
+00:59:26.875 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test15545411810078597246 (showRows=true, forceRelayout=false, forceReloadFromFs=true, preservePositions=false)
+00:59:26.876 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test15545411810078597246 (5 nodes, 4 edges)
+00:59:26.881 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.883 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test321305457790731605 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.884 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test321305457790731605
+00:59:26.886 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:59:26.890 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test321305457790731605 (5 nodes, 4 edges)
+00:59:26.891 INFO  [ui.AppState] Loading table: /nonexistent/106361773046250 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.891 INFO  [model.UnifiedModel] Loading Iceberg table: /nonexistent/106361773046250
+00:59:26.894 INFO  [model.UnifiedModel]   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
+00:59:26.894 WARN  [model.UnifiedModel]   Read error [list-metadata-files] /nonexistent/106361773046250/metadata: /nonexistent/106361773046250/metadata
+00:59:26.896 INFO  [ui.AppState] Table loaded successfully: /nonexistent/106361773046250 (2 nodes, 1 edges)
+00:59:26.904 INFO  [ui.AppState] Loading persisted workspace state
+00:59:26.904 INFO  [ui.AppState] Loading table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16269877088951911924 (showRows=true, forceRelayout=false, forceReloadFromFs=false, preservePositions=false)
+00:59:26.905 INFO  [model.UnifiedModel] Loading Iceberg table: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16269877088951911924
+00:59:26.916 INFO  [model.UnifiedModel]   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:59:26.919 INFO  [ui.AppState] Table loaded successfully: /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/appstate-load-test16269877088951911924 (5 nodes, 4 edges)
 ]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

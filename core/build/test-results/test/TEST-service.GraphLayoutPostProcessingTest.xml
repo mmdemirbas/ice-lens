@@ -1,51 +1,51 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="service.GraphLayoutPostProcessingTest" tests="15" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:48.061Z" hostname="muhammed-mbp" time="0.045">
+<testsuite name="service.GraphLayoutPostProcessingTest" tests="15" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:59:16.417Z" hostname="muhammed-mbp" time="0.044">
   <properties/>
-  <testcase name="full Iceberg layout has all positions populated and finite()" classname="service.GraphLayoutPostProcessingTest" time="0.015"/>
-  <testcase name="Paimon snapshot nodes do not overlap vertically()" classname="service.GraphLayoutPostProcessingTest" time="0.004"/>
+  <testcase name="full Iceberg layout has all positions populated and finite()" classname="service.GraphLayoutPostProcessingTest" time="0.014"/>
+  <testcase name="Paimon snapshot nodes do not overlap vertically()" classname="service.GraphLayoutPostProcessingTest" time="0.003"/>
   <testcase name="Paimon manifest nodes do not overlap vertically()" classname="service.GraphLayoutPostProcessingTest" time="0.002"/>
   <testcase name="Iceberg snapshots within same metadata ordered by timestamp()" classname="service.GraphLayoutPostProcessingTest" time="0.002"/>
-  <testcase name="Paimon data files within same manifest ordered by simpleId()" classname="service.GraphLayoutPostProcessingTest" time="0.003"/>
-  <testcase name="Iceberg snapshot nodes do not overlap vertically()" classname="service.GraphLayoutPostProcessingTest" time="0.001"/>
-  <testcase name="full Paimon layout has all positions populated and finite()" classname="service.GraphLayoutPostProcessingTest" time="0.001"/>
-  <testcase name="Paimon snapshots ordered by time then ID()" classname="service.GraphLayoutPostProcessingTest" time="0.001"/>
+  <testcase name="Paimon data files within same manifest ordered by simpleId()" classname="service.GraphLayoutPostProcessingTest" time="0.002"/>
+  <testcase name="Iceberg snapshot nodes do not overlap vertically()" classname="service.GraphLayoutPostProcessingTest" time="0.002"/>
+  <testcase name="full Paimon layout has all positions populated and finite()" classname="service.GraphLayoutPostProcessingTest" time="0.002"/>
+  <testcase name="Paimon snapshots ordered by time then ID()" classname="service.GraphLayoutPostProcessingTest" time="0.002"/>
   <testcase name="layout handles single-node graph()" classname="service.GraphLayoutPostProcessingTest" time="0.001"/>
-  <testcase name="Iceberg metadata nodes do not overlap vertically()" classname="service.GraphLayoutPostProcessingTest" time="0.002"/>
-  <testcase name="Iceberg graph dimensions encompass all nodes()" classname="service.GraphLayoutPostProcessingTest" time="0.001"/>
+  <testcase name="Iceberg metadata nodes do not overlap vertically()" classname="service.GraphLayoutPostProcessingTest" time="0.001"/>
+  <testcase name="Iceberg graph dimensions encompass all nodes()" classname="service.GraphLayoutPostProcessingTest" time="0.002"/>
   <testcase name="layout handles graph with error nodes only()" classname="service.GraphLayoutPostProcessingTest" time="0.001"/>
   <testcase name="Paimon graph dimensions encompass all nodes()" classname="service.GraphLayoutPostProcessingTest" time="0.002"/>
   <testcase name="Paimon data file nodes do not overlap vertically()" classname="service.GraphLayoutPostProcessingTest" time="0.002"/>
   <testcase name="Paimon manifest list nodes do not overlap vertically()" classname="service.GraphLayoutPostProcessingTest" time="0.003"/>
-  <system-out><![CDATA[00:47:48.065 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
-00:47:48.065 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 6 nodes, 7 edges
-00:47:48.077 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
-00:47:48.077 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 7 nodes, 10 edges
-00:47:48.081 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
-00:47:48.081 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 11 nodes, 10 edges
-00:47:48.083 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
-00:47:48.084 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 5 nodes, 4 edges
-00:47:48.085 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
-00:47:48.085 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 8 nodes, 7 edges
-00:47:48.088 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
-00:47:48.088 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 6 nodes, 5 edges
-00:47:48.089 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
-00:47:48.090 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 11 nodes, 10 edges
-00:47:48.092 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
-00:47:48.092 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 5 nodes, 6 edges
-00:47:48.093 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
-00:47:48.093 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 1 nodes, 0 edges
-00:47:48.094 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
-00:47:48.095 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 7 nodes, 6 edges
-00:47:48.096 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
-00:47:48.097 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 5 nodes, 4 edges
-00:47:48.099 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test
-00:47:48.099 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 4 nodes, 3 edges
-00:47:48.100 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
-00:47:48.100 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 11 nodes, 11 edges
-00:47:48.102 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
-00:47:48.102 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 8 nodes, 7 edges
-00:47:48.104 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
-00:47:48.104 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 19 nodes, 19 edges
+  <system-out><![CDATA[00:59:16.421 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
+00:59:16.421 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 6 nodes, 7 edges
+00:59:16.433 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
+00:59:16.433 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 7 nodes, 10 edges
+00:59:16.437 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
+00:59:16.437 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 11 nodes, 10 edges
+00:59:16.439 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
+00:59:16.439 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 5 nodes, 4 edges
+00:59:16.441 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
+00:59:16.441 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 8 nodes, 7 edges
+00:59:16.443 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
+00:59:16.443 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 6 nodes, 5 edges
+00:59:16.445 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
+00:59:16.445 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 11 nodes, 10 edges
+00:59:16.447 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
+00:59:16.447 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 5 nodes, 6 edges
+00:59:16.449 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
+00:59:16.449 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 1 nodes, 0 edges
+00:59:16.450 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
+00:59:16.450 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 7 nodes, 6 edges
+00:59:16.451 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test_table
+00:59:16.451 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 5 nodes, 4 edges
+00:59:16.453 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: test
+00:59:16.453 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 4 nodes, 3 edges
+00:59:16.454 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
+00:59:16.455 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 11 nodes, 11 edges
+00:59:16.457 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
+00:59:16.457 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 8 nodes, 7 edges
+00:59:16.459 [Test worker] DEBUG service.GraphLayoutService -- Building PAIMON graph for: test-paimon-table
+00:59:16.459 [Test worker] DEBUG service.GraphLayoutService -- PAIMON graph built: 19 nodes, 19 edges
 ]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

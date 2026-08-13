@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="service.SampleRowReaderTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:47:50.108Z" hostname="muhammed-mbp" time="1.691">
+<testsuite name="service.SampleRowReaderTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:59:20.525Z" hostname="muhammed-mbp" time="1.533">
   <properties/>
   <testcase name="querySampleRows rejects unsupported extension()" classname="service.SampleRowReaderTest" time="0.002"/>
-  <testcase name="querySampleRows handles NULL values()" classname="service.SampleRowReaderTest" time="1.64"/>
-  <testcase name="querySampleRows respects row limit()" classname="service.SampleRowReaderTest" time="0.017"/>
-  <testcase name="querySampleRows reads Parquet file created by DuckDB()" classname="service.SampleRowReaderTest" time="0.01"/>
+  <testcase name="querySampleRows handles NULL values()" classname="service.SampleRowReaderTest" time="1.465"/>
+  <testcase name="querySampleRows respects row limit()" classname="service.SampleRowReaderTest" time="0.018"/>
+  <testcase name="querySampleRows reads Parquet file created by DuckDB()" classname="service.SampleRowReaderTest" time="0.015"/>
   <testcase name="querySampleRows rejects non-existent file()" classname="service.SampleRowReaderTest" time="0.001"/>
   <testcase name="querySampleRows rejects directory()" classname="service.SampleRowReaderTest" time="0.0"/>
   <testcase name="querySampleRows accepts orc extension()" classname="service.SampleRowReaderTest" time="0.002"/>
   <testcase name="querySampleRows handles empty Parquet file()" classname="service.SampleRowReaderTest" time="0.009"/>
-  <testcase name="querySampleRows handles multiple column types()" classname="service.SampleRowReaderTest" time="0.01"/>
-  <system-out><![CDATA[00:47:51.740 [Test worker] DEBUG service.SampleRowReader -- Creating new DuckDB connection
-00:47:51.749 [Test worker] DEBUG service.SampleRowReader -- Sample rows queried: 2 rows from /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/sample-reader-test8008302780681096887/nulls.parquet
-00:47:51.766 [Test worker] DEBUG service.SampleRowReader -- Sample rows queried: 50 rows from /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/sample-reader-test16169806991197739814/many-rows.parquet
-00:47:51.776 [Test worker] DEBUG service.SampleRowReader -- Sample rows queried: 3 rows from /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/sample-reader-test12200586903116315716/test.parquet
-00:47:51.789 [Test worker] DEBUG service.SampleRowReader -- Sample rows queried: 0 rows from /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/sample-reader-test2598273560768623061/empty.parquet
-00:47:51.799 [Test worker] DEBUG service.SampleRowReader -- Sample rows queried: 1 rows from /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/sample-reader-test9344373845281841328/types.parquet
+  <testcase name="querySampleRows handles multiple column types()" classname="service.SampleRowReaderTest" time="0.021"/>
+  <system-out><![CDATA[00:59:21.983 [Test worker] DEBUG service.SampleRowReader -- Creating new DuckDB connection
+00:59:21.992 [Test worker] DEBUG service.SampleRowReader -- Sample rows queried: 2 rows from /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/sample-reader-test10846075832308159184/nulls.parquet
+00:59:22.010 [Test worker] DEBUG service.SampleRowReader -- Sample rows queried: 50 rows from /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/sample-reader-test7584903765714276496/many-rows.parquet
+00:59:22.025 [Test worker] DEBUG service.SampleRowReader -- Sample rows queried: 3 rows from /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/sample-reader-test2392529949542135040/test.parquet
+00:59:22.037 [Test worker] DEBUG service.SampleRowReader -- Sample rows queried: 0 rows from /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/sample-reader-test10087074232965196017/empty.parquet
+00:59:22.056 [Test worker] DEBUG service.SampleRowReader -- Sample rows queried: 1 rows from /private/var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/sample-reader-test7645520951382098237/types.parquet
 ]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

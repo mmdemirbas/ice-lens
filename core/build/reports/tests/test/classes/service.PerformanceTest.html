@@ -41,7 +41,7 @@
 </td>
 <td>
 <div class="infoBox" id="duration">
-<div class="counter">0.719s</div>
+<div class="counter">0.637s</div>
 <p>duration</p>
 </div>
 </td>
@@ -79,47 +79,47 @@
 </thead>
 <tr>
 <td class="success">DuckDB connection reuse()</td>
-<td class="success">0.006s</td>
+<td class="success">0.005s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">filtered graph model performance()</td>
-<td class="success">0.064s</td>
+<td class="success">0.066s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">graph builder is O(n) in total artifacts()</td>
-<td class="success">0.039s</td>
+<td class="success">0.037s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">graph builder produces realistic edge counts()</td>
-<td class="success">0.007s</td>
+<td class="success">0.003s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">layout large table under 10s()</td>
-<td class="success">0.288s</td>
+<td class="success">0.310s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">layout medium table under 3s()</td>
-<td class="success">0.092s</td>
+<td class="success">0.037s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">layout small table under 500ms()</td>
-<td class="success">0.009s</td>
+<td class="success">0.008s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">node lookup performance with nodeById()</td>
-<td class="success">0.137s</td>
+<td class="success">0.102s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">snapshot filter performance with many nodes()</td>
-<td class="success">0.077s</td>
+<td class="success">0.069s</td>
 <td class="success">passed</td>
 </tr>
 </table>
@@ -127,27 +127,27 @@
 <div class="tab">
 <h2>Standard output</h2>
 <span class="code">
-<pre>00:47:48.499 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: perf_test_table
-00:47:48.501 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 81 nodes, 80 edges
-Small table layout: 8ms
-00:47:48.513 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: perf_test_table
-00:47:48.583 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 4511 nodes, 4510 edges
-Large table layout: 281ms
-00:47:48.795 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: perf_test_table
-00:47:48.807 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 856 nodes, 855 edges
-100x filteredGraphModel: 21ms (0.21ms/call)
-00:47:48.860 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: perf_test_table
-00:47:48.869 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 856 nodes, 855 edges
-10000x full nodeById scan: 98ms
-Small: 81 nodes in 2ms, Large: 605 nodes in 18ms
-Size ratio: 7.4691358, Time ratio: 9.0
-00:47:49.036 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: perf_test_table
-00:47:49.045 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 856 nodes, 855 edges
-100x snapshot filter: 38ms (0.38ms/call)
-5x DuckDB connection attempts: 7ms
-00:47:49.120 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: perf_test_table
-00:47:49.129 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 856 nodes, 855 edges
-Medium table layout: 91ms
+<pre>00:59:16.828 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: perf_test_table
+00:59:16.830 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 81 nodes, 80 edges
+Small table layout: 6ms
+00:59:16.839 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: perf_test_table
+00:59:16.930 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 4511 nodes, 4510 edges
+Large table layout: 305ms
+00:59:17.146 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: perf_test_table
+00:59:17.159 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 856 nodes, 855 edges
+100x filteredGraphModel: 25ms (0.25ms/call)
+00:59:17.212 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: perf_test_table
+00:59:17.225 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 856 nodes, 855 edges
+10000x full nodeById scan: 62ms
+Small: 81 nodes in 3ms, Large: 605 nodes in 18ms
+Size ratio: 7.4691358, Time ratio: 6.0
+00:59:17.352 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: perf_test_table
+00:59:17.362 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 856 nodes, 855 edges
+100x snapshot filter: 33ms (0.33ms/call)
+5x DuckDB connection attempts: 4ms
+00:59:17.430 [Test worker] DEBUG service.GraphLayoutService -- Building ICEBERG graph for: perf_test_table
+00:59:17.439 [Test worker] DEBUG service.GraphLayoutService -- ICEBERG graph built: 856 nodes, 855 edges
+Medium table layout: 31ms
 Graph: 232 nodes, 231 edges (ratio: 0.99568963)
 </pre>
 </span>
@@ -160,7 +160,7 @@ Graph: 232 nodes, 231 edges (ratio: 0.99568963)
 <input id="line-wrapping-toggle" type="checkbox" autocomplete="off"/>
 </label>
 </div>Generated by 
-<a href="https://www.gradle.org">Gradle 9.0.0</a> at Aug 14, 2026, 12:47:51 AM</p>
+<a href="https://www.gradle.org">Gradle 9.0.0</a> at Aug 14, 2026, 12:59:22 AM</p>
 </div>
 </div>
 </body>

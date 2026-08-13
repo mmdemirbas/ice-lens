@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Column statistics are decoded and readable.** A manifest stores per-column stats as five
+  parallel maps keyed by field id — `column_sizes`, `value_counts`, `null_value_counts`,
+  `nan_value_counts`, `lower_bounds`, `upper_bounds` — which the inspector previously showed as
+  raw `1:40, 2:56` strings and hex. They are now pivoted into one row per column with bounds
+  decoded to values, alongside the raw bytes so a decode can always be checked.
+- `AvroReader` keeps each file's Avro key-value metadata. Iceberg records the schema a manifest
+  was written against under its `schema` key; that — not the table's current schema — is the only
+  correct source for decoding its bounds, and using the current one mis-decodes silently across a
+  type change. `UnifiedManifest`, `ManifestNode` and `FileNode` carry it.
+- `ColumnStats` / `columnStatsFor()` in core, with an all-null flag so an absent bound on a
+  populated column is explained rather than blank.
+
+### Changed
+- **Split into `:core` and `:desktop` Gradle modules.** `core` is the headless engine — readers,
+  decoders, model, analysis, ELK layout — and may not depend on a UI toolkit; a Gradle check
+  fails the build if a Compose or AndroidX artifact reaches its compile classpath. `desktop` is
+  Compose over it. A server, CLI or IDE plugin attaches as a sibling of `desktop`.
+- `GraphModel.initialPositions` → `layoutPositions: Map<String, Point>`, immutable. The
+  Compose-observable drag map moved to `ui/NodePositions`, so a `GraphModel` is now cacheable,
+  comparable, serialisable and safe to build off the main thread.
+- `SnapshotFilter` moved to core (pure graph work); `ToolWindowTypes` moved to desktop (holds an
+  `ImageVector`).
+
 ### Fixed
 - **A missing `version-hint.text` was reported as a table read error.** The file is written
   only by HadoopCatalog / HadoopTables; tables managed by Hive, Glue, REST or Nessie catalogs

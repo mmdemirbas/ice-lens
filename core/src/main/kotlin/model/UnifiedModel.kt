@@ -223,9 +223,13 @@ fun UnifiedManifest(manifestPath: Path, manifest: ManifestListEntry): UnifiedMan
     val dataRoot = manifestPath.parent?.parent ?: manifestPath.parent ?: manifestPath
     val normalizedDataRoot = runCatching { dataRoot.toAbsolutePath().normalize() }.getOrElse { dataRoot.normalize() }
 
+    val manifestSchema = dataFiles.fileMetadata[service.AvroReader.MetaKeys.SCHEMA]
+        ?.let(::parseIcebergSchema)
+
     return UnifiedManifest(
         path = manifestPath,
         metadata = manifest,
+        schema = manifestSchema,
         dataFiles = dataFiles.entries.map { dataFile ->
             val metadataDirPrefix = manifest.manifestPath.orEmpty().substringBeforeLast('/')
             val tableDirPrefix = metadataDirPrefix.substringBeforeLast('/')
@@ -282,6 +286,15 @@ data class UnifiedManifest(
     val metadata: ManifestListEntry,
     val dataFiles: List<UnifiedDataFile>,
     val readErrors: List<UnifiedReadError> = emptyList(),
+    /**
+     * The schema this manifest was written against, read from its own Avro file metadata.
+     *
+     * This — not the table's current schema — is the only correct source for decoding the
+     * entries' bounds and partition values. A file written before a type change is described by
+     * the schema in force when it was written, and using the current one instead mis-decodes it
+     * silently rather than failing.
+     */
+    val schema: IcebergSchemaModel? = null,
 )
 
 data class UnifiedDataFile(

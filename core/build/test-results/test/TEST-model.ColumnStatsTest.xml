@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="model.ColumnStatsTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-08-13T21:58:43.499Z" hostname="muhammed-mbp" time="0.369">
+  <properties/>
+  <testcase name="bounds in the example table decode to their real values()" classname="model.ColumnStatsTest" time="0.334"/>
+  <testcase name="a column mentioned by only one statistics map still gets a row()" classname="model.ColumnStatsTest" time="0.0"/>
+  <testcase name="without a schema the counts still come through and the bounds stay undecoded()" classname="model.ColumnStatsTest" time="0.013"/>
+  <testcase name="the manifest carries the schema its bounds were written against()" classname="model.ColumnStatsTest" time="0.018"/>
+  <testcase name="an all-null column is flagged so an absent bound is explained()" classname="model.ColumnStatsTest" time="0.001"/>
+  <system-out><![CDATA[00:58:43.537 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test
+00:58:43.553 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/v2.metadata.json
+00:58:43.600 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:43.601 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/v1.metadata.json
+00:58:43.602 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=0
+00:58:43.603 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro
+00:58:43.608 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro (type=ManifestListEntry)
+00:58:43.754 [Test worker] DEBUG org.apache.avro.file.CodecFactory -- Snappy was not available
+java.lang.NoClassDefFoundError: org/xerial/snappy/Snappy
+	at org.apache.avro.file.SnappyCodec$Option.<clinit>(SnappyCodec.java:35)
+	at org.apache.avro.file.CodecFactory.snappyCodec(CodecFactory.java:71)
+	at org.apache.avro.file.CodecFactory.<clinit>(CodecFactory.java:142)
+	at org.apache.avro.file.DataFileStream.resolveCodec(DataFileStream.java:159)
+	at org.apache.avro.file.DataFileStream.initialize(DataFileStream.java:145)
+	at org.apache.avro.file.DataFileReader.<init>(DataFileReader.java:144)
+	at org.apache.avro.file.DataFileReader.<init>(DataFileReader.java:114)
+	at service.IcebergReader.readManifestList(IcebergReader.kt:48)
+	at model.UnifiedModelKt.UnifiedSnapshot(UnifiedModel.kt:180)
+	at model.UnifiedModelKt.UnifiedTableModel(UnifiedModel.kt:83)
+	at model.ColumnStatsTest.exampleTable(ColumnStatsTest.kt:25)
+	at model.ColumnStatsTest.bounds in the example table decode to their real values(ColumnStatsTest.kt:45)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:767)
+	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)
+	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
+	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$8(TestMethodTestDescriptor.java:217)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:213)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:138)
+	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:68)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:156)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:198)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:169)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:93)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:58)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:141)
+	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:57)
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:103)
+	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:85)
+	at org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:47)
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.processAllTestClasses(JUnitPlatformTestClassProcessor.java:135)
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.access$000(JUnitPlatformTestClassProcessor.java:110)
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor.stop(JUnitPlatformTestClassProcessor.java:104)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.stop(SuiteTestClassProcessor.java:64)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:92)
+	at jdk.proxy1/jdk.proxy1.$Proxy4.stop(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$3.run(TestWorker.java:200)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:132)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:103)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:63)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:122)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:72)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+Caused by: java.lang.ClassNotFoundException: org.xerial.snappy.Snappy
+	at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641)
+	at java.base/jdk.internal.loader.ClassLoaders$AppClassLoader.loadClass(ClassLoaders.java:188)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:525)
+	... 97 common frames omitted
+00:58:43.798 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro (1 entries, 0 errors)
+00:58:43.799 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro
+00:58:43.799 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro (type=ManifestEntry)
+00:58:43.810 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro (1 entries, 0 errors)
+00:58:43.821 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 1 snapshots, 0 errors
+00:58:43.835 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test
+00:58:43.836 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/v2.metadata.json
+00:58:43.836 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:43.836 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/v1.metadata.json
+00:58:43.837 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=0
+00:58:43.837 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro
+00:58:43.837 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro (type=ManifestListEntry)
+00:58:43.838 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro (1 entries, 0 errors)
+00:58:43.838 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro
+00:58:43.838 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro (type=ManifestEntry)
+00:58:43.841 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro (1 entries, 0 errors)
+00:58:43.841 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 1 snapshots, 0 errors
+00:58:43.849 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test
+00:58:43.850 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/v2.metadata.json
+00:58:43.850 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:43.851 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/v1.metadata.json
+00:58:43.858 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=0
+00:58:43.858 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro
+00:58:43.858 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro (type=ManifestListEntry)
+00:58:43.862 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro (1 entries, 0 errors)
+00:58:43.862 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro
+00:58:43.862 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro (type=ManifestEntry)
+00:58:43.864 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /Users/md/dev/mmdemirbas/iceberg-lens/example/iceberg/default/test/metadata/f700fba6-a3d8-4abd-bbe3-0e034c59ffb6-m0.avro (1 entries, 0 errors)
+00:58:43.867 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 1 snapshots, 0 errors
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -41,7 +41,7 @@
 </td>
 <td>
 <div class="infoBox" id="duration">
-<div class="counter">0.387s</div>
+<div class="counter">0.133s</div>
 <p>duration</p>
 </div>
 </td>
@@ -84,12 +84,12 @@
 </tr>
 <tr>
 <td class="success">IcebergReader reads metadata with unknown fields()</td>
-<td class="success">0.003s</td>
+<td class="success">0.002s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">IcebergReader reads minimal metadata with defaults()</td>
-<td class="success">0.002s</td>
+<td class="success">0.001s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
@@ -104,12 +104,12 @@
 </tr>
 <tr>
 <td class="success">UnifiedTableModel deduplicates snapshots across metadata files()</td>
-<td class="success">0.004s</td>
+<td class="success">0.002s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">UnifiedTableModel handles empty metadata directory()</td>
-<td class="success">0.022s</td>
+<td class="success">0.012s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
@@ -119,12 +119,12 @@
 </tr>
 <tr>
 <td class="success">UnifiedTableModel handles missing metadata directory()</td>
-<td class="success">0.002s</td>
+<td class="success">0.001s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">UnifiedTableModel reads metadata files from directory()</td>
-<td class="success">0.164s</td>
+<td class="success">0.016s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
@@ -139,22 +139,22 @@
 </tr>
 <tr>
 <td class="success">UnifiedTableModel sorts metadata by version number()</td>
-<td class="success">0.005s</td>
+<td class="success">0.004s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">UnifiedTableModel treats an absent version-hint as normal, not an error()</td>
-<td class="success">0.002s</td>
+<td class="success">0.001s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">full pipeline graph builder preserves file metadata()</td>
-<td class="success">0.129s</td>
+<td class="success">0.039s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
 <td class="success">full pipeline produces correct graph structure()</td>
-<td class="success">0.006s</td>
+<td class="success">0.008s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
@@ -164,7 +164,7 @@
 </tr>
 <tr>
 <td class="success">full pipeline with delete manifest content type()</td>
-<td class="success">0.008s</td>
+<td class="success">0.007s</td>
 <td class="success">passed</td>
 </tr>
 <tr>
@@ -177,235 +177,134 @@
 <div class="tab">
 <h2>Standard output</h2>
 <span class="code">
-<pre>00:47:12.187 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test10228140407539156843
-00:47:12.199 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 0 metadata files, 0 snapshots, 0 errors
-00:47:12.206 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14725947007461145444
-00:47:12.210 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14725947007461145444/metadata/v1.metadata.json
-00:47:12.236 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:12.237 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14725947007461145444/metadata/snap-1.avro
-00:47:12.241 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14725947007461145444/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:12.366 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:12.436 [Test worker] DEBUG org.apache.avro.file.CodecFactory -- Snappy was not available
-java.lang.NoClassDefFoundError: org/xerial/snappy/Snappy
-	at org.apache.avro.file.SnappyCodec$Option.&lt;clinit&gt;(SnappyCodec.java:35)
-	at org.apache.avro.file.CodecFactory.snappyCodec(CodecFactory.java:71)
-	at org.apache.avro.file.CodecFactory.&lt;clinit&gt;(CodecFactory.java:142)
-	at org.apache.avro.file.DataFileWriter.init(DataFileWriter.java:258)
-	at org.apache.avro.file.DataFileWriter.create(DataFileWriter.java:174)
-	at org.apache.avro.file.DataFileWriter.create(DataFileWriter.java:148)
-	at model.IcebergPipelineTest.writeManifestListAvro(IcebergPipelineTest.kt:522)
-	at model.IcebergPipelineTest.createCompleteTable(IcebergPipelineTest.kt:351)
-	at model.IcebergPipelineTest.full pipeline graph builder preserves file metadata(IcebergPipelineTest.kt:308)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
-	at org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:767)
-	at org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)
-	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)
-	at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
-	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
-	at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
-	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
-	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
-	at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
-	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
-	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
-	at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
-	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
-	at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
-	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$8(TestMethodTestDescriptor.java:217)
-	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
-	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:213)
-	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:138)
-	at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:68)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:156)
-	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
-	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
-	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
-	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
-	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160)
-	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
-	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
-	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
-	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
-	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160)
-	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
-	at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
-	at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
-	at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
-	at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
-	at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
-	at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
-	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:198)
-	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:169)
-	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:93)
-	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:58)
-	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:141)
-	at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:57)
-	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:103)
-	at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:85)
-	at org.junit.platform.launcher.core.DelegatingLauncher.execute(DelegatingLauncher.java:47)
-	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.processAllTestClasses(JUnitPlatformTestClassProcessor.java:135)
-	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.access$000(JUnitPlatformTestClassProcessor.java:110)
-	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor.stop(JUnitPlatformTestClassProcessor.java:104)
-	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.stop(SuiteTestClassProcessor.java:64)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
-	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
-	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
-	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
-	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
-	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:92)
-	at jdk.proxy1/jdk.proxy1.$Proxy4.stop(Unknown Source)
-	at org.gradle.api.internal.tasks.testing.worker.TestWorker$3.run(TestWorker.java:200)
-	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:132)
-	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:103)
-	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:63)
-	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
-	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:122)
-	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:72)
-	at worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
-	at worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
-Caused by: java.lang.ClassNotFoundException: org.xerial.snappy.Snappy
-	at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641)
-	at java.base/jdk.internal.loader.ClassLoaders$AppClassLoader.loadClass(ClassLoaders.java:188)
-	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:525)
-	... 94 common frames omitted
-00:47:12.448 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9846372245170348757
-00:47:12.448 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9846372245170348757/metadata/v1.metadata.json
-00:47:12.454 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:12.454 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9846372245170348757/metadata/snap-1.avro
-00:47:12.454 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9846372245170348757/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:12.478 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9846372245170348757/metadata/snap-1.avro (1 entries, 0 errors)
-00:47:12.479 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9846372245170348757/metadata/manifest-1.avro
-00:47:12.479 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9846372245170348757/metadata/manifest-1.avro (type=ManifestEntry)
-00:47:12.482 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9846372245170348757/metadata/manifest-1.avro (2 entries, 0 errors)
-00:47:12.483 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:12.501 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400
-00:47:12.501 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/v2.metadata.json
-00:47:12.502 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=2
-00:47:12.502 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/v1.metadata.json
-00:47:12.502 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:12.502 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/snap-1.avro
-00:47:12.502 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:12.503 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/snap-1.avro (1 entries, 0 errors)
-00:47:12.503 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/manifest-1.avro
-00:47:12.503 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/manifest-1.avro (type=ManifestEntry)
-00:47:12.505 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/manifest-1.avro (1 entries, 0 errors)
-00:47:12.505 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/snap-2.avro
-00:47:12.505 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/snap-2.avro (type=ManifestListEntry)
-00:47:12.506 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/snap-2.avro (1 entries, 0 errors)
-00:47:12.506 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/manifest-2.avro
-00:47:12.506 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/manifest-2.avro (type=ManifestEntry)
-00:47:12.508 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4011897086969422400/metadata/manifest-2.avro (1 entries, 0 errors)
-00:47:12.508 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 3 snapshots, 0 errors
-00:47:12.510 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test1273966969879549915/v1.metadata.json
-00:47:12.512 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=1, snapshots=0
-00:47:12.514 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12199391030324617557
-00:47:12.514 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12199391030324617557/metadata/v1.metadata.json
-00:47:12.515 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:12.515 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12199391030324617557/metadata/snap-1.avro
-00:47:12.515 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12199391030324617557/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:12.515 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:12.519 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5749030383184500140
-00:47:12.519 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5749030383184500140/metadata/v2.metadata.json
-00:47:12.520 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5749030383184500140/metadata/v1.metadata.json
-00:47:12.520 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:12.520 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5749030383184500140/metadata/snap-1.avro
-00:47:12.521 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5749030383184500140/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:12.521 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 1 errors
-00:47:12.521 [Test worker] WARN model.UnifiedModel --   Read error [read-metadata-json] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5749030383184500140/metadata/v2.metadata.json: Unexpected JSON token at offset 0: Expected start of the object '{', but had 'N' instead at path: $
+<pre>00:58:43.902 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test7620532389898555903
+00:58:43.903 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 0 metadata files, 0 snapshots, 0 errors
+00:58:43.912 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test17312093638058908644
+00:58:43.914 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test17312093638058908644/metadata/v1.metadata.json
+00:58:43.916 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:43.916 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test17312093638058908644/metadata/snap-1.avro
+00:58:43.916 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test17312093638058908644/metadata/snap-1.avro (type=ManifestListEntry)
+00:58:43.918 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:58:43.940 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14016861565842561343
+00:58:43.940 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14016861565842561343/metadata/v1.metadata.json
+00:58:43.941 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:43.941 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14016861565842561343/metadata/snap-1.avro
+00:58:43.941 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14016861565842561343/metadata/snap-1.avro (type=ManifestListEntry)
+00:58:43.942 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14016861565842561343/metadata/snap-1.avro (1 entries, 0 errors)
+00:58:43.943 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14016861565842561343/metadata/manifest-1.avro
+00:58:43.943 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14016861565842561343/metadata/manifest-1.avro (type=ManifestEntry)
+00:58:43.947 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14016861565842561343/metadata/manifest-1.avro (2 entries, 0 errors)
+00:58:43.948 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:58:43.966 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682
+00:58:43.967 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/v2.metadata.json
+00:58:43.967 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=2
+00:58:43.967 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/v1.metadata.json
+00:58:43.967 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:43.967 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/snap-1.avro
+00:58:43.967 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/snap-1.avro (type=ManifestListEntry)
+00:58:43.968 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/snap-1.avro (1 entries, 0 errors)
+00:58:43.968 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/manifest-1.avro
+00:58:43.968 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/manifest-1.avro (type=ManifestEntry)
+00:58:43.970 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/manifest-1.avro (1 entries, 0 errors)
+00:58:43.970 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/snap-2.avro
+00:58:43.970 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/snap-2.avro (type=ManifestListEntry)
+00:58:43.971 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/snap-2.avro (1 entries, 0 errors)
+00:58:43.971 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/manifest-2.avro
+00:58:43.971 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/manifest-2.avro (type=ManifestEntry)
+00:58:43.972 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13145041185748778682/metadata/manifest-2.avro (1 entries, 0 errors)
+00:58:43.973 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 3 snapshots, 0 errors
+00:58:43.976 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13818899598810636495/v1.metadata.json
+00:58:43.976 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=1, snapshots=0
+00:58:43.978 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12891896232112572416
+00:58:43.978 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12891896232112572416/metadata/v1.metadata.json
+00:58:43.979 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:43.979 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12891896232112572416/metadata/snap-1.avro
+00:58:43.979 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12891896232112572416/metadata/snap-1.avro (type=ManifestListEntry)
+00:58:43.979 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:58:43.983 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12151607318816543380
+00:58:43.983 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12151607318816543380/metadata/v2.metadata.json
+00:58:43.984 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12151607318816543380/metadata/v1.metadata.json
+00:58:43.985 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:43.985 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12151607318816543380/metadata/snap-1.avro
+00:58:43.985 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12151607318816543380/metadata/snap-1.avro (type=ManifestListEntry)
+00:58:43.985 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 1 errors
+00:58:43.985 [Test worker] WARN model.UnifiedModel --   Read error [read-metadata-json] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12151607318816543380/metadata/v2.metadata.json: Unexpected JSON token at offset 0: Expected start of the object '{', but had 'N' instead at path: $
 JSON input: NOT VALID JSON
-00:47:12.523 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4661850225149074554
-00:47:12.524 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test4661850225149074554/metadata/v1.metadata.json
-00:47:12.524 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=0
-00:47:12.525 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 0 snapshots, 0 errors
-00:47:12.529 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test16810057006711050720
-00:47:12.530 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test16810057006711050720/metadata/v1.metadata.json
-00:47:12.530 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:12.530 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test16810057006711050720/metadata/snap-1.avro
-00:47:12.530 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test16810057006711050720/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:12.532 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test16810057006711050720/metadata/snap-1.avro (1 entries, 0 errors)
-00:47:12.532 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test16810057006711050720/metadata/manifest-1.avro
-00:47:12.532 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test16810057006711050720/metadata/manifest-1.avro (type=ManifestEntry)
-00:47:12.534 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test16810057006711050720/metadata/manifest-1.avro (2 entries, 0 errors)
-00:47:12.534 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:12.536 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test10441189003498319309
-00:47:12.537 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test10441189003498319309/metadata/v1.metadata.json
-00:47:12.537 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=0
-00:47:12.538 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 0 snapshots, 1 errors
-00:47:12.538 [Test worker] WARN model.UnifiedModel --   Read error [read-version-hint] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test10441189003498319309/metadata/version-hint.text: Is a directory
-00:47:12.541 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test17255562857012823664/v1.metadata.json
-00:47:12.541 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=null, snapshots=0
-00:47:12.543 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8457705162286219578
-00:47:12.544 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8457705162286219578/metadata/v2.metadata.json
-00:47:12.544 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:12.544 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8457705162286219578/metadata/v1.metadata.json
-00:47:12.544 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:12.544 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8457705162286219578/metadata/snap-2.avro
-00:47:12.544 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8457705162286219578/metadata/snap-2.avro (type=ManifestListEntry)
-00:47:12.545 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8457705162286219578/metadata/snap-1.avro
-00:47:12.545 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8457705162286219578/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:12.545 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 2 snapshots, 0 errors
-00:47:12.547 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /nonexistent/v1.metadata.json
-00:47:12.547 [Test worker] ERROR service.IcebergReader -- Iceberg metadata file not found: /nonexistent/v1.metadata.json
-00:47:12.550 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5399893410714932880
-00:47:12.550 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5399893410714932880/metadata/v1.metadata.json
-00:47:12.550 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:12.550 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5399893410714932880/metadata/snap-1.avro
-00:47:12.550 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5399893410714932880/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:12.551 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5399893410714932880/metadata/snap-1.avro (1 entries, 0 errors)
-00:47:12.551 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5399893410714932880/metadata/manifest-1.avro
-00:47:12.551 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5399893410714932880/metadata/manifest-1.avro (type=ManifestEntry)
-00:47:12.553 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5399893410714932880/metadata/manifest-1.avro (2 entries, 0 errors)
-00:47:12.553 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:12.555 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test10522341463383387159
-00:47:12.556 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
-00:47:12.556 [Test worker] WARN model.UnifiedModel --   Read error [list-metadata-files] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test10522341463383387159/metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test10522341463383387159/metadata
-00:47:12.559 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9635667773915789100
-00:47:12.559 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9635667773915789100/metadata/v1.metadata.json
-00:47:12.559 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:12.559 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9635667773915789100/metadata/snap-1.avro
-00:47:12.559 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9635667773915789100/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:12.560 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9635667773915789100/metadata/snap-1.avro (2 entries, 0 errors)
-00:47:12.560 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9635667773915789100/metadata/data-manifest.avro
-00:47:12.560 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9635667773915789100/metadata/data-manifest.avro (type=ManifestEntry)
-00:47:12.562 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9635667773915789100/metadata/data-manifest.avro (1 entries, 0 errors)
-00:47:12.562 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9635667773915789100/metadata/delete-manifest.avro
-00:47:12.562 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9635667773915789100/metadata/delete-manifest.avro (type=ManifestEntry)
-00:47:12.563 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test9635667773915789100/metadata/delete-manifest.avro (1 entries, 0 errors)
-00:47:12.563 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
-00:47:12.565 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8044491673669820900/v1.metadata.json
-00:47:12.566 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:12.567 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test762137044058570619
-00:47:12.567 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test762137044058570619/metadata/v1.metadata.json
-00:47:12.567 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=0
-00:47:12.567 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 0 snapshots, 0 errors
-00:47:12.569 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8094213464796766527
-00:47:12.569 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8094213464796766527/metadata/v2.metadata.json
-00:47:12.569 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=2
-00:47:12.570 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8094213464796766527/metadata/v1.metadata.json
-00:47:12.570 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
-00:47:12.570 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8094213464796766527/metadata/snap-1.avro
-00:47:12.570 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8094213464796766527/metadata/snap-1.avro (type=ManifestListEntry)
-00:47:12.570 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8094213464796766527/metadata/snap-2.avro
-00:47:12.570 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8094213464796766527/metadata/snap-2.avro (type=ManifestListEntry)
-00:47:12.571 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 3 snapshots, 0 errors
+00:58:43.987 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test7516306549562606551
+00:58:43.988 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test7516306549562606551/metadata/v1.metadata.json
+00:58:43.988 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=0
+00:58:43.988 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 0 snapshots, 0 errors
+00:58:43.992 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8331179325977443453
+00:58:43.992 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8331179325977443453/metadata/v1.metadata.json
+00:58:43.992 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:43.992 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8331179325977443453/metadata/snap-1.avro
+00:58:43.993 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8331179325977443453/metadata/snap-1.avro (type=ManifestListEntry)
+00:58:43.995 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8331179325977443453/metadata/snap-1.avro (1 entries, 0 errors)
+00:58:43.995 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8331179325977443453/metadata/manifest-1.avro
+00:58:43.995 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8331179325977443453/metadata/manifest-1.avro (type=ManifestEntry)
+00:58:43.997 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test8331179325977443453/metadata/manifest-1.avro (2 entries, 0 errors)
+00:58:43.998 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:58:44.001 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5043757531617234216
+00:58:44.001 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5043757531617234216/metadata/v1.metadata.json
+00:58:44.002 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=0
+00:58:44.003 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 0 snapshots, 1 errors
+00:58:44.003 [Test worker] WARN model.UnifiedModel --   Read error [read-version-hint] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5043757531617234216/metadata/version-hint.text: Is a directory
+00:58:44.005 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12686898047261888687/v1.metadata.json
+00:58:44.005 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=null, snapshots=0
+00:58:44.007 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test11312846497366534846
+00:58:44.007 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test11312846497366534846/metadata/v2.metadata.json
+00:58:44.007 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:44.007 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test11312846497366534846/metadata/v1.metadata.json
+00:58:44.008 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:44.008 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test11312846497366534846/metadata/snap-2.avro
+00:58:44.008 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test11312846497366534846/metadata/snap-2.avro (type=ManifestListEntry)
+00:58:44.008 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test11312846497366534846/metadata/snap-1.avro
+00:58:44.008 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test11312846497366534846/metadata/snap-1.avro (type=ManifestListEntry)
+00:58:44.008 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 2 snapshots, 0 errors
+00:58:44.010 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /nonexistent/v1.metadata.json
+00:58:44.010 [Test worker] ERROR service.IcebergReader -- Iceberg metadata file not found: /nonexistent/v1.metadata.json
+00:58:44.013 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12101077308014028216
+00:58:44.014 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12101077308014028216/metadata/v1.metadata.json
+00:58:44.014 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:44.014 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12101077308014028216/metadata/snap-1.avro
+00:58:44.014 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12101077308014028216/metadata/snap-1.avro (type=ManifestListEntry)
+00:58:44.015 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12101077308014028216/metadata/snap-1.avro (1 entries, 0 errors)
+00:58:44.015 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12101077308014028216/metadata/manifest-1.avro
+00:58:44.015 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12101077308014028216/metadata/manifest-1.avro (type=ManifestEntry)
+00:58:44.017 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test12101077308014028216/metadata/manifest-1.avro (2 entries, 0 errors)
+00:58:44.017 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:58:44.020 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13607005109797213219
+00:58:44.020 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 0 metadata files, 0 snapshots, 1 errors
+00:58:44.020 [Test worker] WARN model.UnifiedModel --   Read error [list-metadata-files] /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13607005109797213219/metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test13607005109797213219/metadata
+00:58:44.023 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test6789840380019901348
+00:58:44.023 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test6789840380019901348/metadata/v1.metadata.json
+00:58:44.023 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:44.023 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test6789840380019901348/metadata/snap-1.avro
+00:58:44.023 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test6789840380019901348/metadata/snap-1.avro (type=ManifestListEntry)
+00:58:44.025 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test6789840380019901348/metadata/snap-1.avro (2 entries, 0 errors)
+00:58:44.025 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test6789840380019901348/metadata/data-manifest.avro
+00:58:44.025 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test6789840380019901348/metadata/data-manifest.avro (type=ManifestEntry)
+00:58:44.026 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test6789840380019901348/metadata/data-manifest.avro (1 entries, 0 errors)
+00:58:44.026 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test6789840380019901348/metadata/delete-manifest.avro
+00:58:44.026 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test6789840380019901348/metadata/delete-manifest.avro (type=ManifestEntry)
+00:58:44.027 [Test worker] DEBUG service.AvroReader -- Avro file read complete: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test6789840380019901348/metadata/delete-manifest.avro (1 entries, 0 errors)
+00:58:44.027 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 1 snapshots, 0 errors
+00:58:44.028 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test5583587848051837802/v1.metadata.json
+00:58:44.029 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:44.029 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test3705824172260619794
+00:58:44.029 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test3705824172260619794/metadata/v1.metadata.json
+00:58:44.030 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=0
+00:58:44.030 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 1 metadata files, 0 snapshots, 0 errors
+00:58:44.031 [Test worker] INFO model.UnifiedModel -- Loading Iceberg table: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14167750027941134560
+00:58:44.031 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14167750027941134560/metadata/v2.metadata.json
+00:58:44.031 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=2
+00:58:44.031 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg metadata: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14167750027941134560/metadata/v1.metadata.json
+00:58:44.031 [Test worker] DEBUG service.IcebergReader -- Iceberg metadata read: formatVersion=2, snapshots=1
+00:58:44.031 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14167750027941134560/metadata/snap-1.avro
+00:58:44.031 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14167750027941134560/metadata/snap-1.avro (type=ManifestListEntry)
+00:58:44.031 [Test worker] DEBUG service.IcebergReader -- Reading Iceberg manifest list: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14167750027941134560/metadata/snap-2.avro
+00:58:44.031 [Test worker] DEBUG service.AvroReader -- Reading Avro file: /var/folders/mt/9rxkrhjx4_92d65wrtq269_h0000gn/T/iceberg-pipeline-test14167750027941134560/metadata/snap-2.avro (type=ManifestListEntry)
+00:58:44.032 [Test worker] INFO model.UnifiedModel --   Iceberg table loaded: 2 metadata files, 3 snapshots, 0 errors
 </pre>
 </span>
 </div>
@@ -417,7 +316,7 @@ JSON input: NOT VALID JSON
 <input id="line-wrapping-toggle" type="checkbox" autocomplete="off"/>
 </label>
 </div>Generated by 
-<a href="https://www.gradle.org">Gradle 9.0.0</a> at Aug 14, 2026, 12:47:51 AM</p>
+<a href="https://www.gradle.org">Gradle 9.0.0</a> at Aug 14, 2026, 12:59:22 AM</p>
 </div>
 </div>
 </body>
