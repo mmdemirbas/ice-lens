@@ -469,34 +469,60 @@ private fun SectionTitle(title: String) {
     Spacer(Modifier.height(4.dp))
 }
 
+/**
+ * A table wider than the panel it sits in, scrolled horizontally.
+ *
+ * [columnWidths] sizes columns individually; anything past its end falls back to [columnWidth].
+ * One width for every column is the wrong default for this data — a field id needs four
+ * characters and a decoded timestamp needs twenty, so a uniform width spends the panel on the
+ * narrow columns and truncates the wide ones.
+ *
+ * Column order is load-bearing for the same reason. The reader sees the leftmost columns and
+ * nothing else until they scroll, so the answer goes first and the identifiers follow it.
+ */
 @Composable
 private fun WideTable(
     headers: List<String>,
     rows: List<List<String>>,
     columnWidth: Dp = 180.dp,
+    columnWidths: List<Dp> = emptyList(),
 ) {
     val colors = MaterialTheme.colorScheme
     val horizontalState = rememberScrollState()
-    val tableWidth = (headers.size * columnWidth.value).dp + ((headers.size - 1).coerceAtLeast(0) * 9).dp + 16.dp
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(horizontalState)
-    ) {
-        Column(
-            Modifier
-                .width(tableWidth)
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                .border(1.dp, colors.outlineVariant, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+    val widths = List(headers.size) { index -> columnWidths.getOrNull(index) ?: columnWidth }
+    val tableWidth = widths.fold(0.dp) { total, width -> total + width } +
+        ((headers.size - 1).coerceAtLeast(0) * 9).dp + 16.dp
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(horizontalState)
         ) {
-            WideTableRow(headers, headers.size, columnWidth, isHeader = true)
-            rows.forEach { row -> WideTableRow(row, headers.size, columnWidth, isHeader = false) }
+            Column(
+                Modifier
+                    .width(tableWidth)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                    .border(1.dp, colors.outlineVariant, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+            ) {
+                WideTableRow(headers, headers.size, widths, isHeader = true)
+                rows.forEach { row -> WideTableRow(row, headers.size, widths, isHeader = false) }
+            }
+        }
+        // Without this the table simply appears to end at the panel edge: there is no cut, no
+        // shadow and no scrollbar, so a reader has no way to know the columns past it exist.
+        // The decoded value is one of those columns, which makes the missing affordance a
+        // correctness problem rather than a cosmetic one.
+        if (horizontalState.maxValue > 0) {
+            HorizontalScrollbar(
+                adapter = rememberScrollbarAdapter(horizontalState),
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+            )
         }
     }
 }
 
 @Composable
-private fun WideTableRow(cells: List<String>, columns: Int, columnWidth: Dp, isHeader: Boolean) {
+private fun WideTableRow(cells: List<String>, columns: Int, widths: List<Dp>, isHeader: Boolean) {
     val colors = MaterialTheme.colorScheme
     val bgColor = if (isHeader) colors.surfaceVariant else Color.Transparent
     val normalizedCells = if (cells.size < columns) {
@@ -518,7 +544,7 @@ private fun WideTableRow(cells: List<String>, columns: Int, columnWidth: Dp, isH
             }
             Text(
                 text = cell,
-                modifier = Modifier.width(columnWidth),
+                modifier = Modifier.width(widths[index]),
                 fontSize = 11.sp,
                 fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
                 fontFamily = if (isHeader) null else FontFamily.Monospace,
@@ -748,9 +774,17 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             )
                             DetailRow("Referenced Bytes", formatBytes(history.totalSizeBytes))
                             DetailRow("Manifest Files Known / Missing", "${summary.manifestFileTimes.knownCount} / ${summary.manifestFileTimes.missingCount}")
-                            DetailRow("Manifest Files Oldest / Latest", "${formatTimestamp(summary.manifestFileTimes.oldestMs)}  →  ${formatTimestamp(summary.manifestFileTimes.newestMs)}")
+                            // One row per timestamp. formatTimestamp returns three lines (local,
+                            // UTC, epoch), so joining two of them into one cell runs the second
+                            // block's first line onto the first block's last one and pushes the
+                            // rest past maxLines — the arrow ends up mid-paragraph and the second
+                            // epoch is simply not drawn. The Metadata Files section above already
+                            // uses separate rows; this follows it.
+                            DetailRow("Manifest Files Oldest", formatTimestamp(summary.manifestFileTimes.oldestMs))
+                            DetailRow("Manifest Files Latest", formatTimestamp(summary.manifestFileTimes.newestMs))
                             DetailRow("Data Files Known / Missing", "${summary.dataFileTimes.knownCount} / ${summary.dataFileTimes.missingCount}")
-                            DetailRow("Data Files Oldest / Latest", "${formatTimestamp(summary.dataFileTimes.oldestMs)}  →  ${formatTimestamp(summary.dataFileTimes.newestMs)}")
+                            DetailRow("Data Files Oldest", formatTimestamp(summary.dataFileTimes.oldestMs))
+                            DetailRow("Data Files Latest", formatTimestamp(summary.dataFileTimes.newestMs))
                         }
 
                         if (mergedMetadataRows.isNotEmpty()) {
@@ -1285,20 +1319,23 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             )
                             WideTable(
                                 headers = listOf(
-                                    "Field ID", "Field", "Transform", "Source Column",
-                                    "Result Type", "Value", "Stored", "Raw"
+                                    "Field", "Value", "Stored", "Transform",
+                                    "Source Column", "Result Type", "Field ID", "Raw"
+                                ),
+                                columnWidths = listOf(
+                                    150.dp, 170.dp, 150.dp, 120.dp, 140.dp, 120.dp, 70.dp, 180.dp
                                 ),
                                 rows = partition.values.map { value ->
                                     listOf(
-                                        "${value.field.fieldId ?: "N/A"}",
                                         value.field.name ?: "N/A",
+                                        value.human,
+                                        boundDisplay(value.stored),
                                         value.field.transformName.ifEmpty { "N/A" },
                                         value.field.sourceId?.let { sourceId ->
                                             node.schema?.nameOf(sourceId) ?: "field $sourceId"
                                         } ?: "N/A",
                                         value.type.typeName,
-                                        value.human,
-                                        boundDisplay(value.stored),
+                                        "${value.field.fieldId ?: "N/A"}",
                                         value.stored.raw.takeIf { it.isNotEmpty() }?.toHexShort() ?: "N/A",
                                     )
                                 }
@@ -1323,12 +1360,17 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             }
                             WideTable(
                                 headers = listOf(
-                                    "Field ID", "Column", "Type", "Lower Bound", "Upper Bound",
-                                    "Values", "Nulls", "NaNs", "Column Size", "Lower (raw)", "Upper (raw)"
+                                    "Column", "Type", "Lower Bound", "Upper Bound",
+                                    "Values", "Nulls", "NaNs", "Column Size",
+                                    "Field ID", "Lower (raw)", "Upper (raw)"
+                                ),
+                                columnWidths = listOf(
+                                    150.dp, 110.dp, 190.dp, 190.dp,
+                                    80.dp, 90.dp, 70.dp, 100.dp,
+                                    70.dp, 160.dp, 160.dp
                                 ),
                                 rows = columnStats.map { stat ->
                                     listOf(
-                                        "${stat.fieldId}",
                                         stat.displayName,
                                         stat.type?.typeName ?: "unknown",
                                         boundDisplay(stat.lowerBound),
@@ -1338,6 +1380,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                             ?.plus(if (stat.isAllNull) " (all)" else "") ?: "N/A",
                                         stat.nanValueCount?.let { formatCount(it) } ?: "N/A",
                                         stat.columnSizeBytes?.let { formatBytes(it) } ?: "N/A",
+                                        "${stat.fieldId}",
                                         stat.lowerBound?.raw?.toHexShort() ?: "N/A",
                                         stat.upperBound?.raw?.toHexShort() ?: "N/A",
                                     )
