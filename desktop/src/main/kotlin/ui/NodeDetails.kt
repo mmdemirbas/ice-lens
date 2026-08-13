@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import model.DataFile
 import model.DataFileContent
+import model.DecodedPartition
 import model.DecodedValue
 import model.GraphModel
 import model.GraphNode
@@ -110,6 +111,17 @@ private fun boundDisplay(bound: DecodedValue?): String = when {
     bound == null -> "N/A"
     bound.isError -> "${bound.display} — ${bound.error}"
     else -> bound.display
+}
+
+/**
+ * A file's partition tuple for a table cell, in the same `name=value` form Iceberg writes into the
+ * file's own path. The three outcomes are kept distinct on purpose: a decoded tuple, a table that
+ * genuinely has no partition fields, and a manifest whose spec could not be read.
+ */
+private fun partitionCell(partition: DecodedPartition?): String = when {
+    partition == null -> "N/A (no spec)"
+    partition.isUnpartitioned -> "(unpartitioned)"
+    else -> partition.path
 }
 
 private fun longs(values: List<Long>?): String =
@@ -1192,7 +1204,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                         data.fileFormat ?: "N/A",
                                         formatCount(data.recordCount ?: 0L),
                                         formatBytes(data.fileSizeInBytes ?: 0L),
-                                        "N/A",
+                                        partitionCell(view.partition),
                                         kvLongs(data.columnSizes),
                                         kvLongs(data.valueCounts),
                                         kvLongs(data.nullValueCounts),
@@ -1237,6 +1249,60 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Equality IDs", node.data.equalityIds?.joinToString(", ") ?: "N/A")
                             val filePath = node.data.filePath
                             DetailRow("Path", "${filePath ?: "N/A"}", copyable = true)
+                        }
+
+                        // The partition tuple, decoded against the spec this file's manifest was
+                        // written with. Value and Stored differ for the ordinal time transforms —
+                        // a `year` partition for 2024 holds 54 — so both are shown: one says what
+                        // the file contains, the other what it means.
+                        val partition = node.partition
+                        if (partition == null) {
+                            Spacer(Modifier.height(16.dp))
+                            SectionTitle("Partition")
+                            Text(
+                                "This manifest carried no partition spec, so the partition tuple " +
+                                    "cannot be decoded. That is not the same as an unpartitioned table.",
+                                fontSize = 11.sp,
+                                color = colors.onSurfaceVariant,
+                            )
+                        } else if (partition.isUnpartitioned) {
+                            Spacer(Modifier.height(16.dp))
+                            SectionTitle("Partition")
+                            Text(
+                                "This table is not partitioned — its spec has no fields.",
+                                fontSize = 11.sp,
+                                color = colors.onSurfaceVariant,
+                            )
+                        } else {
+                            Spacer(Modifier.height(16.dp))
+                            SectionTitle("Partition (${formatCount(partition.values.size)})")
+                            Text(
+                                "Iceberg stores the transform's result, not the source value. " +
+                                    "Value is how Iceberg renders it; Stored is what is on disk.",
+                                fontSize = 11.sp,
+                                color = colors.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            WideTable(
+                                headers = listOf(
+                                    "Field ID", "Field", "Transform", "Source Column",
+                                    "Result Type", "Value", "Stored", "Raw"
+                                ),
+                                rows = partition.values.map { value ->
+                                    listOf(
+                                        "${value.field.fieldId ?: "N/A"}",
+                                        value.field.name ?: "N/A",
+                                        value.field.transformName.ifEmpty { "N/A" },
+                                        value.field.sourceId?.let { sourceId ->
+                                            node.schema?.nameOf(sourceId) ?: "field $sourceId"
+                                        } ?: "N/A",
+                                        value.type.typeName,
+                                        value.human,
+                                        boundDisplay(value.stored),
+                                        value.stored.raw.takeIf { it.isNotEmpty() }?.toHexShort() ?: "N/A",
+                                    )
+                                }
+                            )
                         }
 
                         // The five per-column statistics maps, pivoted into one row per column and
