@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Partition values are decoded and readable.** `data_file.partition` is a nested Avro record
+  whose schema comes from the table's own partition spec, so avro4k's static decode could not
+  reach it and the inspector's Partition column had shown a hardcoded `"N/A"`. The file
+  inspector now lists each partition field with its transform, source column, result type,
+  value and stored bytes, and the manifest-entries table carries the tuple in the same
+  `name=value` form Iceberg writes into the data file's path.
+- Partition values are decoded against the spec the *manifest* carries in its own Avro file
+  metadata, not the table's current spec — a repartitioned table describes each file by the
+  spec in force when it was written, and the current one mis-decodes silently.
+- Transform result types are resolved rather than assumed: `day` yields a `date` while `year`,
+  `month` and `hour` yield `int` ordinals counted from the epoch. All four occupy the same four
+  little-endian bytes, so the wrong choice produces a plausible value instead of an error. Both
+  readings are shown — a `year` partition for 2024 stores `54` and renders as `2024`.
+- `example/iceberg/default/parted`, a partitioned fixture written by Spark 3.5.5 / Iceberg
+  1.8.1: eight partition fields across all the transform shapes, two snapshots, a pre-epoch row
+  and a negative decimal. The tests assert the decoded tuple equals the directory Iceberg chose
+  for each file, which is an oracle this codebase did not produce. Regenerate with
+  `docs/fixtures/parted.sql`.
 - **Column statistics are decoded and readable.** A manifest stores per-column stats as five
   parallel maps keyed by field id — `column_sizes`, `value_counts`, `null_value_counts`,
   `nan_value_counts`, `lower_bounds`, `upper_bounds` — which the inspector previously showed as
@@ -32,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ImageVector`).
 
 ### Fixed
+- **A manifest whose records carry no `partition` field failed to decode entirely.** Avro
+  1.12's `GenericRecord.get(String)` throws for an unknown field rather than returning null, so
+  reaching for a field the writer never wrote failed every record in the file — the manifest
+  read as empty with each entry reported as a decode error.
 - **A missing `version-hint.text` was reported as a table read error.** The file is written
   only by HadoopCatalog / HadoopTables; tables managed by Hive, Glue, REST or Nessie catalogs
   never have one, so the majority of real Iceberg tables opened with a red TABLE READ ERROR

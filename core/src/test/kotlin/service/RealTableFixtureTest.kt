@@ -18,11 +18,13 @@ import kotlin.test.assertTrue
  * `Int` where the spec says `long`, or the reverse — would decode our fixtures perfectly and
  * fail on every real table, with a green suite the whole way.
  *
- * Note what this does NOT establish. The checked-in tables are minimal: one snapshot, one
- * manifest, one data file, no partitioning, no delete files, no schema evolution, format
- * version 2. Passing here means our schema is compatible with *that* shape. Widening the
- * fixtures — a partitioned table, a merge-on-read table with positional and equality deletes,
- * several commits, a v3 table — would make this a real oracle. Tracked in TODO.md.
+ * Note what this does NOT establish. The tables *this class* reads are minimal: one snapshot,
+ * one manifest, one data file, no partitioning, no delete files, no schema evolution, format
+ * version 2. Passing here means our schema is compatible with *that* shape.
+ *
+ * The partitioned case is covered separately by [PartitionDecodingTest], against
+ * `example/iceberg/default/parted`. Still missing: a merge-on-read table with positional and
+ * equality deletes, several commits including a compaction, and a v3 table. Tracked in TODO.md.
  */
 class RealTableFixtureTest {
 

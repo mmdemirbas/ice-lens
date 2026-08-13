@@ -47,6 +47,7 @@ core/src/main/kotlin/
 │   ├── GraphTypes.kt          # Point, GraphModel (nodeById, layoutPositions), GraphNode (sealed incl. Paimon types), GraphEdge, TableSummary/ContentStats
 │   ├── IcebergTypes.kt        # Iceberg type model + parser (field-id → type, from a manifest's own schema)
 │   ├── SingleValueDecoder.kt  # Appendix D: bytes + type → DecodedValue (bounds, partition values)
+│   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 ├── service/
@@ -113,6 +114,14 @@ desktop/src/main/kotlin/
   retained snapshot, deduplicated by manifest and data-file path). `manifestEntryCount` is
   status-blind in both — it measures scan cost — while file/record/byte totals cover live
   entries only. Delete-file `record_count` goes to `deleteRecordCount`, never `recordCount`.
+- **Partition transforms do not share a result type.** `day` produces a `date`; `year`, `month`
+  and `hour` produce `int` ordinals counted from the epoch (a `year` partition for 2024 stores
+  `54`). All four are four little-endian bytes, so the wrong choice yields a plausible value,
+  never an error. `partitionResultType` in `PartitionDecoder.kt` is the single place this is
+  decided, and `PartitionValue` keeps both the stored value and Iceberg's own rendering
+- **The partition spec comes from the manifest, not from `metadata.json`** — same rule as the
+  schema for bounds. A repartitioned table describes each file by the spec in force when it was
+  written, and using the current spec mis-decodes silently
 - Spec constants live in `IcebergSchema.kt` (`ManifestContent`, `ManifestEntryStatus`,
   `DataFileContent`) and `PaimonSchema.kt` (`PaimonEntryKind`). Prefer them over 0/1/2 literals
 - `versionHint` is nullable — `version-hint.text` exists only for HadoopCatalog/HadoopTables
@@ -177,10 +186,17 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~340 tests across 27 files (259 in :core, 81 in :desktop) covering full pipelines for both formats (Avro fixtures
+~354 tests across 31 files (273 in :core, 81 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
+
+**The runtime-written Avro fixtures are not an oracle.** They are written with
+`Avro.schema<T>()` — the schema derived from the very class under test — so writer and reader
+schema are the same object, and a field typed against the wrong spec width passes all of them.
+The checked-in `example/` tables are the only real oracles: `RealTableFixtureTest` and
+`PartitionDecodingTest` read tables written by real Spark/Iceberg and Flink/Paimon. Regenerate
+the partitioned one with `docs/fixtures/parted.sql`.
 
 ## Supported table formats
 
