@@ -84,6 +84,63 @@ data class ContentStats(
     val deleteFileCount: Int get() = posDeleteFileCount + eqDeleteFileCount
     val fileCount: Int get() = dataFileCount + deleteFileCount
     val totalSizeBytes: Long get() = dataSizeBytes + deleteSizeBytes
+
+    operator fun plus(other: ContentStats): ContentStats = ContentStats(
+        dataManifestCount = dataManifestCount + other.dataManifestCount,
+        deleteManifestCount = deleteManifestCount + other.deleteManifestCount,
+        manifestEntryCount = manifestEntryCount + other.manifestEntryCount,
+        deletedEntryCount = deletedEntryCount + other.deletedEntryCount,
+        dataFileCount = dataFileCount + other.dataFileCount,
+        posDeleteFileCount = posDeleteFileCount + other.posDeleteFileCount,
+        eqDeleteFileCount = eqDeleteFileCount + other.eqDeleteFileCount,
+        recordCount = recordCount + other.recordCount,
+        deleteRecordCount = deleteRecordCount + other.deleteRecordCount,
+        dataSizeBytes = dataSizeBytes + other.dataSizeBytes,
+        deleteSizeBytes = deleteSizeBytes + other.deleteSizeBytes,
+    )
+}
+
+/**
+ * What one manifest contributed to a [ContentStats] total.
+ *
+ * A contribution can be negative. Paimon applies a snapshot's delta manifest list over its base,
+ * so a manifest whose entries record removals takes files back out of the running total; writing
+ * that as a negative delta keeps the fold honest instead of hiding the removal inside a replay.
+ */
+data class ManifestContribution(
+    val manifestPath: String,
+    /** Zero for a manifest that was already counted — see [firstCountedIn]. */
+    val delta: ContentStats,
+    /** Entries whose data file another manifest had already counted. */
+    val entriesSuppressedAsDuplicate: Int = 0,
+    /**
+     * Where this manifest was first counted, when this sighting is a repeat.
+     *
+     * Every snapshot re-lists the manifests it carries forward, so most manifests in a table's
+     * history are visited many times. Naming the first sighting is what turns "4 data files"
+     * from an assertion into something the reader can check — it is the same fact as the count,
+     * seen from the other side.
+     */
+    val firstCountedIn: String? = null,
+) {
+    val isRepeat: Boolean get() = firstCountedIn != null
+}
+
+/**
+ * A [ContentStats] total together with the ledger it was folded from.
+ *
+ * [total] is derived *from* [contributions] rather than accumulated beside them, which is the
+ * whole point: an explanation computed separately is a second implementation, and two
+ * implementations disagree eventually. Drop a contribution here and the number on screen
+ * changes with it.
+ */
+data class StatsDerivation(val contributions: List<ManifestContribution> = emptyList()) {
+    val total: ContentStats = contributions.fold(ContentStats()) { running, it -> running + it.delta }
+
+    /** Manifests skipped because an earlier snapshot had already counted them. */
+    val repeats: List<ManifestContribution> get() = contributions.filter { it.isRepeat }
+
+    val entriesSuppressedAsDuplicate: Int get() = contributions.sumOf { it.entriesSuppressedAsDuplicate }
 }
 
 data class TableSummary(
@@ -103,24 +160,35 @@ data class TableSummary(
     val snapshotCount: Int,
     val snapshotManifestListFileCount: Int,
     /**
+     * The per-manifest ledger [current] is folded from.
+     *
+     * The summary carries the derivation rather than the figure because the figure is the
+     * derivation summed — see [StatsDerivation].
+     */
+    val currentDerivation: StatsDerivation = StatsDerivation(),
+    /** The per-manifest ledger [history] is folded from. */
+    val historyDerivation: StatsDerivation = StatsDerivation(),
+    val metadataFileTimes: FileTimeRange,
+    val snapshotManifestListFileTimes: FileTimeRange,
+    val manifestFileTimes: FileTimeRange,
+    val dataFileTimes: FileTimeRange,
+    val metadataVersions: List<MetadataVersionInfo> = emptyList(),
+) {
+    /**
      * The table as it is now: the manifest closure of `current-snapshot-id`, live entries
      * only. [ContentStats.recordCount] here is the figure a `SELECT count(*)` should agree
      * with, before delete files are applied. All-zero when the table has no current snapshot.
      */
-    val current: ContentStats = ContentStats(),
+    val current: ContentStats get() = currentDerivation.total
+
     /**
      * Everything still reachable from any retained snapshot, deduplicated by manifest path
      * and by data-file path. This is the "what is still on disk / what can I not expire yet"
      * view, so it counts entries of every status — a file removed in a later commit still
      * occupies storage until the snapshot referencing it expires.
      */
-    val history: ContentStats = ContentStats(),
-    val metadataFileTimes: FileTimeRange,
-    val snapshotManifestListFileTimes: FileTimeRange,
-    val manifestFileTimes: FileTimeRange,
-    val dataFileTimes: FileTimeRange,
-    val metadataVersions: List<MetadataVersionInfo> = emptyList(),
-)
+    val history: ContentStats get() = historyDerivation.total
+}
 
 /**
  * One manifest entry as the inspector shows it: the entry itself, the stable per-file number

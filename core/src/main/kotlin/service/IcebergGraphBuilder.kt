@@ -349,66 +349,95 @@ object IcebergGraphBuilder {
      * counted once, which is the right reading for "what is still on disk".
      */
     private class ContentStatsAccumulator(private val liveEntriesOnly: Boolean) {
-        private val seenManifests = mutableSetOf<String>()
+        /** Manifest key to the traversal position that first counted it. */
+        private val seenManifests = mutableMapOf<String, String>()
         private val seenFiles = mutableSetOf<String>()
+        private val contributions = mutableListOf<ManifestContribution>()
 
-        private var dataManifests = 0
-        private var deleteManifests = 0
-        private var entries = 0
-        private var deletedEntries = 0
-        private var dataFiles = 0
-        private var posDeleteFiles = 0
-        private var eqDeleteFiles = 0
-        private var records = 0L
-        private var deleteRecords = 0L
-        private var dataBytes = 0L
-        private var deleteBytes = 0L
-
-        /** Counts a manifest and its entries. Returns false if this manifest was already counted. */
-        fun addManifest(manifest: UnifiedManifest): Boolean {
-            if (!seenManifests.add(manifestKey(manifest))) return false
-            if (manifest.metadata.content == ManifestContent.DELETES) deleteManifests++ else dataManifests++
-            manifest.dataFiles.forEach(::addEntry)
+        /**
+         * Counts a manifest and its entries, recording what it contributed. [countedIn] labels
+         * where in the traversal this sighting happened, so a later repeat can name it.
+         *
+         * Returns false if this manifest was already counted.
+         */
+        fun addManifest(manifest: UnifiedManifest, countedIn: String): Boolean {
+            val key = manifestKey(manifest)
+            seenManifests[key]?.let { firstCountedIn ->
+                // Still recorded. A manifest carried forward by twelve snapshots is visited
+                // twelve times and counted once, and the eleven repeats are the evidence for
+                // why the total is not twelve times larger.
+                contributions += ManifestContribution(
+                    manifestPath = manifest.path.toString(),
+                    delta = ContentStats(),
+                    firstCountedIn = firstCountedIn,
+                )
+                return false
+            }
+            seenManifests[key] = countedIn
+            contributions += contributionOf(manifest)
             return true
         }
 
-        private fun addEntry(unifiedDataFile: UnifiedDataFile) {
-            // Every entry counts toward scan cost, including the ones recording a removal.
-            entries++
-            val isRemoval = unifiedDataFile.metadata.status == ManifestEntryStatus.DELETED
-            if (isRemoval) deletedEntries++
-            if (liveEntriesOnly && isRemoval) return
-            if (!seenFiles.add(dataFileKey(unifiedDataFile))) return
+        private fun contributionOf(manifest: UnifiedManifest): ManifestContribution {
+            var entries = 0
+            var deletedEntries = 0
+            var dataFiles = 0
+            var posDeleteFiles = 0
+            var eqDeleteFiles = 0
+            var records = 0L
+            var deleteRecords = 0L
+            var dataBytes = 0L
+            var deleteBytes = 0L
+            var suppressed = 0
 
-            val dataFile = unifiedDataFile.metadata.dataFile
-            val rows = dataFile?.recordCount ?: 0L
-            val bytes = dataFile?.fileSizeInBytes ?: 0L
-            when (dataFile?.content ?: DataFileContent.DATA) {
-                DataFileContent.POSITION_DELETES -> {
-                    posDeleteFiles++; deleteRecords += rows; deleteBytes += bytes
+            manifest.dataFiles.forEach { unifiedDataFile ->
+                // Every entry counts toward scan cost, including the ones recording a removal.
+                entries++
+                val isRemoval = unifiedDataFile.metadata.status == ManifestEntryStatus.DELETED
+                if (isRemoval) deletedEntries++
+                if (liveEntriesOnly && isRemoval) return@forEach
+                if (!seenFiles.add(dataFileKey(unifiedDataFile))) {
+                    suppressed++
+                    return@forEach
                 }
-                DataFileContent.EQUALITY_DELETES -> {
-                    eqDeleteFiles++; deleteRecords += rows; deleteBytes += bytes
-                }
-                else -> {
-                    dataFiles++; records += rows; dataBytes += bytes
+
+                val dataFile = unifiedDataFile.metadata.dataFile
+                val rows = dataFile?.recordCount ?: 0L
+                val bytes = dataFile?.fileSizeInBytes ?: 0L
+                when (dataFile?.content ?: DataFileContent.DATA) {
+                    DataFileContent.POSITION_DELETES -> {
+                        posDeleteFiles++; deleteRecords += rows; deleteBytes += bytes
+                    }
+                    DataFileContent.EQUALITY_DELETES -> {
+                        eqDeleteFiles++; deleteRecords += rows; deleteBytes += bytes
+                    }
+                    else -> {
+                        dataFiles++; records += rows; dataBytes += bytes
+                    }
                 }
             }
+
+            val isDeleteManifest = manifest.metadata.content == ManifestContent.DELETES
+            return ManifestContribution(
+                manifestPath = manifest.path.toString(),
+                delta = ContentStats(
+                    dataManifestCount = if (isDeleteManifest) 0 else 1,
+                    deleteManifestCount = if (isDeleteManifest) 1 else 0,
+                    manifestEntryCount = entries,
+                    deletedEntryCount = deletedEntries,
+                    dataFileCount = dataFiles,
+                    posDeleteFileCount = posDeleteFiles,
+                    eqDeleteFileCount = eqDeleteFiles,
+                    recordCount = records,
+                    deleteRecordCount = deleteRecords,
+                    dataSizeBytes = dataBytes,
+                    deleteSizeBytes = deleteBytes,
+                ),
+                entriesSuppressedAsDuplicate = suppressed,
+            )
         }
 
-        fun build(): ContentStats = ContentStats(
-            dataManifestCount = dataManifests,
-            deleteManifestCount = deleteManifests,
-            manifestEntryCount = entries,
-            deletedEntryCount = deletedEntries,
-            dataFileCount = dataFiles,
-            posDeleteFileCount = posDeleteFiles,
-            eqDeleteFileCount = eqDeleteFiles,
-            recordCount = records,
-            deleteRecordCount = deleteRecords,
-            dataSizeBytes = dataBytes,
-            deleteSizeBytes = deleteBytes,
-        )
+        fun build(): StatsDerivation = StatsDerivation(contributions.toList())
     }
 
     internal fun buildTableSummary(tableModel: UnifiedTableModel): TableSummary {
@@ -456,8 +485,10 @@ object IcebergGraphBuilder {
                     snapshotManifestListTimes.add(fileLastModifiedMs(unifiedSnapshot.path, mtimeCache))
                 }
 
+                val countedIn = snapshotMeta.snapshotId?.let { "snapshot $it" }
+                    ?: "manifest list ${unifiedSnapshot.path.fileName}"
                 unifiedSnapshot.manifests.forEach { unifiedManifest ->
-                    if (historyStats.addManifest(unifiedManifest)) {
+                    if (historyStats.addManifest(unifiedManifest, countedIn)) {
                         manifestTimes.add(fileLastModifiedMs(unifiedManifest.path, mtimeCache))
 
                         unifiedManifest.dataFiles.forEach { unifiedDataFile ->
@@ -489,8 +520,10 @@ object IcebergGraphBuilder {
                 unifiedMetadata.snapshots.firstOrNull { it.metadata.snapshotId == snapshotId }
             }
         }
+        val currentCountedIn = currentSnapshot?.metadata?.snapshotId
+            ?.let { "snapshot $it" } ?: "current snapshot"
         val currentStats = ContentStatsAccumulator(liveEntriesOnly = true)
-            .apply { currentSnapshot?.manifests?.forEach { addManifest(it) } }
+            .apply { currentSnapshot?.manifests?.forEach { addManifest(it, currentCountedIn) } }
             .build()
 
         return TableSummary(
@@ -508,8 +541,8 @@ object IcebergGraphBuilder {
             metadataFileCount = tableModel.metadatas.size,
             snapshotCount = uniqueSnapshotKeys.size,
             snapshotManifestListFileCount = uniqueSnapshotManifestListKeys.size,
-            current = currentStats,
-            history = historyStats.build(),
+            currentDerivation = currentStats,
+            historyDerivation = historyStats.build(),
             metadataFileTimes = metadataTimes.asRange(),
             snapshotManifestListFileTimes = snapshotManifestListTimes.asRange(),
             manifestFileTimes = manifestTimes.asRange(),
