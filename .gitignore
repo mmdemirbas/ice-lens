@@ -1,5 +1,7 @@
 /.gradle
-/build/
+# Every module's build dir, not just the root's. A root-anchored /build/ silently
+# stopped covering anything once the tree gained :core and :desktop.
+**/build/
 /.idea/
 /.kotlin/
 
