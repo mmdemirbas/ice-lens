@@ -6,6 +6,8 @@ import java.io.File
 import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -105,6 +107,68 @@ class FormatV3FixtureTest {
                 entry.metadata.dataFile?.filePath?.endsWith("-deletes.puffin") == true,
                 "a v3 deletion vector should be a Puffin blob, got ${entry.metadata.dataFile?.filePath}",
             )
+        }
+    }
+
+    /**
+     * The one place the format records a delete-to-data link.
+     *
+     * A v2 positional delete keeps its targets inside its own `file_path` column and an equality
+     * delete has none at all, so this is the only delete file that can name what it applies to
+     * from metadata alone. A Puffin blob can hold several vectors, which is why the byte range
+     * travels with the path.
+     */
+    @Test
+    fun `a deletion vector names the single data file it applies to`() {
+        val model = v3Model()
+        val currentSnapshotId = model.metadatas.last().metadata.currentSnapshotId
+        val currentSnapshot = model.metadatas.asReversed()
+            .firstNotNullOfOrNull { meta -> meta.snapshots.firstOrNull { it.metadata.snapshotId == currentSnapshotId } }
+
+        val vectors = requireNotNull(currentSnapshot).manifests
+            .flatMap { it.dataFiles }
+            .mapNotNull { it.metadata.dataFile }
+            .filter { it.content == DataFileContent.POSITION_DELETES }
+
+        val dataFilePaths = requireNotNull(currentSnapshot).manifests
+            .flatMap { it.dataFiles }
+            .mapNotNull { it.metadata.dataFile }
+            .filter { it.content == DataFileContent.DATA }
+            .mapNotNull { it.filePath }
+            .toSet()
+
+        assertEquals(2, vectors.size)
+        vectors.forEach { vector ->
+            val referenced = assertNotNull(
+                vector.referencedDataFile,
+                "a v3 deletion vector must name its data file, got null on ${vector.filePath}",
+            )
+            assertTrue(
+                referenced in dataFilePaths,
+                "the referenced file should be one of this snapshot's data files: $referenced",
+            )
+            assertNotNull(vector.contentOffset, "a vector inside a Puffin blob needs its offset")
+            assertTrue(
+                (vector.contentSizeInBytes ?: 0L) > 0L,
+                "a vector needs a non-empty byte range",
+            )
+        }
+    }
+
+    /** The v2 table must not grow these fields — they would be a decode artefact, not data. */
+    @Test
+    fun `a v2 positional delete carries no referenced data file`() {
+        val morDir = File(repoRoot, "example/iceberg/default/mor")
+        val model = UnifiedTableModel(Paths.get(morDir.absolutePath))
+        val deletes = model.metadatas.flatMap { it.snapshots }.flatMap { it.manifests }
+            .flatMap { it.dataFiles }
+            .mapNotNull { it.metadata.dataFile }
+            .filter { it.content == DataFileContent.POSITION_DELETES }
+
+        assertTrue(deletes.isNotEmpty(), "the v2 fixture should have positional deletes")
+        deletes.forEach { delete ->
+            assertNull(delete.referencedDataFile, "v2 has no referenced_data_file field")
+            assertNull(delete.contentOffset)
         }
     }
 }

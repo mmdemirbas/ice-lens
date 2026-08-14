@@ -183,6 +183,18 @@ data class DataFile(
     @SerialName("split_offsets") val splitOffsets: List<Long>? = null,
     @SerialName("equality_ids") val equalityIds: List<Int>? = null,
     @SerialName("sort_order_id") val sortOrderId: Long? = null,
+    /**
+     * v3 deletion vector fields. The vector lives inside a Puffin blob that may hold several,
+     * so the entry carries the byte range as well as the path, and — uniquely among delete
+     * files — names the single data file it applies to.
+     *
+     * This is the only place the format records a delete-to-data link. A v2 positional delete
+     * keeps its targets inside its own `file_path` column, and an equality delete has no target
+     * at all: it applies by predicate. Null on every v2 table.
+     */
+    @SerialName("referenced_data_file") val referencedDataFile: String? = null,
+    @SerialName("content_offset") val contentOffset: Long? = null,
+    @SerialName("content_size_in_bytes") val contentSizeInBytes: Long? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -202,7 +214,10 @@ data class DataFile(
             keyMetadata.contentEquals(other.keyMetadata) &&
             splitOffsets == other.splitOffsets &&
             equalityIds == other.equalityIds &&
-            sortOrderId == other.sortOrderId
+            sortOrderId == other.sortOrderId &&
+            referencedDataFile == other.referencedDataFile &&
+            contentOffset == other.contentOffset &&
+            contentSizeInBytes == other.contentSizeInBytes
     }
 
     override fun hashCode(): Int {
@@ -222,6 +237,9 @@ data class DataFile(
         result = 31 * result + splitOffsets.hashCode()
         result = 31 * result + equalityIds.hashCode()
         result = 31 * result + sortOrderId.hashCode()
+        result = 31 * result + referencedDataFile.hashCode()
+        result = 31 * result + contentOffset.hashCode()
+        result = 31 * result + contentSizeInBytes.hashCode()
         return result
     }
 }

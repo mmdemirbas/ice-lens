@@ -1423,6 +1423,58 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             )
                         }
 
+                        // What this delete file applies to. Asked of every delete file, and the
+                        // honest answer is different for each of the three kinds — including one
+                        // where the answer is that the format does not record it. Leaving the
+                        // relationship blank would read as "nothing", which is a different claim.
+                        val deleteContent = node.data.content
+                        if (deleteContent == DataFileContent.POSITION_DELETES ||
+                            deleteContent == DataFileContent.EQUALITY_DELETES
+                        ) {
+                            Spacer(Modifier.height(16.dp))
+                            SectionTitle("What this deletes from")
+                            val referenced = node.data.referencedDataFile
+                            DetailTable {
+                                DetailRow("Property", "Value", isHeader = true)
+                                when {
+                                    deleteContent == DataFileContent.EQUALITY_DELETES -> {
+                                        DetailRow("Applies by", "Predicate over the equality field ids below")
+                                        DetailRow(
+                                            "Equality Field IDs",
+                                            node.data.equalityIds?.joinToString(", ") { id ->
+                                                node.schema?.nameOf(id)?.let { "$id ($it)" } ?: "$id"
+                                            } ?: "N/A",
+                                        )
+                                        DetailRow(
+                                            "Target Files",
+                                            "Not recorded. An equality delete matches rows by value across " +
+                                                "every data file in its scope, so the format stores no link " +
+                                                "from it to any particular file.",
+                                        )
+                                    }
+                                    referenced != null -> {
+                                        DetailRow("Applies by", "Row position, as a v3 deletion vector")
+                                        DetailRow("Referenced Data File", referenced)
+                                        DetailRow(
+                                            "Vector Location",
+                                            "offset ${node.data.contentOffset ?: "N/A"}, " +
+                                                "${node.data.contentSizeInBytes?.let { formatBytes(it) } ?: "N/A"} " +
+                                                "inside the Puffin blob above",
+                                        )
+                                    }
+                                    else -> {
+                                        DetailRow("Applies by", "Row position")
+                                        DetailRow(
+                                            "Target Files",
+                                            "Recorded inside this file, not in the metadata. Its own " +
+                                                "file_path column names the data files and the pos column the " +
+                                                "rows — open the sample rows below to read them.",
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         // The five per-column statistics maps, pivoted into one row per column and
                         // decoded against the schema this file's manifest was written with. Stored
                         // as parallel maps keyed by field id, they are unreadable in their raw form.

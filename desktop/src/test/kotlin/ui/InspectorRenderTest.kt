@@ -107,6 +107,25 @@ class InspectorRenderTest {
         renderInspector(graph, withMain.id, "snapshot-node", height = 2600)
     }
 
+    /**
+     * The two delete-file answers that are not the same answer. A v3 deletion vector names the
+     * data file it applies to; an equality delete cannot, and has to say so.
+     */
+    @Test
+    fun `delete file inspectors explain what they delete from`() {
+        val v3 = graphFor("v3")
+        val vector = v3.nodes.filterIsInstance<GraphNode.FileNode>()
+            .firstOrNull { it.data.referencedDataFile != null }
+        assertNotNull(vector, "the v3 fixture should have a deletion vector naming its data file")
+        renderInspector(v3, vector.id, "delete-vector-node", height = 2000)
+
+        val eqdel = graphFor("eqdel")
+        val equality = eqdel.nodes.filterIsInstance<GraphNode.FileNode>()
+            .firstOrNull { it.data.content == model.DataFileContent.EQUALITY_DELETES }
+        assertNotNull(equality, "the eqdel fixture should have an equality delete")
+        renderInspector(eqdel, equality.id, "delete-equality-node", height = 2000)
+    }
+
     @Test
     fun `the manifest inspector renders the entry table`() {
         val graph = partedGraph()
