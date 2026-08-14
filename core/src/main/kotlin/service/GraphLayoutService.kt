@@ -76,8 +76,11 @@ object GraphLayoutService {
             elkNodes[node.id] = createElkNode(root, node.id, node.width, node.height)
         }
 
-        // Create ELK edges
+        // Create ELK edges. Edges that only record a relationship are withheld — see
+        // GraphEdge.affectsLayout; snapshot lineage runs between nodes that belong in the same
+        // layer, and letting it constrain layering stretches the graph by the commit history.
         for (edge in edges) {
+            if (!edge.affectsLayout) continue
             val from = elkNodes[edge.fromId]
             val to = elkNodes[edge.toId]
             if (from != null && to != null) {
@@ -124,7 +127,7 @@ object GraphLayoutService {
             }
         }
 
-        val nonSiblingEdges = edges.filter { !it.isSibling }
+        val nonSiblingEdges = edges.filter { !it.isSibling && it.affectsLayout }
         val childrenByParent = nonSiblingEdges.groupBy { it.fromId }
             .mapValues { (_, v) -> v.map { it.toId } }
 
@@ -369,7 +372,7 @@ object GraphLayoutService {
         nodesById: Map<String, GraphNode>,
         edges: List<GraphEdge>,
     ) {
-        val nonSiblingEdges = edges.filter { !it.isSibling }
+        val nonSiblingEdges = edges.filter { !it.isSibling && it.affectsLayout }
         val childrenByParentIds = nonSiblingEdges
             .groupBy { it.fromId }
             .mapValues { (_, v) -> v.map { it.toId } }

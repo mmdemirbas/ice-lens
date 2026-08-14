@@ -249,9 +249,20 @@ sealed class GraphNode(
         val data: Snapshot,
         val simpleId: Int,
         val localPath: String? = null,
+        /**
+         * Branch and tag names from `refs` that point at this snapshot, `main` first.
+         *
+         * A ref is what keeps a snapshot from expiring, so it is the reason a commit is still
+         * here — worth showing on the snapshot rather than only in the table's raw metadata.
+         */
+        val refs: List<SnapshotRefLabel> = emptyList(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 210.0, 84.0)
+        // The card grows for its ref chips rather than clipping them. Node height is what ELK
+        // reserves, so a card that draws more than it declares overflows into its neighbour —
+        // and Compose clips nothing by default, so the chip simply disappears under the border
+        // with nothing failing. Two chip rows is the cap the card allows for.
+    ) : GraphNode(id, initialX, initialY, 210.0, if (refs.isEmpty()) 84.0 else 112.0)
 
     data class ManifestNode(
         override val id: String,
@@ -391,8 +402,26 @@ data class GraphEdge(
     val fromId: String,
     val toId: String,
     val isSibling: Boolean = false,
+    /**
+     * False for an edge that records a relationship without implying containment.
+     *
+     * Snapshot lineage is the case this exists for. A snapshot's parent is another snapshot, so
+     * feeding those edges to a layered layout puts every commit in its own layer and drags its
+     * manifests and files along with it — the graph stretches by the length of the table's
+     * history and stops being readable at the third commit. The edge is still drawn, because the
+     * canvas routes from node positions rather than from ELK's sections; it just does not get a
+     * say in where the nodes go. Layout post-processing ignores it for the same reason.
+     */
+    val affectsLayout: Boolean = true,
     val sections: List<EdgeSection> = emptyList(),
 )
+
+/**
+ * A branch or tag pointing at a snapshot. [isBranch] is false for a tag, which cannot move.
+ */
+data class SnapshotRefLabel(val name: String, val isBranch: Boolean) {
+    val display: String get() = if (isBranch) name else "$name (tag)"
+}
 
 data class EdgeSection(
     val startX: Double,

@@ -1133,7 +1133,23 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                         DetailTable {
                             DetailRow("Property", "Value", isHeader = true)
                             DetailRow("Snapshot ID", "${node.data.snapshotId}")
-                            DetailRow("Parent ID", "${node.data.parentSnapshotId ?: "None"}")
+                            // "None" is the root commit; a parent id with no snapshot behind it
+                            // means the parent has been expired away, and the two are different
+                            // facts about the table's history.
+                            val parentId = node.data.parentSnapshotId
+                            DetailRow(
+                                "Parent ID",
+                                when {
+                                    parentId == null -> "None — this is the table's first commit"
+                                    currentGraph?.nodeById?.containsKey("snap_$parentId") == true -> "$parentId"
+                                    else -> "$parentId (expired — no longer retained)"
+                                },
+                            )
+                            DetailRow(
+                                "Refs",
+                                node.refs.takeIf { it.isNotEmpty() }?.joinToString(", ") { it.display }
+                                    ?: "None — kept only by a metadata version, not by a branch or tag",
+                            )
                             DetailRow("Sequence Number", "${node.data.sequenceNumber ?: "N/A"}")
                             DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
                             DetailRow("Timestamp", formatTimestamp(node.data.timestampMs))

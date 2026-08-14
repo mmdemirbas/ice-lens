@@ -33,6 +33,8 @@ object IcebergGraphBuilder {
         val logicalNodes = mutableMapOf<String, GraphNode>()
         val edges = mutableListOf<GraphEdge>()
         val edgeIds = mutableSetOf<String>()
+        val pendingLineage = mutableListOf<Pair<Long, Long?>>()
+        val currentRefs = currentRefsBySnapshot(tableModel)
         val processedManifests = mutableSetOf<String>()
         val manifestPathToId = mutableMapOf<String, String>()
         val tableNodeId = "table_root"
@@ -151,7 +153,8 @@ object IcebergGraphBuilder {
                         id = sId,
                         data = snap,
                         simpleId = simpleSnapshotId,
-                        localPath = snapshot.path.toString()
+                        localPath = snapshot.path.toString(),
+                        refs = snap.snapshotId?.let { currentRefs[it] }.orEmpty(),
                     )
                 }
                 snapshot.readErrors.forEach { error ->
@@ -161,6 +164,13 @@ object IcebergGraphBuilder {
                 val snapEdgeId = "e_snap_${mId}_to_$sId"
                 if (edgeIds.add(snapEdgeId)) {
                     edges.add(GraphEdge(snapEdgeId, mId, sId))
+                }
+
+                // Commit lineage. Deferred until every snapshot node exists, because a parent is
+                // reached through a different metadata version than its child as often as not,
+                // and an edge to a node that has not been created yet is silently dropped.
+                snap.parentSnapshotId?.let { parentId ->
+                    pendingLineage += parentId to snap.snapshotId
                 }
 
                 val manifests = snapshot.manifests.sortedWith(unifiedManifestComparator)
@@ -285,12 +295,50 @@ object IcebergGraphBuilder {
             }
         }
 
+        // A parent that is no longer retained leaves no node to point at. That is expiry working
+        // as intended, not a missing edge, so the lineage simply stops there.
+        pendingLineage.forEach { (parentId, childId) ->
+            val parentNodeId = "snap_$parentId"
+            val childNodeId = "snap_$childId"
+            if (!logicalNodes.containsKey(parentNodeId) || !logicalNodes.containsKey(childNodeId)) return@forEach
+            val lineageEdgeId = "e_lineage_${parentId}_to_$childId"
+            if (edgeIds.add(lineageEdgeId)) {
+                edges.add(
+                    GraphEdge(
+                        id = lineageEdgeId,
+                        fromId = parentNodeId,
+                        toId = childNodeId,
+                        affectsLayout = false,
+                    )
+                )
+            }
+        }
+
         return GraphBuildResult(
             nodes = logicalNodes.values.toList(),
             edges = edges,
             summary = tableSummary,
         )
     }
+
+    /**
+     * Branch and tag names by the snapshot they point at, from the **latest** metadata version.
+     *
+     * A snapshot node is created by whichever metadata version first mentions it, and that
+     * version's `refs` describe where the branches were then, not now. `main` moves with every
+     * commit, so labelling each snapshot from the file that introduced it would put `main` on
+     * every snapshot in the table. Refs are a statement about the table's present state, so they
+     * come from one place: the current metadata.
+     */
+    private fun currentRefsBySnapshot(tableModel: UnifiedTableModel): Map<Long, List<SnapshotRefLabel>> =
+        tableModel.metadatas.lastOrNull()?.metadata?.refs.orEmpty()
+            .mapNotNull { (name, ref) ->
+                ref.snapshotId?.let { id ->
+                    id to SnapshotRefLabel(name, isBranch = !ref.type.equals("tag", ignoreCase = true))
+                }
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, labels) -> labels.sortedWith(compareBy({ it.name != "main" }, { it.name })) }
 
     // --- Table summary ---
 

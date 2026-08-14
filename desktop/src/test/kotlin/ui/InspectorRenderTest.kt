@@ -3,8 +3,11 @@
 package ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -12,8 +15,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import model.GraphModel
 import model.GraphNode
+import model.SnapshotRefLabel
 import model.UnifiedTableModel
 import service.GraphLayoutService
 import java.io.ByteArrayInputStream
@@ -53,12 +58,14 @@ class InspectorRenderTest {
 
     private val outputDir = File(repoRoot, "desktop/build/reports/inspector")
 
-    private fun partedGraph(): GraphModel {
-        val tableDir = File(repoRoot, "example/iceberg/default/parted")
-        assertTrue(tableDir.isDirectory, "partitioned fixture missing at $tableDir")
+    private fun graphFor(fixture: String): GraphModel {
+        val tableDir = File(repoRoot, "example/iceberg/default/$fixture")
+        assertTrue(tableDir.isDirectory, "fixture missing at $tableDir")
         val model = UnifiedTableModel(Paths.get(tableDir.absolutePath))
         return GraphLayoutService.layoutGraph(model, showRows = false)
     }
+
+    private fun partedGraph(): GraphModel = graphFor("parted")
 
     @Test
     fun `the table inspector renders`() {
@@ -77,6 +84,29 @@ class InspectorRenderTest {
         renderInspector(graph, file.id, "file-node", height = 6000)
     }
 
+    /**
+     * The snapshot carrying `main`, drawn as its card and then as its inspector.
+     *
+     * The card is where the ref chips live, and chips are exactly the thing a screenshot catches
+     * and a test does not: they are laid out in a `FlowRow` because a `Row` would place the later
+     * ones past the card's edge, unclipped and invisible, with nothing failing.
+     */
+    @Test
+    fun `the snapshot card and inspector render refs and lineage`() {
+        val graph = graphFor("mor")
+        val withMain = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>()
+            .firstOrNull { node -> node.refs.any { it.name == "main" } }
+        assertNotNull(withMain, "the merge-on-read fixture should have a snapshot carrying main")
+
+        renderScene("snapshot-card", width = 700, height = 800) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                SnapshotCard(withMain)
+                SnapshotCard(withMain.copy(refs = withMain.refs + SnapshotRefLabel("v1.0-release", isBranch = false)))
+            }
+        }
+        renderInspector(graph, withMain.id, "snapshot-node", height = 2600)
+    }
+
     @Test
     fun `the manifest inspector renders the entry table`() {
         val graph = partedGraph()
@@ -93,10 +123,12 @@ class InspectorRenderTest {
      * background colour and would otherwise pass. Counting pixels that differ from the corner
      * colour is a coarse proxy for "something was drawn", but it separates those two cases.
      */
-    private fun renderInspector(graph: GraphModel, nodeId: String, name: String, height: Int) {
-        val width = 1400
+    private fun renderInspector(graph: GraphModel, nodeId: String, name: String, height: Int) =
+        renderScene(name, width = 1400, height = height) { InspectorUnderTest(graph, nodeId) }
+
+    private fun renderScene(name: String, width: Int, height: Int, content: @Composable () -> Unit) {
         val scene = ImageComposeScene(width = width, height = height, density = Density(2f)) {
-            InspectorUnderTest(graph, nodeId)
+            Themed(content)
         }
         val png = try {
             // Twice. Anything whose visibility is decided by state that layout writes — a
@@ -134,13 +166,18 @@ class InspectorRenderTest {
     }
 
     @Composable
-    private fun InspectorUnderTest(graph: GraphModel, nodeId: String) {
+    private fun Themed(content: @Composable () -> Unit) {
         MaterialTheme(colorScheme = IceLensLightColorScheme) {
             CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                    NodeDetailsContent(graph, setOf(nodeId))
+                    content()
                 }
             }
         }
+    }
+
+    @Composable
+    private fun InspectorUnderTest(graph: GraphModel, nodeId: String) {
+        NodeDetailsContent(graph, setOf(nodeId))
     }
 }

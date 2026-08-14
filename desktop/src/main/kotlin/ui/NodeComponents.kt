@@ -96,6 +96,13 @@ fun nodeCardTextSecondary(): Color =
 private data class NodeColors(val lightFill: Long, val darkFill: Long, val lightBorder: Long, val darkBorder: Long)
 
 // Reusable color palettes
+/**
+ * Ref chips on a snapshot card. Two colours because a branch moves and a tag does not, which is
+ * the only distinction that changes what a reader can conclude from seeing one.
+ */
+private val RefBranchChip = Color(0x33000000)
+private val RefTagChip = Color(0x1F000000)
+
 private val BROWN       = NodeColors(0xFFD7CCC8, 0xFF4E3B32, 0xFF5D4037, 0xFFBCAAA4)
 private val PURPLE      = NodeColors(0xFFE1BEE7, 0xFF4A2858, 0xFF8E24AA, 0xFFCE93D8)
 private val PURPLE_MUTE = NodeColors(0xFFD7CFDE, 0xFF3D3548, 0xFF6F6180, 0xFFB0A4BA)
@@ -430,7 +437,38 @@ fun SnapshotCard(node: GraphNode.SnapshotNode, isSelected: Boolean = false) {
         .padding(8.dp)) {
         Column {
             Text("SNAPSHOT ${node.simpleId}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
-            Text(fileName, fontSize = 9.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
+            Text(
+                fileName,
+                fontSize = 9.sp,
+                // The chips take a line back from the file name rather than from the card's edge.
+                maxLines = if (node.refs.isEmpty()) 3 else 2,
+                overflow = TextOverflow.Ellipsis,
+                color = nodeCardTextPrimary(),
+            )
+            // A ref is why this snapshot is still here rather than expired, so it belongs on the
+            // card. FlowRow, not Row: the names come from the table and a Row would place the
+            // later ones past the card edge where nothing clips them and nobody sees them.
+            if (node.refs.isNotEmpty()) {
+                Spacer(Modifier.height(3.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(3.dp), maxLines = 2) {
+                    node.refs.forEach { ref ->
+                        Text(
+                            ref.display,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = nodeCardTextSecondary(),
+                            modifier = Modifier
+                                .background(
+                                    if (ref.isBranch) RefBranchChip else RefTagChip,
+                                    RoundedCornerShape(3.dp),
+                                )
+                                .padding(horizontal = 4.dp, vertical = 1.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }
