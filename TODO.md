@@ -27,9 +27,11 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   it and the data files it affects. The inspector should say that where a reader would look for
   the link, rather than leaving an empty relationship to be misread as "none".
 
-- **Snapshot lineage is not drawn.** `parent-snapshot-id` is parsed and shown as a field, but
-  no edge connects a snapshot to its parent, so branch and tag topology (`refs`) is invisible
-  as structure. For a tool whose subject is commit history this is a notable absence.
+- **Branch topology is drawn as a chain, not as a shape.** Lineage edges and `refs` now exist
+  (`GraphEdge.affectsLayout`, `SnapshotNode.refs`), so the graph shows the commit history and
+  which snapshots a branch or tag holds. What it does not yet do is *lay out* a branch as a
+  branch: a table with two branches draws both chains through the same vertical ordering, so
+  the fork is legible only by following the edges. No fixture has branches yet either.
 
 - **Statistics and partition-statistics files are untyped.** Held as `List<JsonElement>` and
   rendered as raw JSON; the Puffin blobs they point at (NDV sketches, etc.) are never opened.

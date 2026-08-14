@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deletion vectors rather than parquet delete files). Before these, `posDeleteFileCount`,
   `eqDeleteFileCount`, `deleteRecordCount` and the `DELETES` manifest branch were decided by
   code no real table had ever run through.
+- **Snapshot lineage and refs.** `parent-snapshot-id` is drawn as an edge, and the branches and
+  tags pointing at a snapshot appear on its card and in its inspector. Lineage edges carry
+  `affectsLayout = false`: a parent is another snapshot, so letting them constrain a layered
+  layout puts every commit in its own layer — measured at 2.10x the graph width on a six-commit
+  table, growing with history length. Refs are read from the latest metadata version, since
+  `main` moves with every commit. The inspector distinguishes a first commit from a parent that
+  has been expired away.
 - **The schema-resolution rule is tested, not just asserted.** `example/iceberg/default/evolved`
   carries three manifest schemas in one table (`int`→`long`, `float`→`double`, a column renamed
   then dropped, another added), so a manifest's own schema genuinely differs from the table's

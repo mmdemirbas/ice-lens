@@ -140,6 +140,15 @@ desktop/src/main/kotlin/
   a cap that isn't visible in the UI
 - `formatCount` / `formatBytes` / `formatBytesExact` live in `ui/FormatUtils.kt` — do not add
   private copies to a UI file. Byte units are binary and labelled as such (KiB, not KB)
+- **A `GraphNode`'s declared width/height is what ELK reserves, and Compose clips nothing.** A
+  card that draws more than its node declares loses the overflow under its own border with
+  nothing failing — `SnapshotNode` declares 112dp instead of 84dp when it carries ref chips.
+  Any card gaining content needs its node size revisited in the same change
+- **`GraphEdge.affectsLayout = false` records a relationship without letting it shape the
+  graph.** Snapshot lineage runs between nodes in the same layer; feeding it to ELK stretches
+  the graph by the length of the commit history (measured: 2.10x width on six commits). Such
+  edges are withheld from ELK and from layout post-processing, and still drawn, because the
+  canvas routes from node positions rather than ELK sections
 - **`WideTable` column order is load-bearing, and so are its widths.** The inspector panel is
   far narrower than the table, and the reader sees the leftmost columns and nothing else until
   they scroll — so the answer goes first and identifiers follow it. Pass `columnWidths`: one
@@ -200,7 +209,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~380 tests across 37 files (296 in :core, 84 in :desktop) covering full pipelines for both formats (Avro fixtures
+~386 tests across 38 files (301 in :core, 85 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
