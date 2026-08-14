@@ -142,14 +142,14 @@ covered yet, and each of these is a computed number a reader currently has to tr
   | `default/mor` | merge-on-read v2: three positional delete files, six commits including a `rewrite_data_files` compaction that leaves two of them dangling |
   | `default/eqdel` | both delete kinds in one table — one positional and one equality delete file, the latter written with Iceberg's own `EqualityDeleteWriter` |
   | `default/v3` | format-version 3 with two deletion vectors (Puffin), the v3 representation of what `mor` carries as parquet |
+  | `default/evolved` | three manifest schemas in one table — `int`→`long`, `float`→`double`, a column renamed then dropped, one added |
   | `paimon/db.db/test` | a real Flink/Paimon table |
 
-  **Still missing:** schema evolution across commits (a type widened, a column renamed and
-  dropped) — the schema-resolution trap is the codebase's most important correctness fact and
-  no fixture makes a manifest's own schema differ from the table's current one. Also: a
-  partitioned table whose spec *changed*, for the same reason on the partition side; a table
-  with `write.metadata.path` set, which is the layout `resolveForceRelative` gets wrong; and
-  branches and tags in `refs`.
+  **Still missing:** a partitioned table whose *spec* changed — `evolved` covers the schema side
+  of the resolution rule, and `partitionResultType` has the same trap on the partition side with
+  no fixture where the manifest's spec differs from the table's current one. Also: a table with
+  `write.metadata.path` set, which is the layout `resolveForceRelative` gets wrong; and branches
+  and tags in `refs`.
 
 - **The rendered inspector is checked by eye, not asserted.** `InspectorRenderTest` proves the
   panel composes without throwing and writes PNGs to look at, but its only assertion about the

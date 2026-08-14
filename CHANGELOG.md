@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deletion vectors rather than parquet delete files). Before these, `posDeleteFileCount`,
   `eqDeleteFileCount`, `deleteRecordCount` and the `DELETES` manifest branch were decided by
   code no real table had ever run through.
+- **The schema-resolution rule is tested, not just asserted.** `example/iceberg/default/evolved`
+  carries three manifest schemas in one table (`int`→`long`, `float`→`double`, a column renamed
+  then dropped, another added), so a manifest's own schema genuinely differs from the table's
+  current one. Every previous fixture had a single schema, which made the two the same object
+  and let a decoder reading either pass.
 - **The inspector renders off-screen in the test suite.** `InspectorRenderTest` draws the panel
   into an image with no window and no screen-capture permission, writing PNGs to
   `desktop/build/reports/inspector/`. It is both a regression check no data-level test can make
