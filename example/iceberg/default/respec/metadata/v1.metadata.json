@@ -1,0 +1,66 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "31b1c762-8970-41d7-9f4c-ab13e36819bc",
+  "location" : "/wh/default/respec",
+  "last-sequence-number" : 0,
+  "last-updated-ms" : 1786695315539,
+  "last-column-id" : 3,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "d",
+      "required" : false,
+      "type" : "date"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ {
+      "name" : "name",
+      "transform" : "identity",
+      "source-id" : 2,
+      "field-id" : 1000
+    }, {
+      "name" : "id_bucket",
+      "transform" : "bucket[4]",
+      "source-id" : 1,
+      "field-id" : 1001
+    }, {
+      "name" : "d_day",
+      "transform" : "day",
+      "source-id" : 3,
+      "field-id" : 1002
+    } ]
+  } ],
+  "last-partition-id" : 1002,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ ]
+}
