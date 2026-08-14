@@ -1,9 +1,9 @@
 {
   "format-version" : 2,
-  "table-uuid" : "95a804d5-34e1-404f-b8b6-97e10125c8fd",
+  "table-uuid" : "710f1d78-1dbb-41f6-b509-58e8b9b650dc",
   "location" : "/wh/default/branched",
   "last-sequence-number" : 3,
-  "last-updated-ms" : 1786695323791,
+  "last-updated-ms" : 1786695894383,
   "last-column-id" : 2,
   "current-schema-id" : 0,
   "schemas" : [ {
@@ -36,32 +36,32 @@
     "owner" : "root",
     "write.parquet.compression-codec" : "zstd"
   },
-  "current-snapshot-id" : 5971004714251242640,
+  "current-snapshot-id" : 3698023222460817889,
   "refs" : {
     "main" : {
-      "snapshot-id" : 5971004714251242640,
+      "snapshot-id" : 3698023222460817889,
       "type" : "branch"
     },
     "v1" : {
-      "snapshot-id" : 7894873568060345759,
+      "snapshot-id" : 1466525117601214788,
       "type" : "tag"
     },
     "audit" : {
-      "snapshot-id" : 7894873568060345759,
+      "snapshot-id" : 1466525117601214788,
       "type" : "branch"
     },
     "release" : {
-      "snapshot-id" : 5971004714251242640,
+      "snapshot-id" : 3698023222460817889,
       "type" : "tag"
     }
   },
   "snapshots" : [ {
     "sequence-number" : 1,
-    "snapshot-id" : 7538448388510319111,
-    "timestamp-ms" : 1786695323248,
+    "snapshot-id" : 6979025444437793121,
+    "timestamp-ms" : 1786695893904,
     "summary" : {
       "operation" : "append",
-      "spark.app.id" : "local-1786695320101",
+      "spark.app.id" : "local-1786695891239",
       "added-data-files" : "1",
       "added-records" : "2",
       "added-files-size" : "664",
@@ -73,20 +73,20 @@
       "total-position-deletes" : "0",
       "total-equality-deletes" : "0",
       "engine-version" : "3.5.5",
-      "app-id" : "local-1786695320101",
+      "app-id" : "local-1786695891239",
       "engine-name" : "spark",
       "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
     },
-    "manifest-list" : "/wh/default/branched/metadata/snap-7538448388510319111-1-e5358bd4-40c9-491f-96af-fc0a77009dd8.avro",
+    "manifest-list" : "/wh/default/branched/metadata/snap-6979025444437793121-1-a0608247-4754-4a7c-9eed-837e4f7d5b23.avro",
     "schema-id" : 0
   }, {
     "sequence-number" : 2,
-    "snapshot-id" : 7894873568060345759,
-    "parent-snapshot-id" : 7538448388510319111,
-    "timestamp-ms" : 1786695323464,
+    "snapshot-id" : 1466525117601214788,
+    "parent-snapshot-id" : 6979025444437793121,
+    "timestamp-ms" : 1786695894102,
     "summary" : {
       "operation" : "append",
-      "spark.app.id" : "local-1786695320101",
+      "spark.app.id" : "local-1786695891239",
       "added-data-files" : "1",
       "added-records" : "1",
       "added-files-size" : "678",
@@ -98,20 +98,20 @@
       "total-position-deletes" : "0",
       "total-equality-deletes" : "0",
       "engine-version" : "3.5.5",
-      "app-id" : "local-1786695320101",
+      "app-id" : "local-1786695891239",
       "engine-name" : "spark",
       "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
     },
-    "manifest-list" : "/wh/default/branched/metadata/snap-7894873568060345759-1-09559620-4fce-4e82-aabf-f474056e8ad3.avro",
+    "manifest-list" : "/wh/default/branched/metadata/snap-1466525117601214788-1-1926dd11-cd73-4c73-9d8e-a988f2fc2feb.avro",
     "schema-id" : 0
   }, {
     "sequence-number" : 3,
-    "snapshot-id" : 5971004714251242640,
-    "parent-snapshot-id" : 7894873568060345759,
-    "timestamp-ms" : 1786695323759,
+    "snapshot-id" : 3698023222460817889,
+    "parent-snapshot-id" : 1466525117601214788,
+    "timestamp-ms" : 1786695894358,
     "summary" : {
       "operation" : "append",
-      "spark.app.id" : "local-1786695320101",
+      "spark.app.id" : "local-1786695891239",
       "added-data-files" : "1",
       "added-records" : "1",
       "added-files-size" : "664",
@@ -123,42 +123,42 @@
       "total-position-deletes" : "0",
       "total-equality-deletes" : "0",
       "engine-version" : "3.5.5",
-      "app-id" : "local-1786695320101",
+      "app-id" : "local-1786695891239",
       "engine-name" : "spark",
       "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
     },
-    "manifest-list" : "/wh/default/branched/metadata/snap-5971004714251242640-1-e00622fb-21fa-489b-a8d8-0a094b41b92a.avro",
+    "manifest-list" : "/wh/default/branched/metadata/snap-3698023222460817889-1-ae937b21-1e1a-43f5-909d-19c7ff4a1cc7.avro",
     "schema-id" : 0
   } ],
   "statistics" : [ ],
   "partition-statistics" : [ ],
   "snapshot-log" : [ {
-    "timestamp-ms" : 1786695323248,
-    "snapshot-id" : 7538448388510319111
+    "timestamp-ms" : 1786695893904,
+    "snapshot-id" : 6979025444437793121
   }, {
-    "timestamp-ms" : 1786695323464,
-    "snapshot-id" : 7894873568060345759
+    "timestamp-ms" : 1786695894102,
+    "snapshot-id" : 1466525117601214788
   }, {
-    "timestamp-ms" : 1786695323759,
-    "snapshot-id" : 5971004714251242640
+    "timestamp-ms" : 1786695894358,
+    "snapshot-id" : 3698023222460817889
   } ],
   "metadata-log" : [ {
-    "timestamp-ms" : 1786695321757,
+    "timestamp-ms" : 1786695892561,
     "metadata-file" : "/wh/default/branched/metadata/v1.metadata.json"
   }, {
-    "timestamp-ms" : 1786695323248,
+    "timestamp-ms" : 1786695893904,
     "metadata-file" : "/wh/default/branched/metadata/v2.metadata.json"
   }, {
-    "timestamp-ms" : 1786695323464,
+    "timestamp-ms" : 1786695894102,
     "metadata-file" : "/wh/default/branched/metadata/v3.metadata.json"
   }, {
-    "timestamp-ms" : 1786695323538,
+    "timestamp-ms" : 1786695894168,
     "metadata-file" : "/wh/default/branched/metadata/v4.metadata.json"
   }, {
-    "timestamp-ms" : 1786695323583,
+    "timestamp-ms" : 1786695894197,
     "metadata-file" : "/wh/default/branched/metadata/v5.metadata.json"
   }, {
-    "timestamp-ms" : 1786695323759,
+    "timestamp-ms" : 1786695894358,
     "metadata-file" : "/wh/default/branched/metadata/v6.metadata.json"
   } ]
 }

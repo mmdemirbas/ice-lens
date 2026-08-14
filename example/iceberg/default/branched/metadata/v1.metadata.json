@@ -1,9 +1,9 @@
 {
   "format-version" : 2,
-  "table-uuid" : "95a804d5-34e1-404f-b8b6-97e10125c8fd",
+  "table-uuid" : "710f1d78-1dbb-41f6-b509-58e8b9b650dc",
   "location" : "/wh/default/branched",
   "last-sequence-number" : 0,
-  "last-updated-ms" : 1786695321757,
+  "last-updated-ms" : 1786695892561,
   "last-column-id" : 2,
   "current-schema-id" : 0,
   "schemas" : [ {

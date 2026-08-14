@@ -2,8 +2,8 @@
   "format-version" : 2,
   "table-uuid" : "710f1d78-1dbb-41f6-b509-58e8b9b650dc",
   "location" : "/wh/default/branched",
-  "last-sequence-number" : 3,
-  "last-updated-ms" : 1786695894358,
+  "last-sequence-number" : 5,
+  "last-updated-ms" : 1786695894686,
   "last-column-id" : 2,
   "current-schema-id" : 0,
   "schemas" : [ {
@@ -36,19 +36,27 @@
     "owner" : "root",
     "write.parquet.compression-codec" : "zstd"
   },
-  "current-snapshot-id" : 3698023222460817889,
+  "current-snapshot-id" : 8788892783725052840,
   "refs" : {
     "main" : {
-      "snapshot-id" : 3698023222460817889,
+      "snapshot-id" : 8788892783725052840,
       "type" : "branch"
     },
     "v1" : {
       "snapshot-id" : 1466525117601214788,
       "type" : "tag"
     },
+    "prod" : {
+      "snapshot-id" : 8788892783725052840,
+      "type" : "tag"
+    },
     "audit" : {
-      "snapshot-id" : 1466525117601214788,
+      "snapshot-id" : 1183816113347240589,
       "type" : "branch"
+    },
+    "release" : {
+      "snapshot-id" : 3698023222460817889,
+      "type" : "tag"
     }
   },
   "snapshots" : [ {
@@ -125,6 +133,56 @@
     },
     "manifest-list" : "/wh/default/branched/metadata/snap-3698023222460817889-1-ae937b21-1e1a-43f5-909d-19c7ff4a1cc7.avro",
     "schema-id" : 0
+  }, {
+    "sequence-number" : 4,
+    "snapshot-id" : 1183816113347240589,
+    "parent-snapshot-id" : 1466525117601214788,
+    "timestamp-ms" : 1786695894525,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1786695891239",
+      "added-data-files" : "1",
+      "added-records" : "1",
+      "added-files-size" : "735",
+      "changed-partition-count" : "1",
+      "total-records" : "4",
+      "total-files-size" : "2077",
+      "total-data-files" : "3",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1786695891239",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/branched/metadata/snap-1183816113347240589-1-8ddfe176-e5af-4c38-a378-e2d895b17938.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 5,
+    "snapshot-id" : 8788892783725052840,
+    "parent-snapshot-id" : 3698023222460817889,
+    "timestamp-ms" : 1786695894660,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1786695891239",
+      "added-data-files" : "1",
+      "added-records" : "1",
+      "added-files-size" : "678",
+      "changed-partition-count" : "1",
+      "total-records" : "5",
+      "total-files-size" : "2684",
+      "total-data-files" : "4",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1786695891239",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/branched/metadata/snap-8788892783725052840-1-b4860a10-cf98-4905-9bfc-51e8246a1daf.avro",
+    "schema-id" : 0
   } ],
   "statistics" : [ ],
   "partition-statistics" : [ ],
@@ -137,6 +195,9 @@
   }, {
     "timestamp-ms" : 1786695894358,
     "snapshot-id" : 3698023222460817889
+  }, {
+    "timestamp-ms" : 1786695894660,
+    "snapshot-id" : 8788892783725052840
   } ],
   "metadata-log" : [ {
     "timestamp-ms" : 1786695892561,
@@ -153,5 +214,17 @@
   }, {
     "timestamp-ms" : 1786695894197,
     "metadata-file" : "/wh/default/branched/metadata/v5.metadata.json"
+  }, {
+    "timestamp-ms" : 1786695894358,
+    "metadata-file" : "/wh/default/branched/metadata/v6.metadata.json"
+  }, {
+    "timestamp-ms" : 1786695894383,
+    "metadata-file" : "/wh/default/branched/metadata/v7.metadata.json"
+  }, {
+    "timestamp-ms" : 1786695894525,
+    "metadata-file" : "/wh/default/branched/metadata/v8.metadata.json"
+  }, {
+    "timestamp-ms" : 1786695894660,
+    "metadata-file" : "/wh/default/branched/metadata/v9.metadata.json"
   } ]
 }

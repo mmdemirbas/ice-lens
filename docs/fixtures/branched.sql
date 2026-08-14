@@ -59,3 +59,14 @@ ALTER TABLE lens.default.branched CREATE TAG `release`;
 
 -- a commit on audit only, so two snapshots share commit 2 as their parent
 INSERT INTO lens.default.branched.branch_audit VALUES (5, 'echo-audit-only');
+
+-- A fourth commit on main, AFTER the audit commit. This is what makes the two orderings differ
+-- and is the reason the fixture is worth having: in wall-clock order the audit commit falls
+-- between main's third and fourth, so ordering snapshots by timestamp interleaves the branches.
+-- Ordering by lineage keeps main's chain contiguous and puts audit's commits together at the end.
+-- Without this commit both orderings agree and the layout rule they exist to test is unobservable.
+INSERT INTO lens.default.branched VALUES (6, 'foxtrot');
+
+-- A tag on the head of main, so one snapshot carries two refs at once. Note: `head` is not a
+-- usable tag name here - Spark accepts the statement and no ref appears - so this is `prod`.
+ALTER TABLE lens.default.branched CREATE TAG `prod`;

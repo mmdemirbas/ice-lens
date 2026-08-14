@@ -47,16 +47,29 @@ class BranchedFixtureTest {
         val result = IcebergGraphBuilder.buildGraph(branchedModel(), showRows = false)
         val lineage = result.edges.filter { it.id.startsWith("e_lineage_") }
 
-        assertEquals(4, snapshots().size, "three commits on main plus one on audit")
-        assertEquals(3, lineage.size, "four snapshots, one of them the root")
+        assertEquals(5, snapshots().size, "four commits on main plus one on audit")
+        assertEquals(4, lineage.size, "five snapshots, one of them the root")
 
         val childrenByParent = lineage.groupBy { it.fromId }
         val forkPoint = childrenByParent.entries.single { it.value.size == 2 }
         assertEquals(2, forkPoint.value.size, "the fork point has two children")
         assertEquals(
-            2, childrenByParent.size,
+            3, childrenByParent.size,
             "a fork means fewer distinct parents than edges: ${childrenByParent.keys}",
         )
+    }
+
+    /**
+     * This table has ten metadata versions, which makes it the first fixture that can tell a
+     * numeric ordering of `vN.metadata.json` from a lexicographic one — `v9` sorts after `v10`
+     * as a string, and the current schema, the current snapshot and every ref are read from
+     * whichever file is considered last.
+     */
+    @Test
+    fun `the newest metadata version is v10, not v9`() {
+        val metadatas = branchedModel().metadatas
+        assertTrue(metadatas.size >= 10, "the fixture should cross the 9-to-10 boundary")
+        assertEquals("v10.metadata.json", metadatas.last().path.fileName.toString())
     }
 
     @Test
@@ -64,8 +77,8 @@ class BranchedFixtureTest {
         val refsByName = snapshots().flatMap { node -> node.refs.map { it.name to it } }.toMap()
 
         assertEquals(
-            setOf("main", "audit", "v1", "release"), refsByName.keys,
-            "all four refs should reach a snapshot",
+            setOf("main", "audit", "v1", "release", "prod"), refsByName.keys,
+            "all five refs should reach a snapshot",
         )
         assertTrue(refsByName.getValue("main").isBranch, "main is a branch")
         assertTrue(refsByName.getValue("audit").isBranch, "audit is a branch")
@@ -74,10 +87,82 @@ class BranchedFixtureTest {
         assertEquals("release (tag)", refsByName.getValue("release").display)
 
         val multiRef = snapshots().filter { it.refs.size > 1 }
-        assertEquals(1, multiRef.size, "the head of main is also tagged release")
+        assertEquals(1, multiRef.size, "the head of main is also tagged prod")
         assertEquals(
-            listOf("main", "release"), multiRef.single().refs.map { it.name },
+            listOf("main", "prod"), multiRef.single().refs.map { it.name },
             "main sorts first, then the rest alphabetically",
+        )
+    }
+
+    /**
+     * The layout property, and the reason the fixture has a fourth commit on `main` after the
+     * audit commit: in wall-clock order the branches interleave, so the two orderings differ and
+     * the rule is observable. Without that commit both orderings agree and this test proves
+     * nothing.
+     *
+     * Ordering by lineage keeps `main`'s chain contiguous and puts `audit` after it. Ordering by
+     * timestamp splits `main` around the audit commit.
+     */
+    @Test
+    fun `lineage order keeps each branch contiguous where timestamp order does not`() {
+        val snapshots = IcebergGraphBuilder.buildGraph(branchedModel(), showRows = false)
+            .nodes.filterIsInstance<GraphNode.SnapshotNode>()
+        val rank = GraphLayoutService.snapshotLineageOrder(snapshots)
+
+        val byLineage = snapshots.sortedBy { rank.getValue(it.id) }
+        val chronological = snapshots.sortedBy { it.data.timestampMs }
+        assertTrue(
+            byLineage.map { it.id } != chronological.map { it.id },
+            "the fixture must interleave the branches, or this rule is untestable",
+        )
+
+        val auditHead = snapshots.single { node -> node.refs.any { it.name == "audit" } }
+        val mainChain = byLineage.filter { it.id != auditHead.id }.map { rank.getValue(it.id) }
+        assertEquals(
+            mainChain.sorted(), (mainChain.min()..mainChain.max()).toList(),
+            "main's commits should occupy one unbroken run",
+        )
+        assertEquals(
+            byLineage.size - 1, rank.getValue(auditHead.id),
+            "the branch that forks off should follow the chain it forked from",
+        )
+
+        // And the ordering is still a valid walk: no commit precedes its own parent.
+        snapshots.forEach { node ->
+            val parent = snapshots.firstOrNull { it.data.snapshotId == node.data.parentSnapshotId }
+            if (parent != null) {
+                assertTrue(
+                    rank.getValue(parent.id) < rank.getValue(node.id),
+                    "a commit was ordered before its parent",
+                )
+            }
+        }
+    }
+
+    /**
+     * That the layout actually uses the lineage order, not just that the order exists.
+     *
+     * The audit commit is older than main's head, so timestamp ordering places it above and
+     * lineage ordering below. One assertion separates the two, and it is the only one here that
+     * fails if the comparator stops consulting the rank.
+     */
+    @Test
+    fun `the layout places the branch after the chain it forked from, not by timestamp`() {
+        val result = IcebergGraphBuilder.buildGraph(branchedModel(), showRows = false)
+        val graph = GraphLayoutService.layoutNodes(result.nodes, result.edges)
+
+        val auditHead = result.nodes.filterIsInstance<GraphNode.SnapshotNode>()
+            .single { node -> node.refs.any { it.name == "audit" } }
+        val mainHead = result.nodes.filterIsInstance<GraphNode.SnapshotNode>()
+            .single { node -> node.refs.any { it.name == "main" } }
+
+        assertTrue(
+            (auditHead.data.timestampMs ?: 0) < (mainHead.data.timestampMs ?: 0),
+            "the fixture must commit to audit before main's head, or this proves nothing",
+        )
+        assertTrue(
+            graph.layoutPositions.getValue(auditHead.id).y > graph.layoutPositions.getValue(mainHead.id).y,
+            "the branch tip should sit below main's tip, which timestamp ordering would reverse",
         )
     }
 

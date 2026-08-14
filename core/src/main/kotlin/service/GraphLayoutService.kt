@@ -103,12 +103,68 @@ object GraphLayoutService {
         }
 
         val nodesById = finalNodes.associateBy { it.id }
+        // Ordering runs twice, on purpose, and the second pass is the one that decides.
+        //
+        // alignParentsWithChildren moves a parent to the centre of its children, so a snapshot
+        // ends up wherever its manifests are — which silently overrode the order the first pass
+        // had just established. The vertical order of snapshots was therefore decided by ELK's
+        // placement of their manifests, not by the comparator, and putting lineage into that
+        // comparator changed nothing on screen until this second pass was added.
+        //
+        // The two passes are not equals: ordering is a constraint and alignment is a preference,
+        // so the constraint is applied last. Alignment still does its work — the second pass only
+        // permutes nodes within the y slots alignment left them in.
         enforceChronologicalVerticalOrder(nodesById, edges)
         alignParentsWithChildren(nodesById, edges)
+        enforceChronologicalVerticalOrder(nodesById, edges)
         preventOverlaps(nodesById)
 
         val posMap = finalNodes.associate { it.id to Point(it.x.toFloat(), it.y.toFloat()) }
         return GraphModel(finalNodes, edges, root.width, root.height, layoutPositions = posMap)
+    }
+
+    /**
+     * Depth-first pre-order over the lineage forest: a snapshot, then its children oldest first.
+     *
+     * The point is that a branch stays contiguous. Ordering snapshots by timestamp alone
+     * interleaves two branches by wall-clock time, so a fork reads as an arbitrary sequence and
+     * the only thing saying otherwise is an edge crossing back over several rows.
+     *
+     * On a linear history this is identical to chronological order — each snapshot has exactly
+     * one child and the walk follows the chain — which is what makes the change safe for every
+     * table that has no branches. Iterative rather than recursive: a real table's history is
+     * long enough to overflow a stack.
+     *
+     * A snapshot whose parent is not present (expired, or on a branch this metadata does not
+     * carry) is a root, so nothing is dropped from the ordering.
+     */
+    internal fun snapshotLineageOrder(snapshots: List<GraphNode.SnapshotNode>): Map<String, Int> {
+        if (snapshots.isEmpty()) return emptyMap()
+        val byCommit = snapshots.mapNotNull { node -> node.data.snapshotId?.let { it to node } }.toMap()
+        val siblingOrder = compareBy<GraphNode.SnapshotNode>(
+            { it.data.timestampMs ?: Long.MAX_VALUE },
+            { it.data.sequenceNumber ?: Long.MAX_VALUE },
+            { it.data.snapshotId ?: Long.MAX_VALUE },
+        )
+        val childrenOf = snapshots
+            .filter { it.data.parentSnapshotId != null && byCommit.containsKey(it.data.parentSnapshotId) }
+            .groupBy { it.data.parentSnapshotId }
+            .mapValues { (_, children) -> children.sortedWith(siblingOrder) }
+
+        val roots = snapshots.filter { node ->
+            node.data.parentSnapshotId == null || !byCommit.containsKey(node.data.parentSnapshotId)
+        }.sortedWith(siblingOrder)
+
+        val rank = mutableMapOf<String, Int>()
+        // Reversed pushes keep siblings in ascending order as they come back off the stack.
+        val stack = ArrayDeque(roots.asReversed())
+        while (stack.isNotEmpty()) {
+            val node = stack.removeLast()
+            if (rank.containsKey(node.id)) continue
+            rank[node.id] = rank.size
+            childrenOf[node.data.snapshotId].orEmpty().asReversed().forEach(stack::addLast)
+        }
+        return rank
     }
 
     private fun enforceChronologicalVerticalOrder(
@@ -139,7 +195,17 @@ object GraphLayoutService {
             va.compareTo(vb)
         }
 
+        val lineageRank = snapshotLineageOrder(nodesById.values.filterIsInstance<GraphNode.SnapshotNode>())
+
         val snapshotComparator = Comparator<GraphNode> { a, b ->
+            // Commits sit next to the commit they came from. On a linear history this is exactly
+            // chronological order, so nothing moves; on a branched one it keeps each branch
+            // contiguous instead of interleaving two branches by wall-clock time, which is the
+            // only way a single column of snapshots can show a fork as a shape.
+            val ra = lineageRank[a.id]
+            val rb = lineageRank[b.id]
+            if (ra != null && rb != null) return@Comparator ra.compareTo(rb)
+
             val sa = (a as? GraphNode.SnapshotNode)?.data
             val sb = (b as? GraphNode.SnapshotNode)?.data
             compareValuesBy(sa, sb,

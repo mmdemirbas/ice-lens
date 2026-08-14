@@ -104,6 +104,32 @@ class SnapshotLineageTest {
     }
 
     /**
+     * The safety invariant behind ordering snapshots by lineage rather than by timestamp: on a
+     * history with no branches the two orderings are the same, so every unbranched table keeps
+     * the order it had before.
+     *
+     * Asserted on the ordering itself rather than on final y positions. Snapshot nodes are shared
+     * between metadata versions and reordered once per metadata parent, so the y a snapshot ends
+     * up with depends on which parent was processed last — a separate wrinkle, noted in TODO.md,
+     * that would make this test measure the wrong thing.
+     */
+    @Test
+    fun `on a linear history the lineage order is the chronological order`() {
+        listOf("mor", "evolved", "v3", "parted").forEach { fixture ->
+            val snapshots = IcebergGraphBuilder.buildGraph(modelFor(fixture), showRows = false)
+                .nodes.filterIsInstance<GraphNode.SnapshotNode>()
+            val rank = GraphLayoutService.snapshotLineageOrder(snapshots)
+
+            val byLineage = snapshots.sortedBy { rank.getValue(it.id) }.mapNotNull { it.data.snapshotId }
+            val chronological = snapshots
+                .sortedWith(compareBy({ it.data.timestampMs ?: Long.MAX_VALUE }, { it.data.snapshotId }))
+                .mapNotNull { it.data.snapshotId }
+
+            assertEquals(chronological, byLineage, "$fixture is linear and should be unchanged")
+        }
+    }
+
+    /**
      * Refs come from the latest metadata version, never from the one that introduced a snapshot.
      * `main` moves with every commit, so labelling each snapshot from the file that first
      * mentioned it would put `main` on all six of them.
