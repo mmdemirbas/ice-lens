@@ -21,17 +21,16 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   fixture exercises the real thing; today a vector is distinguishable from a v2 delete file only
   by its `.puffin` extension, since both declare `content = 1`.
 
-- **Equality deletes are read but not explained.** `equalityIds` is parsed and shown, and
-  `example/iceberg/default/eqdel` covers it. What is missing is the UI statement: an equality
-  delete applies by predicate over identifier fields, so the format contains *no* link between
-  it and the data files it affects. The inspector should say that where a reader would look for
-  the link, rather than leaving an empty relationship to be misread as "none".
+- **Delete-file targeting is explained but not drawn.** The file inspector now states what each
+  delete kind applies to, including that an equality delete has no recorded target. The graph
+  still draws no edge for the one case where the format *does* record a link — a v3 deletion
+  vector's `referenced_data_file` names exactly one data file, and that could be an edge.
 
-- **Branch topology is drawn as a chain, not as a shape.** Lineage edges and `refs` now exist
-  (`GraphEdge.affectsLayout`, `SnapshotNode.refs`), so the graph shows the commit history and
-  which snapshots a branch or tag holds. What it does not yet do is *lay out* a branch as a
-  branch: a table with two branches draws both chains through the same vertical ordering, so
-  the fork is legible only by following the edges. No fixture has branches yet either.
+- **A fork is drawn as two adjacent chains, not as a diverging shape.** Lineage edges, `refs`
+  and lineage-ordered layout all exist, and `example/iceberg/default/branched` covers them, so a
+  branch's commits sit together and the fork is followable. What the graph still does not do is
+  place branches on separate horizontal tracks the way a commit-graph UI would — with more than
+  two branches the edges will cross, since every snapshot shares one column.
 
 - **Statistics and partition-statistics files are untyped.** Held as `List<JsonElement>` and
   rendered as raw JSON; the Puffin blobs they point at (NDV sketches, etc.) are never opened.
@@ -145,13 +144,13 @@ covered yet, and each of these is a computed number a reader currently has to tr
   | `default/eqdel` | both delete kinds in one table — one positional and one equality delete file, the latter written with Iceberg's own `EqualityDeleteWriter` |
   | `default/v3` | format-version 3 with two deletion vectors (Puffin), the v3 representation of what `mor` carries as parquet |
   | `default/evolved` | three manifest schemas in one table — `int`→`long`, `float`→`double`, a column renamed then dropped, one added |
+  | `default/respec` | two partition specs in one table — a dropped field, a rebucketed one, `days` replaced by `months` |
+  | `default/branched` | a fork, four refs across five commits, one snapshot with two, and ten metadata versions |
   | `paimon/db.db/test` | a real Flink/Paimon table |
 
-  **Still missing:** a partitioned table whose *spec* changed — `evolved` covers the schema side
-  of the resolution rule, and `partitionResultType` has the same trap on the partition side with
-  no fixture where the manifest's spec differs from the table's current one. Also: a table with
-  `write.metadata.path` set, which is the layout `resolveForceRelative` gets wrong; and branches
-  and tags in `refs`.
+  **Still missing:** a table with `write.metadata.path` set, which is the layout
+  `resolveForceRelative` gets wrong and the one remaining shape with no example. Everything else
+  on this list has a fixture.
 
 - **The rendered inspector is checked by eye, not asserted.** `InspectorRenderTest` proves the
   panel composes without throwing and writes PNGs to look at, but its only assertion about the

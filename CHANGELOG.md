@@ -26,13 +26,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deletion vectors rather than parquet delete files). Before these, `posDeleteFileCount`,
   `eqDeleteFileCount`, `deleteRecordCount` and the `DELETES` manifest branch were decided by
   code no real table had ever run through.
+- **A changed partition spec and a branched history are covered by real tables.**
+  `example/iceberg/default/respec` has two specs (a dropped field, `bucket(4)`→`bucket(8)`,
+  `days`→`months`), closing the partition half of the schema-resolution rule.
+  `example/iceberg/default/branched` has a fork, five refs including two tags, a snapshot
+  carrying two refs, and ten metadata versions — the first fixture that can tell a numeric
+  ordering of `vN.metadata.json` from a lexicographic one.
+- **A delete file says what it deletes from.** The inspector answers per kind: a v3 deletion
+  vector names its data file and byte range (`referenced_data_file`, `content_offset`,
+  `content_size_in_bytes` are now modelled), a v2 positional delete keeps its targets in its own
+  `file_path` column, and an equality delete has no recorded target at all — stated where a
+  reader would look for the link rather than left blank.
 - **Snapshot lineage and refs.** `parent-snapshot-id` is drawn as an edge, and the branches and
   tags pointing at a snapshot appear on its card and in its inspector. Lineage edges carry
   `affectsLayout = false`: a parent is another snapshot, so letting them constrain a layered
   layout puts every commit in its own layer — measured at 2.10x the graph width on a six-commit
   table, growing with history length. Refs are read from the latest metadata version, since
   `main` moves with every commit. The inspector distinguishes a first commit from a parent that
-  has been expired away.
+  has been expired away. Snapshots are ordered by lineage rather than timestamp, so each branch
+  stays contiguous; on an unbranched history the two orderings are identical.
 - **The schema-resolution rule is tested, not just asserted.** `example/iceberg/default/evolved`
   carries three manifest schemas in one table (`int`→`long`, `float`→`double`, a column renamed
   then dropped, another added), so a manifest's own schema genuinely differs from the table's

@@ -149,6 +149,11 @@ desktop/src/main/kotlin/
   the graph by the length of the commit history (measured: 2.10x width on six commits). Such
   edges are withheld from ELK and from layout post-processing, and still drawn, because the
   canvas routes from node positions rather than ELK sections
+- **Layout post-processing runs ordering, then alignment, then ordering again.** Alignment moves
+  a parent to its children's centre, which overrides the order the first pass set — so the
+  vertical order of snapshots was decided by ELK's manifest placement until the second pass
+  existed. Ordering is a constraint and alignment a preference; the constraint goes last. Any new
+  post-processing step needs placing against that rule
 - **`WideTable` column order is load-bearing, and so are its widths.** The inspector panel is
   far narrower than the table, and the reader sees the leftmost columns and nothing else until
   they scroll — so the answer goes first and identifiers follow it. Pass `columnWidths`: one
@@ -209,7 +214,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~386 tests across 38 files (301 in :core, 85 in :desktop) covering full pipelines for both formats (Avro fixtures
+~401 tests across 41 files (315 in :core, 86 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -238,6 +243,8 @@ container invocation and the traps in it:
 | `default/eqdel` | `EqualityDeleteFixtureTest` | both delete kinds in one table |
 | `default/v3` | `FormatV3FixtureTest` | format-version 3 with deletion vectors |
 | `default/evolved` | `SchemaEvolutionFixtureTest` | three manifest schemas — `int`→`long`, `float`→`double`, a rename and a drop |
+| `default/respec` | `PartitionSpecEvolutionTest` | two partition specs — dropped, rebucketed, `days`→`months` |
+| `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
 | `paimon/db.db/test` | `RealTableFixtureTest` | a real Flink/Paimon table |
 
 Two things about generating these are worth not rediscovering. **Spark writes one row per data
