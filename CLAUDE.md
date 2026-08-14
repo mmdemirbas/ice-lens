@@ -200,7 +200,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~362 tests across 33 files (278 in :core, 84 in :desktop) covering full pipelines for both formats (Avro fixtures
+~375 tests across 36 files (291 in :core, 84 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -216,9 +216,28 @@ first frame, so a single-frame capture shows a panel the running app never draws
 **The runtime-written Avro fixtures are not an oracle.** They are written with
 `Avro.schema<T>()` — the schema derived from the very class under test — so writer and reader
 schema are the same object, and a field typed against the wrong spec width passes all of them.
-The checked-in `example/` tables are the only real oracles: `RealTableFixtureTest` and
-`PartitionDecodingTest` read tables written by real Spark/Iceberg and Flink/Paimon. Regenerate
-the partitioned one with `docs/fixtures/parted.sql`.
+The checked-in `example/` tables are the only real oracles, and their expected values are taken
+from Iceberg's own metadata tables (`.files`, `.manifests`, `.snapshots`), never from what this
+code produces. Each has a regeneration script in `docs/fixtures/` whose header carries the
+container invocation and the traps in it:
+
+| Fixture | Test | Covers |
+|---|---|---|
+| `default/test` | `RealTableFixtureTest` | the minimal case, unpartitioned v2 |
+| `default/parted` | `PartitionDecodingTest` | eight partition fields, all transform shapes |
+| `default/mor` | `MergeOnReadFixtureTest` | positional deletes, a compaction, dangling deletes |
+| `default/eqdel` | `EqualityDeleteFixtureTest` | both delete kinds in one table |
+| `default/v3` | `FormatV3FixtureTest` | format-version 3 with deletion vectors |
+| `paimon/db.db/test` | `RealTableFixtureTest` | a real Flink/Paimon table |
+
+Two things about generating these are worth not rediscovering. **Spark writes one row per data
+file** for small inserts under `local[2]`, and a `DELETE` matching every row of a file removes
+the file outright instead of writing a positional delete — so a delete-file fixture must pin
+`--master local[1]` or it silently covers nothing. And **Spark writes no equality deletes at
+all**; `eqdel`'s is written by driving Iceberg's own `EqualityDeleteWriter` from `spark-shell`
+(`docs/fixtures/eqdel-equality-deletes.scala`), which needs `MessageType` imported from
+`org.apache.iceberg.shaded.…` because the runtime jar relocates Parquet and Spark's own copy is
+also on the classpath.
 
 ## Supported table formats
 

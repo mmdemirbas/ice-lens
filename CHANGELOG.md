@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which snapshot counted it first. The table inspector prints the ledger directly under each set
   of figures. Paimon contributions can be negative, because it applies a snapshot's delta
   manifest list over its base and a fold has no other way to express a removal.
+- **Delete files, a compaction, and format-version 3 are covered by real tables.** Three new
+  fixtures, each checked against Iceberg's own metadata tables rather than against this code:
+  `example/iceberg/default/mor` (merge-on-read v2 — three positional delete files and a
+  `rewrite_data_files` compaction that leaves two of them dangling),
+  `example/iceberg/default/eqdel` (both delete kinds in one table; the equality delete is
+  written with Iceberg's own `EqualityDeleteWriter`, since Spark has no SQL that produces one),
+  and `example/iceberg/default/v3` (format-version 3, whose merge-on-read deletes are Puffin
+  deletion vectors rather than parquet delete files). Before these, `posDeleteFileCount`,
+  `eqDeleteFileCount`, `deleteRecordCount` and the `DELETES` manifest branch were decided by
+  code no real table had ever run through.
 - **The inspector renders off-screen in the test suite.** `InspectorRenderTest` draws the panel
   into an image with no window and no screen-capture permission, writing PNGs to
   `desktop/build/reports/inspector/`. It is both a regression check no data-level test can make
