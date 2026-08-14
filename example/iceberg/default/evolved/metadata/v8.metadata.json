@@ -1,0 +1,232 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "7e36ddf9-b3a0-4860-81a3-b012ae89e475",
+  "location" : "/wh/default/evolved",
+  "last-sequence-number" : 2,
+  "last-updated-ms" : 1786680126050,
+  "last-column-id" : 4,
+  "current-schema-id" : 5,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "amount",
+      "required" : false,
+      "type" : "float"
+    } ]
+  }, {
+    "type" : "struct",
+    "schema-id" : 1,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "long"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "amount",
+      "required" : false,
+      "type" : "float"
+    } ]
+  }, {
+    "type" : "struct",
+    "schema-id" : 2,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "long"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "amount",
+      "required" : false,
+      "type" : "double"
+    } ]
+  }, {
+    "type" : "struct",
+    "schema-id" : 3,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "long"
+    }, {
+      "id" : 2,
+      "name" : "label",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "amount",
+      "required" : false,
+      "type" : "double"
+    } ]
+  }, {
+    "type" : "struct",
+    "schema-id" : 4,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "long"
+    }, {
+      "id" : 2,
+      "name" : "label",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "amount",
+      "required" : false,
+      "type" : "double"
+    }, {
+      "id" : 4,
+      "name" : "note",
+      "required" : false,
+      "type" : "string"
+    } ]
+  }, {
+    "type" : "struct",
+    "schema-id" : 5,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "long"
+    }, {
+      "id" : 3,
+      "name" : "amount",
+      "required" : false,
+      "type" : "double"
+    }, {
+      "id" : 4,
+      "name" : "note",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : 748550146638595787,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 748550146638595787,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 2931034631559312150,
+    "timestamp-ms" : 1786680125650,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1786680122977",
+      "added-data-files" : "1",
+      "added-records" : "2",
+      "added-files-size" : "907",
+      "changed-partition-count" : "1",
+      "total-records" : "2",
+      "total-files-size" : "907",
+      "total-data-files" : "1",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1786680122977",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/evolved/metadata/snap-2931034631559312150-1-c9424a00-e9a7-419a-b4ca-6f8840eb4ac2.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 2,
+    "snapshot-id" : 748550146638595787,
+    "parent-snapshot-id" : 2931034631559312150,
+    "timestamp-ms" : 1786680126018,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1786680122977",
+      "added-data-files" : "1",
+      "added-records" : "2",
+      "added-files-size" : "1236",
+      "changed-partition-count" : "1",
+      "total-records" : "4",
+      "total-files-size" : "2143",
+      "total-data-files" : "2",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1786680122977",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/evolved/metadata/snap-748550146638595787-1-61f50416-fbe3-4523-90ba-e81ffb133a53.avro",
+    "schema-id" : 4
+  } ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1786680125650,
+    "snapshot-id" : 2931034631559312150
+  }, {
+    "timestamp-ms" : 1786680126018,
+    "snapshot-id" : 748550146638595787
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1786680124369,
+    "metadata-file" : "/wh/default/evolved/metadata/v1.metadata.json"
+  }, {
+    "timestamp-ms" : 1786680125650,
+    "metadata-file" : "/wh/default/evolved/metadata/v2.metadata.json"
+  }, {
+    "timestamp-ms" : 1786680125731,
+    "metadata-file" : "/wh/default/evolved/metadata/v3.metadata.json"
+  }, {
+    "timestamp-ms" : 1786680125764,
+    "metadata-file" : "/wh/default/evolved/metadata/v4.metadata.json"
+  }, {
+    "timestamp-ms" : 1786680125792,
+    "metadata-file" : "/wh/default/evolved/metadata/v5.metadata.json"
+  }, {
+    "timestamp-ms" : 1786680125822,
+    "metadata-file" : "/wh/default/evolved/metadata/v6.metadata.json"
+  }, {
+    "timestamp-ms" : 1786680126018,
+    "metadata-file" : "/wh/default/evolved/metadata/v7.metadata.json"
+  } ]
+}
