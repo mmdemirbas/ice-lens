@@ -151,7 +151,48 @@ data class ManifestListEntry(
     @SerialName("added_rows_count") val addedRowsCount: Long? = null,
     @SerialName("existing_rows_count") val existingRowsCount: Long? = null,
     @SerialName("deleted_rows_count") val deletedRowsCount: Long? = null,
+    /**
+     * Per-partition-field bounds over every file in this manifest, **positional**: entry `i`
+     * describes field `i` of the manifest's partition spec.
+     *
+     * This is what decides whether a scan opens the manifest at all. A planner intersects the
+     * query's partition predicate with these bounds and skips the whole file if they cannot
+     * overlap, so a manifest can be the reason a query is fast without a single one of its
+     * entries being read.
+     */
+    val partitions: List<PartitionFieldSummary>? = null,
 )
+
+/**
+ * `field_summary` from the manifest list: the range of one partition field across a manifest.
+ *
+ * Bounds are Appendix D bytes in the partition field's **result** type, not the source column's
+ * — a `bucket[8]` summary is an int range even when the source is a string.
+ */
+@Serializable
+data class PartitionFieldSummary(
+    @SerialName("contains_null") val containsNull: Boolean = false,
+    @SerialName("contains_nan") val containsNan: Boolean? = null,
+    @SerialName("lower_bound") val lowerBound: ByteArray? = null,
+    @SerialName("upper_bound") val upperBound: ByteArray? = null,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is PartitionFieldSummary) return false
+        return containsNull == other.containsNull &&
+            containsNan == other.containsNan &&
+            lowerBound.contentEquals(other.lowerBound) &&
+            upperBound.contentEquals(other.upperBound)
+    }
+
+    override fun hashCode(): Int {
+        var result = containsNull.hashCode()
+        result = 31 * result + containsNan.hashCode()
+        result = 31 * result + (lowerBound?.contentHashCode() ?: 0)
+        result = 31 * result + (upperBound?.contentHashCode() ?: 0)
+        return result
+    }
+}
 
 // --- Manifest File (Avro) ---
 // Wraps the 'data_file' struct found inside manifest entries

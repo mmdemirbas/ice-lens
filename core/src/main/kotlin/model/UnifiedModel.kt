@@ -239,6 +239,10 @@ fun UnifiedManifest(manifestPath: Path, manifest: ManifestListEntry): UnifiedMan
         metadata = manifest,
         schema = manifestSchema,
         partitionSpec = manifestSpec,
+        // The summaries come from the manifest list, the spec from the manifest itself. Both
+        // describe the same manifest and `partition_spec_id` ties them together, so there is no
+        // ambiguity here of the kind the bounds have.
+        partitionSummaries = decodePartitionSummaries(manifest.partitions, manifestSpec, manifestSchema),
         dataFiles = dataFiles.entries.map { record ->
             val dataFile = record.entry
             val metadataDirPrefix = manifest.manifestPath.orEmpty().substringBeforeLast('/')
@@ -316,6 +320,8 @@ data class UnifiedManifest(
      * force when it was written. Null means the spec could not be read, not "unpartitioned".
      */
     val partitionSpec: PartitionSpec? = null,
+    /** Per-partition-field bounds over this manifest, from `manifest_file.partitions`. */
+    val partitionSummaries: List<PartitionSummary> = emptyList(),
 )
 
 data class UnifiedDataFile(

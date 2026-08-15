@@ -549,7 +549,11 @@ private fun WideTableRow(cells: List<String>, columns: Int, widths: List<Dp>, is
                 fontSize = 11.sp,
                 fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
                 fontFamily = if (isHeader) null else FontFamily.Monospace,
-                maxLines = if (isHeader) 2 else 8,
+                // A row is as tall as its tallest cell, so a generous cap on one long cell costs
+                // every row in the table. Four lines keeps a row scannable; the ellipsis says the
+                // cell was cut, and the full value is on the node's own inspector — a partition
+                // tuple in the Partition section, a bound in Column Statistics.
+                maxLines = if (isHeader) 2 else 4,
                 overflow = TextOverflow.Ellipsis
             )
         }
@@ -1259,6 +1263,46 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
 
                         if (manifestEntries.isNotEmpty()) {
                             Spacer(Modifier.height(16.dp))
+                            // Above the entries on purpose: this is what a planner reads to decide
+                            // whether to open the manifest at all, so it is the answer to "would
+                            // my query touch this file" — a question asked before any entry is.
+                            val summaries = node.partitionSummaries
+                            if (summaries.isNotEmpty()) {
+                                SectionTitle("Partition Ranges (${formatCount(summaries.size)})")
+                                Text(
+                                    "The bounds a scan intersects with a partition predicate to decide whether to " +
+                                        "open this manifest. One row per partition field, covering every file in it.",
+                                    fontSize = 11.sp,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                                WideTable(
+                                    headers = listOf(
+                                        "Field", "Lower", "Upper", "Holds", "Nulls", "NaNs",
+                                        "Transform", "Result Type"
+                                    ),
+                                    columnWidths = listOf(
+                                        150.dp, 150.dp, 150.dp, 110.dp, 70.dp, 70.dp, 120.dp, 120.dp
+                                    ),
+                                    rows = summaries.map { summary ->
+                                        listOf(
+                                            summary.field.name ?: "N/A",
+                                            summary.humanLower ?: "N/A",
+                                            summary.humanUpper ?: "N/A",
+                                            // A manifest whose bounds meet holds exactly one
+                                            // partition, which is what a well-clustered write
+                                            // produces and what makes pruning effective.
+                                            if (summary.isSingleValue) "one partition" else "a range",
+                                            if (summary.containsNull) "yes" else "no",
+                                            summary.containsNan?.let { if (it) "yes" else "no" } ?: "not recorded",
+                                            summary.field.transformName.ifEmpty { "N/A" },
+                                            summary.type.typeName,
+                                        )
+                                    }
+                                )
+                                Spacer(Modifier.height(16.dp))
+                            }
+
                             SectionTitle("Manifest Entries (${formatCount(manifestEntries.size)})")
                             if (node.hiddenEntryCount > 0) {
                                 Text(
@@ -1293,6 +1337,16 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                                     "Split Offsets",
                                     "Equality IDs",
                                     "Sort Order ID"
+                                ),
+                                // Sized to the content. At a uniform width the partition tuple
+                                // and the bounds maps each wrapped to the line cap, and a row is
+                                // as tall as its tallest cell — so every row of this table was
+                                // eight lines high and two entries did not fit on a screen.
+                                columnWidths = listOf(
+                                    90.dp, 80.dp, 110.dp, 100.dp, 170.dp, 120.dp, 150.dp,
+                                    320.dp, 90.dp, 110.dp, 120.dp, 420.dp,
+                                    160.dp, 160.dp, 170.dp, 170.dp, 220.dp, 220.dp,
+                                    160.dp, 130.dp, 110.dp, 110.dp,
                                 ),
                                 rows = manifestEntries.mapIndexed { index, view ->
                                     val data = view.entry.dataFile ?: DataFile(filePath = "unknown")

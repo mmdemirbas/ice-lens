@@ -177,3 +177,61 @@ fun humanPartitionValue(transform: String, decoded: DecodedValue): String {
         else -> decoded.display
     }
 }
+
+/**
+ * One partition field's range across a whole manifest, decoded.
+ *
+ * This is the manifest-list side of partitioning. [DecodedPartition] says which partition a
+ * single file belongs to; this says which partitions a whole manifest could contain, which is
+ * the question a scan asks before deciding to open it.
+ */
+data class PartitionSummary(
+    val field: PartitionField,
+    val type: IcebergType,
+    val lower: DecodedValue?,
+    val upper: DecodedValue?,
+    val containsNull: Boolean,
+    /** Null when the writer did not record it, which is not the same as false. */
+    val containsNan: Boolean?,
+) {
+    // `this.field`, not `field`: inside a property accessor the bare name is Kotlin's backing
+    // field, so it resolves to this property rather than to the constructor parameter. The name
+    // matches PartitionValue.field deliberately, which is why it is qualified rather than renamed.
+    val humanLower: String? get() = lower?.let { humanPartitionValue(this.field.transformName, it) }
+    val humanUpper: String? get() = upper?.let { humanPartitionValue(this.field.transformName, it) }
+
+    /** True when the manifest holds exactly one value of this field, so it names a partition. */
+    val isSingleValue: Boolean get() = lower != null && upper != null && humanLower == humanUpper
+}
+
+/**
+ * Pairs `manifest_file.partitions` with the spec it describes.
+ *
+ * The pairing is **positional** — the summaries carry no field ids — so a spec of the wrong
+ * length silently mislabels every field rather than failing. When the two disagree, nothing is
+ * decoded: a summary attributed to the wrong partition field is worse than an absent one,
+ * because it reads as an answer.
+ *
+ * Bounds use each field's result type, the same resolution [decodePartition] uses, so a
+ * `bucket[N]` range decodes as ints and a `day` range as dates.
+ */
+fun decodePartitionSummaries(
+    summaries: List<PartitionFieldSummary>?,
+    spec: PartitionSpec?,
+    schema: IcebergSchemaModel?,
+): List<PartitionSummary> {
+    if (summaries == null || spec == null) return emptyList()
+    if (summaries.size != spec.fields.size) return emptyList()
+    return spec.fields.mapIndexed { index, field ->
+        val summary = summaries[index]
+        val type = partitionResultType(field.transformName, field.sourceId?.let { schema?.typeOf(it) })
+        PartitionSummary(
+            field = field,
+            type = type,
+            lower = summary.lowerBound?.takeIf { it.isNotEmpty() }?.let { decodeSingleValue(it, type) },
+            upper = summary.upperBound?.takeIf { it.isNotEmpty() }?.let { decodeSingleValue(it, type) },
+            containsNull = summary.containsNull,
+            containsNan = summary.containsNan,
+        )
+    }
+}

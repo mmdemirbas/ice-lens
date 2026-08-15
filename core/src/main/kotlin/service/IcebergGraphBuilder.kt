@@ -195,6 +195,7 @@ object IcebergGraphBuilder {
                                 )
                             },
                             shownEntryCount = minOf(unifiedDataFiles.size, MAX_FILES_PER_MANIFEST),
+                            partitionSummaries = unifiedManifest.partitionSummaries,
                             schema = unifiedManifest.schema,
                             localPath = unifiedManifest.path.toString()
                         )

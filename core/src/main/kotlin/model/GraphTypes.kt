@@ -279,6 +279,13 @@ sealed class GraphNode(
         val entries: List<ManifestEntryView> = emptyList(),
         /** How many of [entries] were given a child node in the graph. */
         val shownEntryCount: Int = 0,
+        /**
+         * Per-partition-field bounds over this whole manifest, from `manifest_file.partitions`.
+         *
+         * The reason a scan does or does not open this file. Empty when the table is
+         * unpartitioned, or when the spec and the summaries disagree on length.
+         */
+        val partitionSummaries: List<PartitionSummary> = emptyList(),
         /** The schema this manifest was written against — the only correct one for its bounds. */
         val schema: IcebergSchemaModel? = null,
         val localPath: String? = null,
