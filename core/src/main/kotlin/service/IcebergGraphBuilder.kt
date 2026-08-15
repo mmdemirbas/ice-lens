@@ -16,21 +16,20 @@ private val logger = LoggerFactory.getLogger(IcebergGraphBuilder::class.java)
  */
 object IcebergGraphBuilder {
 
-    /** Max data files shown per manifest in the graph. */
-    private const val MAX_FILES_PER_MANIFEST = 10
-
     /** Max sample rows created per data file. */
     private const val MAX_ROWS_PER_FILE = 5
 
     /**
      * Builds graph nodes and edges for the given Iceberg table model.
-     * Does not perform layout — call [GraphLayoutService.layoutGraph] with the result.
+     *
+     * Every data file gets a node. How many of them are drawn is decided afterwards by
+     * [GraphAggregation], which is also why sample rows are returned as factories rather than
+     * nodes — see [GraphBuildResult.sampleRows]. Does not perform layout; call
+     * [GraphLayoutService.layoutGraph] with the result.
      */
-    fun buildGraph(
-        tableModel: UnifiedTableModel,
-        showRows: Boolean,
-    ): GraphBuildResult {
+    fun buildGraph(tableModel: UnifiedTableModel): GraphBuildResult {
         val logicalNodes = mutableMapOf<String, GraphNode>()
+        val sampleRows = mutableMapOf<String, () -> List<GraphNode.RowNode>>()
         val edges = mutableListOf<GraphEdge>()
         val edgeIds = mutableSetOf<String>()
         val pendingLineage = mutableListOf<Pair<Long, Long?>>()
@@ -195,7 +194,6 @@ object IcebergGraphBuilder {
                                     partition = unifiedDataFile.partition,
                                 )
                             },
-                            shownEntryCount = minOf(unifiedDataFiles.size, MAX_FILES_PER_MANIFEST),
                             partitionSummaries = unifiedManifest.partitionSummaries,
                             pathResolution = unifiedManifest.pathResolution,
                             schema = unifiedManifest.schema,
@@ -214,7 +212,7 @@ object IcebergGraphBuilder {
                     if (processedManifests.add(manId)) {
                         val manifestPath = manifest.manifestPath
                         if (manifestPath != null) {
-                            unifiedDataFiles.take(MAX_FILES_PER_MANIFEST).forEachIndexed { fileIndex, unifiedDataFile ->
+                            unifiedDataFiles.forEachIndexed { fileIndex, unifiedDataFile ->
                                 val entry = unifiedDataFile.metadata
                                 val dataFile = entry.dataFile ?: DataFile(filePath = "unknown")
                                 val rawPath = dataFile.filePath.orEmpty()
@@ -236,61 +234,13 @@ object IcebergGraphBuilder {
                                 edgeIds.add(edgeId)
                                 edges.add(GraphEdge(edgeId, manId, fId))
 
-                                if (showRows) {
-                                    // UnifiedManifest already resolved this file against the table
-                                    // directory, and UnifiedDataFile.rows reads from that same
-                                    // path. Re-deriving it here from a "/<tableName>/" marker gave
-                                    // a second answer that could disagree with the first, and when
-                                    // it did the rows were silently dropped for a file that exists.
-                                    if (Files.isRegularFile(unifiedDataFile.path)) {
-                                        val contentType = entry.dataFile?.content ?: 0
-                                        val maxRows = MAX_ROWS_PER_FILE
-                                        for (rIdx in 0 until maxRows) {
-                                            val rId = "row_${fId}_$rIdx"
-                                            if (logicalNodes.containsKey(rId)) continue
-
-                                            val capturedDataFile = unifiedDataFile
-                                            val capturedSimpleId = simpleId
-                                            val capturedFilePathMap = filePathToSimpleId
-                                            val capturedIdentifierFields = snapshotIdentifierFields
-
-                                            logicalNodes[rId] = GraphNode.RowNode(
-                                                id = rId,
-                                                data = mapOf("file_no" to capturedSimpleId, "row_idx" to rIdx),
-                                                content = contentType,
-                                                identifierFields = capturedIdentifierFields,
-                                                dataLoader = {
-                                                    try {
-                                                        val rows = capturedDataFile.rows
-                                                        if (rIdx < rows.size) {
-                                                            val rowData = rows[rIdx]
-                                                            val enriched = mutableMapOf<String, Any>()
-                                                            enriched["file_no"] = capturedSimpleId
-                                                            enriched["row_idx"] = rIdx
-                                                            enriched["local_file_path"] = capturedDataFile.path.toString()
-                                                            if (contentType > 0 && rowData.cells.containsKey("file_path")) {
-                                                                val targetPath = rowData.cells["file_path"].toString()
-                                                                val targetId = capturedFilePathMap[targetPath]
-                                                                    ?: capturedFilePathMap[normalizeFilePath(targetPath)]
-                                                                    ?: "?"
-                                                                enriched["target_file"] = "File $targetId"
-                                                                enriched["target_file_no"] = targetId
-                                                            }
-                                                            enriched.putAll(rowData.cells)
-                                                            enriched
-                                                        } else emptyMap()
-                                                    } catch (e: Exception) {
-                                                        logger.warn("Failed to load rows for file {}: {}", capturedDataFile.path, e.message)
-                                                        emptyMap()
-                                                    }
-                                                }
-                                            )
-
-                                            edgeIds.add("e_row_$rId")
-                                            edges.add(GraphEdge("e_row_$rId", fId, rId))
-                                        }
-                                    }
-                                }
+                                sampleRows[fId] = sampleRowFactory(
+                                    fileNodeId = fId,
+                                    dataFile = unifiedDataFile,
+                                    simpleId = simpleId,
+                                    identifierFields = snapshotIdentifierFields,
+                                    filePathToSimpleId = filePathToSimpleId,
+                                )
                             }
                         }
                     }
@@ -321,7 +271,67 @@ object IcebergGraphBuilder {
             nodes = logicalNodes.values.toList(),
             edges = edges,
             summary = tableSummary,
+            sampleRows = sampleRows,
         )
+    }
+
+    /**
+     * The sample rows for one data file, read only if the graph ends up drawing that file.
+     *
+     * The `isRegularFile` check is inside the factory for the same reason the rows are: a stat
+     * per data file is a real cost on a table with a hundred thousand of them, and the answer is
+     * only needed for the ones on screen.
+     *
+     * [UnifiedManifest] has already resolved this file against the table directory and
+     * `UnifiedDataFile.rows` reads from that same path. Re-deriving it here from a
+     * `"/<tableName>/"` marker gave a second answer that could disagree with the first, and when
+     * it did the rows were silently dropped for a file that exists.
+     */
+    private fun sampleRowFactory(
+        fileNodeId: String,
+        dataFile: UnifiedDataFile,
+        simpleId: Int,
+        identifierFields: List<String>,
+        filePathToSimpleId: Map<String, Int>,
+    ): () -> List<GraphNode.RowNode> = {
+        if (!Files.isRegularFile(dataFile.path)) {
+            emptyList()
+        } else {
+            val contentType = dataFile.metadata.dataFile?.content ?: 0
+            (0 until MAX_ROWS_PER_FILE).map { rowIndex ->
+                GraphNode.RowNode(
+                    id = "row_${fileNodeId}_$rowIndex",
+                    data = mapOf("file_no" to simpleId, "row_idx" to rowIndex),
+                    content = contentType,
+                    identifierFields = identifierFields,
+                    dataLoader = {
+                        try {
+                            val rows = dataFile.rows
+                            if (rowIndex < rows.size) {
+                                val rowData = rows[rowIndex]
+                                val enriched = mutableMapOf<String, Any>()
+                                enriched["file_no"] = simpleId
+                                enriched["row_idx"] = rowIndex
+                                enriched["local_file_path"] = dataFile.path.toString()
+                                if (contentType > 0 && rowData.cells.containsKey("file_path")) {
+                                    val targetPath = rowData.cells["file_path"].toString()
+                                    val targetId = filePathToSimpleId[targetPath]
+                                        ?: filePathToSimpleId[normalizeFilePath(targetPath)]
+                                        ?: "?"
+                                    enriched["target_file"] = "File $targetId"
+                                    enriched["target_file_no"] = targetId
+                                }
+                                enriched.putAll(rowData.cells)
+                                enriched
+                            } else emptyMap()
+                        } catch (e: Exception) {
+                            logger.warn("Failed to load rows for file {}: {}", dataFile.path, e.message)
+                            emptyMap()
+                        }
+                    }
+                )
+            }
+        }
     }
 
     /**

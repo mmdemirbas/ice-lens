@@ -30,6 +30,16 @@ data class GraphModel(
 ) {
     val nodeById: Map<String, GraphNode> by lazy { nodes.associateBy { it.id } }
 
+    val groups: List<GraphNode.GroupNode> by lazy { nodes.filterIsInstance<GraphNode.GroupNode>() }
+
+    /**
+     * How many nodes aggregation left out of the drawing.
+     *
+     * Summed from the groups standing for them rather than recorded alongside, so a graph
+     * cannot claim to hide a number of nodes that no group accounts for.
+     */
+    val hiddenNodeCount: Int get() = groups.sumOf { it.hiddenNodeCount }
+
     fun layoutPosition(nodeId: String): Point = layoutPositions[nodeId] ?: Point.ORIGIN
 }
 
@@ -277,14 +287,11 @@ sealed class GraphNode(
         /**
          * Every entry in this manifest, in apply order.
          *
-         * The graph renders at most a handful of them as child [FileNode]s so a manifest with
-         * thousands of files stays readable, but the inspector lists all of them — a cap that
-         * hides data without saying so is indistinguishable from a manifest that really is
-         * that small.
+         * Every one of them also gets a child [FileNode]; how many of those the graph draws is
+         * [GraphNode.GroupNode]'s business, and the group node standing for the rest is what
+         * says so on screen.
          */
         val entries: List<ManifestEntryView> = emptyList(),
-        /** How many of [entries] were given a child node in the graph. */
-        val shownEntryCount: Int = 0,
         /**
          * Per-partition-field bounds over this whole manifest, from `manifest_file.partitions`.
          *
@@ -304,9 +311,7 @@ sealed class GraphNode(
         val localPath: String? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 200.0, 80.0) {
-        val hiddenEntryCount: Int get() = (entries.size - shownEntryCount).coerceAtLeast(0)
-    }
+    ) : GraphNode(id, initialX, initialY, 200.0, 80.0)
 
     data class FileNode(
         override val id: String,
@@ -383,14 +388,10 @@ sealed class GraphNode(
         val simpleId: Int,
         /** Every entry in this manifest — see [ManifestNode.entries] for why all of them. */
         val entries: List<PaimonManifestEntryView> = emptyList(),
-        /** How many of [entries] were given a child node in the graph. */
-        val shownEntryCount: Int = 0,
         val localPath: String? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 200.0, 80.0) {
-        val hiddenEntryCount: Int get() = (entries.size - shownEntryCount).coerceAtLeast(0)
-    }
+    ) : GraphNode(id, initialX, initialY, 200.0, 80.0)
 
     /** Paimon data file node. */
     data class PaimonDataFileNode(
@@ -415,6 +416,92 @@ sealed class GraphNode(
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 280.0, 100.0)
+
+    /**
+     * Stands in for a run of sibling nodes the graph is not drawing, and expands to reveal them.
+     *
+     * A production table has more manifests than a screen has room for, and more data files than
+     * a layout engine will place in reasonable time. Drawing all of them is not an option; a cap
+     * that silently stops at the first handful is worse, because a manifest with 5,000 files then
+     * looks exactly like one with 10. This node is the third answer: the tail is still in the
+     * graph, as one card that says how much it stands for and can be opened.
+     *
+     * [memberIds] are the direct siblings; [hiddenNodeCount] also counts the descendants that
+     * left the graph with them, and [hiddenErrorCount] counts the read errors among those — an
+     * error that disappears into a group is a failure the reader would never learn about.
+     */
+    data class GroupNode(
+        override val id: String,
+        val parentId: String,
+        val kind: AggregationKind,
+        /** The siblings this stands for, in the order they would have been drawn. */
+        val memberIds: List<String> = emptyList(),
+        /** [memberIds] plus every descendant that left the graph with them. */
+        val hiddenNodeCount: Int = 0,
+        /** Read-error nodes among what this hides. */
+        val hiddenErrorCount: Int = 0,
+        /** How many pages of siblings were revealed before this one. 1 is the first group. */
+        val pageIndex: Int = 1,
+        val initialX: Double = 0.0,
+        val initialY: Double = 0.0,
+        // The card grows for the lines it actually draws. A node's declared height is what ELK
+        // reserves and what the card is sized to, and Compose clips nothing — so a fixed height
+        // loses the overflow under the card's own border with nothing failing. At 76dp the
+        // subtotal line was sliced through the middle and both the read-error line and the
+        // "double-click to open" hint never appeared, which was found by looking at the render
+        // and could not have been found any other way.
+    ) : GraphNode(
+        id, initialX, initialY, 200.0,
+        58.0 +
+            (if (hiddenNodeCount > memberIds.size) 15.0 else 0.0) +
+            (if (hiddenErrorCount > 0) 15.0 else 0.0),
+    ) {
+        val memberCount: Int get() = memberIds.size
+    }
+}
+
+/**
+ * The kinds of sibling a graph aggregates, and what to call a pile of them.
+ *
+ * Aggregation groups by kind as well as by parent because a snapshot's manifests and a
+ * snapshot's read errors are not interchangeable: collapsing a mixed set would produce a card
+ * that can only be described as "37 things".
+ */
+enum class AggregationKind(val key: String, val plural: String) {
+    METADATA("metadata", "metadata versions"),
+    SNAPSHOT("snapshot", "snapshots"),
+    MANIFEST("manifest", "manifests"),
+    FILE("file", "files"),
+    ROW("row", "sample rows"),
+    PAIMON_SNAPSHOT("psnapshot", "snapshots"),
+    PAIMON_SCHEMA("pschema", "schemas"),
+    PAIMON_MANIFEST_LIST("pmanifestlist", "manifest lists"),
+    PAIMON_MANIFEST("pmanifest", "manifests"),
+    PAIMON_FILE("pfile", "files"),
+}
+
+/**
+ * The kind this node aggregates as, or null for a node that must never disappear into a group.
+ *
+ * A table root has no siblings to be piled up with. An error node is excluded on purpose: the
+ * whole reason to draw one is that something failed, and a failure folded into "and 40 more"
+ * is a failure nobody reads. A group node cannot nest inside another group — the tail of a
+ * tail is expressed as the next page, not as depth.
+ */
+fun GraphNode.aggregationKind(): AggregationKind? = when (this) {
+    is GraphNode.MetadataNode -> AggregationKind.METADATA
+    is GraphNode.SnapshotNode -> AggregationKind.SNAPSHOT
+    is GraphNode.ManifestNode -> AggregationKind.MANIFEST
+    is GraphNode.FileNode -> AggregationKind.FILE
+    is GraphNode.RowNode -> AggregationKind.ROW
+    is GraphNode.PaimonSnapshotNode -> AggregationKind.PAIMON_SNAPSHOT
+    is GraphNode.PaimonSchemaNode -> AggregationKind.PAIMON_SCHEMA
+    is GraphNode.PaimonManifestListNode -> AggregationKind.PAIMON_MANIFEST_LIST
+    is GraphNode.PaimonManifestNode -> AggregationKind.PAIMON_MANIFEST
+    is GraphNode.PaimonDataFileNode -> AggregationKind.PAIMON_FILE
+    is GraphNode.TableNode -> null
+    is GraphNode.ErrorNode -> null
+    is GraphNode.GroupNode -> null
 }
 
 data class GraphEdge(

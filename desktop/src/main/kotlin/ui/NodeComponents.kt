@@ -76,14 +76,6 @@ private fun fileNameFromPath(path: String?): String {
     return candidate.ifEmpty { normalized }
 }
 
-/**
- * Entry count for a manifest card, saying so when the graph is showing fewer child nodes than
- * the manifest holds. A cap that hides entries without naming itself is indistinguishable
- * from a manifest that really is that small — see the inspector for the full list.
- */
-private fun manifestEntryCountLabel(total: Int, shown: Int): String =
-    if (shown < total) "${formatCount(shown)} of ${formatCount(total)} shown" else formatCount(total)
-
 @Composable
 fun nodeCardTextPrimary(): Color =
     if (isDarkSurface(MaterialTheme.colorScheme.surface)) Color(0xFFE2E6EC) else Color(0xFF1A1C1E)
@@ -129,6 +121,9 @@ private fun nodeColorScheme(node: GraphNode): NodeColors = when (node) {
     is GraphNode.PaimonManifestListNode -> when (node.kind) { "delta" -> BLUE; "changelog" -> YELLOW; else -> GREY }
     is GraphNode.PaimonManifestNode     -> GREEN
     is GraphNode.PaimonDataFileNode     -> if (node.operationKind == 1) RED else GREEN
+    // Deliberately neutral. A group is a statement about the drawing, not about the table, and
+    // taking its siblings' colour would make it read as one more manifest or one more file.
+    is GraphNode.GroupNode              -> GREY
 }
 
 fun getGraphNodeColor(node: GraphNode, dark: Boolean = false): Color {
@@ -272,6 +267,7 @@ fun NodeTooltip(node: GraphNode) {
             is GraphNode.PaimonManifestListNode -> "PAIMON ${node.kind.uppercase()} MANIFEST LIST"
             is GraphNode.PaimonManifestNode -> "PAIMON MANIFEST ${node.simpleId}"
             is GraphNode.PaimonDataFileNode -> "PAIMON FILE ${node.simpleId}"
+            is GraphNode.GroupNode -> "NOT DRAWN: ${node.kind.plural}"
         }
         
         Text(
@@ -309,7 +305,7 @@ fun NodeTooltip(node: GraphNode) {
                 is GraphNode.ManifestNode -> {
                     val manifestPath = node.data.manifestPath
                     DetailRow("File Name", fileNameFromPath(manifestPath), isDark = true)
-                    DetailRow("Entries", manifestEntryCountLabel(node.entries.size, node.shownEntryCount), isDark = true)
+                    DetailRow("Entries", formatCount(node.entries.size), isDark = true)
                     DetailRow("Added", "${formatCount(node.data.addedFilesCount)} files", isDark = true)
                     DetailRow("Deleted", "${formatCount(node.data.deletedFilesCount)} files", isDark = true)
                     DetailRow("Sequence", "${node.data.sequenceNumber ?: "N/A"}", isDark = true)
@@ -354,7 +350,7 @@ fun NodeTooltip(node: GraphNode) {
                 }
                 is GraphNode.PaimonManifestNode -> {
                     DetailRow("File", node.data.fileName ?: "N/A", isDark = true)
-                    DetailRow("Entries", manifestEntryCountLabel(node.entries.size, node.shownEntryCount), isDark = true)
+                    DetailRow("Entries", formatCount(node.entries.size), isDark = true)
                     DetailRow("Added", "${formatCount(node.data.numAddedFiles)} files", isDark = true)
                     DetailRow("Deleted", "${formatCount(node.data.numDeletedFiles)} files", isDark = true)
                 }
@@ -363,6 +359,14 @@ fun NodeTooltip(node: GraphNode) {
                     DetailRow("Rows", formatCount(node.entry.file?.rowCount), isDark = true)
                     DetailRow("Level", "${node.level ?: "N/A"}", isDark = true)
                     DetailRow("Kind", if (node.operationKind == 1) "DELETE" else "ADD", isDark = true)
+                }
+                is GraphNode.GroupNode -> {
+                    DetailRow(node.kind.plural.replaceFirstChar { it.uppercase() }, formatCount(node.memberCount), isDark = true)
+                    DetailRow("Nodes hidden", formatCount(node.hiddenNodeCount), isDark = true)
+                    if (node.hiddenErrorCount > 0) {
+                        DetailRow("Read errors inside", formatCount(node.hiddenErrorCount), isDark = true)
+                    }
+                    DetailRow("Open", "Double-click, or use the inspector", isDark = true)
                 }
             }
         }
@@ -596,6 +600,89 @@ fun ErrorCard(node: GraphNode.ErrorNode, isSelected: Boolean = false) {
             Text("Stage: ${node.stage}", fontSize = 9.sp, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(node.path, fontSize = 9.sp, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(node.message, fontSize = 10.sp, color = nodeCardTextPrimary(), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/**
+ * Line heights for [GroupCard], which are also what `GraphNode.GroupNode` sizes itself from:
+ * 16 dp of padding plus header, title and hint, plus one detail line each for the subtotal and
+ * the error count. Change one and the node's declared height needs changing with it.
+ */
+private val GroupCardHeaderLine = 12.sp
+private val GroupCardTitleLine = 17.sp
+private val GroupCardDetailLine = 13.sp
+
+/**
+ * The card for a run of siblings the graph is not drawing.
+ *
+ * Its whole job is to make the omission impossible to miss and easy to undo, so it leads with
+ * the count and states the gesture. A card that only said "…" would be the silent cap this
+ * feature exists to replace.
+ *
+ * A read error inside gets its own line, in the error colour: everything else here is a
+ * statement about how much is not drawn, and that one is a statement about the table.
+ */
+@Composable
+fun GroupCard(node: GraphNode.GroupNode, isSelected: Boolean = false) {
+    val selectionBorderColor = selectionHighlightColor()
+    val dark = isDarkSurface(MaterialTheme.colorScheme.surface)
+    val borderWidth = if (isSelected) 5.dp else 2.dp
+    val borderColor = if (isSelected) selectionBorderColor else getGraphNodeBorderColor(node, dark)
+    Box(
+        modifier = Modifier
+            .size(node.width.dp, node.height.dp)
+            .background(getGraphNodeColor(node, dark), RoundedCornerShape(8.dp))
+            .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(8.dp))
+            .padding(8.dp)
+    ) {
+        // Every line carries an explicit lineHeight. Without one a Text inherits the ambient
+        // 24.sp whatever its fontSize, so five lines need 136dp of card — three times what this
+        // one declares, and the overflow is invisible rather than broken.
+        Column(Modifier.fillMaxSize()) {
+            Text(
+                "NOT DRAWN",
+                fontSize = 9.sp,
+                lineHeight = GroupCardHeaderLine,
+                fontWeight = FontWeight.Bold,
+                color = nodeCardTextSecondary(),
+            )
+            Text(
+                "${formatCount(node.memberCount)} more ${node.kind.plural}",
+                fontSize = 13.sp,
+                lineHeight = GroupCardTitleLine,
+                fontWeight = FontWeight.Bold,
+                color = nodeCardTextPrimary(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (node.hiddenNodeCount > node.memberCount) {
+                Text(
+                    "${formatCount(node.hiddenNodeCount)} nodes in total",
+                    fontSize = 10.sp,
+                    lineHeight = GroupCardDetailLine,
+                    color = nodeCardTextSecondary(),
+                    maxLines = 1,
+                )
+            }
+            if (node.hiddenErrorCount > 0) {
+                Text(
+                    "${formatCount(node.hiddenErrorCount)} read errors inside",
+                    fontSize = 10.sp,
+                    lineHeight = GroupCardDetailLine,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFB71C1C),
+                    maxLines = 1,
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            Text(
+                "Double-click to open",
+                fontSize = 9.sp,
+                lineHeight = GroupCardHeaderLine,
+                color = nodeCardTextSecondary(),
+                maxLines = 1,
+            )
         }
     }
 }

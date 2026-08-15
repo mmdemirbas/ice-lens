@@ -338,7 +338,7 @@ class ErrorScenariosTest {
             )
         )
 
-        val (nodes, edges) = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val (nodes, edges) = PaimonGraphBuilder.buildGraph(model)
         val errorNodes = nodes.filterIsInstance<GraphNode.ErrorNode>()
         assertTrue(errorNodes.size >= 2, "Expected at least 2 error nodes, got ${errorNodes.size}")
     }
@@ -370,7 +370,7 @@ class ErrorScenariosTest {
             )
         )
 
-        val result = IcebergGraphBuilder.buildGraph(model, showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(model)
         val errorNodes = result.nodes.filterIsInstance<GraphNode.ErrorNode>()
         assertTrue(errorNodes.size >= 2, "Expected at least 2 error nodes, got ${errorNodes.size}")
     }
@@ -393,7 +393,7 @@ class ErrorScenariosTest {
         File(manifestDir, "manifest-list-base-0").writeText("corrupt")
 
         val model = PaimonUnifiedTableModel(tmpDir.toPath())
-        val (nodes, _) = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val (nodes, _) = PaimonGraphBuilder.buildGraph(model)
 
         // Errors should be visible as error nodes in the graph
         val errorNodes = nodes.filterIsInstance<GraphNode.ErrorNode>()
@@ -411,7 +411,7 @@ class ErrorScenariosTest {
         File(metadataDir, "snap-1.avro").writeText("corrupt")
 
         val model = UnifiedTableModel(tmpDir.toPath())
-        val result = IcebergGraphBuilder.buildGraph(model, showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(model)
 
         val errorNodes = result.nodes.filterIsInstance<GraphNode.ErrorNode>()
         assertTrue(errorNodes.isNotEmpty(), "Expected error nodes in graph for corrupt manifest list")

@@ -29,7 +29,7 @@ class BranchedFixtureTest {
         return UnifiedTableModel(Paths.get(tableDir.absolutePath))
     }
 
-    private fun snapshots() = IcebergGraphBuilder.buildGraph(branchedModel(), showRows = false)
+    private fun snapshots() = IcebergGraphBuilder.buildGraph(branchedModel())
         .nodes.filterIsInstance<GraphNode.SnapshotNode>()
 
     @Test
@@ -44,7 +44,7 @@ class BranchedFixtureTest {
      */
     @Test
     fun `two snapshots share a parent, so the lineage forks`() {
-        val result = IcebergGraphBuilder.buildGraph(branchedModel(), showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(branchedModel())
         val lineage = result.edges.filter { it.id.startsWith("e_lineage_") }
 
         assertEquals(5, snapshots().size, "four commits on main plus one on audit")
@@ -105,7 +105,7 @@ class BranchedFixtureTest {
      */
     @Test
     fun `lineage order keeps each branch contiguous where timestamp order does not`() {
-        val snapshots = IcebergGraphBuilder.buildGraph(branchedModel(), showRows = false)
+        val snapshots = IcebergGraphBuilder.buildGraph(branchedModel())
             .nodes.filterIsInstance<GraphNode.SnapshotNode>()
         val rank = GraphLayoutService.snapshotLineageOrder(snapshots)
 
@@ -148,7 +148,7 @@ class BranchedFixtureTest {
      */
     @Test
     fun `the layout places the branch after the chain it forked from, not by timestamp`() {
-        val result = IcebergGraphBuilder.buildGraph(branchedModel(), showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(branchedModel())
         val graph = GraphLayoutService.layoutNodes(result.nodes, result.edges)
 
         val auditHead = result.nodes.filterIsInstance<GraphNode.SnapshotNode>()

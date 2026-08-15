@@ -25,4 +25,14 @@ data class GraphBuildResult(
     val nodes: List<GraphNode>,
     val edges: List<GraphEdge>,
     val summary: TableSummary,
+    /**
+     * Sample rows for a data-file node, keyed by that node's id, produced on demand.
+     *
+     * Deferred rather than built with the rest of the graph because a builder cannot know which
+     * data files will be drawn — aggregation decides that, and it runs afterwards. Building them
+     * eagerly costs a filesystem stat and five nodes per data file in the table, most of which
+     * are then thrown away; a table with 100,000 files pays half a million nodes for the handful
+     * a reader is looking at.
+     */
+    val sampleRows: Map<String, () -> List<GraphNode.RowNode>> = emptyMap(),
 )

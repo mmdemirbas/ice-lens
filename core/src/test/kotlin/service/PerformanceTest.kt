@@ -171,7 +171,7 @@ class PerformanceTest {
     fun `graph builder produces realistic edge counts`() {
         // Verify that performance tests exercise edge creation, not just nodes
         val table = generateTable(3, 4, 3, 5)
-        val result = IcebergGraphBuilder.buildGraph(table, showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(table)
         val nodeCount = result.nodes.size
         val edgeCount = result.edges.size
 
@@ -189,18 +189,18 @@ class PerformanceTest {
         val largeTable = generateTable(4, 6, 4, 5)
 
         // Warm up
-        IcebergGraphBuilder.buildGraph(smallTable, showRows = false)
-        IcebergGraphBuilder.buildGraph(largeTable, showRows = false)
+        IcebergGraphBuilder.buildGraph(smallTable)
+        IcebergGraphBuilder.buildGraph(largeTable)
 
         val smallTime = measureTimeMillis {
-            repeat(3) { IcebergGraphBuilder.buildGraph(smallTable, showRows = false) }
+            repeat(3) { IcebergGraphBuilder.buildGraph(smallTable) }
         }
         val largeTime = measureTimeMillis {
-            repeat(3) { IcebergGraphBuilder.buildGraph(largeTable, showRows = false) }
+            repeat(3) { IcebergGraphBuilder.buildGraph(largeTable) }
         }
 
-        val smallNodes = IcebergGraphBuilder.buildGraph(smallTable, showRows = false).nodes.size
-        val largeNodes = IcebergGraphBuilder.buildGraph(largeTable, showRows = false).nodes.size
+        val smallNodes = IcebergGraphBuilder.buildGraph(smallTable).nodes.size
+        val largeNodes = IcebergGraphBuilder.buildGraph(largeTable).nodes.size
         val sizeRatio = largeNodes.toFloat() / smallNodes
         val timeRatio = largeTime.toFloat() / smallTime.coerceAtLeast(1)
 

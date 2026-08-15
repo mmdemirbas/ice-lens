@@ -305,7 +305,7 @@ class PaimonPipelineTest {
     fun `full pipeline produces correct graph structure`() {
         val table = createCompleteTable()
         val model = PaimonUnifiedTableModel(table)
-        val (nodes, edges) = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val (nodes, edges) = PaimonGraphBuilder.buildGraph(model)
 
         // Expected nodes: table_root + schema + snapshot + manifest_list + manifest + 2 data files = 7
         val nodeTypes = nodes.groupBy { it::class.simpleName }
@@ -365,7 +365,7 @@ class PaimonPipelineTest {
     fun `full pipeline graph builder preserves data file metadata`() {
         val table = createCompleteTable()
         val model = PaimonUnifiedTableModel(table)
-        val (nodes, _) = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val (nodes, _) = PaimonGraphBuilder.buildGraph(model)
 
         val dataFileNodes = nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
         assertEquals(2, dataFileNodes.size)

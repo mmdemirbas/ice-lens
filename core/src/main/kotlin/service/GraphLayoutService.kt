@@ -36,20 +36,52 @@ object GraphLayoutService {
 
     /**
      * Builds and lays out a graph for any table format model.
-     * Dispatches to the appropriate format-specific graph builder,
-     * then runs shared ELK layout and post-processing.
+     *
+     * Three stages, in this order and not another. The builder emits every node the metadata
+     * describes; [GraphAggregation] decides which of them the graph draws, folding the rest into
+     * expandable group nodes; and only then are sample rows read, for the data files that
+     * survived. Aggregating first is what keeps a production table's file count from costing a
+     * filesystem stat and five nodes per file before anything is on screen.
+     *
+     * @param expandedGroupIds group nodes the reader has opened. Ids are derived from the parent,
+     *   the kind and the page, so a set kept across a reload still means the same thing.
      */
     fun layoutGraph(
         tableModel: FormatTableModel,
         showRows: Boolean,
+        expandedGroupIds: Set<String> = emptySet(),
+        policy: AggregationPolicy = AggregationPolicy.DEFAULT,
     ): GraphModel {
         logger.debug("Building {} graph for: {}", tableModel.format, tableModel.name)
         val buildResult = when (tableModel) {
-            is UnifiedTableModel -> IcebergGraphBuilder.buildGraph(tableModel, showRows)
-            is PaimonUnifiedTableModel -> PaimonGraphBuilder.buildGraph(tableModel, showRows)
+            is UnifiedTableModel -> IcebergGraphBuilder.buildGraph(tableModel)
+            is PaimonUnifiedTableModel -> PaimonGraphBuilder.buildGraph(tableModel)
         }
-        logger.debug("{} graph built: {} nodes, {} edges", tableModel.format, buildResult.nodes.size, buildResult.edges.size)
-        return layoutNodes(buildResult.nodes, buildResult.edges)
+        val aggregated = GraphAggregation.apply(buildResult.nodes, buildResult.edges, expandedGroupIds, policy)
+        val withRows = if (showRows) attachSampleRows(aggregated, buildResult.sampleRows) else aggregated
+        logger.debug(
+            "{} graph built: {} nodes drawn of {}, {} edges",
+            tableModel.format, withRows.nodes.size, buildResult.nodes.size, withRows.edges.size,
+        )
+        return layoutNodes(withRows.nodes, withRows.edges)
+    }
+
+    /** Reads sample rows for the data-file nodes the graph is actually drawing. */
+    private fun attachSampleRows(
+        graph: AggregationResult,
+        sampleRows: Map<String, () -> List<GraphNode.RowNode>>,
+    ): AggregationResult {
+        if (sampleRows.isEmpty()) return graph
+        val rowNodes = mutableListOf<GraphNode>()
+        val rowEdges = mutableListOf<GraphEdge>()
+        graph.nodes.forEach { node ->
+            val factory = sampleRows[node.id] ?: return@forEach
+            factory().forEach { row ->
+                rowNodes += row
+                rowEdges += GraphEdge("e_row_${row.id}", node.id, row.id)
+            }
+        }
+        return AggregationResult(graph.nodes + rowNodes, graph.edges + rowEdges)
     }
 
     /**
@@ -432,6 +464,30 @@ object GraphLayoutService {
                 .mapNotNull { nodesById[it] as? GraphNode.RowNode }
             reorder(rows, rowComparator, minGap = 24.0)
         }
+
+        placeGroupsBelowTheirSiblings(nodesById, childrenByParent)
+    }
+
+    /**
+     * A group node sits directly below the last sibling it continues.
+     *
+     * It stands for the tail of an ordered run — the manifests after the twenty-fourth — so any
+     * other position states something false about the order. None of the comparators above can
+     * do this: each one filters to a concrete node type, and a group is not one of them. It runs
+     * last within the ordering pass, and the ordering pass runs after alignment, so nothing
+     * moves a group back above the run it belongs to.
+     */
+    private fun placeGroupsBelowTheirSiblings(
+        nodesById: Map<String, GraphNode>,
+        childrenByParent: Map<String, List<String>>,
+    ) {
+        nodesById.values.filterIsInstance<GraphNode.GroupNode>().forEach { group ->
+            val siblings = childrenByParent[group.parentId].orEmpty()
+                .mapNotNull { nodesById[it] }
+                .filter { it !is GraphNode.GroupNode && it.aggregationKind() == group.kind }
+            val bottom = siblings.maxOfOrNull { it.y + it.height } ?: return@forEach
+            group.y = bottom + 16.0
+        }
     }
 
     private fun alignParentsWithChildren(
@@ -653,22 +709,26 @@ object GraphLayoutService {
             }
         }
 
-        // Single pass to partition by class — replaces 11 full-list filterIsInstance scans.
-        val byType = nodesById.values.groupBy { it::class }
-        fun typed(cls: kotlin.reflect.KClass<out GraphNode>): List<GraphNode> = byType[cls].orEmpty()
+        // Single pass to partition by layer — replaces 11 full-list filterIsInstance scans. A
+        // group node belongs to the layer of the siblings it stands for, so it takes part in
+        // that layer's overlap check rather than floating in one of its own.
+        val byLayer = nodesById.values.groupBy { node ->
+            if (node is GraphNode.GroupNode) node.kind else node.aggregationKind()
+        }
+        fun layer(kind: AggregationKind): List<GraphNode> = byLayer[kind].orEmpty()
 
-        preventOverlapsInLayer(typed(GraphNode.TableNode::class))
-        preventOverlapsInLayer(typed(GraphNode.MetadataNode::class))
-        preventOverlapsInLayer(typed(GraphNode.SnapshotNode::class))
-        preventOverlapsInLayer(typed(GraphNode.ManifestNode::class))
-        preventOverlapsInLayer(typed(GraphNode.FileNode::class), margin = 2.0)
-        preventOverlapsInLayer(typed(GraphNode.RowNode::class), margin = 2.0)
+        preventOverlapsInLayer(nodesById.values.filterIsInstance<GraphNode.TableNode>())
+        preventOverlapsInLayer(layer(AggregationKind.METADATA))
+        preventOverlapsInLayer(layer(AggregationKind.SNAPSHOT))
+        preventOverlapsInLayer(layer(AggregationKind.MANIFEST))
+        preventOverlapsInLayer(layer(AggregationKind.FILE), margin = 2.0)
+        preventOverlapsInLayer(layer(AggregationKind.ROW), margin = 2.0)
         // Paimon layers
-        preventOverlapsInLayer(typed(GraphNode.PaimonSnapshotNode::class))
-        preventOverlapsInLayer(typed(GraphNode.PaimonSchemaNode::class))
-        preventOverlapsInLayer(typed(GraphNode.PaimonManifestListNode::class))
-        preventOverlapsInLayer(typed(GraphNode.PaimonManifestNode::class))
-        preventOverlapsInLayer(typed(GraphNode.PaimonDataFileNode::class), margin = 2.0)
+        preventOverlapsInLayer(layer(AggregationKind.PAIMON_SNAPSHOT))
+        preventOverlapsInLayer(layer(AggregationKind.PAIMON_SCHEMA))
+        preventOverlapsInLayer(layer(AggregationKind.PAIMON_MANIFEST_LIST))
+        preventOverlapsInLayer(layer(AggregationKind.PAIMON_MANIFEST))
+        preventOverlapsInLayer(layer(AggregationKind.PAIMON_FILE), margin = 2.0)
     }
 
     private fun createElkNode(parent: ElkNode, id: String, w: Double, h: Double): ElkNode {

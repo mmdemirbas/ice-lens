@@ -30,6 +30,14 @@ data class TableSession(
     val graph: GraphModel,
     var selectedNodeIds: Set<String> = emptySet(),
     val fingerprint: String = "",
+    /**
+     * The group nodes that were open when [graph] was built.
+     *
+     * Kept with the graph rather than beside it, because the two only mean anything together —
+     * a cached graph restored under a different expansion set would draw one thing and report
+     * another.
+     */
+    val expandedGroupIds: Set<String> = emptySet(),
 )
 
 class AppState(
@@ -86,6 +94,16 @@ class AppState(
     var isLoadingTable by mutableStateOf(false)
         private set
     var showRows by mutableStateOf(true)
+        private set
+
+    /**
+     * Group nodes the reader has opened, for the table currently shown.
+     *
+     * Not persisted. It is a view state about one session with one table, and the ids are
+     * derived from the parent, the kind and the page — so an id kept across a table switch
+     * would silently mean something else.
+     */
+    var expandedGroupIds by mutableStateOf<Set<String>>(emptySet())
         private set
 
     // ═══════════════════════════════════════════════════════════════
@@ -454,6 +472,7 @@ class AppState(
             logger.debug("Cache hit for table: {}", normalizedTablePath)
             // Bump request id so any in-flight load/reapply detects staleness and bails out.
             loadRequestId.incrementAndGet()
+            expandedGroupIds = cachedSession.expandedGroupIds
             setGraphModelAndBump(cachedSession.graph)
             selectedNodeIds = cachedSession.selectedNodeIds
             errorMsg = null
@@ -482,7 +501,8 @@ class AppState(
                     coroutineContext.ensureActive()
                     val tableModel = loadTableModel(normalizedTablePath)
                     coroutineContext.ensureActive()
-                    var newGraph = GraphLayoutService.layoutGraph(tableModel, withRows)
+                    val expanded = previousSession?.expandedGroupIds.orEmpty()
+                    var newGraph = GraphLayoutService.layoutGraph(tableModel, withRows, expanded)
                     if (preservePositions && previousSession != null) {
                         val oldInitial = previousSession.graph.layoutPositions
                         val mergedPositions = newGraph.layoutPositions.toMutableMap()
@@ -495,14 +515,17 @@ class AppState(
                         tableModel = tableModel,
                         graph = newGraph,
                         selectedNodeIds = previousSession?.selectedNodeIds.orEmpty(),
-                        fingerprint = fingerprint
+                        fingerprint = fingerprint,
+                        expandedGroupIds = expanded,
                     )
                 }
 
                 if (requestId != loadRequestId.get()) return@launch
                 sessionCache[cacheKey] = reloaded
-                logger.info("Table loaded successfully: {} ({} nodes, {} edges)",
-                    normalizedTablePath, reloaded.graph.nodes.size, reloaded.graph.edges.size)
+                expandedGroupIds = reloaded.expandedGroupIds
+                logger.info("Table loaded successfully: {} ({} nodes drawn, {} hidden, {} edges)",
+                    normalizedTablePath, reloaded.graph.nodes.size,
+                    reloaded.graph.hiddenNodeCount, reloaded.graph.edges.size)
                 setGraphModelAndBump(reloaded.graph)
                 selectedNodeIds = if (preservePositions && !forceRelayout) {
                     selectedNodeIds.filter { id -> reloaded.graph.nodes.any { it.id == id } }.toSet()
@@ -564,7 +587,7 @@ class AppState(
                     coroutineContext.ensureActive()
                     val fullyLaidOut = withContext(backgroundDispatcher) {
                         coroutineContext.ensureActive()
-                        GraphLayoutService.layoutGraph(model, showRows)
+                        GraphLayoutService.layoutGraph(model, showRows, expandedGroupIds)
                     }
                     if (requestId != loadRequestId.get()) return@launch
                     // T-1: re-read graphModel on the main thread after the staleness check —
@@ -633,7 +656,7 @@ class AppState(
                 coroutineContext.ensureActive()
                 val newGraph = withContext(backgroundDispatcher) {
                     coroutineContext.ensureActive()
-                    GraphLayoutService.layoutGraph(model, showRows)
+                    GraphLayoutService.layoutGraph(model, showRows, expandedGroupIds)
                 }
 
                 if (requestId != loadRequestId.get()) return@launch
@@ -644,6 +667,78 @@ class AppState(
                 errorMsg = null
             } catch (e: Exception) {
                 if (requestId != loadRequestId.get()) return@launch
+                errorMsg = e.message
+            } finally {
+                if (requestId == loadRequestId.get()) {
+                    isLoadingTable = false
+                }
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Aggregation
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Opens one group node, revealing the next page of the siblings it stands for.
+     *
+     * Expansion changes which nodes exist, so it rebuilds the graph rather than toggling
+     * visibility — but from the table model already in the session, never from disk. Reading a
+     * production table's metadata is the expensive half; deciding how much of it to draw is not.
+     */
+    fun expandGroup(groupId: String) {
+        if (groupId in expandedGroupIds) return
+        expandedGroupIds = expandedGroupIds + groupId
+        rebuildGraphForExpansion()
+    }
+
+    /** Closes every group, back to one page per parent. */
+    fun collapseAllGroups() {
+        if (expandedGroupIds.isEmpty()) return
+        expandedGroupIds = emptySet()
+        rebuildGraphForExpansion()
+    }
+
+    private fun rebuildGraphForExpansion() {
+        val tablePath = selectedTablePath ?: return
+        val cacheKey = "$tablePath-rows_$showRows"
+        val session = sessionCache[cacheKey] ?: return
+        val model = session.tableModel ?: return
+
+        isLoadingTable = true
+        val requestId = loadRequestId.incrementAndGet()
+        val expanded = expandedGroupIds
+
+        coroutineScope.launch {
+            try {
+                val rebuilt = withContext(backgroundDispatcher) {
+                    coroutineContext.ensureActive()
+                    GraphLayoutService.layoutGraph(model, showRows, expanded)
+                }
+                if (requestId != loadRequestId.get()) return@launch
+
+                // A drag survives for a node that is still on screen; the nodes that just
+                // appeared go where layout put them. Reading the drag state is main-thread work,
+                // which is where this runs.
+                val merged = rebuilt.layoutPositions.toMutableMap()
+                nodePositions?.draggedSnapshot()?.forEach { (id, xy) ->
+                    if (merged.containsKey(id)) merged[id] = Point(xy.first.toFloat(), xy.second.toFloat())
+                }
+                val graph = rebuilt.copy(layoutPositions = merged)
+                val survivingSelection = selectedNodeIds.filterTo(mutableSetOf()) { graph.nodeById.containsKey(it) }
+
+                sessionCache[cacheKey] = session.copy(
+                    graph = graph,
+                    selectedNodeIds = survivingSelection,
+                    expandedGroupIds = expanded,
+                )
+                setGraphModelAndBump(graph)
+                selectedNodeIds = survivingSelection
+                errorMsg = null
+            } catch (e: Exception) {
+                if (requestId != loadRequestId.get()) return@launch
+                logger.error("Failed to rebuild graph after expanding a group", e)
                 errorMsg = e.message
             } finally {
                 if (requestId == loadRequestId.get()) {

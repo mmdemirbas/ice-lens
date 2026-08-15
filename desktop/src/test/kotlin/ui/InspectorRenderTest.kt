@@ -20,6 +20,7 @@ import model.GraphModel
 import model.GraphNode
 import model.SnapshotRefLabel
 import model.UnifiedTableModel
+import service.AggregationPolicy
 import service.GraphLayoutService
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -132,6 +133,64 @@ class InspectorRenderTest {
         val manifest = graph.nodes.filterIsInstance<GraphNode.ManifestNode>().firstOrNull()
         assertNotNull(manifest, "graph should contain a manifest")
         renderInspector(graph, manifest.id, "manifest-node", height = 4800)
+    }
+
+    /**
+     * The card and the inspector for a run of siblings the graph is not drawing.
+     *
+     * Rendered at a deliberately tight page size, because none of the checked-in fixtures is big
+     * enough to trip the default — and a card nobody has looked at is how the last round's
+     * clipped ref chips got shipped.
+     *
+     * Three states worth seeing side by side: the plain case, one where the group also stands
+     * for a subtree, and one carrying read errors. The third is the one that must not read as
+     * decoration; a failure folded into "and 40 more" is a failure nobody investigates.
+     */
+    @Test
+    fun `the group card and inspector render what is not drawn`() {
+        val tableDir = File(repoRoot, "example/iceberg/default/mor")
+        val model = UnifiedTableModel(Paths.get(tableDir.absolutePath))
+        val graph = GraphLayoutService.layoutGraph(
+            model, showRows = false, policy = AggregationPolicy(pageSize = 1),
+        )
+        val group = graph.groups.firstOrNull()
+        assertNotNull(group, "a page size of one should collapse something in the merge-on-read fixture")
+
+        renderScene("group-card", width = 700, height = 700) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                GroupCard(group)
+                GroupCard(group.copy(hiddenNodeCount = group.hiddenNodeCount + 4_812))
+                GroupCard(group.copy(hiddenNodeCount = group.hiddenNodeCount + 4_812, hiddenErrorCount = 3))
+            }
+        }
+        renderInspector(graph, group.id, "group-node", height = 1600)
+    }
+
+    /**
+     * Every card the Iceberg graph draws, at the size its node declares.
+     *
+     * The node's declared height is what ELK reserves and what the card is sized to, and Compose
+     * clips nothing — so a card that draws more than it declares loses the overflow under its own
+     * border with nothing failing. There is no assertion that can see it; the file is the check.
+     */
+    @Test
+    fun `the graph cards render inside the size their nodes declare`() {
+        val graph = partedGraph()
+        val table = graph.nodes.filterIsInstance<GraphNode.TableNode>().first()
+        val metadata = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().first()
+        val snapshot = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().first()
+        val manifest = graph.nodes.filterIsInstance<GraphNode.ManifestNode>().first()
+        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().first()
+
+        renderScene("graph-cards", width = 700, height = 1100) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                TableCard(table)
+                MetadataCard(metadata)
+                SnapshotCard(snapshot)
+                ManifestCard(manifest)
+                FileCard(file)
+            }
+        }
     }
 
     /**

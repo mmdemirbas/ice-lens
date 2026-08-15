@@ -281,5 +281,6 @@ private fun getNodeLabel(node: GraphNode): String {
         is GraphNode.PaimonManifestListNode -> "PManifestList: ${node.kind}"
         is GraphNode.PaimonManifestNode -> "PManifest ${node.simpleId}"
         is GraphNode.PaimonDataFileNode -> "PFile ${node.simpleId}: ${node.entry.file?.fileName?.substringAfterLast("/") ?: ""}"
+        is GraphNode.GroupNode -> "Not drawn: ${formatCount(node.memberCount)} more ${node.kind.plural}"
     }
 }

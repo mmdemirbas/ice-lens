@@ -78,7 +78,7 @@ class PaimonGraphBuilderTest {
     @Test
     fun `empty table produces only table node`() {
         val model = minimalTableModel()
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         assertEquals(1, result.nodes.size)
         assertTrue(result.nodes[0] is GraphNode.TableNode)
@@ -90,7 +90,7 @@ class PaimonGraphBuilderTest {
         val model = minimalTableModel(
             snapshots = listOf(minimalSnapshot()),
         )
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         val tableNodes = result.nodes.filterIsInstance<GraphNode.TableNode>()
         val snapshotNodes = result.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>()
@@ -107,7 +107,7 @@ class PaimonGraphBuilderTest {
             schemas = listOf(schema),
             snapshots = listOf(minimalSnapshot(schemaId = 0)),
         )
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         val schemaNodes = result.nodes.filterIsInstance<GraphNode.PaimonSchemaNode>()
         assertEquals(1, schemaNodes.size)
@@ -129,7 +129,7 @@ class PaimonGraphBuilderTest {
                 )
             ),
         )
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         val mlNodes = result.nodes.filterIsInstance<GraphNode.PaimonManifestListNode>()
         assertEquals(2, mlNodes.size)
@@ -146,7 +146,7 @@ class PaimonGraphBuilderTest {
                 minimalSnapshot(deltaManifests = listOf(manifest))
             ),
         )
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         val manifestNodes = result.nodes.filterIsInstance<GraphNode.PaimonManifestNode>()
         assertEquals(1, manifestNodes.size)
@@ -168,7 +168,7 @@ class PaimonGraphBuilderTest {
                 minimalSnapshot(deltaManifests = listOf(manifest))
             ),
         )
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         val fileNodes = result.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
         assertEquals(1, fileNodes.size)
@@ -184,7 +184,7 @@ class PaimonGraphBuilderTest {
                 minimalSnapshot(id = 3, commitKind = "OVERWRITE"),
             ),
         )
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         val snapshotNodes = result.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>()
         assertEquals(3, snapshotNodes.size)
@@ -201,7 +201,7 @@ class PaimonGraphBuilderTest {
                 minimalSnapshot(deltaManifests = listOf(manifest))
             ),
         )
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         assertEquals("test-paimon-table", result.summary.tableName)
         assertEquals(1, result.summary.snapshotCount)
@@ -229,7 +229,7 @@ class PaimonGraphBuilderTest {
         val model = minimalTableModel(
             snapshots = listOf(minimalSnapshot(baseManifests = listOf(base), deltaManifests = listOf(delta))),
         )
-        val summary = PaimonGraphBuilder.buildGraph(model, showRows = false).summary
+        val summary = PaimonGraphBuilder.buildGraph(model).summary
 
         assertEquals(1, summary.current.dataFileCount, "the superseded file is no longer in the table")
         assertEquals(70L, summary.current.recordCount, "only the kept file's rows count")
@@ -249,7 +249,7 @@ class PaimonGraphBuilderTest {
             snapshots = emptyList(),
             readErrors = listOf(UnifiedReadError("test-stage", "/test/path", "test error")),
         )
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         val errorNodes = result.nodes.filterIsInstance<GraphNode.ErrorNode>()
         assertEquals(1, errorNodes.size)
@@ -268,7 +268,7 @@ class PaimonGraphBuilderTest {
                 minimalSnapshot(deltaManifests = listOf(manifest))
             ),
         )
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         val nodeIds = result.nodes.map { it.id }
         assertTrue(nodeIds.any { it == "table_root" })
@@ -287,7 +287,7 @@ class PaimonGraphBuilderTest {
                 minimalSnapshot(deltaManifests = listOf(manifest))
             ),
         )
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         // table_root -> psnap_1
         assertTrue(result.edges.any { it.fromId == "table_root" && it.toId.startsWith("psnap_") })
@@ -310,7 +310,7 @@ class PaimonGraphBuilderTest {
                 )
             ),
         )
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         val mlNodes = result.nodes.filterIsInstance<GraphNode.PaimonManifestListNode>()
         assertEquals(2, mlNodes.size)
@@ -330,7 +330,7 @@ class PaimonGraphBuilderTest {
                 )
             ),
         )
-        val result = PaimonGraphBuilder.buildGraph(model, showRows = false)
+        val result = PaimonGraphBuilder.buildGraph(model)
 
         val manifestNodes = result.nodes.filterIsInstance<GraphNode.PaimonManifestNode>()
         assertEquals(1, manifestNodes.size, "shared manifest must produce a single node")
@@ -367,7 +367,7 @@ class PaimonGraphBuilderTest {
                 )
             ),
         )
-        val summary = PaimonGraphBuilder.buildGraph(model, showRows = false).summary
+        val summary = PaimonGraphBuilder.buildGraph(model).summary
 
         // Paimon doesn't have pos/eq delete files — both stay 0 by definition, not for lack
         // of parsing.

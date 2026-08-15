@@ -642,6 +642,7 @@ fun GraphCanvas(
                             is GraphNode.FileNode     -> FileCard(node, isSelected = isActive)
                             is GraphNode.RowNode      -> RowCard(node, isSelected = isActive)
                             is GraphNode.ErrorNode    -> ErrorCard(node, isSelected = isActive)
+                            is GraphNode.GroupNode    -> GroupCard(node, isSelected = isActive)
                             is GraphNode.PaimonSnapshotNode,
                             is GraphNode.PaimonSchemaNode,
                             is GraphNode.PaimonManifestListNode,

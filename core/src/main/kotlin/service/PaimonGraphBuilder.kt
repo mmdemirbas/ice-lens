@@ -19,22 +19,20 @@ private val logger = LoggerFactory.getLogger(PaimonGraphBuilder::class.java)
  */
 object PaimonGraphBuilder {
 
-    /** Max data files shown per manifest in the graph. */
-    private const val MAX_FILES_PER_MANIFEST = 10
-
     /** Max sample rows created per data file. */
     private const val MAX_ROWS_PER_FILE = 5
 
     /**
      * Builds graph nodes and edges for the given Paimon table model.
-     * Does not perform layout — call [GraphLayoutService.layoutGraph] with the result
-     * (the public entry point that dispatches by format).
+     *
+     * Every data file gets a node; [GraphAggregation] decides how many are drawn, and sample
+     * rows come back as factories for the same reason — see [GraphBuildResult.sampleRows]. Does
+     * not perform layout; call [GraphLayoutService.layoutGraph] (the entry point that dispatches
+     * by format) with the result.
      */
-    fun buildGraph(
-        tableModel: PaimonUnifiedTableModel,
-        showRows: Boolean,
-    ): GraphBuildResult {
+    fun buildGraph(tableModel: PaimonUnifiedTableModel): GraphBuildResult {
         val logicalNodes = mutableMapOf<String, GraphNode>()
+        val sampleRows = mutableMapOf<String, () -> List<GraphNode.RowNode>>()
         val edges = mutableListOf<GraphEdge>()
         val edgeIds = mutableSetOf<String>()
         val manifestPathToId = mutableMapOf<String, String>()
@@ -178,7 +176,6 @@ object PaimonGraphBuilder {
                                     localPath = unifiedDataFile.path.toString(),
                                 )
                             },
-                            shownEntryCount = minOf(unifiedManifest.entries.size, MAX_FILES_PER_MANIFEST),
                             localPath = unifiedManifest.path.toString(),
                         )
                     }
@@ -196,7 +193,7 @@ object PaimonGraphBuilder {
                     }
 
                     if (processedManifestEntries.add(manifestKey)) {
-                        unifiedManifest.entries.take(MAX_FILES_PER_MANIFEST).forEachIndexed { fileIndex, unifiedDataFile ->
+                        unifiedManifest.entries.forEachIndexed { fileIndex, unifiedDataFile ->
                             val entry = unifiedDataFile.metadata
                             val fileSimpleId = manifestEntryViews.getOrNull(fileIndex)?.simpleId ?: (fileIndex + 1)
                             val fId = "pdf_${manId}_${fileSimpleId}_$fileIndex"
@@ -217,46 +214,7 @@ object PaimonGraphBuilder {
                             edgeIds.add(fileEdgeId)
                             edges.add(GraphEdge(fileEdgeId, manId, fId))
 
-                            // Row nodes (if showRows enabled)
-                            if (showRows) {
-                                val rawPath = unifiedDataFile.path.toString()
-                                val localFile = File(rawPath)
-                                if (localFile.exists()) {
-                                    for (rIdx in 0 until MAX_ROWS_PER_FILE) {
-                                        val rId = "row_${fId}_$rIdx"
-                                        if (logicalNodes.containsKey(rId)) continue
-
-                                        val capturedDataFile = unifiedDataFile
-                                        val capturedSimpleId = fileSimpleId
-
-                                        logicalNodes[rId] = GraphNode.RowNode(
-                                            id = rId,
-                                            data = mapOf("file_no" to capturedSimpleId, "row_idx" to rIdx),
-                                            content = 0,
-                                            dataLoader = {
-                                                try {
-                                                    val rows = capturedDataFile.rows
-                                                    if (rIdx < rows.size) {
-                                                        val rowData = rows[rIdx]
-                                                        val enriched = mutableMapOf<String, Any>()
-                                                        enriched["file_no"] = capturedSimpleId
-                                                        enriched["row_idx"] = rIdx
-                                                        enriched["local_file_path"] = capturedDataFile.path.toString()
-                                                        enriched.putAll(rowData.cells)
-                                                        enriched
-                                                    } else emptyMap()
-                                                } catch (e: Exception) {
-                                                    logger.warn("Failed to load rows for file {}: {}", capturedDataFile.path, e.message)
-                                                    emptyMap()
-                                                }
-                                            }
-                                        )
-
-                                        edgeIds.add("e_row_$rId")
-                                        edges.add(GraphEdge("e_row_$rId", fId, rId))
-                                    }
-                                }
-                            }
+                            sampleRows[fId] = sampleRowFactory(fId, unifiedDataFile, fileSimpleId)
                         }
                     }
                 }
@@ -271,7 +229,44 @@ object PaimonGraphBuilder {
             nodes = logicalNodes.values.toList(),
             edges = edges,
             summary = tableSummary,
+            sampleRows = sampleRows,
         )
+    }
+
+    /** The sample rows for one data file, read only if the graph draws that file. */
+    private fun sampleRowFactory(
+        fileNodeId: String,
+        dataFile: PaimonUnifiedDataFile,
+        simpleId: Int,
+    ): () -> List<GraphNode.RowNode> = {
+        if (!File(dataFile.path.toString()).exists()) {
+            emptyList()
+        } else {
+            (0 until MAX_ROWS_PER_FILE).map { rowIndex ->
+                GraphNode.RowNode(
+                    id = "row_${fileNodeId}_$rowIndex",
+                    data = mapOf("file_no" to simpleId, "row_idx" to rowIndex),
+                    content = 0,
+                    dataLoader = {
+                        try {
+                            val rows = dataFile.rows
+                            if (rowIndex < rows.size) {
+                                val rowData = rows[rowIndex]
+                                val enriched = mutableMapOf<String, Any>()
+                                enriched["file_no"] = simpleId
+                                enriched["row_idx"] = rowIndex
+                                enriched["local_file_path"] = dataFile.path.toString()
+                                enriched.putAll(rowData.cells)
+                                enriched
+                            } else emptyMap()
+                        } catch (e: Exception) {
+                            logger.warn("Failed to load rows for file {}: {}", dataFile.path, e.message)
+                            emptyMap()
+                        }
+                    }
+                )
+            }
+        }
     }
 
     /** Identity of a Paimon manifest file, for deduplicating it across snapshots. */

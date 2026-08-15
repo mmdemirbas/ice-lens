@@ -251,7 +251,7 @@ class IcebergPipelineTest {
     fun `full pipeline produces correct graph structure`() {
         val table = createCompleteTable()
         val model = UnifiedTableModel(table)
-        val result = IcebergGraphBuilder.buildGraph(model, showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(model)
 
         val nodeTypes = result.nodes.groupBy { it::class.simpleName }
         assertEquals(1, nodeTypes["TableNode"]?.size, "Expected 1 table node")
@@ -307,7 +307,7 @@ class IcebergPipelineTest {
     fun `full pipeline graph builder preserves file metadata`() {
         val table = createCompleteTable()
         val model = UnifiedTableModel(table)
-        val result = IcebergGraphBuilder.buildGraph(model, showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(model)
 
         val fileNodes = result.nodes.filterIsInstance<GraphNode.FileNode>()
         assertEquals(2, fileNodes.size)

@@ -177,7 +177,11 @@ fun App() {
                     )
                 }
             }
-            "inspector" -> NodeDetailsContent(state.visibleGraphModel, state.selectedNodeIds)
+            "inspector" -> NodeDetailsContent(
+                graphModel = state.visibleGraphModel,
+                selectedNodeIds = state.selectedNodeIds,
+                onExpandGroup = state::expandGroup,
+            )
         }
     }
 
@@ -623,7 +627,13 @@ fun App() {
                                 },
                                 onSelectionChange = { state.selectedNodeIds = it },
                                 onEmptyAreaDoubleClick = { toggleAllPanelsVisibility() },
-                                onNodeDoubleClick = { toggleInspectorVisibility() }
+                                // Double-clicking a group opens it. Everything else keeps the
+                                // gesture it already had — a group node is the only card where
+                                // there is something to open rather than something to inspect.
+                                onNodeDoubleClick = { node ->
+                                    if (node is GraphNode.GroupNode) state.expandGroup(node.id)
+                                    else toggleInspectorVisibility()
+                                }
                             )
                         }
                     } else if (!state.isLoadingTable && state.workspaceItems.isNotEmpty()) {

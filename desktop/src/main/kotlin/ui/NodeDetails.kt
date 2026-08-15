@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -59,6 +60,7 @@ private fun multiSelectKey(node: GraphNode): String = when (node) {
     is GraphNode.PaimonManifestListNode -> node.kind
     is GraphNode.PaimonManifestNode -> node.data.fileName ?: "?"
     is GraphNode.PaimonDataFileNode -> "${node.entry.file?.fileName ?: "?"} (${node.entry.file?.rowCount ?: "?"} rows)"
+    is GraphNode.GroupNode -> "${node.memberCount} ${node.kind.plural} not drawn"
 }
 
 private fun nodeTitle(node: GraphNode): String = when (node) {
@@ -82,6 +84,7 @@ private fun nodeTitle(node: GraphNode): String = when (node) {
     is GraphNode.PaimonManifestListNode -> "PAIMON ${node.kind.uppercase()} MANIFEST LIST"
     is GraphNode.PaimonManifestNode -> "PAIMON MANIFEST ${node.simpleId}"
     is GraphNode.PaimonDataFileNode -> "PAIMON FILE ${node.simpleId}"
+    is GraphNode.GroupNode -> "NOT DRAWN: ${node.kind.plural.uppercase()}"
 }
 
 private fun normalizeText(value: String?): String {
@@ -462,6 +465,8 @@ private fun inspectorOpenPath(node: GraphNode): String? = when (node) {
     is GraphNode.PaimonManifestListNode -> node.localPath
     is GraphNode.PaimonManifestNode -> node.localPath
     is GraphNode.PaimonDataFileNode -> node.localPath
+    // A group stands for a set of files, not for one, so there is nothing to reveal in Finder.
+    is GraphNode.GroupNode -> null
 }
 
 /**
@@ -650,7 +655,15 @@ private fun renderMetadataLogRows(items: List<MetadataLogEntry>): List<List<Stri
     }
 
 @Composable
-fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
+fun NodeDetailsContent(
+    graphModel: GraphModel?,
+    selectedNodeIds: Set<String>,
+    /**
+     * Opens a [GraphNode.GroupNode]. Defaulted so the render tests can draw the panel without a
+     * running app; in the app it rebuilds the graph with that group expanded.
+     */
+    onExpandGroup: (String) -> Unit = {},
+) {
     val colors = MaterialTheme.colorScheme
     SelectionContainer {
         CompositionLocalProvider(LocalContentColor provides colors.onSurface) {
@@ -1316,15 +1329,6 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             }
 
                             SectionTitle("Manifest Entries (${formatCount(manifestEntries.size)})")
-                            if (node.hiddenEntryCount > 0) {
-                                Text(
-                                    "The graph draws the first ${formatCount(node.shownEntryCount)}; " +
-                                        "all ${formatCount(manifestEntries.size)} are listed here.",
-                                    fontSize = 11.sp,
-                                    color = colors.onSurfaceVariant,
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
-                            }
                             WideTable(
                                 headers = listOf(
                                     "Apply Order",
@@ -1738,6 +1742,42 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             DetailRow("Creation Time", ui.formatTimestamp(file?.creationTime))
                         }
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
+                    }
+                    is GraphNode.GroupNode -> {
+                        SectionTitle("Not Drawn")
+                        Text(
+                            "The graph draws a page of siblings at a time. This stands for the " +
+                                "${formatCount(node.memberCount)} ${node.kind.plural} after the ones above it, and for " +
+                                "everything below them — ${formatCount(node.hiddenNodeCount)} nodes in all. " +
+                                "The metadata behind them is read and counted either way: the table " +
+                                "summary and every parent's own figures cover the whole table, drawn or not.",
+                            fontSize = 12.sp,
+                            color = colors.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 8.dp),
+                        )
+                        if (node.hiddenErrorCount > 0) {
+                            Text(
+                                "${formatCount(node.hiddenErrorCount)} read errors are inside this group. " +
+                                    "Open it to see which files failed.",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.error,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                        }
+                        Button(onClick = { onExpandGroup(node.id) }) {
+                            Text("Show the next page", fontSize = 12.sp)
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        DetailTable {
+                            DetailRow("Property", "Value", isHeader = true)
+                            DetailRow("Kind", node.kind.plural)
+                            DetailRow("Siblings not drawn", formatCount(node.memberCount))
+                            DetailRow("Nodes not drawn", formatCount(node.hiddenNodeCount))
+                            DetailRow("Read errors inside", formatCount(node.hiddenErrorCount))
+                            DetailRow("Page", "${node.pageIndex}")
+                            DetailRow("Parent Node ID", node.parentId, copyable = true)
+                        }
                     }
                 }
             }

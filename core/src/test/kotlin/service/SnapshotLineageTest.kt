@@ -31,7 +31,7 @@ class SnapshotLineageTest {
     @Test
     fun `every snapshot with a retained parent gets a lineage edge`() {
         val model = modelFor("mor")
-        val result = IcebergGraphBuilder.buildGraph(model, showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(model)
         val snapshotIds = result.nodes.filterIsInstance<GraphNode.SnapshotNode>()
             .mapNotNull { it.data.snapshotId }.toSet()
 
@@ -56,7 +56,7 @@ class SnapshotLineageTest {
      */
     @Test
     fun `lineage forms one chain over the commit history`() {
-        val result = IcebergGraphBuilder.buildGraph(modelFor("mor"), showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(modelFor("mor"))
         val lineage = result.edges.filter { it.id.startsWith("e_lineage_") }
         val snapshots = result.nodes.filterIsInstance<GraphNode.SnapshotNode>()
 
@@ -72,7 +72,7 @@ class SnapshotLineageTest {
      */
     @Test
     fun `lineage edges are marked as not affecting layout`() {
-        val result = IcebergGraphBuilder.buildGraph(modelFor("mor"), showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(modelFor("mor"))
         val lineage = result.edges.filter { it.id.startsWith("e_lineage_") }
 
         assertTrue(lineage.isNotEmpty())
@@ -89,7 +89,7 @@ class SnapshotLineageTest {
      */
     @Test
     fun `withholding lineage from the layout keeps the graph from stretching`() {
-        val result = IcebergGraphBuilder.buildGraph(modelFor("mor"), showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(modelFor("mor"))
 
         val shipped = GraphLayoutService.layoutNodes(result.nodes, result.edges)
         val ifLineageCounted = GraphLayoutService.layoutNodes(
@@ -116,7 +116,7 @@ class SnapshotLineageTest {
     @Test
     fun `on a linear history the lineage order is the chronological order`() {
         listOf("mor", "evolved", "v3", "parted").forEach { fixture ->
-            val snapshots = IcebergGraphBuilder.buildGraph(modelFor(fixture), showRows = false)
+            val snapshots = IcebergGraphBuilder.buildGraph(modelFor(fixture))
                 .nodes.filterIsInstance<GraphNode.SnapshotNode>()
             val rank = GraphLayoutService.snapshotLineageOrder(snapshots)
 
@@ -136,7 +136,7 @@ class SnapshotLineageTest {
      */
     @Test
     fun `refs describe the table now, so main lands on exactly one snapshot`() {
-        val result = IcebergGraphBuilder.buildGraph(modelFor("mor"), showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(modelFor("mor"))
         val snapshots = result.nodes.filterIsInstance<GraphNode.SnapshotNode>()
 
         val carryingMain = snapshots.filter { node -> node.refs.any { it.name == "main" } }

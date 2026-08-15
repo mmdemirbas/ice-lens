@@ -33,7 +33,7 @@ class IcebergGraphBuilderTest {
 
     @Test
     fun `buildGraph produces table and metadata nodes`() {
-        val result = IcebergGraphBuilder.buildGraph(minimalTable(), showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(minimalTable())
 
         val tableNodes = result.nodes.filterIsInstance<GraphNode.TableNode>()
         assertEquals(1, tableNodes.size)
@@ -46,7 +46,7 @@ class IcebergGraphBuilderTest {
 
     @Test
     fun `buildGraph produces edges between table and metadata`() {
-        val result = IcebergGraphBuilder.buildGraph(minimalTable(), showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(minimalTable())
 
         val tableId = result.nodes.filterIsInstance<GraphNode.TableNode>().first().id
         val metaId = result.nodes.filterIsInstance<GraphNode.MetadataNode>().first().id
@@ -75,7 +75,7 @@ class IcebergGraphBuilderTest {
                 )
             )
         )
-        val result = IcebergGraphBuilder.buildGraph(table, showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(table)
 
         val snapNodes = result.nodes.filterIsInstance<GraphNode.SnapshotNode>()
         assertEquals(1, snapNodes.size)
@@ -93,7 +93,7 @@ class IcebergGraphBuilderTest {
                 UnifiedReadError(stage = "test", path = "/test", message = "test error")
             )
         )
-        val result = IcebergGraphBuilder.buildGraph(table, showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(table)
 
         val errorNodes = result.nodes.filterIsInstance<GraphNode.ErrorNode>()
         assertEquals(1, errorNodes.size)
@@ -101,7 +101,7 @@ class IcebergGraphBuilderTest {
 
     @Test
     fun `buildGraph edge IDs are unique`() {
-        val result = IcebergGraphBuilder.buildGraph(minimalTable(), showRows = false)
+        val result = IcebergGraphBuilder.buildGraph(minimalTable())
         val edgeIds = result.edges.map { it.id }
         assertEquals(edgeIds.size, edgeIds.toSet().size)
     }
