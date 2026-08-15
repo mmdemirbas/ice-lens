@@ -98,7 +98,12 @@ desktop/src/main/kotlin/
 - Dark mode detection uses `perceivedBrightness()` (0.2126R + 0.7152G + 0.0722B < 0.5)
 - Graph layout flow: `FormatTableModel` → `GraphLayoutService.layoutGraph()` dispatches to format-specific builder → `GraphBuildResult` → `layoutNodes()` → `GraphModel` → `GraphCanvas`
 - `GraphModel.nodeById` provides a lazy `Map<String, GraphNode>` — use it instead of `nodes.find`/`nodes.associateBy`
-- File paths are resolved relative to the metadata directory using `resolveForceRelative()`
+- Manifest lists and manifests resolve via `resolveRecordedOrRelative()`: the recorded path when
+  it is absolute and the file exists, else `resolveForceRelative()` (file name against the local
+  metadata dir). The fallback is what opens a table copied down from object storage; the recorded
+  path is what opens a `write.metadata.path` layout. **Manifests resolve against their manifest
+  list's directory**, not the table's metadata dir. Data files still use their own
+  prefix-stripping branch and always land under the table root
 - Workspace serialization uses `W|path` / `T|path` items joined by `;`. The path component
   percent-encodes `%`, `;`, and `|` so paths containing those characters round-trip safely.
 - `normalizeFilePath` handles `file:` URIs (including `file://host/path` authority,
@@ -217,7 +222,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~407 tests across 42 files (321 in :core, 86 in :desktop) covering full pipelines for both formats (Avro fixtures
+~411 tests across 43 files (325 in :core, 86 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

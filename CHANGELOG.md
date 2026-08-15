@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deletion vectors rather than parquet delete files). Before these, `posDeleteFileCount`,
   `eqDeleteFileCount`, `deleteRecordCount` and the `DELETES` manifest branch were decided by
   code no real table had ever run through.
+- **A recorded path is used when the file is there.** Manifest lists and manifests resolved by
+  discarding the recorded directory and matching the file name against the local `metadata/`
+  dir — the behaviour that makes a table copied down from object storage openable, but which
+  also meant a `write.metadata.path` layout resolved to a file that was not there. The recorded
+  path now wins when it is absolute and exists; everything else falls back exactly as before.
+  The strategy used is shown in the snapshot and manifest inspectors.
 - **Manifest partition ranges.** `manifest_file.partitions` is read and decoded — the
   per-partition-field bounds a scan intersects with a query predicate to decide whether to open
   a manifest at all. Shown in the manifest inspector above the entries, using the same

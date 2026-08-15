@@ -39,12 +39,11 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 - **`TableMetadata.lastSequenceNumber` is `Int?`** where the spec says `long`. Unreachable in
   practice (it would need 2^31 commits) but it is a plain type error against the spec.
 
-- **Two path-resolution strategies coexist.** `resolveForceRelative` deliberately discards the
-  recorded directory and re-resolves every manifest list and manifest against the local
-  `metadata/` dir, which is what makes a table copied down from S3 openable. It also means a
-  table using `write.metadata.path`, or any layout where metadata does not sit beside the
-  data, resolves to the wrong place and reports a missing file. Worth trying the recorded path
-  first and falling back.
+- **Data-file paths still resolve one way only.** Manifest lists and manifests now try the
+  recorded path first and fall back to forcing the name relative (`resolveRecordedOrRelative`),
+  so a `write.metadata.path` layout opens. Data files do not: they go through a separate
+  prefix-stripping branch in `UnifiedManifest` that always rebuilds the path under the table
+  directory, so a table whose data lives outside it still resolves to the wrong place.
 
 ---
 
@@ -156,9 +155,10 @@ covered yet, and each of these is a computed number a reader currently has to tr
   | `default/branched` | a fork, four refs across five commits, one snapshot with two, and ten metadata versions |
   | `paimon/db.db/test` | a real Flink/Paimon table |
 
-  **Still missing:** a table with `write.metadata.path` set, which is the layout
-  `resolveForceRelative` gets wrong and the one remaining shape with no example. Everything else
-  on this list has a fixture.
+  **Still missing:** nothing on the metadata side — the `write.metadata.path` layout is built at
+  runtime by `RecordedPathResolutionTest` rather than checked in, since it is a rearrangement of
+  the minimal fixture rather than a new table. A table whose *data* directory sits outside the
+  table root has no coverage, and that is the resolution branch still unfixed.
 
 - **The rendered inspector is checked by eye, not asserted.** `InspectorRenderTest` proves the
   panel composes without throwing and writes PNGs to look at, but its only assertion about the
