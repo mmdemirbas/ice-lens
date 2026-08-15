@@ -80,10 +80,12 @@ fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
         .filter { it.snapshotId != null }
         .distinctBy { it.snapshotId }
         .associate { snapshot ->
+            val (listPath, listResolution) = resolveRecordedOrRelative(metadataDir, snapshot.manifestList)
             snapshot.snapshotId to UnifiedSnapshot(
-                resolveForceRelative(metadataDir, snapshot.manifestList),
+                listPath,
                 snapshot,
                 manifestCache,
+                listResolution,
             )
         }
 
@@ -138,6 +140,45 @@ fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
     )
 }
 
+/** Which of the two strategies in [resolveRecordedOrRelative] produced a path. */
+enum class PathResolution {
+    /** The path the table recorded, used as written because the file is there. */
+    RECORDED,
+
+    /** The recorded directory was discarded and the file name resolved against the local dir. */
+    FORCED_RELATIVE,
+}
+
+/**
+ * Resolves a recorded path, preferring what the table actually says.
+ *
+ * [resolveForceRelative] discards the recorded directory entirely, which is the behaviour that
+ * lets this tool open a table copied down from object storage: the paths inside point at
+ * `s3://…` or at some container's `/wh`, and none of them exist on this machine. That is worth
+ * keeping — PyIceberg cannot open those tables at all.
+ *
+ * It is wrong, though, whenever the recorded path *is* valid and points somewhere other than the
+ * local metadata directory: a table with `write.metadata.path` set, or any layout where metadata
+ * does not sit beside the data. Those resolve to a file that is not there and report it missing.
+ *
+ * So: use the recorded path when it is absolute and the file exists, and fall back otherwise.
+ * A table whose paths are foreign is unaffected — the existence check fails and the fallback runs
+ * exactly as before. Only absolute paths are considered, because a relative one would resolve
+ * against the process's working directory and could match an unrelated file by coincidence.
+ */
+fun resolveRecordedOrRelative(start: Path, recorded: String?): Pair<Path, PathResolution> {
+    val asRecorded = recorded
+        ?.takeIf { it.isNotBlank() }
+        ?.let(::normalizeFilePath)
+        ?.let { runCatching { Path.of(it) }.getOrNull() }
+        ?.takeIf { it.isAbsolute && runCatching { Files.isRegularFile(it) }.getOrDefault(false) }
+    return if (asRecorded != null) {
+        asRecorded to PathResolution.RECORDED
+    } else {
+        resolveForceRelative(start, recorded) to PathResolution.FORCED_RELATIVE
+    }
+}
+
 fun resolveForceRelative(start: Path, pathToTakeOnlyLastPart: String?): Path {
     // Get the last part of the path and resolve it relative to start. Fall back to the start directory.
     val tail = pathToTakeOnlyLastPart
@@ -168,14 +209,18 @@ fun resolveForceRelative(start: Path, pathToTakeOnlyLastPart: String?): Path {
 class ManifestCache {
     private val byPath = mutableMapOf<String, UnifiedManifest>()
 
-    fun manifestAt(path: Path, entry: ManifestListEntry): UnifiedManifest =
-        byPath.getOrPut(path.toString()) { UnifiedManifest(path, entry) }
+    fun manifestAt(
+        path: Path,
+        entry: ManifestListEntry,
+        resolution: PathResolution = PathResolution.FORCED_RELATIVE,
+    ): UnifiedManifest = byPath.getOrPut(path.toString()) { UnifiedManifest(path, entry, resolution) }
 }
 
 fun UnifiedSnapshot(
     snapshotPath: Path,
     snapshot: Snapshot,
     manifestCache: ManifestCache = ManifestCache(),
+    pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
 ): UnifiedSnapshot {
     val manifestListResult = runCatching { IcebergReader.readManifestList(snapshotPath.toString()) }
     val snapshotReadErrors = mutableListOf<UnifiedReadError>()
@@ -194,18 +239,21 @@ fun UnifiedSnapshot(
     return UnifiedSnapshot(
         path = snapshotPath,
         metadata = snapshot,
+        pathResolution = pathResolution,
         manifests = manifestList.entries.map { manifest ->
             val metadataDir = snapshotPath.parent
-            manifestCache.manifestAt(
-                resolveForceRelative(metadataDir, manifest.manifestPath),
-                manifest,
-            )
+            val (manifestPath, manifestResolution) = resolveRecordedOrRelative(metadataDir, manifest.manifestPath)
+            manifestCache.manifestAt(manifestPath, manifest, manifestResolution)
         },
         readErrors = snapshotReadErrors,
     )
 }
 
-fun UnifiedManifest(manifestPath: Path, manifest: ManifestListEntry): UnifiedManifest {
+fun UnifiedManifest(
+    manifestPath: Path,
+    manifest: ManifestListEntry,
+    pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
+): UnifiedManifest {
     val manifestFileResult = runCatching { IcebergReader.readManifestFile(manifestPath.toString()) }
     val manifestReadErrors = mutableListOf<UnifiedReadError>()
     val dataFiles = manifestFileResult.getOrElse { e ->
@@ -237,6 +285,7 @@ fun UnifiedManifest(manifestPath: Path, manifest: ManifestListEntry): UnifiedMan
     return UnifiedManifest(
         path = manifestPath,
         metadata = manifest,
+        pathResolution = pathResolution,
         schema = manifestSchema,
         partitionSpec = manifestSpec,
         // The summaries come from the manifest list, the spec from the manifest itself. Both
@@ -297,6 +346,12 @@ data class UnifiedSnapshot(
     val metadata: Snapshot,
     val manifests: List<UnifiedManifest>,
     val readErrors: List<UnifiedReadError> = emptyList(),
+    /**
+     * Whether [path] came from what the table recorded, or from discarding the recorded
+     * directory. Worth showing: a reader who sees a file reported missing needs to know which
+     * path was actually looked at.
+     */
+    val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
 )
 
 data class UnifiedManifest(
@@ -304,6 +359,13 @@ data class UnifiedManifest(
     val metadata: ManifestListEntry,
     val dataFiles: List<UnifiedDataFile>,
     val readErrors: List<UnifiedReadError> = emptyList(),
+    /**
+     * Whether [path] came from what the table recorded, or from discarding the recorded
+     * directory. Worth showing: a reader who sees a file reported missing needs to know which
+     * path was actually looked at.
+     */
+    val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
+
     /**
      * The schema this manifest was written against, read from its own Avro file metadata.
      *

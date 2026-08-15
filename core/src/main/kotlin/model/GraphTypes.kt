@@ -250,6 +250,12 @@ sealed class GraphNode(
         val simpleId: Int,
         val localPath: String? = null,
         /**
+         * Whether [localPath] is where the table said the file is, or where forcing the name
+         * relative to the local directory landed. Shown so a missing file names the path that
+         * was actually looked at.
+         */
+        val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
+        /**
          * Branch and tag names from `refs` that point at this snapshot, `main` first.
          *
          * A ref is what keeps a snapshot from expiring, so it is the reason a commit is still
@@ -286,6 +292,13 @@ sealed class GraphNode(
          * unpartitioned, or when the spec and the summaries disagree on length.
          */
         val partitionSummaries: List<PartitionSummary> = emptyList(),
+        /**
+         * Whether [localPath] is where the table said the file is, or where forcing the name
+         * relative to the local directory landed. Shown so a missing file names the path that
+         * was actually looked at.
+         */
+        val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
+
         /** The schema this manifest was written against — the only correct one for its bounds. */
         val schema: IcebergSchemaModel? = null,
         val localPath: String? = null,

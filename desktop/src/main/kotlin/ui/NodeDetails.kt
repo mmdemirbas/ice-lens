@@ -464,6 +464,16 @@ private fun inspectorOpenPath(node: GraphNode): String? = when (node) {
     is GraphNode.PaimonDataFileNode -> node.localPath
 }
 
+/**
+ * How a file's path was arrived at. Only worth naming when it is not the recorded one, because
+ * that is the case where a "file not found" is about a path the table never mentioned.
+ */
+private fun pathResolutionLabel(resolution: model.PathResolution): String = when (resolution) {
+    model.PathResolution.RECORDED -> "as recorded in the table"
+    model.PathResolution.FORCED_RELATIVE ->
+        "by file name, against the local metadata directory (the recorded path is not present here)"
+}
+
 @Composable
 private fun SectionTitle(title: String) {
     Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -1160,6 +1170,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             val manifestList = node.data.manifestList
                             val manifestListLabel = if (manifestList == null) "N/A" else "${manifestList.substringAfterLast("/")} ($manifestList)"
                             DetailRow("Manifest List", manifestListLabel)
+                            DetailRow("Resolved", pathResolutionLabel(node.pathResolution))
                         }
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
@@ -1252,6 +1263,7 @@ fun NodeDetailsContent(graphModel: GraphModel?, selectedNodeIds: Set<String>) {
                             val manifestPath = node.data.manifestPath
                             val manifestPathLabel = if (manifestPath == null) "N/A" else "${manifestPath.substringAfterLast("/")} ($manifestPath)"
                             DetailRow("Path", manifestPathLabel, copyable = true)
+                            DetailRow("Resolved", pathResolutionLabel(node.pathResolution))
                         }
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)

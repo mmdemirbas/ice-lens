@@ -154,6 +154,7 @@ object IcebergGraphBuilder {
                         data = snap,
                         simpleId = simpleSnapshotId,
                         localPath = snapshot.path.toString(),
+                        pathResolution = snapshot.pathResolution,
                         refs = snap.snapshotId?.let { currentRefs[it] }.orEmpty(),
                     )
                 }
@@ -196,6 +197,7 @@ object IcebergGraphBuilder {
                             },
                             shownEntryCount = minOf(unifiedDataFiles.size, MAX_FILES_PER_MANIFEST),
                             partitionSummaries = unifiedManifest.partitionSummaries,
+                            pathResolution = unifiedManifest.pathResolution,
                             schema = unifiedManifest.schema,
                             localPath = unifiedManifest.path.toString()
                         )
