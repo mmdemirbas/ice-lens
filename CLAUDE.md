@@ -154,6 +154,9 @@ desktop/src/main/kotlin/
   vertical order of snapshots was decided by ELK's manifest placement until the second pass
   existed. Ordering is a constraint and alignment a preference; the constraint goes last. Any new
   post-processing step needs placing against that rule
+- **`manifest_file.partitions` pairs with the partition spec positionally** — the summaries
+  carry no field ids. A spec of a different length decodes to nothing rather than mislabelling
+  fields, because a bound attributed to the wrong partition field reads as an answer
 - **`WideTable` column order is load-bearing, and so are its widths.** The inspector panel is
   far narrower than the table, and the reader sees the leftmost columns and nothing else until
   they scroll — so the answer goes first and identifiers follow it. Pass `columnWidths`: one
@@ -214,7 +217,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~401 tests across 41 files (315 in :core, 86 in :desktop) covering full pipelines for both formats (Avro fixtures
+~407 tests across 42 files (321 in :core, 86 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

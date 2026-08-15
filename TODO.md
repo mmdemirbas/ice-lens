@@ -7,10 +7,11 @@
 These are the differences between "renders the metadata tree" and "answers the questions a
 table-format engineer opens a debugger for". Ordered by how often the question comes up.
 
-- **Manifest field summaries are not read.** `manifest_file.partitions` carries per-partition-
-  field lower/upper bounds and null/NaN flags — the data that decides whether a manifest is
-  skipped during planning. Without it the tool can show *that* a manifest exists but not *why*
-  the planner would or would not open it.
+- **Manifest pruning is shown per manifest, not per query.** `manifest_file.partitions` is read
+  and the manifest inspector shows the bounds a scan prunes on. What is missing is the other
+  half: entering a predicate and seeing which manifests it would skip. The data is all present
+  now — this is an evaluator over it, and it is the feature that would answer "why did my query
+  read 400 files" directly.
 
 - **Iceberg v3 is unmodelled.** Parsed without error — now *verified* rather than assumed,
   against `example/iceberg/default/v3` — but none of its additions are surfaced: deletion
@@ -50,6 +51,13 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 ## Bugs
 
 - **Pinch zoom not working** — trackpad two-finger pinch gesture doesn't fire on all platforms. Needs platform-specific testing.
+
+- **`PerformanceTest > graph builder is O(n) in total artifacts` is flaky.** It asserts a
+  wall-clock time ratio against a size ratio with no warmup, so it fails under load — observed
+  once during a full build that was running the Compose render tests concurrently (ratio 25.25
+  against a size ratio of 7.47), then passed three times in a row alone. A timing ratio is not a
+  complexity measurement; count operations, or measure with a warmup and a wide margin. Until
+  then a red build here may mean nothing.
 
 ---
 

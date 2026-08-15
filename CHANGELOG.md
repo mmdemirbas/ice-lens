@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deletion vectors rather than parquet delete files). Before these, `posDeleteFileCount`,
   `eqDeleteFileCount`, `deleteRecordCount` and the `DELETES` manifest branch were decided by
   code no real table had ever run through.
+- **Manifest partition ranges.** `manifest_file.partitions` is read and decoded — the
+  per-partition-field bounds a scan intersects with a query predicate to decide whether to open
+  a manifest at all. Shown in the manifest inspector above the entries, using the same
+  transform-result resolution as the per-file tuples, so a `year` range reads `1969..2025`
+  rather than the stored ordinals. The pairing with the spec is positional, so a length
+  disagreement decodes to nothing rather than mislabelling every field.
 - **A changed partition spec and a branched history are covered by real tables.**
   `example/iceberg/default/respec` has two specs (a dropped field, `bucket(4)`→`bucket(8)`,
   `days`→`months`), closing the partition half of the schema-resolution rule.
@@ -97,6 +103,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ImageVector`).
 
 ### Fixed
+- **Every row of the manifest-entries table was eight lines tall.** A row is as tall as its
+  tallest cell, and at a uniform 180dp the partition tuple and the bounds maps each wrapped to
+  the line cap — so two entries did not fit on a screen. Columns are sized to their content and
+  the cap is four lines.
 - **The inspector's wide tables hid their most important columns.** Partition and Column
   Statistics both led with `Field ID` at the same 180dp every other column got, which in a
   700dp panel left the decoded value and both bounds off the right edge — with no cut, shadow
