@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import model.GraphModel
 import model.GraphNode
+import model.PaimonUnifiedTableModel
 import model.SnapshotRefLabel
 import model.UnifiedTableModel
 import service.AggregationPolicy
@@ -189,6 +190,27 @@ class InspectorRenderTest {
                 SnapshotCard(snapshot)
                 ManifestCard(manifest)
                 FileCard(file)
+            }
+        }
+    }
+
+    /** The Paimon set, which shares the card sizing rule and none of the card code above. */
+    @Test
+    fun `the paimon cards render inside the size their nodes declare`() {
+        val tableDir = File(repoRoot, "example/paimon/db.db/test")
+        assertTrue(tableDir.isDirectory, "the Paimon fixture should be checked in")
+        val graph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(tableDir.absolutePath)), showRows = false,
+        )
+        val snapshot = graph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().first()
+        val schema = graph.nodes.filterIsInstance<GraphNode.PaimonSchemaNode>().first()
+        val manifestList = graph.nodes.filterIsInstance<GraphNode.PaimonManifestListNode>().first()
+        val manifest = graph.nodes.filterIsInstance<GraphNode.PaimonManifestNode>().first()
+        val file = graph.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>().first()
+
+        renderScene("paimon-cards", width = 700, height = 1000) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                listOf(snapshot, schema, manifestList, manifest, file).forEach { PaimonNodeCard(it) }
             }
         }
     }
