@@ -60,6 +60,36 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 
 ---
 
+## Aggregation
+
+The graph draws a page of siblings per parent and folds the rest into an expandable group
+(`GraphAggregation`). What that leaves open:
+
+- **The page size is fixed at 24 and not reachable from the UI.** It is a constructor default on
+  `AggregationPolicy`, so the only way to change it is to recompile. A reader on a wide monitor
+  and one on a laptop want different numbers.
+
+- **Expanding is one page at a time, with no "expand all".** For a parent with 5,000 manifests
+  that is 208 double-clicks. There is no way to say "draw everything under this one and let it be
+  slow", which is occasionally what a reader wants.
+
+- **Nothing surfaces the total.** `GraphModel.hiddenNodeCount` is derived and available; the
+  canvas does not show it. A reader who has scrolled away from every group card has no indication
+  that the graph is partial. This is the same want as the filtered-state badge below, and the two
+  should be one control.
+
+- **The order within a kind is the order the builder emitted the edges.** For a manifest that
+  several snapshots carry forward, the child order under a *later* snapshot is the creation order
+  rather than that snapshot's own sort, so the first page under it may not be the first page
+  layout would have put at the top. Harmless today because the layout pass reorders positions
+  anyway, but it decides which siblings are *drawn*.
+
+- **Rows are attached after aggregation and never grouped themselves.** Five per file is below
+  any page size, so the rule never fires — correct today, and silently wrong if the per-file row
+  cap ever rises above the page size.
+
+---
+
 ## Derivation traces
 
 The table summary's `current` and `history` figures are folded from a per-manifest ledger and

@@ -71,11 +71,14 @@ ice-lens is a single-module Kotlin Compose Desktop application. All code lives i
 │                                          │
 │  GraphLayoutService.layoutGraph()        │  ← public entry; dispatches by format
 │    → format-specific buildGraph()        │
+│    → GraphAggregation.apply()            │  ← long sibling runs → one GroupNode
+│    → sample rows for surviving files     │  ← deferred; see below
 │    → layoutNodes(): generic ELK pass     │
 │    1. Create ELK graph from nodes/edges  │  ← generic
 │    2. Run ELK layered layout             │  ← generic
 │    3. enforceChronologicalVerticalOrder   │  ← generic post-processing
 │    4. alignParentsWithChildren            │  ← generic post-processing
+│    3'. enforceChronologicalVerticalOrder  │  ← again: alignment overrides ordering
 │    5. preventOverlaps                     │  ← generic post-processing
 │                                          │
 │  Output: GraphModel                      │
@@ -240,6 +243,7 @@ To add a new table format (e.g., Delta Lake, Hudi), follow the pattern establish
 ### Graph construction
 - Create `*GraphBuilder.kt` following the `IcebergGraphBuilder`/`PaimonGraphBuilder` pattern
 - `GraphLayoutService.layoutGraph()` dispatches by format and calls back into the format-specific builder; `layoutNodes()` is the format-agnostic ELK pass
+- `GraphAggregation.apply()` runs between the two. The builder emits a node for every artifact the metadata describes; aggregation decides which are drawn, replacing the tail of each sibling run with an expandable `GroupNode`. Sample rows are read only afterwards, for the data files that survived, because building them first costs a filesystem stat and five nodes per data file in the table
 - Add post-processing cases (ordering, alignment, overlap) for new node types in `GraphLayoutService`
 
 ### UI rendering

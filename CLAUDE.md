@@ -44,7 +44,7 @@ core/src/main/kotlin/
 │   ├── UnifiedModel.kt        # Aggregated data layer — reads & links all Iceberg artifacts into a tree
 │   ├── PaimonSchema.kt        # @Serializable Paimon data classes (snapshot, schema, manifest list, manifest entry)
 │   ├── PaimonUnifiedModel.kt  # Aggregated Paimon data layer — reads & links snapshots, schemas, manifests
-│   ├── GraphTypes.kt          # Point, GraphModel (nodeById, layoutPositions), GraphNode (sealed incl. Paimon types), GraphEdge, TableSummary/ContentStats
+│   ├── GraphTypes.kt          # Point, GraphModel (nodeById, layoutPositions, groups), GraphNode (sealed incl. Paimon + GroupNode), AggregationKind, GraphEdge, TableSummary/ContentStats
 │   ├── IcebergTypes.kt        # Iceberg type model + parser (field-id → type, from a manifest's own schema)
 │   ├── SingleValueDecoder.kt  # Appendix D: bytes + type → DecodedValue (bounds, partition values)
 │   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
@@ -57,6 +57,7 @@ core/src/main/kotlin/
 │   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet, ORC, Avro — max 50)
 │   ├── IcebergGraphBuilder.kt # Iceberg-specific graph construction: UnifiedTableModel → nodes + edges
 │   ├── PaimonGraphBuilder.kt  # Paimon-specific graph construction: PaimonUnifiedTableModel → nodes + edges
+│   ├── GraphAggregation.kt    # Format-agnostic: long sibling runs → one expandable GroupNode
 │   ├── GraphLayoutService.kt  # Format-agnostic ELK layout + post-processing (ordering, alignment, overlap prevention)
 │   └── TableFormatDetector.kt # Directory-based table format detection (Iceberg / Paimon / Unknown)
 
@@ -96,7 +97,12 @@ desktop/src/main/kotlin/
 - All data access is read-only — no table modifications
 - Node colors are hardcoded per node type in `NodeComponents.kt` (`getGraphNodeColor` / `getGraphNodeBorderColor`)
 - Dark mode detection uses `perceivedBrightness()` (0.2126R + 0.7152G + 0.0722B < 0.5)
-- Graph layout flow: `FormatTableModel` → `GraphLayoutService.layoutGraph()` dispatches to format-specific builder → `GraphBuildResult` → `layoutNodes()` → `GraphModel` → `GraphCanvas`
+- Graph layout flow: `FormatTableModel` → `GraphLayoutService.layoutGraph()` dispatches to the
+  format-specific builder → `GraphBuildResult` → `GraphAggregation.apply()` → sample rows attached
+  for the surviving data files → `layoutNodes()` → `GraphModel` → `GraphCanvas`. **The order is
+  load-bearing**: the builder emits a node for every artifact the metadata describes, aggregation
+  decides which are drawn, and only then are rows read — building them first costs a filesystem
+  stat and five nodes per data file in the table
 - `GraphModel.nodeById` provides a lazy `Map<String, GraphNode>` — use it instead of `nodes.find`/`nodes.associateBy`
 - Manifest lists and manifests resolve via `resolveRecordedOrRelative()`: the recorded path when
   it is absolute and the file exists, else `resolveForceRelative()` (file name against the local
@@ -139,16 +145,30 @@ desktop/src/main/kotlin/
   `DataFileContent`) and `PaimonSchema.kt` (`PaimonEntryKind`). Prefer them over 0/1/2 literals
 - `versionHint` is nullable — `version-hint.text` exists only for HadoopCatalog/HadoopTables
   tables, so absence is normal and must not be reported as a read error
-- Graph builders cap child nodes per manifest (`MAX_FILES_PER_MANIFEST`), but `ManifestNode`
-  and `PaimonManifestNode` carry *every* entry in `entries` with `shownEntryCount` recording
-  how many the graph drew. The inspector lists all of them; cards disclose the cap. Never add
-  a cap that isn't visible in the UI
+- **Nothing leaves the graph silently.** `GraphAggregation` draws the first
+  `AggregationPolicy.pageSize` (24) siblings of a kind under a parent and folds the rest into one
+  `GroupNode` that states the count and expands. `ManifestNode`/`PaimonManifestNode` still carry
+  *every* entry in `entries`, and the inspector lists all of them. Expansion state is a
+  `Set<String>` of group ids in `AppState.expandedGroupIds`, passed to `layoutGraph`; an id is
+  `grp_<parentId>_<kind>_<pageIndex>`, so it survives the graph rebuild that expanding causes.
+  Three rules the pass must keep, each with a test that fails without it: removal is by
+  **reachability from the original graph's roots**, never by subtree, because one manifest is a
+  child of every snapshot carrying it forward; every departed node is attributed to exactly one
+  group, so `sum(group.hiddenNodeCount)` equals what actually went; and an `ErrorNode` is never
+  grouped, with errors inside a collapsed subtree counted in `hiddenErrorCount` and shown in red
+  on the card. Never add a cap that isn't visible in the UI
 - `formatCount` / `formatBytes` / `formatBytesExact` live in `ui/FormatUtils.kt` — do not add
   private copies to a UI file. Byte units are binary and labelled as such (KiB, not KB)
 - **A `GraphNode`'s declared width/height is what ELK reserves, and Compose clips nothing.** A
   card that draws more than its node declares loses the overflow under its own border with
-  nothing failing — `SnapshotNode` declares 112dp instead of 84dp when it carries ref chips.
-  Any card gaining content needs its node size revisited in the same change
+  nothing failing — `SnapshotNode` declares 112dp instead of 84dp when it carries ref chips, and
+  `GroupNode` sizes itself from the lines it will draw. Any card gaining content needs its node
+  size revisited in the same change. **Card bodies go through `CardColumn`**, which provides
+  `lineHeight = TextUnit.Unspecified`: Material3's body style carries `lineHeight = 24.sp` and a
+  `Text` overriding only `fontSize` inherits it, so a 9sp label occupies 24dp and a five-line card
+  wants 136dp whatever its font sizes say. That is what had the table card's snapshot count and
+  current-version lines invisible on every table in the app for the whole life of the project. A
+  raw `Column` in a card reintroduces it, and no assertion can see it — only the render
 - **`GraphEdge.affectsLayout = false` records a relationship without letting it shape the
   graph.** Snapshot lineage runs between nodes in the same layer; feeding it to ELK stretches
   the graph by the length of the commit history (measured: 2.10x width on six commits). Such
@@ -222,16 +242,18 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~411 tests across 43 files (325 in :core, 86 in :desktop) covering full pipelines for both formats (Avro fixtures
+~435 tests across 45 files (341 in :core, 94 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
 
 **The UI is verified by rendering it, not by screenshotting a window.** `InspectorRenderTest`
-draws `NodeDetailsContent` into an off-screen Compose scene and writes PNGs to
-`desktop/build/reports/inspector/` — no window, no Screen Recording permission, which matters
+draws `NodeDetailsContent` and every graph card into an off-screen Compose scene and writes PNGs
+to `desktop/build/reports/inspector/` — no window, no Screen Recording permission, which matters
 because screen capture on this machine returns bare wallpaper for every application. Open those
-files after any inspector change. The scene is rendered twice before encoding: a control whose
+files after any inspector *or card* change; `graph-cards-1.png` and `paimon-cards-1.png` are the
+only thing that can show a card drawing past its declared height, because the composition
+succeeds and the PNG is valid either way. The scene is rendered twice before encoding: a control whose
 visibility depends on state that layout writes (the `WideTable` scrollbar) is absent from the
 first frame, so a single-frame capture shows a panel the running app never draws.
 
@@ -297,7 +319,9 @@ The `sealed` keyword ensures the compiler flags every `when` that needs a new ca
 5. Create graph builder returning `GraphBuildResult` (`*GraphBuilder.kt`)
 6. Add `when` case in `GraphLayoutService.layoutGraph()` (single dispatch point)
 7. Add `when` case in `AppState.loadTableModel()` (single dispatch point)
-8. Add `GraphNode` subtypes to `GraphTypes.kt`
+8. Add `GraphNode` subtypes to `GraphTypes.kt`, and give each one an `AggregationKind` in
+   `aggregationKind()` — a node type with no kind is never aggregated, which is right for errors
+   and wrong for anything that fans out
 9. Add node rendering to `NodeComponents.kt` and `NodeDetails.kt`
 10. Add post-processing comparators to `GraphLayoutService.enforceChronologicalVerticalOrder()`
 11. Add alignment/overlap layers to `alignParentsWithChildren()` / `preventOverlaps()`

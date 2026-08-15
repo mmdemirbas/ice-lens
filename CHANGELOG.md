@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The graph draws a page of siblings and says what it is not drawing.** Under one parent, the
+  first 24 siblings of a kind are drawn; the rest become one node that states how many there
+  are and opens on a double-click, revealing a page at a time. This replaces both halves of the
+  old behaviour: everything else was drawn without limit, which no production table survives,
+  and data files were capped at ten per manifest, which made a manifest holding 5,000 files
+  look exactly like one holding ten. The pass is a pure function over a finished graph, so both
+  formats get it from one implementation. Three properties it holds, each pinned by a test that
+  fails without it: a manifest shared by several snapshots survives when only one of them
+  collapses it (removal is by reachability, not by subtree); every node is either drawn or
+  claimed by exactly one group, so the counts add up to what actually went; and a read error is
+  never folded into a group, with any error that leaves under a collapsed manifest counted on
+  the group and shown in red on its card. Sample rows are now read after aggregation, for the
+  data files that survived, rather than for every file in the table.
 - **Summary figures explain themselves.** `TableSummary.current` and `.history` are no longer
   stored numbers; they are folded from a per-manifest ledger (`StatsDerivation` /
   `ManifestContribution`) and exposed as getters over it, so a figure cannot disagree with its
@@ -109,6 +122,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ImageVector`).
 
 ### Fixed
+- **Node cards were painting half their lines under their own border.** A card is sized to the
+  height its node declares and Compose clips nothing, so the surplus was drawn and never seen.
+  Material3's body style carries `lineHeight = 24.sp` and a `Text` that overrides only
+  `fontSize` inherits it, so a 9 sp label occupied 24 dp and five lines wanted 136 dp of card.
+  The table card's snapshot count and current metadata version, the metadata card's snapshot
+  count and current snapshot, and the file card's row count were invisible on every table in
+  the app. Card bodies now lay text out by the font's own metrics; no node size changed.
+- **"1 rows" on a single-row data file**, and a record count printed without a thousands
+  separator beside one that had one.
 - **Every row of the manifest-entries table was eight lines tall.** A row is as tall as its
   tallest cell, and at a uniform 180dp the partition tuple and the bounds maps each wrapped to
   the line cap — so two entries did not fit on a screen. Columns are sized to their content and
