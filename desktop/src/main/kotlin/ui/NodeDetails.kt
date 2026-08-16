@@ -10,6 +10,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -663,6 +664,8 @@ fun NodeDetailsContent(
      * running app; in the app it rebuilds the graph with that group expanded.
      */
     onExpandGroup: (String) -> Unit = {},
+    /** Opens every remaining page of a group at once. Defaulted for the same reason. */
+    onExpandGroupFully: (GraphNode.GroupNode) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     SelectionContainer {
@@ -1765,8 +1768,26 @@ fun NodeDetailsContent(
                                 modifier = Modifier.padding(bottom = 8.dp),
                             )
                         }
-                        Button(onClick = { onExpandGroup(node.id) }) {
-                            Text("Show the next page", fontSize = 12.sp)
+                        // FlowRow, not Row: the second label grows with the count, and a Row
+                        // would place the button that does not fit past the panel's edge, where
+                        // Compose neither wraps it nor clips it.
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Button(onClick = { onExpandGroup(node.id) }) {
+                                Text("Show the next page", fontSize = 12.sp)
+                            }
+                            // The whole tail, for the reader who would rather wait than click
+                            // two hundred times. The count is on the button because it is what
+                            // decides whether they want to; what it costs in nodes is the
+                            // paragraph above.
+                            OutlinedButton(onClick = { onExpandGroupFully(node) }) {
+                                Text(
+                                    "Show all ${formatCount(node.memberCount)} ${node.kind.plural}",
+                                    fontSize = 12.sp,
+                                )
+                            }
                         }
                         Spacer(Modifier.height(12.dp))
                         DetailTable {

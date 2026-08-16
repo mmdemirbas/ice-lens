@@ -168,6 +168,86 @@ class InspectorRenderTest {
     }
 
     /**
+     * The badge that states what the canvas is not drawing, in each state it has.
+     *
+     * Its whole job is to be read at a glance from the corner of a graph, and the wording changes
+     * with the state — "drawing all" against "drawing 431 of 6,180". A test can assert the numbers
+     * it is handed; whether the sentence reads at 11sp against the canvas is the picture's job.
+     */
+    @Test
+    fun `the graph status badge renders every state it has`() {
+        renderScene("graph-status-badge", width = 700, height = 760) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                GraphStatusBadge(
+                    drawnNodeCount = 118, hiddenByAggregation = 0, groupCount = 0,
+                    hiddenByFilter = 0, pageSize = 24,
+                    pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
+                    hasExpandedGroups = false, onPageSizeChange = {}, onCollapseAllGroups = {},
+                )
+                GraphStatusBadge(
+                    drawnNodeCount = 431, hiddenByAggregation = 5_749, groupCount = 1,
+                    hiddenByFilter = 0, pageSize = 24,
+                    pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
+                    hasExpandedGroups = false, onPageSizeChange = {}, onCollapseAllGroups = {},
+                )
+                GraphStatusBadge(
+                    drawnNodeCount = 96, hiddenByAggregation = 0, groupCount = 0,
+                    hiddenByFilter = 335, pageSize = 24,
+                    pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
+                    hasExpandedGroups = false, onPageSizeChange = {}, onCollapseAllGroups = {},
+                )
+                GraphStatusBadge(
+                    drawnNodeCount = 96, hiddenByAggregation = 5_749, groupCount = 37,
+                    hiddenByFilter = 335, pageSize = 8,
+                    pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
+                    hasExpandedGroups = true, onPageSizeChange = {}, onCollapseAllGroups = {},
+                )
+            }
+        }
+    }
+
+    /**
+     * The canvas itself, with a graph that is only partly drawn.
+     *
+     * Everything else here renders one component in isolation, which cannot see where a control
+     * ends up on the surface it belongs to — the badge sits opposite the mini-map, and "opposite"
+     * is a claim about a screen, not about a composable.
+     */
+    @Test
+    fun `the canvas draws its status badge opposite the mini-map`() {
+        val model = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/mor").absolutePath))
+        val graph = GraphLayoutService.layoutGraph(
+            model, showRows = false, policy = AggregationPolicy(pageSize = 2),
+        )
+        assertTrue(graph.groups.isNotEmpty(), "a page size of two should collapse something")
+
+        renderScene("graph-canvas", width = 2000, height = 1200, density = 1f) {
+            GraphCanvas(
+                graph = graph,
+                positions = NodePositions(graph),
+                selectedNodeIds = emptySet(),
+                isSelectMode = false,
+                zoom = 0.6f,
+                onZoomChange = {},
+                onSelectionChange = {},
+                statusOverlay = {
+                    GraphStatusBadge(
+                        drawnNodeCount = graph.nodes.count { it !is GraphNode.GroupNode },
+                        hiddenByAggregation = graph.hiddenNodeCount,
+                        groupCount = graph.groups.size,
+                        hiddenByFilter = 0,
+                        pageSize = 2,
+                        pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
+                        hasExpandedGroups = false,
+                        onPageSizeChange = {},
+                        onCollapseAllGroups = {},
+                    )
+                },
+            )
+        }
+    }
+
+    /**
      * Every card the Iceberg graph draws, at the size its node declares.
      *
      * The node's declared height is what ELK reserves and what the card is sized to, and Compose
@@ -226,8 +306,8 @@ class InspectorRenderTest {
     private fun renderInspector(graph: GraphModel, nodeId: String, name: String, height: Int) =
         renderScene(name, width = 1400, height = height) { InspectorUnderTest(graph, nodeId) }
 
-    private fun renderScene(name: String, width: Int, height: Int, content: @Composable () -> Unit) {
-        val scene = ImageComposeScene(width = width, height = height, density = Density(2f)) {
+    private fun renderScene(name: String, width: Int, height: Int, density: Float = 2f, content: @Composable () -> Unit) {
+        val scene = ImageComposeScene(width = width, height = height, density = Density(density)) {
             Themed(content)
         }
         val png = try {

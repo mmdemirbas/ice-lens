@@ -137,6 +137,82 @@ class AppStateAggregationTest {
     }
 
     @Test
+    fun `expanding a group fully draws every sibling in one rebuild`() {
+        val state = newState()
+        state.loadTable(tableWithMetadataVersions(100))
+        val group = state.graphModel!!.groups.single()
+        val revision = state.graphRevision
+
+        state.expandGroupFully(group)
+
+        assertEquals(100, metadataCount(state))
+        assertEquals(emptyList(), state.graphModel!!.groups)
+        assertEquals(revision + 1, state.graphRevision, "one rebuild, not four")
+    }
+
+    // --- Page size ---
+
+    @Test
+    fun `a larger page size draws what a smaller one folded away`() {
+        val state = newState()
+        state.loadTable(tableWithMetadataVersions(40))
+        assertEquals(24, metadataCount(state))
+
+        state.updateGraphPageSize(48)
+
+        assertEquals(40, metadataCount(state))
+        assertEquals(emptyList(), state.graphModel!!.groups)
+        assertEquals(48, state.graphPageSize)
+    }
+
+    /**
+     * A group id names a page *at a size*. Kept across a change of size it would name a different
+     * set of siblings, so the panel would report an expansion the drawing does not have.
+     */
+    @Test
+    fun `changing the page size closes what was open`() {
+        val state = newState()
+        state.loadTable(tableWithMetadataVersions(60))
+        state.expandGroup(state.graphModel!!.groups.single().id)
+        assertEquals(48, metadataCount(state))
+
+        state.updateGraphPageSize(16)
+
+        assertEquals(emptySet(), state.expandedGroupIds)
+        assertEquals(16, metadataCount(state), "back to one page, at the new size")
+    }
+
+    /**
+     * The cache holds graphs, and a graph carries the page size it was drawn under. Restoring one
+     * built at 24 while the app is set to 48 puts a drawing on screen that disagrees with the
+     * badge above it.
+     */
+    @Test
+    fun `a table cached at the old page size is not restored at the new one`() {
+        val state = newState()
+        val paged = tableWithMetadataVersions(40)
+        state.loadTable(paged)
+        assertEquals(24, metadataCount(state))
+
+        val other = File(tmpDir.parentFile, "other-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            state.loadTable(other.canonicalPath)
+            state.updateGraphPageSize(48)
+
+            state.loadTable(paged)
+            assertEquals(40, metadataCount(state), "re-read under the size in force now")
+        } finally {
+            other.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `the page size outlives the session`() {
+        newState().updateGraphPageSize(96)
+        assertEquals(96, newState().graphPageSize)
+    }
+
+    @Test
     fun `expanding a group that is already open changes nothing`() {
         val state = newState()
         state.loadTable(tableWithMetadataVersions(40))

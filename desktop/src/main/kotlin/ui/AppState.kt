@@ -11,6 +11,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import model.*
+import service.AggregationPolicy
+import service.GraphAggregation
 import service.GraphLayoutService
 import service.TableFormat
 import service.TableFormatDetector
@@ -52,6 +54,16 @@ class AppState(
         internal const val PREF_SELECTED_SNAPSHOT_IDS = "selected_snapshot_ids"
         internal const val PREF_SHOW_ROWS = "show_data_rows"
         internal const val PREF_LAST_BROWSE_DIRECTORY = "last_browse_directory"
+        internal const val PREF_GRAPH_PAGE_SIZE = "graph_page_size"
+
+        /**
+         * The page sizes the badge offers. A reader on a 27-inch monitor and one on a laptop
+         * want different numbers, and the measured budget (500 composed cards on screen) is a
+         * property of the machine, not of the table.
+         */
+        val GRAPH_PAGE_SIZE_CHOICES = listOf(8, 16, 24, 48, 96, 200)
+        const val MIN_GRAPH_PAGE_SIZE = 2
+        const val MAX_GRAPH_PAGE_SIZE = 2_000
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -105,6 +117,17 @@ class AppState(
      */
     var expandedGroupIds by mutableStateOf<Set<String>>(emptySet())
         private set
+
+    /**
+     * How many siblings of one kind are drawn under one parent before the rest become a group.
+     *
+     * Persisted, unlike [expandedGroupIds]: it says something about this reader's screen rather
+     * than about one table.
+     */
+    var graphPageSize by mutableStateOf(AggregationPolicy.DEFAULT_PAGE_SIZE)
+        private set
+
+    private val aggregationPolicy: AggregationPolicy get() = AggregationPolicy(graphPageSize)
 
     // ═══════════════════════════════════════════════════════════════
     //  Snapshot Filter State
@@ -211,6 +234,8 @@ class AppState(
 
         // Other persisted state
         showRows = prefs.getBoolean(PREF_SHOW_ROWS, true)
+        graphPageSize = prefs.getInt(PREF_GRAPH_PAGE_SIZE, AggregationPolicy.DEFAULT_PAGE_SIZE)
+            .coerceIn(MIN_GRAPH_PAGE_SIZE, MAX_GRAPH_PAGE_SIZE)
         selectedSnapshotFilterSnapshotIds = parseLongSet(prefs.get(PREF_SELECTED_SNAPSHOT_IDS, ""))
         lastBrowseDirectory = prefs.get(PREF_LAST_BROWSE_DIRECTORY, "").ifBlank { null }
     }
@@ -502,7 +527,7 @@ class AppState(
                     val tableModel = loadTableModel(normalizedTablePath)
                     coroutineContext.ensureActive()
                     val expanded = previousSession?.expandedGroupIds.orEmpty()
-                    var newGraph = GraphLayoutService.layoutGraph(tableModel, withRows, expanded)
+                    var newGraph = GraphLayoutService.layoutGraph(tableModel, withRows, expanded, aggregationPolicy)
                     if (preservePositions && previousSession != null) {
                         val oldInitial = previousSession.graph.layoutPositions
                         val mergedPositions = newGraph.layoutPositions.toMutableMap()
@@ -587,7 +612,7 @@ class AppState(
                     coroutineContext.ensureActive()
                     val fullyLaidOut = withContext(backgroundDispatcher) {
                         coroutineContext.ensureActive()
-                        GraphLayoutService.layoutGraph(model, showRows, expandedGroupIds)
+                        GraphLayoutService.layoutGraph(model, showRows, expandedGroupIds, aggregationPolicy)
                     }
                     if (requestId != loadRequestId.get()) return@launch
                     // T-1: re-read graphModel on the main thread after the staleness check —
@@ -656,7 +681,7 @@ class AppState(
                 coroutineContext.ensureActive()
                 val newGraph = withContext(backgroundDispatcher) {
                     coroutineContext.ensureActive()
-                    GraphLayoutService.layoutGraph(model, showRows, expandedGroupIds)
+                    GraphLayoutService.layoutGraph(model, showRows, expandedGroupIds, aggregationPolicy)
                 }
 
                 if (requestId != loadRequestId.get()) return@launch
@@ -684,23 +709,67 @@ class AppState(
      * Opens one group node, revealing the next page of the siblings it stands for.
      *
      * Expansion changes which nodes exist, so it rebuilds the graph rather than toggling
-     * visibility — but from the table model already in the session, never from disk. Reading a
-     * production table's metadata is the expensive half; deciding how much of it to draw is not.
+     * visibility — see [rebuildDrawnGraph] for what that costs.
      */
     fun expandGroup(groupId: String) {
         if (groupId in expandedGroupIds) return
         expandedGroupIds = expandedGroupIds + groupId
-        rebuildGraphForExpansion()
+        rebuildDrawnGraph()
+    }
+
+    /**
+     * Opens every remaining page of one group at once.
+     *
+     * A parent with 5,000 manifests is 208 double-clicks from being drawn whole, which is not a
+     * thing anyone does — so "slow but complete" has to be reachable in one action. The cost is
+     * the reader's to accept: the button says how many nodes it is about to draw.
+     */
+    fun expandGroupFully(group: GraphNode.GroupNode) {
+        val pages = GraphAggregation.pageIdsToRevealAll(group, aggregationPolicy)
+        if (expandedGroupIds.containsAll(pages)) return
+        expandedGroupIds = expandedGroupIds + pages
+        rebuildDrawnGraph()
     }
 
     /** Closes every group, back to one page per parent. */
     fun collapseAllGroups() {
         if (expandedGroupIds.isEmpty()) return
         expandedGroupIds = emptySet()
-        rebuildGraphForExpansion()
+        rebuildDrawnGraph()
     }
 
-    private fun rebuildGraphForExpansion() {
+    /**
+     * Changes how many siblings a page holds, and redraws under the new size.
+     *
+     * Two things have to go with it. A group id names *a page at a size*, so an expansion
+     * recorded under the old one would name a different set of siblings under the new one —
+     * expansion is cleared rather than reinterpreted. And every other cached graph was drawn
+     * under the old size, so those sessions are dropped; restoring one would put a graph on
+     * screen that disagrees with the number in the badge above it. The table on screen keeps its
+     * session, because that one is rebuilt right here from the model already in memory.
+     */
+    fun updateGraphPageSize(pageSize: Int) {
+        val clamped = pageSize.coerceIn(MIN_GRAPH_PAGE_SIZE, MAX_GRAPH_PAGE_SIZE)
+        if (clamped == graphPageSize) return
+        graphPageSize = clamped
+        prefs.putInt(PREF_GRAPH_PAGE_SIZE, clamped)
+        expandedGroupIds = emptySet()
+
+        val currentKey = selectedTablePath?.let { "$it-rows_$showRows" }
+        synchronized(sessionCache) {
+            sessionCache.keys.filter { it != currentKey }.forEach { sessionCache.remove(it) }
+        }
+        rebuildDrawnGraph()
+    }
+
+    /**
+     * Rebuilds the graph from the table model already in the session — never from disk.
+     *
+     * Every caller here changes how much of the table is drawn, not what the table says. Reading
+     * a production table's metadata is the expensive half; deciding how much of it to draw is
+     * not.
+     */
+    private fun rebuildDrawnGraph() {
         val tablePath = selectedTablePath ?: return
         val cacheKey = "$tablePath-rows_$showRows"
         val session = sessionCache[cacheKey] ?: return
@@ -714,7 +783,7 @@ class AppState(
             try {
                 val rebuilt = withContext(backgroundDispatcher) {
                     coroutineContext.ensureActive()
-                    GraphLayoutService.layoutGraph(model, showRows, expanded)
+                    GraphLayoutService.layoutGraph(model, showRows, expanded, aggregationPolicy)
                 }
                 if (requestId != loadRequestId.get()) return@launch
 
@@ -738,7 +807,7 @@ class AppState(
                 errorMsg = null
             } catch (e: Exception) {
                 if (requestId != loadRequestId.get()) return@launch
-                logger.error("Failed to rebuild graph after expanding a group", e)
+                logger.error("Failed to rebuild the graph after a change to what it draws", e)
                 errorMsg = e.message
             } finally {
                 if (requestId == loadRequestId.get()) {

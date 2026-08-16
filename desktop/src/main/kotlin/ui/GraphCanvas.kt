@@ -79,6 +79,12 @@ fun GraphCanvas(
     onSelectionChange: (Set<String>) -> Unit,
     onEmptyAreaDoubleClick: () -> Unit = {},
     onNodeDoubleClick: (GraphNode) -> Unit = {},
+    /**
+     * Drawn over the bottom-left of the canvas, opposite the mini-map. A statement about what
+     * this drawing contains belongs on the drawing, not in a panel beside it — see
+     * [GraphStatusBadge], which is what the app puts here.
+     */
+    statusOverlay: @Composable () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     val isDarkSurface = isDarkSurface(colors.surface)
@@ -687,6 +693,10 @@ fun GraphCanvas(
                     style = Stroke(1.dp.toPx())
                 )
             }
+        }
+
+        Box(modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)) {
+            statusOverlay()
         }
 
         Box(

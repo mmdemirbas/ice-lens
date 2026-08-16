@@ -181,6 +181,7 @@ fun App() {
                 graphModel = state.visibleGraphModel,
                 selectedNodeIds = state.selectedNodeIds,
                 onExpandGroup = state::expandGroup,
+                onExpandGroupFully = state::expandGroupFully,
             )
         }
     }
@@ -633,7 +634,30 @@ fun App() {
                                 onNodeDoubleClick = { node ->
                                     if (node is GraphNode.GroupNode) state.expandGroup(node.id)
                                     else toggleInspectorVisibility()
-                                }
+                                },
+                                statusOverlay = {
+                                    // Each missing node is attributed to one reason, aggregation
+                                    // first, because that is the order they were applied in: the
+                                    // filter can only remove what aggregation had already drawn.
+                                    // So the three figures sum to the whole table and nothing is
+                                    // counted twice.
+                                    val builtGraph = state.graphModel
+                                    val builtArtifacts =
+                                        builtGraph?.nodes?.count { it !is GraphNode.GroupNode } ?: 0
+                                    val drawnArtifacts =
+                                        currentGraph.nodes.count { it !is GraphNode.GroupNode }
+                                    GraphStatusBadge(
+                                        drawnNodeCount = drawnArtifacts,
+                                        hiddenByAggregation = builtGraph?.hiddenNodeCount ?: 0,
+                                        groupCount = builtGraph?.groups?.size ?: 0,
+                                        hiddenByFilter = builtArtifacts - drawnArtifacts,
+                                        pageSize = state.graphPageSize,
+                                        pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
+                                        hasExpandedGroups = state.expandedGroupIds.isNotEmpty(),
+                                        onPageSizeChange = state::updateGraphPageSize,
+                                        onCollapseAllGroups = state::collapseAllGroups,
+                                    )
+                                },
                             )
                         }
                     } else if (!state.isLoadingTable && state.workspaceItems.isNotEmpty()) {
