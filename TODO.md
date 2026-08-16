@@ -38,11 +38,11 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 - **Statistics and partition-statistics files are untyped.** Held as `List<JsonElement>` and
   rendered as raw JSON; the Puffin blobs they point at (NDV sketches, etc.) are never opened.
 
-- **Data-file paths still resolve one way only.** Manifest lists and manifests now try the
-  recorded path first and fall back to forcing the name relative (`resolveRecordedOrRelative`),
-  so a `write.metadata.path` layout opens. Data files do not: they go through a separate
-  prefix-stripping branch in `UnifiedManifest` that always rebuilds the path under the table
-  directory, so a table whose data lives outside it still resolves to the wrong place.
+- **Data-file paths now resolve recorded-first, like the manifests.** What is left is that the
+  two rules are written twice — `resolveRecordedOrRelative` for metadata, an inline branch in
+  `UnifiedManifest` for data files, because the fallbacks genuinely differ (file name against the
+  metadata dir; sub-path rebuilt under the table root). A shared function taking the fallback as
+  a parameter would keep the recorded-first half in one place.
 
 ---
 
@@ -192,10 +192,12 @@ covered yet, and each of these is a computed number a reader currently has to tr
   | `default/branched` | a fork, four refs across five commits, one snapshot with two, and ten metadata versions |
   | `paimon/db.db/test` | a real Flink/Paimon table |
 
-  **Still missing:** nothing on the metadata side — the `write.metadata.path` layout is built at
-  runtime by `RecordedPathResolutionTest` rather than checked in, since it is a rearrangement of
-  the minimal fixture rather than a new table. A table whose *data* directory sits outside the
-  table root has no coverage, and that is the resolution branch still unfixed.
+  **Still missing:** both path layouts are built at runtime rather than checked in — the
+  `write.metadata.path` one by `RecordedPathResolutionTest`, the data-outside-the-table one by
+  `PathResolutionTest` — since each is a rearrangement of the minimal fixture rather than a new
+  table. The data-file one is synthetic in a way the metadata one is not: its manifest is written
+  by `avro4k` rather than by an engine, so it proves the resolver and not the shape a real
+  `write.data.path` table has.
 
 - **The rendered inspector is checked by eye, not asserted.** `InspectorRenderTest` proves the
   panel composes without throwing and writes PNGs to look at, but its only assertion about the

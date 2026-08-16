@@ -111,8 +111,12 @@ desktop/src/main/kotlin/
   it is absolute and the file exists, else `resolveForceRelative()` (file name against the local
   metadata dir). The fallback is what opens a table copied down from object storage; the recorded
   path is what opens a `write.metadata.path` layout. **Manifests resolve against their manifest
-  list's directory**, not the table's metadata dir. Data files still use their own
-  prefix-stripping branch and always land under the table root
+  list's directory**, not the table's metadata dir. **Data files follow the same recorded-first
+  rule** with a different fallback: the recorded table prefix is stripped and the sub-path rebuilt
+  under the local table root, so `data/name=alpha/…` survives. The traversal check applies to that
+  rebuilt branch only — a recorded path landing outside the table root is the table's own
+  statement, and `UnifiedDataFile.pathResolution` / `FileNode.pathResolution` carry which rule ran
+  so the inspector can say it
 - Workspace serialization uses `W|path` / `T|path` items joined by `;`. The path component
   percent-encodes `%`, `;`, and `|` so paths containing those characters round-trip safely.
 - `normalizeFilePath` handles `file:` URIs (including `file://host/path` authority,
@@ -265,7 +269,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~449 tests across 47 files (348 in :core, 101 in :desktop) covering full pipelines for both formats (Avro fixtures
+~451 tests across 47 files (350 in :core, 101 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

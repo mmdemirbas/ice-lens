@@ -140,6 +140,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   referenced file a whole layer to the right of a node it sits beside.
 
 ### Fixed
+- **A data file recorded outside the table directory is now read where the table says it is.**
+  Manifest lists and manifests have preferred the recorded path since the `write.metadata.path`
+  fix; data files were still always rebuilt under the local table root, so a `write.data.path`
+  table — or one registered against data written elsewhere — reported every file missing while
+  they sat on disk exactly where the manifest said. The fallback is unchanged and still opens a
+  table copied down from object storage. The file inspector now shows the path being read and
+  which of the two rules produced it.
 - **`TableMetadata.lastSequenceNumber` was `Int` where the spec says `long`.** Not a misread but
   a refusal: one out-of-range field and the whole `metadata.json` fails to parse, taking the
   table with it. Every other sequence number in the model was already `Long`.
