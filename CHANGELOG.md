@@ -140,6 +140,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   referenced file a whole layer to the right of a node it sits beside.
 
 ### Fixed
+- **The build's one flaky test measured the machine's load rather than the graph builder.**
+  `PerformanceTest` compared the *sum* of three unwarmed builds at two table sizes against the
+  size ratio, so it failed at a ratio of 25.25 during a build that was rendering Compose scenes
+  alongside it and passed three times in a row when run on its own — a red build there meant
+  nothing. It now takes the fastest of seven warmed trials at each size, which a busy machine can
+  only make slower, never faster. Measured at 5.35 alone, 5.90 and 7.03 under a full concurrent
+  build, against a threshold of 22.4.
 - **Every card on the graph was drawn over its neighbour on a display scaled past 100%.** The
   canvas positioned each node with `Modifier.offset { IntOffset(...) }`, which is specified in
   device pixels, and sized the card inside it with `Modifier.size(...dp)`. At 100% the two spaces

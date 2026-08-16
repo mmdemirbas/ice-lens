@@ -50,13 +50,6 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 
 - **Pinch zoom not working** — trackpad two-finger pinch gesture doesn't fire on all platforms. Needs platform-specific testing.
 
-- **`PerformanceTest > graph builder is O(n) in total artifacts` is flaky.** It asserts a
-  wall-clock time ratio against a size ratio with no warmup, so it fails under load — observed
-  once during a full build that was running the Compose render tests concurrently (ratio 25.25
-  against a size ratio of 7.47), then passed three times in a row alone. A timing ratio is not a
-  complexity measurement; count operations, or measure with a warmup and a wide margin. Until
-  then a red build here may mean nothing.
-
 ---
 
 ## Aggregation

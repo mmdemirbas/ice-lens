@@ -13,6 +13,13 @@ import kotlin.system.measureTimeMillis
  */
 class PerformanceTest {
 
+    private companion object {
+        /** See [fastestBuild]. Enough builds that one trial is milliseconds, not microseconds. */
+        const val WARMUP = 20
+        const val TRIALS = 7
+        const val REPEATS = 5
+    }
+
     private fun generateTable(
         metadataCount: Int,
         snapshotsPerMetadata: Int,
@@ -182,34 +189,56 @@ class PerformanceTest {
         println("Graph: $nodeCount nodes, $edgeCount edges (ratio: ${edgeCount.toFloat() / nodeCount})")
     }
 
+    /**
+     * A quadratic step in the builder — a scan of everything built so far, per artifact — would
+     * show up here long before it shows up on a real table.
+     *
+     * This is a smoke test and not a complexity proof: it measures wall-clock, and wall-clock on a
+     * busy machine measures the machine. What lets it survive a full build running beside it is
+     * taking the **fastest** of several trials rather than the sum of a few: a trial can be
+     * arbitrarily slowed by something else on the box and never arbitrarily sped up, so the
+     * minimum is the closest thing to the work itself a timer here can see.
+     *
+     * The previous form summed three unwarmed runs. It failed once at a time ratio of 25.25
+     * against a size ratio of 7.47, during a build that was rendering Compose scenes alongside it,
+     * and then passed three times in a row when run on its own — so a red build here meant
+     * nothing, which is worse than no test.
+     */
     @Test
-    fun `graph builder is O(n) in total artifacts`() {
-        // Verify that doubling the table size roughly doubles build time, not quadruples it
+    fun `graph builder does not blow up quadratically`() {
         val smallTable = generateTable(2, 3, 2, 5)
         val largeTable = generateTable(4, 6, 4, 5)
-
-        // Warm up
-        IcebergGraphBuilder.buildGraph(smallTable)
-        IcebergGraphBuilder.buildGraph(largeTable)
-
-        val smallTime = measureTimeMillis {
-            repeat(3) { IcebergGraphBuilder.buildGraph(smallTable) }
-        }
-        val largeTime = measureTimeMillis {
-            repeat(3) { IcebergGraphBuilder.buildGraph(largeTable) }
-        }
-
         val smallNodes = IcebergGraphBuilder.buildGraph(smallTable).nodes.size
         val largeNodes = IcebergGraphBuilder.buildGraph(largeTable).nodes.size
-        val sizeRatio = largeNodes.toFloat() / smallNodes
-        val timeRatio = largeTime.toFloat() / smallTime.coerceAtLeast(1)
+        val sizeRatio = largeNodes.toDouble() / smallNodes
 
-        println("Small: $smallNodes nodes in ${smallTime}ms, Large: $largeNodes nodes in ${largeTime}ms")
-        println("Size ratio: $sizeRatio, Time ratio: $timeRatio")
+        val smallNanos = fastestBuild(smallTable)
+        val largeNanos = fastestBuild(largeTable)
+        val timeRatio = largeNanos.toDouble() / smallNanos.coerceAtLeast(1)
 
-        // Time ratio should be roughly proportional to size ratio (not squared)
-        // Allow 3x headroom for overhead
-        assertTrue(timeRatio < sizeRatio * 3, "Time ratio ($timeRatio) too large vs size ratio ($sizeRatio) — suggests O(n²)")
+        println(
+            "Build: $smallNodes nodes in ${smallNanos / 1_000}us, $largeNodes nodes in " +
+                "${largeNanos / 1_000}us (size ratio $sizeRatio, time ratio $timeRatio)"
+        )
+        assertTrue(
+            timeRatio < sizeRatio * 3,
+            "a time ratio of $timeRatio against a size ratio of $sizeRatio is the shape of an " +
+                "O(n^2) step in the builder — $smallNodes nodes took ${smallNanos / 1_000}us and " +
+                "$largeNodes took ${largeNanos / 1_000}us, each the fastest of $TRIALS trials"
+        )
+    }
+
+    /**
+     * Nanoseconds for one build: the fastest of [TRIALS] trials of [REPEATS] builds each, after a
+     * warm-up of the same shape. Without the warm-up the first measurement is the JIT compiling.
+     */
+    private fun fastestBuild(table: UnifiedTableModel): Long {
+        repeat(WARMUP) { IcebergGraphBuilder.buildGraph(table) }
+        return (1..TRIALS).minOf {
+            val started = System.nanoTime()
+            repeat(REPEATS) { IcebergGraphBuilder.buildGraph(table) }
+            (System.nanoTime() - started) / REPEATS
+        }
     }
 
     @Test
