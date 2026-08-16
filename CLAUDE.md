@@ -140,6 +140,12 @@ desktop/src/main/kotlin/
   retained snapshot, deduplicated by manifest and data-file path). `manifestEntryCount` is
   status-blind in both — it measures scan cost — while file/record/byte totals cover live
   entries only. Delete-file `record_count` goes to `deleteRecordCount`, never `recordCount`.
+- **A recorded figure is shown against the same figure counted.** `manifestTallies` in
+  `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
+  own entries add up to. A scan trusts those counts without opening the manifest and nothing on
+  the read path checks them, so the inspector does. It is also the suite's only assertion that
+  compares what this code decoded against what Iceberg recorded about the same bytes — a status
+  misread or an entry dropped shows up as a disagreement on a checked-in table
 - **Partition transforms do not share a result type.** `day` produces a `date`; `year`, `month`
   and `hour` produce `int` ordinals counted from the epoch (a `year` partition for 2024 stores
   `54`). All four are four little-endian bytes, so the wrong choice yields a plausible value,
@@ -280,7 +286,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~452 tests across 47 files (350 in :core, 102 in :desktop) covering full pipelines for both formats (Avro fixtures
+~456 tests across 46 files (354 in :core, 102 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -37,6 +37,7 @@ import model.GraphModel
 import model.GraphNode
 import model.KeyValuePairBytes
 import model.ManifestEntryStatus
+import model.manifestTallies
 import model.KeyValuePairLong
 import model.MetadataLogEntry
 import model.SnapshotLogEntry
@@ -1280,12 +1281,6 @@ fun NodeDetailsContent(
                             DetailRow("Min Sequence Num.", "${node.data.minSequenceNumber ?: "N/A"}")
                             DetailRow("Partition Spec ID", "${node.data.partitionSpecId ?: "N/A"}")
                             DetailRow("Added Snapshot", "${node.data.addedSnapshotId ?: "N/A"}")
-                            DetailRow("Added Files", "${node.data.addedFilesCount ?: 0}")
-                            DetailRow("Existing Files", "${node.data.existingFilesCount ?: 0}")
-                            DetailRow("Deleted Files", "${node.data.deletedFilesCount ?: 0}")
-                            DetailRow("Added Rows", "${node.data.addedRowsCount ?: 0}")
-                            DetailRow("Existing Rows", "${node.data.existingRowsCount ?: 0}")
-                            DetailRow("Deleted Rows", "${node.data.deletedRowsCount ?: 0}")
                             DetailRow("Manifest Length", "${node.data.manifestLength ?: 0} bytes")
                             val manifestPath = node.data.manifestPath
                             val manifestPathLabel = if (manifestPath == null) "N/A" else "${manifestPath.substringAfterLast("/")} ($manifestPath)"
@@ -1299,6 +1294,36 @@ fun NodeDetailsContent(
                         // nodes per manifest so a manifest holding thousands of files stays
                         // readable; the inspector is a table and has no such constraint.
                         val manifestEntries = node.entries
+
+                        // Outside the entries check on purpose: a manifest list claiming three
+                        // added files over a manifest that yielded no entries is the case most
+                        // worth seeing, and it is the case where there is nothing below to look at.
+                        Spacer(Modifier.height(16.dp))
+                        SectionTitle("Recorded Summary")
+                        Text(
+                            "The manifest list carries these counts so a scan can plan without opening this " +
+                                "manifest, and nothing on the read path checks them. Each one sits beside the " +
+                                "same figure counted from the entries.",
+                            fontSize = 11.sp,
+                            color = colors.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        WideTable(
+                            headers = listOf("Figure", "In the entries", "Recorded", "Agrees"),
+                            columnWidths = listOf(150.dp, 130.dp, 130.dp, 110.dp),
+                            rows = manifestTallies(node.data, manifestEntries.map { it.entry }).map { tally ->
+                                listOf(
+                                    tally.label,
+                                    formatCount(tally.counted),
+                                    tally.recorded?.let { formatCount(it) } ?: "not recorded",
+                                    when (tally.agrees) {
+                                        true -> "yes"
+                                        false -> "NO"
+                                        null -> "nothing to check"
+                                    },
+                                )
+                            }
+                        )
 
                         if (manifestEntries.isNotEmpty()) {
                             Spacer(Modifier.height(16.dp))

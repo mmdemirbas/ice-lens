@@ -132,6 +132,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SnapshotFilter` moved to core (pure graph work); `ToolWindowTypes` moved to desktop (holds an
   `ImageVector`).
 
+- **The manifest inspector shows each recorded count against the entries it summarises.** The six
+  counts in `manifest_file` — added, existing and deleted files and rows — are what a scan reads
+  to plan without opening the manifest, and nothing on the read path checks them. They now appear
+  beside the same figures folded from the manifest's own entries, with a column saying whether
+  the two agree; a count the writer omitted, which v1 permits for all six, reads as "nothing to
+  check" rather than as agreement. The section is drawn even when no entries were read, because a
+  manifest list claiming three added files over a manifest that yielded nothing is the case most
+  worth seeing.
 - **A deletion vector is drawn pointing at the file it deletes from.** `referenced_data_file` is
   the only delete-to-data link Iceberg records — a positional delete file names its targets one
   per row, and an equality delete names none — so the graph now draws that one and keeps
