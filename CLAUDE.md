@@ -193,6 +193,17 @@ desktop/src/main/kotlin/
   wants 136dp whatever its font sizes say. That is what had the table card's snapshot count and
   current-version lines invisible on every table in the app for the whole life of the project. A
   raw `Column` in a card reintroduces it, and no assertion can see it — only the render
+- **The graph model is in dp and the canvas surface is in device pixels; `zoom * density` is the
+  only conversion.** ELK laid the graph out against card sizes the nodes declare in dp, and the
+  cards are drawn with `Modifier.size(...dp)` — but the pointer, `BoxWithConstraints`'
+  constraints, `graphicsLayer`'s translation and every `DrawScope` are pixels. Anything crossing
+  goes through that one factor: node placement (`p.x.dp.roundToPx()`, because `Modifier.offset`'s
+  lambda returns pixels), edge drawing (the whole `DrawScope` is scaled once), drag deltas,
+  the marquee, culling, `clampOffset`, zoom-to-fit, scroll-into-view, the tooltip and the
+  mini-map. Positioning in one space and sizing in the other draws every card over its neighbour
+  at 200% and nothing at all at 100%, which is why `InspectorRenderTest` renders the same graph
+  into a scene of twice the pixels at twice the density and asserts the drawing lands at exactly
+  twice the coordinate. A new coordinate on this canvas needs its space named
 - **`GraphEdge.affectsLayout = false` records a relationship without letting it shape the
   graph.** Snapshot lineage runs between nodes in the same layer; feeding it to ELK stretches
   the graph by the length of the commit history (measured: 2.10x width on six commits). Such
@@ -269,7 +280,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~451 tests across 47 files (350 in :core, 101 in :desktop) covering full pipelines for both formats (Avro fixtures
+~452 tests across 47 files (350 in :core, 102 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -289,10 +300,12 @@ first frame, so a single-frame capture shows a panel the running app never draws
 
 `graph-canvas-partial-1.png` and `graph-canvas-whole-1.png` render `GraphCanvas` itself, which is
 where a control's *placement* on the surface can be checked rather than the control alone — and
-where the `e_dv_*` edges are visible, which needs both of their ends drawn. **They are rendered at
-`Density(1f)` on purpose.** At `Density(2f)` the same canvas draws every card over its neighbour, because node
-positions go through `Modifier.offset { IntOffset(...) }`, which is specified in pixels, while
-the card inside is `Modifier.size(...dp)` — recorded under Bugs in `TODO.md`, not yet fixed.
+where the `e_dv_*` edges are visible, which needs both of their ends drawn. They are rendered at
+`Density(1f)` for framing: a scene is a fixed number of device pixels, so a higher density fits
+less of the graph into the same file. Whether the drawing survives a scaled display is asserted
+instead — `the canvas draws the same graph at every display scale` renders the same graph into a
+scene of twice the pixels at twice the density and requires the ink to land at exactly twice the
+coordinate, which is the check that would have caught the px/dp mismatch.
 `LayoutOverlapTest` covers the half of that which is the layout's own: no two nodes of one layer
 occupy the same rectangle, at five page sizes across five fixtures.
 

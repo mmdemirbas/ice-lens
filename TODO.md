@@ -48,20 +48,6 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 
 ## Bugs
 
-- **The canvas places nodes in pixels and sizes them in dp, so every card overlaps on a display
-  whose density is not 1.** `GraphCanvas` positions each node with
-  `Modifier.offset { IntOffset(p.x.roundToInt(), p.y.roundToInt()) }` — a *pixel* offset — while
-  the card inside is `Modifier.size(node.width.dp, node.height.dp)`. At density 1 the two agree.
-  At density 2 the same layout puts a 240dp-wide card, drawn 480px wide, at x=552px, 500px from
-  the next column: every column overlaps its neighbour and every card its sibling below.
-  **Observed**, by rendering `GraphCanvas` into an off-screen scene at both densities — clean at
-  1, overlapping at 2 (`InspectorRenderTest.the canvas draws its status badge opposite the
-  mini-map` writes the density-1 file). Not observed in the running app, whose density on this
-  machine is 1; a Windows machine at 125–200% scaling is where it would show. The fix is to
-  multiply by `density` inside the offset lambda, and then to check every other px/dp boundary
-  the canvas has — drag deltas, the marquee rectangle, `clampOffset`, the mini-map, zoom-to-fit —
-  because they all share the assumption.
-
 - **Pinch zoom not working** — trackpad two-finger pinch gesture doesn't fire on all platforms. Needs platform-specific testing.
 
 - **`PerformanceTest > graph builder is O(n) in total artifacts` is flaky.** It asserts a

@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -21,8 +22,10 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -41,6 +44,22 @@ import model.GraphEdge
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+
+/**
+ * The mini-map's box, where it sits, and the gap between the box and the drawing inside it.
+ *
+ * Named because more than one place reads them and they have to agree: the `Canvas` insets its
+ * drawing by [MINI_MAP_INSET], the drag handler above it converts a pointer position back into a
+ * graph coordinate using the same box, and the render test masks the corner out. When those were
+ * a literal `4.dp` in one and a bare `240f` in the other, a drag on the map landed the viewport
+ * somewhere else — by the padding on every display, and by the whole scale factor on a display
+ * that is not at 100%.
+ */
+internal val MINI_MAP_WIDTH = 240.dp
+internal val MINI_MAP_HEIGHT = 160.dp
+internal val MINI_MAP_MARGIN = 16.dp
+private val MINI_MAP_INSET = 4.dp
+private val MINI_MAP_SHAPE = RoundedCornerShape(8.dp)
 
 private fun tonedEdgeColor(base: Color, sourceId: String): Color {
     val hash = sourceId.hashCode()
@@ -89,11 +108,22 @@ fun GraphCanvas(
     val colors = MaterialTheme.colorScheme
     val isDarkSurface = isDarkSurface(colors.surface)
     val selectionColor = if (isDarkSurface) DarkSelectionAccent else colors.primary
+
+    // The graph model is in dp — ELK laid it out against card sizes the nodes declare in dp, and
+    // the cards are drawn with Modifier.size(...dp). Everything else on this surface is device
+    // pixels: the pointer, the constraints, graphicsLayer's translation, DrawScope. `zoom *
+    // density` is the only conversion between the two spaces, and every coordinate that crosses
+    // has to go through it. Positioning a node in pixels while sizing it in dp — which is what
+    // Modifier.offset's lambda does if you hand it model coordinates — draws every card over its
+    // neighbour on any display scaled past 100%.
+    val density = LocalDensity.current.density
     // Consumed to ensure recomposition/reset-sensitive logic sees relayout events.
     @Suppress("UNUSED_VARIABLE")
     val _graphRevision = graphRevision
 
-    val offsetAnim = remember { Animatable(Offset(100f, 100f), Offset.VectorConverter) }
+    // The pan is a pixel translation on the layer, so the opening margin is stated in dp and
+    // converted, or the graph starts twice as close to the corner on a scaled display.
+    val offsetAnim = remember { Animatable(Offset(100f * density, 100f * density), Offset.VectorConverter) }
     val coroutineScope = rememberCoroutineScope()
 
     // Smooth internal state to eliminate lag during gestures
@@ -283,9 +313,11 @@ fun GraphCanvas(
                                     }
                                 }
                             } else {
-                                // Pan
+                                // Pan. 20dp per scroll notch, so a wheel turn covers the same
+                                // distance on the graph whatever the display scale is.
                                 coroutineScope.launch {
-                                    offsetAnim.snapTo(offsetAnim.value - Offset(delta.x * 20f, delta.y * 20f))
+                                    val step = 20f * density
+                                    offsetAnim.snapTo(offsetAnim.value - Offset(delta.x * step, delta.y * step))
                                 }
                             }
                             changes.forEach { it.consume() }
@@ -343,10 +375,13 @@ fun GraphCanvas(
                                 val right = Math.max(marqueeStart!!.x, marqueeEnd!!.x)
                                 val bottom = Math.max(marqueeStart!!.y, marqueeEnd!!.y)
 
-                                val logLeft = (left - offsetAnim.value.x) / localZoom
-                                val logTop = (top - offsetAnim.value.y) / localZoom
-                                val logRight = (right - offsetAnim.value.x) / localZoom
-                                val logBottom = (bottom - offsetAnim.value.y) / localZoom
+                                // The marquee is drawn from pointer pixels; the nodes it selects
+                                // are in model dp.
+                                val modelScale = localZoom * density
+                                val logLeft = (left - offsetAnim.value.x) / modelScale
+                                val logTop = (top - offsetAnim.value.y) / modelScale
+                                val logRight = (right - offsetAnim.value.x) / modelScale
+                                val logBottom = (bottom - offsetAnim.value.y) / modelScale
 
                                 val selRect = androidx.compose.ui.geometry.Rect(logLeft, logTop, logRight, logBottom)
 
@@ -399,10 +434,12 @@ fun GraphCanvas(
         val viewportHeight = constraints.maxHeight.toFloat()
         val boundsPadding = 100f
 
-        val logicalLeft = -offsetAnim.value.x / localZoom
-        val logicalTop = -offsetAnim.value.y / localZoom
-        val logicalRight = logicalLeft + viewportWidth / localZoom
-        val logicalBottom = logicalTop + viewportHeight / localZoom
+        // Pixels in, model dp out — the viewport rectangle expressed in the graph's own units.
+        val modelScale = localZoom * density
+        val logicalLeft = -offsetAnim.value.x / modelScale
+        val logicalTop = -offsetAnim.value.y / modelScale
+        val logicalRight = logicalLeft + viewportWidth / modelScale
+        val logicalBottom = logicalTop + viewportHeight / modelScale
         val cullMargin = 400f
 
         val visibleNodes = graph.nodes.filter { node ->
@@ -421,10 +458,13 @@ fun GraphCanvas(
         }
 
         fun clampOffset(rawOffset: Offset, zoomValue: Float): Offset {
-            val minOffsetX = viewportWidth - (extents.maxX + boundsPadding) * zoomValue
-            val maxOffsetX = -(extents.minX - boundsPadding) * zoomValue
-            val minOffsetY = viewportHeight - (extents.maxY + boundsPadding) * zoomValue
-            val maxOffsetY = -(extents.minY - boundsPadding) * zoomValue
+            // extents and boundsPadding are model dp; the offset being clamped is a pixel
+            // translation.
+            val scale = zoomValue * density
+            val minOffsetX = viewportWidth - (extents.maxX + boundsPadding) * scale
+            val maxOffsetX = -(extents.minX - boundsPadding) * scale
+            val minOffsetY = viewportHeight - (extents.maxY + boundsPadding) * scale
+            val maxOffsetY = -(extents.minY - boundsPadding) * scale
 
             val clampedX = if (minOffsetX <= maxOffsetX) {
                 rawOffset.x.coerceIn(minOffsetX, maxOffsetX)
@@ -444,15 +484,17 @@ fun GraphCanvas(
             val fitPadding = 56f
             val availableWidth = (viewportWidth - fitPadding * 2f).coerceAtLeast(1f)
             val availableHeight = (viewportHeight - fitPadding * 2f).coerceAtLeast(1f)
-            val fitZoomX = availableWidth / extents.width
-            val fitZoomY = availableHeight / extents.height
+            // The available space is pixels and the extents are model dp, so the zoom that makes
+            // one fit the other carries the density in its denominator.
+            val fitZoomX = availableWidth / (extents.width * density)
+            val fitZoomY = availableHeight / (extents.height * density)
             val fitZoom = min(fitZoomX, fitZoomY).coerceIn(MIN_ZOOM, MAX_ZOOM)
 
             val centerX = (extents.minX + extents.maxX) / 2f
             val centerY = (extents.minY + extents.maxY) / 2f
             val targetOffset = Offset(
-                x = viewportWidth / 2f - centerX * fitZoom,
-                y = viewportHeight / 2f - centerY * fitZoom
+                x = viewportWidth / 2f - centerX * fitZoom * density,
+                y = viewportHeight / 2f - centerY * fitZoom * density
             )
 
             localZoom = fitZoom
@@ -493,15 +535,16 @@ fun GraphCanvas(
                 val selectedNode = nodeById[selectedNodeIds.first()]
                 if (selectedNode != null) {
                     val currentZoom = localZoom
+                    val scale = currentZoom * density
                     val currentX = offsetAnim.value.x
                     val currentY = offsetAnim.value.y
 
                     val snx = nodeX(selectedNode)
                     val sny = nodeY(selectedNode)
-                    val nodeLeft = snx * currentZoom + currentX
-                    val nodeRight = (snx + selectedNode.width.toFloat()) * currentZoom + currentX
-                    val nodeTop = sny * currentZoom + currentY
-                    val nodeBottom = (sny + selectedNode.height.toFloat()) * currentZoom + currentY
+                    val nodeLeft = snx * scale + currentX
+                    val nodeRight = (snx + selectedNode.width.toFloat()) * scale + currentX
+                    val nodeTop = sny * scale + currentY
+                    val nodeBottom = (sny + selectedNode.height.toFloat()) * scale + currentY
 
                     val margin = 20f
 
@@ -512,8 +555,11 @@ fun GraphCanvas(
                         val nodeCenterX = snx + (selectedNode.width.toFloat() / 2f)
                         val nodeCenterY = sny + (selectedNode.height.toFloat() / 2f)
 
-                        val targetX = (viewportWidth / 2f - nodeCenterX) * currentZoom
-                        val targetY = (viewportHeight / 2f - nodeCenterY) * currentZoom
+                        // The offset that puts the node's centre at the viewport's centre solves
+                        // `centre * scale + offset = viewport / 2`. The previous form scaled the
+                        // difference instead, which only agrees with this at a zoom of exactly 1.
+                        val targetX = viewportWidth / 2f - nodeCenterX * scale
+                        val targetY = viewportHeight / 2f - nodeCenterY * scale
 
                         offsetAnim.animateTo(clampOffset(Offset(targetX, targetY), currentZoom))
                     }
@@ -532,21 +578,27 @@ fun GraphCanvas(
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val activeNodeIds = if (hoveredNodeId != null) setOf(hoveredNodeId!!) else selectedNodeIds
 
-                visibleEdges.forEach { edge ->
-                    val source = nodeById[edge.fromId]
-                    val target = nodeById[edge.toId]
+                // Edges are routed from node positions, which are model dp, while a DrawScope is
+                // in pixels. Scaling the whole scope converts them in one place — and it puts the
+                // stroke widths and the port stubs in dp too, so a line is the same thickness on
+                // every display rather than a hairline on a scaled one.
+                scale(density, density, pivot = Offset.Zero) {
+                    visibleEdges.forEach { edge ->
+                        val source = nodeById[edge.fromId]
+                        val target = nodeById[edge.toId]
 
-                    if (source != null && target != null) {
-                        val baseEdgeColor = tonedEdgeColor(getGraphNodeBorderColor(source, isDarkSurface), source.id)
-                        val edgeColor = if (isDarkSurface) {
-                            liftEdgeColor(baseEdgeColor, colors.onSurface, minimumBrightness = 0.54f)
-                        } else {
-                            baseEdgeColor
-                        }
-                        if (activeNodeIds.contains(edge.fromId) || activeNodeIds.contains(edge.toId)) {
-                            drawEdge(edge, source, target, edgeColor, strokeWidth = 6f)
-                        } else {
-                            drawEdge(edge, source, target, edgeColor.copy(alpha = 0.7f), strokeWidth = 2f)
+                        if (source != null && target != null) {
+                            val baseEdgeColor = tonedEdgeColor(getGraphNodeBorderColor(source, isDarkSurface), source.id)
+                            val edgeColor = if (isDarkSurface) {
+                                liftEdgeColor(baseEdgeColor, colors.onSurface, minimumBrightness = 0.54f)
+                            } else {
+                                baseEdgeColor
+                            }
+                            if (activeNodeIds.contains(edge.fromId) || activeNodeIds.contains(edge.toId)) {
+                                drawEdge(edge, source, target, edgeColor, strokeWidth = 6f)
+                            } else {
+                                drawEdge(edge, source, target, edgeColor.copy(alpha = 0.7f), strokeWidth = 2f)
+                            }
                         }
                     }
                 }
@@ -555,8 +607,10 @@ fun GraphCanvas(
             visibleNodes.forEach { node ->
                 Box(modifier = Modifier.offset {
                     val p = positions.of(node.id)
-                    // roundToInt() avoids 1px sub-pixel drift from truncation toward zero.
-                    IntOffset(p.x.roundToInt(), p.y.roundToInt())
+                    // This lambda returns pixels and the position is model dp — the card inside is
+                    // sized in dp, so both have to be. roundToPx() converts and rounds, which also
+                    // avoids the 1px sub-pixel drift truncation toward zero would leave.
+                    IntOffset(p.x.dp.roundToPx(), p.y.dp.roundToPx())
                 }) {
                     var pickSelectionArmed by remember(node.id) { mutableStateOf(false) }
                     Box(
@@ -594,8 +648,11 @@ fun GraphCanvas(
                                     }
                                 ) { change, dragAmount ->
                                     change.consume()
-                                    val dx = dragAmount.x
-                                    val dy = dragAmount.y
+                                    // The gesture reports pixels within the layer; positions are
+                                    // model dp. The layer's zoom is already out of the delta —
+                                    // the density is not.
+                                    val dx = dragAmount.x / density
+                                    val dy = dragAmount.y / density
 
                                     val currentSelectedIds = latestSelectedNodeIds
                                     if (node.id in currentSelectedIds) {
@@ -663,8 +720,12 @@ fun GraphCanvas(
         val tooltipNode = activeTooltipNodeId?.let(nodeById::get)
         if (tooltipNode != null) {
             val ttPos = positions.of(tooltipNode.id)
-            val tooltipX = ((ttPos.x + tooltipNode.width.toFloat()) * localZoom + offsetAnim.value.x + 12f).roundToInt()
-            val tooltipY = (ttPos.y * localZoom + offsetAnim.value.y + 12f).roundToInt()
+            // The tooltip is placed against the canvas, not inside the transformed layer, so the
+            // node's model dp goes all the way to pixels here.
+            val gap = 12f * density
+            val tooltipX =
+                ((ttPos.x + tooltipNode.width.toFloat()) * modelScale + offsetAnim.value.x + gap).roundToInt()
+            val tooltipY = (ttPos.y * modelScale + offsetAnim.value.y + gap).roundToInt()
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -702,30 +763,41 @@ fun GraphCanvas(
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(16.dp)
-                .size(240.dp, 160.dp)
-                .background(colors.surface.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
-                .border(1.dp, colors.outlineVariant, RoundedCornerShape(8.dp))
+                .padding(MINI_MAP_MARGIN)
+                .size(MINI_MAP_WIDTH, MINI_MAP_HEIGHT)
+                .background(colors.surface.copy(alpha = 0.85f), MINI_MAP_SHAPE)
+                .border(1.dp, colors.outlineVariant, MINI_MAP_SHAPE)
+                // The viewport rectangle below is the viewport in graph units, which is larger
+                // than the graph itself whenever the whole table fits on screen — and Compose
+                // clips nothing, so it was drawn straight out of the map and across the canvas.
+                // Clipping after the border keeps the frame and confines what is drawn in it.
+                .clip(MINI_MAP_SHAPE)
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        val mapScale = min(240f / extents.width, 160f / extents.height)
-                        val mapOffsetX = (240f - (extents.width * mapScale)) / 2f
-                        val mapOffsetY = (160f - (extents.height * mapScale)) / 2f
+                        // The pointer arrives in pixels, so the map's own box is measured in
+                        // pixels too — `size` here, inset by the padding the Canvas below adds,
+                        // rather than the dp numbers the modifier was written with.
+                        val inset = MINI_MAP_INSET.toPx()
+                        val mapWidth = (size.width - inset * 2f).coerceAtLeast(1f)
+                        val mapHeight = (size.height - inset * 2f).coerceAtLeast(1f)
+                        val mapScale = min(mapWidth / extents.width, mapHeight / extents.height)
+                        val mapOffsetX = inset + (mapWidth - (extents.width * mapScale)) / 2f
+                        val mapOffsetY = inset + (mapHeight - (extents.height * mapScale)) / 2f
 
                         val px = change.position.x.coerceIn(mapOffsetX, mapOffsetX + extents.width * mapScale)
                         val py = change.position.y.coerceIn(mapOffsetY, mapOffsetY + extents.height * mapScale)
                         val graphX = extents.minX + ((px - mapOffsetX) / mapScale)
                         val graphY = extents.minY + ((py - mapOffsetY) / mapScale)
                         val targetOffset = Offset(
-                            viewportWidth / 2f - graphX * localZoom,
-                            viewportHeight / 2f - graphY * localZoom
+                            viewportWidth / 2f - graphX * localZoom * density,
+                            viewportHeight / 2f - graphY * localZoom * density
                         )
 
                         coroutineScope.launch { offsetAnim.snapTo(clampOffset(targetOffset, localZoom)) }
                     }
                 }) {
-            Canvas(modifier = Modifier.fillMaxSize().padding(4.dp)) {
+            Canvas(modifier = Modifier.fillMaxSize().padding(MINI_MAP_INSET)) {
                 val mapScale = min(size.width / extents.width, size.height / extents.height)
                 val mapOffsetX = (size.width - (extents.width * mapScale)) / 2f
                 val mapOffsetY = (size.height - (extents.height * mapScale)) / 2f
@@ -740,10 +812,12 @@ fun GraphCanvas(
                         )
                     }
 
-                    val vpW = viewportWidth / localZoom
-                    val vpH = viewportHeight / localZoom
-                    val vpX = -offsetAnim.value.x / localZoom
-                    val vpY = -offsetAnim.value.y / localZoom
+                    // The map draws model dp, so the viewport rectangle is the pixel viewport
+                    // converted back into them.
+                    val vpW = viewportWidth / modelScale
+                    val vpH = viewportHeight / modelScale
+                    val vpX = -offsetAnim.value.x / modelScale
+                    val vpY = -offsetAnim.value.y / modelScale
 
                     drawRect(
                         color = colors.primary.copy(alpha = 0.55f),

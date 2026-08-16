@@ -140,6 +140,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   referenced file a whole layer to the right of a node it sits beside.
 
 ### Fixed
+- **Every card on the graph was drawn over its neighbour on a display scaled past 100%.** The
+  canvas positioned each node with `Modifier.offset { IntOffset(...) }`, which is specified in
+  device pixels, and sized the card inside it with `Modifier.size(...dp)`. At 100% the two spaces
+  agree and nothing is wrong; at 200% every card doubled and none of them moved. The graph model
+  is dp, the surface is pixels, and `zoom * density` is now the single conversion between them —
+  applied to node placement, edge drawing, drag deltas, the marquee rectangle, culling, the pan
+  clamp, zoom-to-fit, scroll-into-view, the tooltip and the mini-map, because all of them shared
+  the assumption. Two things came out of the same pass: scroll-into-view scaled the *difference*
+  between the node and the viewport centre instead of the node's own coordinate, so it only
+  centred correctly at a zoom of exactly 1; and the mini-map's viewport rectangle, which is
+  larger than the map whenever the whole table fits on screen, was drawn straight out of the map
+  and across the graph, because Compose clips nothing by default.
 - **A data file recorded outside the table directory is now read where the table says it is.**
   Manifest lists and manifests have preferred the recorded path since the `write.metadata.path`
   fix; data files were still always rebuilt under the local table root, so a `write.data.path`

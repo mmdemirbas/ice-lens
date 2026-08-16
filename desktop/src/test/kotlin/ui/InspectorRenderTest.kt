@@ -211,11 +211,10 @@ class InspectorRenderTest {
      * see where a control ends up on the surface it belongs to — the badge sits opposite the
      * mini-map, and "opposite" is a claim about a screen, not about a composable.
      *
-     * **Rendered at `Density(1f)` on purpose.** At `Density(2f)` this same canvas draws every card
-     * over its neighbour, because node positions go through `Modifier.offset { IntOffset(...) }`,
-     * which is specified in pixels, while the card inside is `Modifier.size(...dp)`. That is a
-     * real defect on any scaled display and is recorded under Bugs in `TODO.md`; rendering at 1
-     * here is showing the app as it runs on this machine, not hiding it.
+     * **Rendered at `Density(1f)` for framing.** A scene is a fixed number of device pixels, so
+     * every step up in density is a step down in how much of the graph is inside it; at 2 these
+     * two files would show a quarter of what they are for. Whether the drawing survives a scaled
+     * display is a different question and has its own test above.
      *
      * Two graphs, because they answer different questions. `graph-canvas-partial` is a graph the
      * page size has cut down, which is the state the badge exists for. `graph-canvas-whole` is
@@ -238,6 +237,104 @@ class InspectorRenderTest {
             "the v3 fixture should give the canvas deletion-vector edges to draw",
         )
         renderCanvas("graph-canvas-whole", whole, pageSize = AggregationPolicy.DEFAULT_PAGE_SIZE)
+    }
+
+    /**
+     * The same graph at two display scales, and the assertion that it is the same drawing.
+     *
+     * A scene twice as wide, twice as tall and at twice the density is the same window on a
+     * display scaled to 200%: every dp is two pixels instead of one, and nothing else changes. So
+     * everything drawn has to land at exactly twice the coordinate — that is what makes this an
+     * assertion rather than a comparison of two pictures.
+     *
+     * It is the check the canvas did not have. Node positions were fed to
+     * `Modifier.offset { IntOffset(...) }`, which is specified in pixels, while the card inside is
+     * `Modifier.size(...dp)` — so at density 2 every card grew and none of them moved, and each
+     * column was drawn over its neighbour. Nothing failed: the composition succeeded, the PNG was
+     * valid, and the machine this was built on reports density 1, where the two spaces agree.
+     *
+     * Measured on the ink, not on the model, because the model was never wrong — a pairwise
+     * rectangle check over the layout's own coordinates found no overlapping pair at either
+     * density. The defect only exists once the coordinates are drawn.
+     *
+     * Run against the reverted fix, which is the only thing that makes it a check: it reported the
+     * drawing at `(994, 847)-(2461, 959)` where twice the density-1 drawing is
+     * `(998, 826)-(2602, 972)`. The right edge is the loud one, 141px short, because that is where
+     * the columns that should have spread out piled up instead.
+     */
+    @Test
+    fun `the canvas draws the same graph at every display scale`() {
+        val graph = graphFor("test")
+        val atOne = canvasInk(graph, width = 1800, height = 900, density = 1f)
+        val atTwo = canvasInk(graph, width = 3600, height = 1800, density = 2f)
+
+        // Three pixels of slack for the rounding and the antialiased fringe each edge picks up
+        // independently.
+        val expected = Ink(atOne.left * 2, atOne.top * 2, atOne.right * 2, atOne.bottom * 2)
+        val drift = listOf(
+            atTwo.left - expected.left,
+            atTwo.top - expected.top,
+            atTwo.right - expected.right,
+            atTwo.bottom - expected.bottom,
+        )
+        assertTrue(
+            drift.all { kotlin.math.abs(it) <= 3 },
+            "at density 2 the drawing should be $expected — twice $atOne — and it is $atTwo",
+        )
+    }
+
+    /** The rectangle the canvas actually drew into, in device pixels. */
+    private data class Ink(val left: Int, val top: Int, val right: Int, val bottom: Int)
+
+    private fun canvasInk(graph: GraphModel, width: Int, height: Int, density: Float): Ink {
+        val name = "canvas-density-${density.toInt()}"
+        val png = renderPng(name, width, height, density) {
+            GraphCanvas(
+                graph = graph,
+                positions = NodePositions(graph),
+                selectedNodeIds = emptySet(),
+                isSelectMode = false,
+                zoom = 0.35f,
+                onZoomChange = {},
+                onSelectionChange = {},
+            )
+        }
+        outputDir.mkdirs()
+        writeBands(png, name)
+        val image = ImageIO.read(ByteArrayInputStream(png))
+
+        // The mini-map is anchored to the bottom-right corner and sized in dp, so it scales
+        // exactly with the scene whatever the nodes do — leaving it in would satisfy the
+        // assertion on its own. Its corner is masked out; the graph is nowhere near it at this
+        // scene size, which the emptiness check below is enough to notice if it stops being true.
+        val gutterLeft = image.width - ((MINI_MAP_MARGIN + MINI_MAP_WIDTH).value * density).toInt()
+        val gutterTop = image.height - ((MINI_MAP_MARGIN + MINI_MAP_HEIGHT).value * density).toInt()
+
+        val background = image.getRGB(1, 1)
+        var left = image.width
+        var top = image.height
+        var right = -1
+        var bottom = -1
+        for (y in 0 until image.height) {
+            for (x in 0 until image.width) {
+                if (x >= gutterLeft && y >= gutterTop) continue
+                if (image.getRGB(x, y) == background) continue
+                if (x < left) left = x
+                if (x > right) right = x
+                if (y < top) top = y
+                if (y > bottom) bottom = y
+            }
+        }
+        assertTrue(right > left && bottom > top, "the canvas drew nothing at density $density")
+        // A drawing clipped by the scene reports the scene's own edge, which scales exactly and
+        // would pass the comparison however the nodes were placed.
+        assertTrue(
+            right < image.width - 1 && bottom < image.height - 1,
+            "the drawing ($left,$top)-($right,$bottom) reaches the edge of the " +
+                "${image.width}x${image.height} scene at density $density, so the comparison " +
+                "would be between two clipped rectangles",
+        )
+        return Ink(left, top, right, bottom)
     }
 
     private fun renderCanvas(name: String, graph: GraphModel, pageSize: Int) {
@@ -327,6 +424,21 @@ class InspectorRenderTest {
         renderScene(name, width = 1400, height = height) { InspectorUnderTest(graph, nodeId) }
 
     private fun renderScene(name: String, width: Int, height: Int, density: Float = 2f, content: @Composable () -> Unit) {
+        val png = renderPng(name, width, height, density, content)
+
+        outputDir.mkdirs()
+        writeBands(png, name)
+
+        assertTrue(png.size > 5_000, "$name rendered to ${png.size} bytes, which is a blank panel")
+    }
+
+    private fun renderPng(
+        name: String,
+        width: Int,
+        height: Int,
+        density: Float,
+        content: @Composable () -> Unit,
+    ): ByteArray {
         val scene = ImageComposeScene(width = width, height = height, density = Density(density)) {
             Themed(content)
         }
@@ -340,12 +452,7 @@ class InspectorRenderTest {
         } finally {
             scene.close()
         }
-        assertNotNull(png, "scene produced no image for $name")
-
-        outputDir.mkdirs()
-        writeBands(png, name)
-
-        assertTrue(png.size > 5_000, "$name rendered to ${png.size} bytes, which is a blank panel")
+        return assertNotNull(png, "scene produced no image for $name")
     }
 
     /**
