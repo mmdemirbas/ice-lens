@@ -72,7 +72,7 @@ object GraphAggregation {
         // either would pile up nodes that are not siblings at all.
         val containment = edges.filter { it.affectsLayout && !it.isSibling }
 
-        val members = membersByParentAndKind(containment, nodeById)
+        val members = membersByParentAndKind(containment, nodeById, nodes)
         val hiddenByParent = mutableMapOf<String, MutableSet<String>>()
         val pending = mutableListOf<PendingGroup>()
 
@@ -126,22 +126,36 @@ object GraphAggregation {
     )
 
     /**
-     * Children per parent per kind, in the order the builder emitted the edges.
+     * Children per parent per kind, in the order layout will draw them.
      *
-     * That order is the builder's own sort — manifests by sequence number, files by data
-     * sequence number then content — so the page a reader sees first is the head of the order
-     * layout would have put at the top, not an arbitrary slice.
+     * Sorted with [SiblingOrder] rather than left in the order the builder emitted the edges,
+     * because the two differ exactly where it matters. A manifest that several snapshots carry
+     * forward is emitted once, under whichever snapshot first wrote it; every later snapshot
+     * inherits that position. Reading the emitted order there would draw the first page of a
+     * snapshot's manifests in another snapshot's order, and the reader has no way to tell.
      */
     private fun membersByParentAndKind(
         containment: List<GraphEdge>,
         nodeById: Map<String, GraphNode>,
+        nodes: List<GraphNode>,
     ): Map<GroupKey, List<String>> {
         val members = LinkedHashMap<GroupKey, MutableList<String>>()
         containment.forEach { edge ->
             val kind = nodeById[edge.toId]?.aggregationKind() ?: return@forEach
             members.getOrPut(GroupKey(edge.fromId, kind)) { mutableListOf() } += edge.toId
         }
-        return members
+        // Only snapshots need it, and only when there is a run of them long enough to page.
+        val lineageRank by lazy {
+            GraphLayoutService.snapshotLineageOrder(nodes.filterIsInstance<GraphNode.SnapshotNode>())
+        }
+        return members.mapValues { (key, ids) ->
+            if (ids.size < 2) return@mapValues ids
+            val comparator = SiblingOrder.forKind(
+                key.kind,
+                if (key.kind == AggregationKind.SNAPSHOT) lineageRank else emptyMap(),
+            )
+            ids.sortedWith(compareBy(comparator) { nodeById.getValue(it) })
+        }
     }
 
     /**
@@ -174,7 +188,31 @@ object GraphAggregation {
     }
 
     private fun groupId(key: GroupKey, pageIndex: Int): String =
-        "grp_${key.parentId}_${key.kind.key}_$pageIndex"
+        groupId(key.parentId, key.kind, pageIndex)
+
+    /**
+     * The id a group gets. Derived from the parent, the kind and how many pages came before it,
+     * so it survives the graph rebuild that expanding one causes.
+     */
+    fun groupId(parentId: String, kind: AggregationKind, pageIndex: Int): String =
+        "grp_${parentId}_${kind.key}_$pageIndex"
+
+    /**
+     * The ids that, added to the expanded set, draw every sibling [group] stands for.
+     *
+     * One page at a time is the right default and the wrong only option — a parent with 5,000
+     * manifests is 208 double-clicks away from being fully drawn. Expanding is expressed as a set
+     * of page ids rather than a flag, so this is arithmetic over that set and needs no second
+     * mechanism in the pass itself. Ids past the last real page are harmless: [pageToCollapse]
+     * stops walking once every sibling is shown.
+     */
+    fun pageIdsToRevealAll(group: GraphNode.GroupNode, policy: AggregationPolicy): Set<String> {
+        val pageSize = policy.pageSize.toLong().coerceAtLeast(1L)
+        val pages = ((group.memberCount + pageSize - 1) / pageSize).toInt().coerceAtLeast(1)
+        return (0 until pages).mapTo(mutableSetOf()) {
+            groupId(group.parentId, group.kind, group.pageIndex + it)
+        }
+    }
 
     /**
      * The nodes still reachable once the collapsed edges are cut.

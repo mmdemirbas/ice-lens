@@ -41,7 +41,9 @@ object GraphLayoutService {
      * describes; [GraphAggregation] decides which of them the graph draws, folding the rest into
      * expandable group nodes; and only then are sample rows read, for the data files that
      * survived. Aggregating first is what keeps a production table's file count from costing a
-     * filesystem stat and five nodes per file before anything is on screen.
+     * filesystem stat and five nodes per file before anything is on screen. The rows are then
+     * put through the same pass, so they are bounded by the page size like every other kind
+     * rather than by the sample-row cap happening to be smaller.
      *
      * @param expandedGroupIds group nodes the reader has opened. Ids are derived from the parent,
      *   the kind and the page, so a set kept across a reload still means the same thing.
@@ -58,7 +60,16 @@ object GraphLayoutService {
             is PaimonUnifiedTableModel -> PaimonGraphBuilder.buildGraph(tableModel)
         }
         val aggregated = GraphAggregation.apply(buildResult.nodes, buildResult.edges, expandedGroupIds, policy)
-        val withRows = if (showRows) attachSampleRows(aggregated, buildResult.sampleRows) else aggregated
+        val withRows = if (showRows) {
+            val attached = attachSampleRows(aggregated, buildResult.sampleRows)
+            // Rows arrive after the pass that bounds every other kind, so they go through it
+            // again rather than being the one kind exempt from the page size. The second pass can
+            // only touch rows: every other kind is already at or below the page size, and a group
+            // node has no aggregation kind, so it never becomes a member of anything.
+            GraphAggregation.apply(attached.nodes, attached.edges, expandedGroupIds, policy)
+        } else {
+            aggregated
+        }
         logger.debug(
             "{} graph built: {} nodes drawn of {}, {} edges",
             tableModel.format, withRows.nodes.size, buildResult.nodes.size, withRows.edges.size,
@@ -219,63 +230,14 @@ object GraphLayoutService {
         val childrenByParent = nonSiblingEdges.groupBy { it.fromId }
             .mapValues { (_, v) -> v.map { it.toId } }
 
-        val metadataComparator = Comparator<GraphNode> { a, b ->
-            val ma = a as? GraphNode.MetadataNode
-            val mb = b as? GraphNode.MetadataNode
-            val va = ma?.simpleId ?: Int.MAX_VALUE
-            val vb = mb?.simpleId ?: Int.MAX_VALUE
-            va.compareTo(vb)
-        }
-
-        val lineageRank = snapshotLineageOrder(nodesById.values.filterIsInstance<GraphNode.SnapshotNode>())
-
-        val snapshotComparator = Comparator<GraphNode> { a, b ->
-            // Commits sit next to the commit they came from. On a linear history this is exactly
-            // chronological order, so nothing moves; on a branched one it keeps each branch
-            // contiguous instead of interleaving two branches by wall-clock time, which is the
-            // only way a single column of snapshots can show a fork as a shape.
-            val ra = lineageRank[a.id]
-            val rb = lineageRank[b.id]
-            if (ra != null && rb != null) return@Comparator ra.compareTo(rb)
-
-            val sa = (a as? GraphNode.SnapshotNode)?.data
-            val sb = (b as? GraphNode.SnapshotNode)?.data
-            compareValuesBy(sa, sb,
-                { it?.timestampMs ?: Long.MAX_VALUE },
-                { it?.sequenceNumber ?: Long.MAX_VALUE },
-                { it?.snapshotId ?: Long.MAX_VALUE }
-            )
-        }
-
-        val manifestComparator = Comparator<GraphNode> { a, b ->
-            val ma = (a as? GraphNode.ManifestNode)?.data
-            val mb = (b as? GraphNode.ManifestNode)?.data
-            compareValuesBy(ma, mb,
-                { it?.sequenceNumber ?: Long.MAX_VALUE },
-                { it?.minSequenceNumber ?: Long.MAX_VALUE },
-                { it?.addedSnapshotId ?: Long.MAX_VALUE },
-                { IcebergGraphBuilder.manifestContentRank(it?.content) },
-                { it?.manifestPath ?: "" }
-            )
-        }
-
-        val fileComparator = Comparator<GraphNode> { a, b ->
-            val fa = a as? GraphNode.FileNode
-            val fb = b as? GraphNode.FileNode
-            compareValuesBy(fa, fb,
-                { it?.data?.dataSequenceNumber ?: it?.entry?.sequenceNumber ?: Long.MAX_VALUE },
-                { it?.entry?.fileSequenceNumber ?: Long.MAX_VALUE },
-                { IcebergGraphBuilder.contentRank(it?.data?.content) },
-                { it?.entry?.status ?: Int.MAX_VALUE },
-                { it?.data?.filePath ?: "" }
-            )
-        }
-
-        val rowComparator = Comparator<GraphNode> { a, b ->
-            val ra = (a as? GraphNode.RowNode)?.id ?: ""
-            val rb = (b as? GraphNode.RowNode)?.id ?: ""
-            ra.compareTo(rb)
-        }
+        // Sibling order is shared with GraphAggregation — see SiblingOrder for why one definition.
+        val metadataComparator = SiblingOrder.METADATA
+        val snapshotComparator = SiblingOrder.snapshot(
+            snapshotLineageOrder(nodesById.values.filterIsInstance<GraphNode.SnapshotNode>())
+        )
+        val manifestComparator = SiblingOrder.MANIFEST
+        val fileComparator = SiblingOrder.FILE
+        val rowComparator = SiblingOrder.ROW
 
         fun parsePosition(data: Map<String, Any>): Int? {
             val raw = data["pos"] ?: data["position"] ?: return null
@@ -304,52 +266,28 @@ object GraphLayoutService {
         }
 
         // Paimon: order snapshot nodes by ID
-        val paimonSnapshotComparator = Comparator<GraphNode> { a, b ->
-            val sa = (a as? GraphNode.PaimonSnapshotNode)?.data
-            val sb = (b as? GraphNode.PaimonSnapshotNode)?.data
-            compareValuesBy(sa, sb,
-                { it?.timeMillis ?: Long.MAX_VALUE },
-                { it?.id ?: Long.MAX_VALUE }
-            )
-        }
         val paimonSnapshots = nodesById.values.filterIsInstance<GraphNode.PaimonSnapshotNode>()
-        reorder(paimonSnapshots, paimonSnapshotComparator, minGap = 40.0)
+        reorder(paimonSnapshots, SiblingOrder.PAIMON_SNAPSHOT, minGap = 40.0)
 
         // Paimon: order manifest list nodes (base before delta before changelog)
-        val manifestListKindRank = mapOf("base" to 0, "delta" to 1, "changelog" to 2)
-        val paimonManifestListComparator = Comparator<GraphNode> { a, b ->
-            val ka = (a as? GraphNode.PaimonManifestListNode)?.kind
-            val kb = (b as? GraphNode.PaimonManifestListNode)?.kind
-            (manifestListKindRank[ka] ?: 3).compareTo(manifestListKindRank[kb] ?: 3)
-        }
         paimonSnapshots.forEach { parent ->
             val mlChildren = childrenByParent[parent.id].orEmpty()
                 .mapNotNull { nodesById[it] as? GraphNode.PaimonManifestListNode }
-            reorder(mlChildren, paimonManifestListComparator, minGap = 34.0)
+            reorder(mlChildren, SiblingOrder.PAIMON_MANIFEST_LIST, minGap = 34.0)
         }
 
         // Paimon: order manifest nodes by simpleId
-        val paimonManifestComparator = Comparator<GraphNode> { a, b ->
-            val ma = (a as? GraphNode.PaimonManifestNode)?.simpleId ?: Int.MAX_VALUE
-            val mb = (b as? GraphNode.PaimonManifestNode)?.simpleId ?: Int.MAX_VALUE
-            ma.compareTo(mb)
-        }
         nodesById.values.filterIsInstance<GraphNode.PaimonManifestListNode>().forEach { parent ->
             val manChildren = childrenByParent[parent.id].orEmpty()
                 .mapNotNull { nodesById[it] as? GraphNode.PaimonManifestNode }
-            reorder(manChildren, paimonManifestComparator, minGap = 34.0)
+            reorder(manChildren, SiblingOrder.PAIMON_MANIFEST, minGap = 34.0)
         }
 
         // Paimon: order data file nodes by simpleId
-        val paimonFileComparator = Comparator<GraphNode> { a, b ->
-            val fa = (a as? GraphNode.PaimonDataFileNode)?.simpleId ?: Int.MAX_VALUE
-            val fb = (b as? GraphNode.PaimonDataFileNode)?.simpleId ?: Int.MAX_VALUE
-            fa.compareTo(fb)
-        }
         nodesById.values.filterIsInstance<GraphNode.PaimonManifestNode>().forEach { parent ->
             val fileChildren = childrenByParent[parent.id].orEmpty()
                 .mapNotNull { nodesById[it] as? GraphNode.PaimonDataFileNode }
-            reorder(fileChildren, paimonFileComparator, minGap = 30.0)
+            reorder(fileChildren, SiblingOrder.PAIMON_FILE, minGap = 30.0)
         }
 
         val orderedManifests = nodesById.values

@@ -225,6 +225,92 @@ class GraphAggregationTest {
         assertEquals(4, group.hiddenErrorCount)
     }
 
+    /**
+     * The page a reader is given is the head of the run *as layout will draw it*, not of the
+     * order the builder emitted. The two differ exactly where it matters: a manifest that several
+     * snapshots carry forward is emitted once, under whichever snapshot first wrote it, and every
+     * later snapshot inherits that position.
+     */
+    @Test
+    fun `the drawn page is the head of the order layout uses`() {
+        val parent = GraphNode.SnapshotNode("snap_1", model.Snapshot(snapshotId = 1L), simpleId = 1)
+        // Emitted newest-first, which is what inheriting another snapshot's order looks like.
+        val manifests = (20 downTo 1).map { seq ->
+            GraphNode.ManifestNode(
+                "man_$seq",
+                ManifestListEntry(sequenceNumber = seq.toLong()),
+                simpleId = seq,
+            )
+        }
+        val edges = manifests.map { GraphEdge("e_snap_1_${it.id}", "snap_1", it.id) }
+
+        val result = GraphAggregation.apply(listOf(parent) + manifests, edges, policy = policy(5))
+
+        val drawn = result.nodes.filterIsInstance<GraphNode.ManifestNode>()
+            .mapNotNull { it.data.sequenceNumber }
+        assertEquals(listOf(1L, 2L, 3L, 4L, 5L), drawn.sorted(), "the five oldest, not the five emitted first")
+        assertEquals(15, result.nodes.groups().single().memberCount)
+    }
+
+    /**
+     * One page at a time is the right default and the wrong only option: a parent with 5,000
+     * manifests is 208 double-clicks from being drawn whole.
+     */
+    @Test
+    fun `expanding all of one group draws every sibling in one rebuild`() {
+        val (nodes, edges) = fanOut(97)
+        val first = GraphAggregation.apply(nodes, edges, policy = policy(10)).nodes.groups().single()
+
+        val fromFirst = GraphAggregation.apply(
+            nodes, edges, GraphAggregation.pageIdsToRevealAll(first, policy(10)), policy(10),
+        )
+        assertEquals(97, fromFirst.nodes.filterIsInstance<GraphNode.ManifestNode>().size)
+        assertEquals(emptyList(), fromFirst.nodes.groups())
+
+        // And from a group that is already past the first page, where the page numbering starts
+        // at something other than one.
+        val second = GraphAggregation.apply(nodes, edges, setOf(first.id), policy(10)).nodes.groups().single()
+        val fromSecond = GraphAggregation.apply(
+            nodes, edges, setOf(first.id) + GraphAggregation.pageIdsToRevealAll(second, policy(10)), policy(10),
+        )
+        assertEquals(97, fromSecond.nodes.filterIsInstance<GraphNode.ManifestNode>().size)
+        assertEquals(emptyList(), fromSecond.nodes.groups())
+    }
+
+    @Test
+    fun `rows are bounded by the page size like any other kind`() {
+        val parent = file("file_1")
+        val rows = (0 until 8).map { GraphNode.RowNode("row_file_1_$it", mapOf("row_idx" to it)) }
+        val edges = rows.map { GraphEdge("e_row_${it.id}", parent.id, it.id) }
+
+        val result = GraphAggregation.apply(listOf(parent) + rows, edges, policy = policy(3))
+
+        val group = result.nodes.groups().single()
+        assertEquals(AggregationKind.ROW, group.kind)
+        assertEquals(5, group.memberCount)
+        assertEquals(3, result.nodes.filterIsInstance<GraphNode.RowNode>().size)
+    }
+
+    /**
+     * Rows are attached *after* the pass that bounds every other kind, so the pass runs again
+     * over them. Five rows per file sits below the shipped page size of 24, so the rule does not
+     * fire today — and would have been silently wrong the moment the page size became something
+     * a reader can set. This goes through [GraphLayoutService.layoutGraph] because the second
+     * pass is that function's decision; a test of [GraphAggregation] alone cannot see it.
+     */
+    @Test
+    fun `sample rows go through the pass rather than around it`() {
+        val dir = File(repoRoot, "example/iceberg/default/test")
+        val model = UnifiedTableModel(Paths.get(dir.absolutePath))
+
+        val graph = GraphLayoutService.layoutGraph(model, showRows = true, policy = policy(3))
+
+        val rowGroup = graph.groups.singleOrNull { it.kind == AggregationKind.ROW }
+        assertNotNull(rowGroup, "five sample rows against a page size of three should leave a group")
+        assertEquals(2, rowGroup.memberCount)
+        assertEquals(3, graph.nodes.filterIsInstance<GraphNode.RowNode>().size)
+    }
+
     @Test
     fun `a sibling edge does not make its target a child`() {
         val snapshot = GraphNode.PaimonSnapshotNode(
