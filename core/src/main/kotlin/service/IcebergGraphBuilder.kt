@@ -226,7 +226,8 @@ object IcebergGraphBuilder {
                                         simpleId = simpleId,
                                         schema = unifiedManifest.schema,
                                         partition = unifiedDataFile.partition,
-                                        localPath = unifiedDataFile.path.toString()
+                                        localPath = unifiedDataFile.path.toString(),
+                                        pathResolution = unifiedDataFile.pathResolution,
                                     )
                                 }
 

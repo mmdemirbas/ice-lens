@@ -322,6 +322,8 @@ sealed class GraphNode(
         /** This file's partition tuple, decoded against the manifest's own spec. */
         val partition: DecodedPartition? = null,
         val localPath: String? = null,
+        /** How [localPath] was arrived at — see [UnifiedDataFile.pathResolution]. */
+        val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 200.0, 60.0) {

@@ -480,6 +480,17 @@ private fun pathResolutionLabel(resolution: model.PathResolution): String = when
         "by file name, against the local metadata directory (the recorded path is not present here)"
 }
 
+/**
+ * The same two outcomes, reached a different way. A data file's fallback keeps the sub-path
+ * below the table — `data/name=alpha/…` — and rebuilds it under the local table directory, so
+ * saying "by file name" would describe the wrong operation.
+ */
+private fun dataFileResolutionLabel(resolution: model.PathResolution): String = when (resolution) {
+    model.PathResolution.RECORDED -> "as recorded in the table"
+    model.PathResolution.FORCED_RELATIVE ->
+        "by rebuilding the path under the local table directory (the recorded path is not present here)"
+}
+
 @Composable
 private fun SectionTitle(title: String) {
     Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -1437,6 +1448,8 @@ fun NodeDetailsContent(
                             DetailRow("Equality IDs", node.data.equalityIds?.joinToString(", ") ?: "N/A")
                             val filePath = node.data.filePath
                             DetailRow("Path", "${filePath ?: "N/A"}", copyable = true)
+                            DetailRow("Reading", node.localPath ?: "N/A", copyable = true)
+                            DetailRow("Resolved", dataFileResolutionLabel(node.pathResolution))
                         }
 
                         // The partition tuple, decoded against the spec this file's manifest was

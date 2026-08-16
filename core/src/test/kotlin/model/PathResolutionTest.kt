@@ -144,6 +144,46 @@ class PathResolutionTest {
             "Empty path should not trigger traversal error: $traversalErrors")
     }
 
+    /**
+     * A table whose data sits outside its own directory — `write.data.path`, or a table
+     * registered against data written elsewhere — is opened at the path it records.
+     *
+     * The old rule rebuilt every data path under the table root, so this table reported all of
+     * its files missing while they sat there on disk. Same rule the manifests already use: take
+     * the recorded path when it is absolute and the file is there.
+     */
+    @Test
+    fun `a data file recorded outside the table directory is read where it is`() {
+        val elsewhere = kotlin.io.path.createTempDirectory("data-elsewhere")
+        try {
+            val parquet = elsewhere.resolve("00000-0-outside-00001.parquet").toFile()
+            parquet.writeText("not really parquet, but it exists")
+
+            val table = createIcebergTableWithDataFilePath(parquet.absolutePath)
+            val dataFile = firstDataFile(UnifiedTableModel(table))
+
+            assertNotNull(dataFile)
+            assertEquals(parquet.absolutePath, dataFile.path.toString())
+            assertEquals(PathResolution.RECORDED, dataFile.pathResolution)
+        } finally {
+            elsewhere.toFile().deleteRecursively()
+        }
+    }
+
+    /** And a path that is not there still falls back, which is what opens a copied-down table. */
+    @Test
+    fun `a data file recorded at a path that is not there falls back to the table directory`() {
+        val table = createIcebergTableWithDataFilePath("/data/iceberg/default/test/data/gone.parquet")
+        val dataFile = firstDataFile(UnifiedTableModel(table))
+
+        assertNotNull(dataFile)
+        assertEquals(PathResolution.FORCED_RELATIVE, dataFile.pathResolution)
+        assertTrue(
+            dataFile.path.startsWith(table),
+            "the fallback rebuilds under the table root, got ${dataFile.path}",
+        )
+    }
+
     @Test
     fun `data file with path traversal attempt is flagged`() {
         // Attempt to escape the table directory

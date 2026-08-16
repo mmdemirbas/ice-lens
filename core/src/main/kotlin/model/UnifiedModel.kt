@@ -294,28 +294,47 @@ fun UnifiedManifest(
         partitionSummaries = decodePartitionSummaries(manifest.partitions, manifestSpec, manifestSchema),
         dataFiles = dataFiles.entries.map { record ->
             val dataFile = record.entry
-            val metadataDirPrefix = manifest.manifestPath.orEmpty().substringBeforeLast('/')
-            val tableDirPrefix = metadataDirPrefix.substringBeforeLast('/')
             val dataFilePathInFile = dataFile.dataFile?.filePath.orEmpty()
-            val dataFilePathRelative =
-                dataFilePathInFile.removePrefix(tableDirPrefix).removePrefix("/")
-            val dataFilePathResolved = dataRoot.resolve(dataFilePathRelative)
 
-            // Validate resolved path stays within the table directory tree
-            val normalizedResolved = runCatching { dataFilePathResolved.toAbsolutePath().normalize() }
-                .getOrElse { dataFilePathResolved.normalize() }
-            if (!normalizedResolved.startsWith(normalizedDataRoot)) {
-                manifestReadErrors += UnifiedReadError(
-                    stage = "path-traversal-check",
-                    path = dataFilePathInFile,
-                    message = "Data file path resolves outside the table directory: $normalizedResolved",
-                )
+            // Same rule as the manifests above: the path the table recorded, when the file is
+            // actually there. A table whose data sits outside its own directory — a
+            // `write.data.path` layout, or one registered against data written elsewhere — is
+            // otherwise rebuilt under the table root and reported missing.
+            val asRecorded = dataFilePathInFile
+                .takeIf { it.isNotBlank() }
+                ?.let(::normalizeFilePath)
+                ?.let { runCatching { Path.of(it) }.getOrNull() }
+                ?.takeIf { it.isAbsolute && runCatching { Files.isRegularFile(it) }.getOrDefault(false) }
+
+            val (dataFilePathResolved, resolution) = if (asRecorded != null) {
+                asRecorded to PathResolution.RECORDED
+            } else {
+                val metadataDirPrefix = manifest.manifestPath.orEmpty().substringBeforeLast('/')
+                val tableDirPrefix = metadataDirPrefix.substringBeforeLast('/')
+                val dataFilePathRelative =
+                    dataFilePathInFile.removePrefix(tableDirPrefix).removePrefix("/")
+                val rebuilt = dataRoot.resolve(dataFilePathRelative)
+
+                // The rebuilt path is ours, so it must land under the table. A recorded path that
+                // points elsewhere is the table's own statement and is not checked here — that is
+                // the case above, and it is reported as RECORDED rather than as an error.
+                val normalizedResolved = runCatching { rebuilt.toAbsolutePath().normalize() }
+                    .getOrElse { rebuilt.normalize() }
+                if (!normalizedResolved.startsWith(normalizedDataRoot)) {
+                    manifestReadErrors += UnifiedReadError(
+                        stage = "path-traversal-check",
+                        path = dataFilePathInFile,
+                        message = "Data file path resolves outside the table directory: $normalizedResolved",
+                    )
+                }
+                rebuilt to PathResolution.FORCED_RELATIVE
             }
 
             UnifiedDataFile(
                 path = dataFilePathResolved,
                 metadata = dataFile,
                 partition = decodePartition(record.partition, manifestSpec, manifestSchema),
+                pathResolution = resolution,
             )
         },
         readErrors = manifestReadErrors,
@@ -391,6 +410,9 @@ data class UnifiedDataFile(
     val metadata: ManifestEntry,
     /** This file's partition tuple, decoded against the manifest's own spec and schema. */
     val partition: DecodedPartition? = null,
+    /** How [path] was arrived at. Worth showing: a file reported missing means something
+     *  different depending on whether the table named that path or this tool rebuilt it. */
+    val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
     private val rowsLoader: () -> List<UnifiedRow> = {
         SampleRowReader.querySampleRows(path.toString()).map { UnifiedRow(it) }
     },
