@@ -267,6 +267,8 @@ object IcebergGraphBuilder {
             }
         }
 
+        addDeletionVectorEdges(logicalNodes, edges, edgeIds)
+
         return GraphBuildResult(
             nodes = logicalNodes.values.toList(),
             edges = edges,
@@ -287,6 +289,48 @@ object IcebergGraphBuilder {
      * `"/<tableName>/"` marker gave a second answer that could disagree with the first, and when
      * it did the rows were silently dropped for a file that exists.
      */
+    /**
+     * Draws the one delete-to-data link the format records.
+     *
+     * A v3 deletion vector carries `referenced_data_file`, which names exactly one data file. No
+     * other delete kind has an equivalent: a positional delete file's targets are inside its
+     * rows, one per row, and an equality delete has no target at all — it applies by predicate.
+     * So this is the only such edge the graph can honestly draw, and the file inspector keeps
+     * saying so for the other two.
+     *
+     * `affectsLayout = false`, for the same reason as commit lineage: both ends are data files
+     * and belong in the same layer, and letting ELK see the edge would push the referenced file
+     * a whole layer to the right of a file it is a sibling of.
+     *
+     * One data file path can have a node under more than one manifest, when several retained
+     * manifests still list it. Each of those nodes is that file, so each gets the edge; drawing
+     * one and picking which would be a claim about which manifest the vector "belongs" to, and
+     * the vector does not record one.
+     */
+    private fun addDeletionVectorEdges(
+        logicalNodes: Map<String, GraphNode>,
+        edges: MutableList<GraphEdge>,
+        edgeIds: MutableSet<String>,
+    ) {
+        val fileNodes = logicalNodes.values.filterIsInstance<GraphNode.FileNode>()
+        val vectors = fileNodes.filter { it.data.referencedDataFile != null }
+        if (vectors.isEmpty()) return
+
+        val dataFilesByPath = fileNodes
+            .filter { (it.data.content ?: DataFileContent.DATA) == DataFileContent.DATA }
+            .groupBy { normalizeFilePath(it.data.filePath.orEmpty()) }
+
+        vectors.forEach { vector ->
+            val referenced = normalizeFilePath(vector.data.referencedDataFile.orEmpty())
+            dataFilesByPath[referenced].orEmpty().forEach { target ->
+                val edgeId = "e_dv_${vector.id}_to_${target.id}"
+                if (edgeIds.add(edgeId)) {
+                    edges.add(GraphEdge(edgeId, vector.id, target.id, affectsLayout = false))
+                }
+            }
+        }
+    }
+
     private fun sampleRowFactory(
         fileNodeId: String,
         dataFile: UnifiedDataFile,

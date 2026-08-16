@@ -1,11 +1,14 @@
 package service
 
 import model.DataFileContent
+import model.GraphNode
 import model.UnifiedTableModel
+import model.normalizeFilePath
 import java.io.File
 import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -152,6 +155,38 @@ class FormatV3FixtureTest {
                 (vector.contentSizeInBytes ?: 0L) > 0L,
                 "a vector needs a non-empty byte range",
             )
+        }
+    }
+
+    /**
+     * And the graph draws that link. It is the only delete-to-data edge the format supports: a
+     * positional delete file names its targets one per row, and an equality delete names none.
+     *
+     * The edge must not shape the layout — both ends are data files, one layer, and letting ELK
+     * see it would push the referenced file a layer right of a node it sits beside.
+     */
+    @Test
+    fun `the graph draws an edge from a deletion vector to the file it applies to`() {
+        val graph = IcebergGraphBuilder.buildGraph(v3Model())
+        val nodeById = graph.nodes.associateBy { it.id }
+        val vectors = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+            .filter { it.data.referencedDataFile != null }
+        assertTrue(vectors.isNotEmpty(), "the v3 fixture should have deletion vectors")
+
+        vectors.forEach { vector ->
+            val drawn = graph.edges.filter { it.fromId == vector.id && it.id.startsWith("e_dv_") }
+            assertTrue(drawn.isNotEmpty(), "no edge drawn for the vector at ${vector.data.filePath}")
+            drawn.forEach { edge ->
+                assertFalse(edge.affectsLayout, "a same-layer edge must not constrain ELK")
+                val target = nodeById[edge.toId] as? GraphNode.FileNode
+                assertNotNull(target, "the edge should end on a file node")
+                assertEquals(
+                    normalizeFilePath(vector.data.referencedDataFile.orEmpty()),
+                    normalizeFilePath(target.data.filePath.orEmpty()),
+                    "the edge should end on the file the vector names",
+                )
+                assertEquals(DataFileContent.DATA, target.data.content ?: DataFileContent.DATA)
+            }
         }
     }
 

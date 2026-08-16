@@ -12,7 +12,9 @@ data class TableMetadata(
     @SerialName("format-version") val formatVersion: Int? = null,
     @SerialName("table-uuid") val tableUuid: String? = null,
     val location: String? = null,
-    @SerialName("last-sequence-number") val lastSequenceNumber: Int? = null,
+    // long in the spec, and every other sequence number here is a Long. Unreachable in practice
+    // — it would take 2^31 commits — but a table that got there would fail to parse at all.
+    @SerialName("last-sequence-number") val lastSequenceNumber: Long? = null,
     @SerialName("last-updated-ms") val lastUpdatedMs: Long? = null,
     @SerialName("last-column-id") val lastColumnId: Int? = null,
     @SerialName("current-schema-id") val currentSchemaId: Int? = null,

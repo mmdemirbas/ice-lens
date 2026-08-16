@@ -24,6 +24,19 @@ class IcebergSchemaTest {
         assertEquals(largeSeq, entry.minSequenceNumber)
     }
 
+    /**
+     * `last-sequence-number` is `long` in the spec, like every other sequence number. Held as an
+     * `Int` it does not misread — it refuses the whole document, so one field out of range takes
+     * the table with it.
+     */
+    @Test
+    fun `TableMetadata last-sequence-number accepts values larger than Int MAX_VALUE`() {
+        val large = Int.MAX_VALUE.toLong() + 100L
+        val input = """{"format-version": 2, "table-uuid": "abc-123", "last-sequence-number": $large}"""
+        val meta = json.decodeFromString(TableMetadata.serializer(), input)
+        assertEquals(large, meta.lastSequenceNumber)
+    }
+
     @Test
     fun `parse minimal TableMetadata`() {
         val input = """{"format-version": 2, "table-uuid": "abc-123"}"""

@@ -207,21 +207,41 @@ class InspectorRenderTest {
     }
 
     /**
-     * The canvas itself, with a graph that is only partly drawn.
+     * The canvas itself. Everything else here renders one component in isolation, which cannot
+     * see where a control ends up on the surface it belongs to — the badge sits opposite the
+     * mini-map, and "opposite" is a claim about a screen, not about a composable.
      *
-     * Everything else here renders one component in isolation, which cannot see where a control
-     * ends up on the surface it belongs to — the badge sits opposite the mini-map, and "opposite"
-     * is a claim about a screen, not about a composable.
+     * **Rendered at `Density(1f)` on purpose.** At `Density(2f)` this same canvas draws every card
+     * over its neighbour, because node positions go through `Modifier.offset { IntOffset(...) }`,
+     * which is specified in pixels, while the card inside is `Modifier.size(...dp)`. That is a
+     * real defect on any scaled display and is recorded under Bugs in `TODO.md`; rendering at 1
+     * here is showing the app as it runs on this machine, not hiding it.
+     *
+     * Two graphs, because they answer different questions. `graph-canvas-partial` is a graph the
+     * page size has cut down, which is the state the badge exists for. `graph-canvas-whole` is
+     * one drawn entire, which is the only way to see the deletion-vector edges — they run from a
+     * `.puffin` delete file to the data file it names, and both ends have to be on screen.
      */
     @Test
-    fun `the canvas draws its status badge opposite the mini-map`() {
-        val model = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/mor").absolutePath))
-        val graph = GraphLayoutService.layoutGraph(
-            model, showRows = false, policy = AggregationPolicy(pageSize = 2),
+    fun `the canvas renders its badge, its groups, and its deletion-vector edges`() {
+        val mor = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/mor").absolutePath))
+        val partial = GraphLayoutService.layoutGraph(
+            mor, showRows = false, policy = AggregationPolicy(pageSize = 2),
         )
-        assertTrue(graph.groups.isNotEmpty(), "a page size of two should collapse something")
+        assertTrue(partial.groups.isNotEmpty(), "a page size of two should collapse something")
+        renderCanvas("graph-canvas-partial", partial, pageSize = 2)
 
-        renderScene("graph-canvas", width = 2000, height = 1200, density = 1f) {
+        val v3 = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/v3").absolutePath))
+        val whole = GraphLayoutService.layoutGraph(v3, showRows = false)
+        assertTrue(
+            whole.edges.any { it.id.startsWith("e_dv_") },
+            "the v3 fixture should give the canvas deletion-vector edges to draw",
+        )
+        renderCanvas("graph-canvas-whole", whole, pageSize = AggregationPolicy.DEFAULT_PAGE_SIZE)
+    }
+
+    private fun renderCanvas(name: String, graph: GraphModel, pageSize: Int) {
+        renderScene(name, width = 2000, height = 1200, density = 1f) {
             GraphCanvas(
                 graph = graph,
                 positions = NodePositions(graph),
@@ -236,7 +256,7 @@ class InspectorRenderTest {
                         hiddenByAggregation = graph.hiddenNodeCount,
                         groupCount = graph.groups.size,
                         hiddenByFilter = 0,
-                        pageSize = 2,
+                        pageSize = pageSize,
                         pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
                         hasExpandedGroups = false,
                         onPageSizeChange = {},
