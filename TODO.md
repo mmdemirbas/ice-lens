@@ -49,6 +49,20 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 
 ## Bugs
 
+- **The canvas places nodes in pixels and sizes them in dp, so every card overlaps on a display
+  whose density is not 1.** `GraphCanvas` positions each node with
+  `Modifier.offset { IntOffset(p.x.roundToInt(), p.y.roundToInt()) }` — a *pixel* offset — while
+  the card inside is `Modifier.size(node.width.dp, node.height.dp)`. At density 1 the two agree.
+  At density 2 the same layout puts a 240dp-wide card, drawn 480px wide, at x=552px, 500px from
+  the next column: every column overlaps its neighbour and every card its sibling below.
+  **Observed**, by rendering `GraphCanvas` into an off-screen scene at both densities — clean at
+  1, overlapping at 2 (`InspectorRenderTest.the canvas draws its status badge opposite the
+  mini-map` writes the density-1 file). Not observed in the running app, whose density on this
+  machine is 1; a Windows machine at 125–200% scaling is where it would show. The fix is to
+  multiply by `density` inside the offset lambda, and then to check every other px/dp boundary
+  the canvas has — drag deltas, the marquee rectangle, `clampOffset`, the mini-map, zoom-to-fit —
+  because they all share the assumption.
+
 - **Pinch zoom not working** — trackpad two-finger pinch gesture doesn't fire on all platforms. Needs platform-specific testing.
 
 - **`PerformanceTest > graph builder is O(n) in total artifacts` is flaky.** It asserts a
@@ -63,30 +77,26 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 ## Aggregation
 
 The graph draws a page of siblings per parent and folds the rest into an expandable group
-(`GraphAggregation`). What that leaves open:
+(`GraphAggregation`). The page size is a setting, expanding a whole group is one action, the
+canvas states what it is not drawing, and rows go through the same pass as everything else. What
+that leaves open:
 
-- **The page size is fixed at 24 and not reachable from the UI.** It is a constructor default on
-  `AggregationPolicy`, so the only way to change it is to recompile. A reader on a wide monitor
-  and one on a laptop want different numbers.
+- **The page size is offered as six fixed choices** (`AppState.GRAPH_PAGE_SIZE_CHOICES`), with no
+  way to type a number. `updateGraphPageSize` accepts anything between 2 and 2,000, so the
+  restriction is the menu's alone.
 
-- **Expanding is one page at a time, with no "expand all".** For a parent with 5,000 manifests
-  that is 208 double-clicks. There is no way to say "draw everything under this one and let it be
-  slow", which is occasionally what a reader wants.
+- **Changing the page size drops every cached session but the one on screen.** Correct — a graph
+  drawn at the old size disagrees with the badge above it — but it means the next visit to
+  another table re-reads it from disk. Rebuilding those graphs from their retained table models
+  would keep the read.
 
-- **Nothing surfaces the total.** `GraphModel.hiddenNodeCount` is derived and available; the
-  canvas does not show it. A reader who has scrolled away from every group card has no indication
-  that the graph is partial. This is the same want as the filtered-state badge below, and the two
-  should be one control.
+- **Expanding is still per group.** "Show all" opens one group's whole run; there is no way to
+  say "draw this entire table", which is what a reader with a small table and a small page size
+  actually wants.
 
-- **The order within a kind is the order the builder emitted the edges.** For a manifest that
-  several snapshots carry forward, the child order under a *later* snapshot is the creation order
-  rather than that snapshot's own sort, so the first page under it may not be the first page
-  layout would have put at the top. Harmless today because the layout pass reorders positions
-  anyway, but it decides which siblings are *drawn*.
-
-- **Rows are attached after aggregation and never grouped themselves.** Five per file is below
-  any page size, so the rule never fires — correct today, and silently wrong if the per-file row
-  cap ever rises above the page size.
+- **A group's own members are never re-paged after expansion.** Opening every page of a parent
+  leaves no group node behind, so the only way back is "collapse every group", which closes the
+  other parents too.
 
 ---
 
@@ -130,8 +140,6 @@ covered yet, and each of these is a computed number a reader currently has to tr
 - **Collapsible inspector sections** — TableNode inspector has 8+ sections stacked vertically. Add expand/collapse chevrons per section.
 
 - **Pan/Select mode clarity** — tooltips should explain behavior, not just name (e.g. "Drag to scroll the canvas" vs "Drag to marquee-select nodes").
-
-- **Filtered state badge** — show "Showing X of Y nodes" on the canvas when snapshot filter is active.
 
 - **Accessibility** — keyboard navigation (Tab/arrows in graph, tree, sidebar), visible focus indicators for keyboard users.
 
@@ -195,6 +203,16 @@ covered yet, and each of these is a computed number a reader currently has to tr
   drawing is that the image is not blank. Layout invariants worth pinning numerically: the
   scrollbar exists exactly when the table is wider than the panel, and the leading columns fit
   within the panel width. Neither is expressible without measuring the composition.
+
+  **Card clipping cannot be caught by a pixel probe outside the card, and this was tried.** The
+  idea was to draw each card over a field colour and look for ink below its declared height. It
+  finds nothing even with the line-height fix reverted, because the surplus line is dropped where
+  the `Column` runs out of constraint — `Text` clips itself to the size it was measured at, so
+  nothing is ever painted outside the box. (The knowledge-base note saying the lines are "painted
+  and then covered by the card's own border" describes the outcome correctly and the mechanism
+  wrongly.) What would work is comparing a card against itself drawn with more room, which needs
+  the declared height to be injectable — the card composables take a node, not a size. Until
+  then this class is caught by looking at `graph-cards-*.png`, and by nothing else.
 
 - **Iceberg pipeline fixtures on disk** — Iceberg pipeline tests currently write Avro
   fixtures at runtime via `avro4k`. Snapshotting representative fixtures into

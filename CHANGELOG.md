@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The canvas states what it is not drawing, and how much of a page it draws is a setting.** A
+  badge in the bottom-left corner reads "Drawing 431 of 6,180 nodes" and, under it, why the rest
+  are missing — "5,749 inside 37 collapsed groups", "335 removed by the snapshot filter". The two
+  reasons are counted separately because they are undone separately, and each missing node is
+  attributed to one of them, so the figures sum to the whole table rather than double-counting.
+  Clicking the badge sets the page size, which was previously a constant only a recompile could
+  change; changing it clears the expansion (a group id names a page *at a size*) and drops every
+  cached graph but the one on screen (a graph drawn at the old size disagrees with the badge over
+  it). The group inspector gains "Show all N manifests" beside "Show the next page", because
+  5,000 manifests is 208 double-clicks at 24 to a page.
+
 - **The graph draws a page of siblings and says what it is not drawing.** Under one parent, the
   first 24 siblings of a kind are drawn; the rest become one node that states how many there
   are and opens on a double-click, revealing a page at a time. This replaces both halves of the
@@ -122,6 +133,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ImageVector`).
 
 ### Fixed
+- **The first page under a snapshot was the wrong page.** Aggregation chose which siblings to
+  draw in the order the builder emitted the edges. That is the right order under the snapshot
+  that wrote a manifest and the wrong one under every later snapshot that carries it forward,
+  since the manifest is emitted once and each later snapshot inherits a position it did not
+  choose. `SiblingOrder` now holds one definition of the order per kind, read by layout to decide
+  which sibling sits above which and by aggregation to decide which are drawn at all.
+- **Sample rows were exempt from the page size.** They are attached after the pass that bounds
+  every other kind, so the pass now runs again over them. Five rows per file sits below the
+  default page size of 24, so nothing changes there — but the page size is now a setting, and 8
+  is one of its choices.
 - **Node cards were painting half their lines under their own border.** A card is sized to the
   height its node declares and Compose clips nothing, so the surplus was drawn and never seen.
   Material3's body style carries `lineHeight = 24.sp` and a `Text` that overrides only

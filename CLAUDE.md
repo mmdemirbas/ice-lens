@@ -58,6 +58,7 @@ core/src/main/kotlin/
 │   ├── IcebergGraphBuilder.kt # Iceberg-specific graph construction: UnifiedTableModel → nodes + edges
 │   ├── PaimonGraphBuilder.kt  # Paimon-specific graph construction: PaimonUnifiedTableModel → nodes + edges
 │   ├── GraphAggregation.kt    # Format-agnostic: long sibling runs → one expandable GroupNode
+│   ├── SiblingOrder.kt        # One order per kind — read by layout AND by aggregation
 │   ├── GraphLayoutService.kt  # Format-agnostic ELK layout + post-processing (ordering, alignment, overlap prevention)
 │   └── TableFormatDetector.kt # Directory-based table format detection (Iceberg / Paimon / Unknown)
 
@@ -78,6 +79,7 @@ desktop/src/main/kotlin/
     ├── NodeDetails.kt         # Inspector panel — detailed metadata, JSON highlighting, changelogs, sample rows
     ├── Sidebar.kt             # Workspace panel — add/remove roots, search, drag-to-reorder, format badges (ICE/PMN)
     ├── NavigationTree.kt      # Structure tree view — flatten graph, search, expand/collapse
+    ├── GraphStatusBadge.kt    # Canvas overlay: how much of the table is drawn, and the page size
     └── ToolWindow.kt          # Draggable tool window bars and panes
 ```
 
@@ -99,7 +101,8 @@ desktop/src/main/kotlin/
 - Dark mode detection uses `perceivedBrightness()` (0.2126R + 0.7152G + 0.0722B < 0.5)
 - Graph layout flow: `FormatTableModel` → `GraphLayoutService.layoutGraph()` dispatches to the
   format-specific builder → `GraphBuildResult` → `GraphAggregation.apply()` → sample rows attached
-  for the surviving data files → `layoutNodes()` → `GraphModel` → `GraphCanvas`. **The order is
+  for the surviving data files → `GraphAggregation.apply()` again, which only rows can be affected
+  by → `layoutNodes()` → `GraphModel` → `GraphCanvas`. **The order is
   load-bearing**: the builder emits a node for every artifact the metadata describes, aggregation
   decides which are drawn, and only then are rows read — building them first costs a filesystem
   stat and five nodes per data file in the table
@@ -157,6 +160,23 @@ desktop/src/main/kotlin/
   group, so `sum(group.hiddenNodeCount)` equals what actually went; and an `ErrorNode` is never
   grouped, with errors inside a collapsed subtree counted in `hiddenErrorCount` and shown in red
   on the card. Never add a cap that isn't visible in the UI
+- **The page size is a setting, and two things travel with a change of it.** `AppState.graphPageSize`
+  is persisted and feeds `AggregationPolicy`; `GraphStatusBadge` on the canvas both states the
+  figures and offers the choices. Changing it clears `expandedGroupIds` — a group id names a page
+  *at a size*, so the same id means a different set of siblings at a different one — and evicts
+  every cached session but the one on screen, which is rebuilt from its retained table model.
+  Restoring a graph drawn at another page size puts a drawing on screen that disagrees with the
+  badge above it
+- **Which siblings get drawn and which sibling sits above which are one decision.**
+  `SiblingOrder` is the single definition, read by `GraphLayoutService` for placement and by
+  `GraphAggregation` for membership. The builder's emission order is not it: a manifest several
+  snapshots carry forward is emitted once, under whichever snapshot first wrote it, so every
+  later snapshot would page through another snapshot's order
+- **Aggregation runs twice, and the second pass is for rows.** Rows are attached after the first
+  pass so they are only read for the data files that survived it; they then go through the same
+  pass rather than being the one kind exempt from the page size. The second pass can only touch
+  rows — every other kind is already at or below the page size, and a `GroupNode` has no
+  `aggregationKind()`, so it never becomes a member of anything
 - `formatCount` / `formatBytes` / `formatBytesExact` live in `ui/FormatUtils.kt` — do not add
   private copies to a UI file. Byte units are binary and labelled as such (KiB, not KB)
 - **A `GraphNode`'s declared width/height is what ELK reserves, and Compose clips nothing.** A
@@ -242,7 +262,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~435 tests across 45 files (341 in :core, 94 in :desktop) covering full pipelines for both formats (Avro fixtures
+~447 tests across 47 files (346 in :core, 101 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -252,10 +272,21 @@ draws `NodeDetailsContent` and every graph card into an off-screen Compose scene
 to `desktop/build/reports/inspector/` — no window, no Screen Recording permission, which matters
 because screen capture on this machine returns bare wallpaper for every application. Open those
 files after any inspector *or card* change; `graph-cards-1.png` and `paimon-cards-1.png` are the
-only thing that can show a card drawing past its declared height, because the composition
-succeeds and the PNG is valid either way. The scene is rendered twice before encoding: a control whose
+only thing that can show a card losing a line to its declared height, because the composition
+succeeds and the PNG is valid either way — and a pixel probe looking for ink *below* the card
+cannot see it, since the `Column` is measured against the fixed height and each `Text` clips
+itself to what it was measured at. That probe was written and run against a deliberately reverted
+fix; it reported nothing. The scene is rendered twice before encoding: a control whose
 visibility depends on state that layout writes (the `WideTable` scrollbar) is absent from the
 first frame, so a single-frame capture shows a panel the running app never draws.
+
+`graph-canvas-1.png` renders `GraphCanvas` itself, which is where a control's *placement* on the
+surface can be checked rather than the control alone. **It is rendered at `Density(1f)` on
+purpose.** At `Density(2f)` the same canvas draws every card over its neighbour, because node
+positions go through `Modifier.offset { IntOffset(...) }`, which is specified in pixels, while
+the card inside is `Modifier.size(...dp)` — recorded under Bugs in `TODO.md`, not yet fixed.
+`LayoutOverlapTest` covers the half of that which is the layout's own: no two nodes of one layer
+occupy the same rectangle, at five page sizes across five fixtures.
 
 **The runtime-written Avro fixtures are not an oracle.** They are written with
 `Avro.schema<T>()` — the schema derived from the very class under test — so writer and reader
