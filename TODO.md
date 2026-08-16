@@ -22,10 +22,12 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   fixture exercises the real thing; today a vector is distinguishable from a v2 delete file only
   by its `.puffin` extension, since both declare `content = 1`.
 
-- **Delete-file targeting is explained but not drawn.** The file inspector now states what each
-  delete kind applies to, including that an equality delete has no recorded target. The graph
-  still draws no edge for the one case where the format *does* record a link — a v3 deletion
-  vector's `referenced_data_file` names exactly one data file, and that could be an edge.
+- **Delete-file targeting is drawn where the format records it, and only there.** A v3 deletion
+  vector's `referenced_data_file` is now an edge (`e_dv_*`, withheld from ELK). The two cases
+  that have no edge to draw are the interesting remainder: a positional delete file names its
+  targets one per row, so the link exists but at row granularity and only after reading the file;
+  an equality delete has no target at all. Drawing the first would mean reading every delete row
+  at graph-build time, which is the cost aggregation exists to avoid.
 
 - **A fork is drawn as two adjacent chains, not as a diverging shape.** Lineage edges, `refs`
   and lineage-ordered layout all exist, and `example/iceberg/default/branched` covers them, so a
@@ -35,9 +37,6 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 
 - **Statistics and partition-statistics files are untyped.** Held as `List<JsonElement>` and
   rendered as raw JSON; the Puffin blobs they point at (NDV sketches, etc.) are never opened.
-
-- **`TableMetadata.lastSequenceNumber` is `Int?`** where the spec says `long`. Unreachable in
-  practice (it would need 2^31 commits) but it is a plain type error against the spec.
 
 - **Data-file paths still resolve one way only.** Manifest lists and manifests now try the
   recorded path first and fall back to forcing the name relative (`resolveRecordedOrRelative`),

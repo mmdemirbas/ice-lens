@@ -132,7 +132,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SnapshotFilter` moved to core (pure graph work); `ToolWindowTypes` moved to desktop (holds an
   `ImageVector`).
 
+- **A deletion vector is drawn pointing at the file it deletes from.** `referenced_data_file` is
+  the only delete-to-data link Iceberg records — a positional delete file names its targets one
+  per row, and an equality delete names none — so the graph now draws that one and keeps
+  explaining the other two in the inspector. The edge is withheld from ELK, like commit lineage:
+  both ends are data files in the same layer, and letting it constrain layering would push the
+  referenced file a whole layer to the right of a node it sits beside.
+
 ### Fixed
+- **`TableMetadata.lastSequenceNumber` was `Int` where the spec says `long`.** Not a misread but
+  a refusal: one out-of-range field and the whole `metadata.json` fails to parse, taking the
+  table with it. Every other sequence number in the model was already `Long`.
 - **The first page under a snapshot was the wrong page.** Aggregation chose which siblings to
   draw in the order the builder emitted the edges. That is the right order under the snapshot
   that wrote a manifest and the wrong one under every later snapshot that carries it forward,

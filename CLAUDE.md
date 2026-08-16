@@ -235,7 +235,10 @@ desktop/src/main/kotlin/
 - `row_<fId>_<index>` — row nodes
 - `err_<seq>_<hash>_<hash>` — error nodes
 
-Edge IDs: `e_table_*`, `e_snap_*`, `e_man_*`, `e_file_*`, `e_row_*`, `e_err_*`.
+Edge IDs: `e_table_*`, `e_snap_*`, `e_man_*`, `e_file_*`, `e_row_*`, `e_err_*`, plus two that
+record a relationship without shaping the layout (`affectsLayout = false`): `e_lineage_*` between
+snapshots and `e_dv_*` from a v3 deletion vector to the data file its `referenced_data_file`
+names. Both run between nodes of one layer, which is exactly why ELK must not see them.
 
 ### Paimon (`PaimonGraphBuilder`)
 
@@ -262,7 +265,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~447 tests across 47 files (346 in :core, 101 in :desktop) covering full pipelines for both formats (Avro fixtures
+~449 tests across 47 files (348 in :core, 101 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -280,9 +283,10 @@ fix; it reported nothing. The scene is rendered twice before encoding: a control
 visibility depends on state that layout writes (the `WideTable` scrollbar) is absent from the
 first frame, so a single-frame capture shows a panel the running app never draws.
 
-`graph-canvas-1.png` renders `GraphCanvas` itself, which is where a control's *placement* on the
-surface can be checked rather than the control alone. **It is rendered at `Density(1f)` on
-purpose.** At `Density(2f)` the same canvas draws every card over its neighbour, because node
+`graph-canvas-partial-1.png` and `graph-canvas-whole-1.png` render `GraphCanvas` itself, which is
+where a control's *placement* on the surface can be checked rather than the control alone — and
+where the `e_dv_*` edges are visible, which needs both of their ends drawn. **They are rendered at
+`Density(1f)` on purpose.** At `Density(2f)` the same canvas draws every card over its neighbour, because node
 positions go through `Modifier.offset { IntOffset(...) }`, which is specified in pixels, while
 the card inside is `Modifier.size(...dp)` — recorded under Bugs in `TODO.md`, not yet fixed.
 `LayoutOverlapTest` covers the half of that which is the layout's own: no two nodes of one layer
