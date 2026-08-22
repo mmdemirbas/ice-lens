@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -20,6 +21,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -205,11 +207,21 @@ fun Section(title: String, content: @Composable () -> Unit) {
     // spacing written at call sites, a folded panel kept an expanded panel's rhythm and read as
     // eight headings floating a screen apart instead of as a list of what the node holds.
     Spacer(Modifier.height(if (collapsed) 8.dp else 16.dp))
+    // `clickable` makes the header a focus target, and on desktop it draws nothing when it holds
+    // focus — so a keyboard user tabbing through the panel would have no idea which section Enter
+    // is about to fold.
+    var focused by remember { mutableStateOf(false) }
     DisableSelection {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .onFocusChanged { focused = it.isFocused }
                 .clickable { collapse.toggle(key) }
+                .border(
+                    width = 1.dp,
+                    color = if (focused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    shape = RoundedCornerShape(4.dp),
+                )
                 .padding(vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
