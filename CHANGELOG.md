@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **The two canvas modes say what they do.** The toolbar's tooltips read "Pan mode — drag the
+  empty canvas to move the view" and "Select mode — drag the empty canvas to select what it covers
+  (hold Shift to add or remove)". They named the modes before, which tells a reader nothing about
+  the one thing the modes disagree about: a node is dragged and the wheel pans in either. Tooltip
+  text now wraps at 280dp instead of running off the window.
 - **Five text sizes instead of eight.** Every size in the desktop shell now comes from
   `TypeScale`, at a ratio near 1.2 — 10 / 12 / 14 / 17 / 21. What was there before ran from 8sp
   to 16sp in steps averaging 1.09x, picked one call site at a time, which is under the difference

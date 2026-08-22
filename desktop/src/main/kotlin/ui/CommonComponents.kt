@@ -115,6 +115,9 @@ fun HoverTooltip(
         tooltip = {
             Box(
                 modifier = Modifier
+                    // A tooltip that says what a control does is a sentence, not a name, and an
+                    // unbounded one runs off the window rather than wrapping.
+                    .widthIn(max = 280.dp)
                     .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.92f), RoundedCornerShape(4.dp))
                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
                     .padding(8.dp)

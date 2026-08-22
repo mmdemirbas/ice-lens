@@ -267,9 +267,13 @@ fun App() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 ToolbarGroup {
+                    // Both tooltips say what dragging the empty canvas does, because that is the
+                    // only thing the two modes disagree about — a node is dragged and the wheel
+                    // pans in either one. "Pan Mode" and "Selection Mode" named the modes and
+                    // left the reader to try them.
                     ToolbarIconButton(
                         icon = Icons.Default.PanTool,
-                        tooltip = "Pan Mode",
+                        tooltip = "Pan mode — drag the empty canvas to move the view",
                         onClick = {
                             isSelectMode = false
                             prefs.putBoolean(PREF_IS_SELECT_MODE, isSelectMode)
@@ -280,7 +284,8 @@ fun App() {
                     Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
                     ToolbarIconButton(
                         icon = Icons.Default.AdsClick,
-                        tooltip = "Selection Mode",
+                        tooltip = "Select mode — drag the empty canvas to select what it covers " +
+                            "(hold Shift to add or remove)",
                         onClick = {
                             isSelectMode = true
                             prefs.putBoolean(PREF_IS_SELECT_MODE, isSelectMode)

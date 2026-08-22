@@ -109,7 +109,9 @@ fun WorkspacePanel(
                 }
             }, modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(Icons.Default.Add, contentDescription = "Add", modifier = Modifier.size(16.dp))
+            // No description: the button's own text is right beside it, and a described icon
+            // makes a screen reader say "Add, Add to Workspace".
+            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
             Text("Add to Workspace", fontSize = TypeScale.small)
         }
