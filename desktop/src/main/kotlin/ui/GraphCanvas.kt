@@ -19,6 +19,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -258,7 +259,18 @@ fun GraphCanvas(
         drawPath(
             path = edgePath,
             color = color,
-            style = Stroke(width = strokeWidth)
+            // An edge withheld from ELK runs between two nodes of the same layer — snapshot
+            // lineage, a deletion vector and the file it names. It is an annotation over the
+            // tree rather than part of it, and it is the only kind whose two ends can sit side
+            // by side, so drawn solid it is indistinguishable from the parent-child edges
+            // crossing the same gap. Dashing it is what lets a fork read as a fork now that its
+            // branch has a column of its own.
+            style = Stroke(
+                width = strokeWidth,
+                pathEffect = if (edge.affectsLayout) null else PathEffect.dashPathEffect(
+                    floatArrayOf(strokeWidth * 3f, strokeWidth * 2f),
+                ),
+            ),
         )
     }
 

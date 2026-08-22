@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A fork is drawn as a fork.** A branch now gets its own column inside the snapshot layer,
+  assigned the way `git log --graph` does it: a commit takes the column its parent kept for it,
+  the first child continues in the parent's, and every later child opens a column and holds it
+  empty until the drawing reaches it — so the two branches read as parallel rather than as one
+  list with an edge reaching back over it. A table with no branches is untouched: every commit
+  lands in column 0 and the pass returns before moving a node. Lineage edges, and the v3
+  deletion-vector edges beside them, are now dashed. They are the only edges whose two ends can
+  sit side by side, and drawn solid they were indistinguishable from the parent-child edges
+  crossing the same gap.
 - **Enter a filter, see which manifests a scan would skip.** The table inspector takes a
   conjunction of conditions — a column, an operator, a literal — and reports, per manifest,
   whether a query carrying that filter would open it, with the term and the numbers that decided

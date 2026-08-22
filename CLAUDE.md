@@ -61,6 +61,7 @@ core/src/main/kotlin/
 │   ├── PaimonGraphBuilder.kt  # Paimon-specific graph construction: PaimonUnifiedTableModel → nodes + edges
 │   ├── GraphAggregation.kt    # Format-agnostic: long sibling runs → one expandable GroupNode
 │   ├── SiblingOrder.kt        # One order per kind — read by layout AND by aggregation
+│   ├── SnapshotTracks.kt      # Which column each snapshot draws in, so a fork reads as a fork
 │   ├── GraphLayoutService.kt  # Format-agnostic ELK layout + post-processing (ordering, alignment, overlap prevention)
 │   └── TableFormatDetector.kt # Directory-based table format detection (Iceberg / Paimon / Unknown)
 
@@ -232,11 +233,25 @@ desktop/src/main/kotlin/
   at 200% and nothing at all at 100%, which is why `InspectorRenderTest` renders the same graph
   into a scene of twice the pixels at twice the density and asserts the drawing lands at exactly
   twice the coordinate. A new coordinate on this canvas needs its space named
+- **A branch gets its own column, and a table without one is untouched.** ELK lays a layer out
+  at a single x, which is right everywhere except the snapshot layer, where two commits being
+  concurrent is what the reader came to see. `snapshotTracks` assigns a column the way
+  `git log --graph` does — a commit takes the column its parent reserved for it, the first child
+  continues in the parent's, every later child opens one and *holds* it until the walk arrives —
+  and `spreadSnapshotBranches` runs last in `layoutNodes`, moving x only, pushing the layers to
+  the right of the snapshots over by what the branch took. It returns before touching a node when
+  the highest column is 0, so a linear history draws exactly where it drew before. It also stands
+  down entirely if the snapshots are not all at one x, since the shift is defined relative to
+  that. `lineageChildren` is shared with `snapshotLineageOrder` because the two have to agree on
+  which child is first: one walks it next, the other gives it the parent's column
 - **`GraphEdge.affectsLayout = false` records a relationship without letting it shape the
-  graph.** Snapshot lineage runs between nodes in the same layer; feeding it to ELK stretches
-  the graph by the length of the commit history (measured: 2.10x width on six commits). Such
-  edges are withheld from ELK and from layout post-processing, and still drawn, because the
-  canvas routes from node positions rather than ELK sections
+  graph**, and it is also what the canvas draws dashed. Snapshot lineage runs between nodes in
+  the same layer; feeding it to ELK stretches the graph by the length of the commit history
+  (measured: 2.10x width on six commits). Such edges are withheld from ELK and from layout
+  post-processing, and still drawn, because the canvas routes from node positions rather than
+  ELK sections. They are the one kind whose two ends can sit side by side, so drawn solid they
+  are indistinguishable from the parent-child edges crossing the same gap — which is why a
+  deletion vector's edge and a fork's only read as annotations once they are dashed
 - **Layout post-processing runs ordering, then alignment, then ordering again.** Alignment moves
   a parent to its children's centre, which overrides the order the first pass set — so the
   vertical order of snapshots was decided by ELK's manifest placement until the second pass
@@ -308,7 +323,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~469 tests across 47 files (366 in :core, 103 in :desktop) covering full pipelines for both formats (Avro fixtures
+~475 tests across 48 files (371 in :core, 104 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -334,7 +349,8 @@ another verdict. The same rule put the pruned manifest card next to the ordinary
 scan-pruning form was first written after the history figures, which reads well as a list of
 section names and put the panel's only control 6,000dp down the render.
 
-`graph-canvas-partial-1.png` and `graph-canvas-whole-1.png` render `GraphCanvas` itself, which is
+`graph-canvas-partial-1.png`, `graph-canvas-whole-1.png` and `graph-canvas-branched-1.png` render
+`GraphCanvas` itself, which is
 where a control's *placement* on the surface can be checked rather than the control alone — and
 where the `e_dv_*` edges are visible, which needs both of their ends drawn. They are rendered at
 `Density(1f)` for framing: a scene is a fixed number of device pixels, so a higher density fits

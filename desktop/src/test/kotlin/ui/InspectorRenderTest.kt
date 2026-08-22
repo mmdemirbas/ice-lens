@@ -273,6 +273,24 @@ class InspectorRenderTest {
     }
 
     /**
+     * The fork, on the surface, which is the only place the branch columns can be judged.
+     *
+     * `SnapshotTracksTest` pins the assignment and the arithmetic; neither can say whether a
+     * reader looking at the canvas sees two chains diverge. What to look for: the `audit` commit
+     * one column right of `main`'s, its lineage edge running diagonally back to the commit it
+     * forked from, and the manifest layer clear of the column that opened.
+     */
+    @Test
+    fun `the canvas draws a fork as two columns`() {
+        val graph = graphFor("branched")
+        assertTrue(
+            graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().map { it.x }.distinct().size > 1,
+            "the branched fixture should have put its branch in a column of its own",
+        )
+        renderCanvas("graph-canvas-branched", graph, pageSize = AggregationPolicy.DEFAULT_PAGE_SIZE)
+    }
+
+    /**
      * The same graph at two display scales, and the assertion that it is the same drawing.
      *
      * A scene twice as wide, twice as tall and at twice the density is the same window on a

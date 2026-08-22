@@ -35,6 +35,15 @@ object GraphLayoutService {
     const val MAX_PARQUET_SAMPLE_ROWS = 50
 
     /**
+     * The gap between two branch columns in the snapshot layer.
+     *
+     * Narrower than the 120 that separates unrelated siblings: two commits side by side are two
+     * halves of one fork, and the space between them should say so rather than read as the space
+     * between two things that have nothing to do with each other.
+     */
+    private const val SNAPSHOT_TRACK_GUTTER = 60.0
+
+    /**
      * Builds and lays out a graph for any table format model.
      *
      * Three stages, in this order and not another. The builder emits every node the metadata
@@ -161,9 +170,15 @@ object GraphLayoutService {
         alignParentsWithChildren(nodesById, edges)
         enforceChronologicalVerticalOrder(nodesById, edges)
         preventOverlaps(nodesById)
+        // Last, and it moves x only. Everything above decides the vertical order and then holds
+        // it; giving a branch its own column is a statement about the horizontal axis alone, so
+        // it cannot disturb any of it. It also runs after overlap prevention rather than before,
+        // because that pass compares y and ignores x — two commits in different columns would
+        // otherwise be pushed apart vertically for an overlap that is not there.
+        val branchSpread = spreadSnapshotBranches(nodesById)
 
         val posMap = finalNodes.associate { it.id to Point(it.x.toFloat(), it.y.toFloat()) }
-        return GraphModel(finalNodes, edges, root.width, root.height, layoutPositions = posMap)
+        return GraphModel(finalNodes, edges, root.width + branchSpread, root.height, layoutPositions = posMap)
     }
 
     /**
@@ -189,10 +204,9 @@ object GraphLayoutService {
             { it.data.sequenceNumber ?: Long.MAX_VALUE },
             { it.data.snapshotId ?: Long.MAX_VALUE },
         )
-        val childrenOf = snapshots
-            .filter { it.data.parentSnapshotId != null && byCommit.containsKey(it.data.parentSnapshotId) }
-            .groupBy { it.data.parentSnapshotId }
-            .mapValues { (_, children) -> children.sortedWith(siblingOrder) }
+        // Shared with snapshotTracks: which child is first decides both what the walk visits next
+        // and which branch keeps the parent's column, and those two have to be the same child.
+        val childrenOf = lineageChildren(snapshots)
 
         val roots = snapshots.filter { node ->
             node.data.parentSnapshotId == null || !byCommit.containsKey(node.data.parentSnapshotId)
@@ -667,6 +681,47 @@ object GraphLayoutService {
         preventOverlapsInLayer(layer(AggregationKind.PAIMON_MANIFEST_LIST))
         preventOverlapsInLayer(layer(AggregationKind.PAIMON_MANIFEST))
         preventOverlapsInLayer(layer(AggregationKind.PAIMON_FILE), margin = 2.0)
+    }
+
+    /**
+     * Gives each branch its own column inside the snapshot layer, and returns how much wider the
+     * graph became.
+     *
+     * ELK lays one layer out at one x. That is right for every other layer here, where siblings
+     * are genuinely interchangeable, and wrong for snapshots, where two of them being concurrent
+     * is the thing a reader came to see. Rather than fight the layering — which would stretch the
+     * graph by the length of the commit history, the same reason lineage edges are withheld from
+     * ELK — the column is decided afterwards and the layers to the right are pushed over by the
+     * width that took. Edges are routed from node positions, not from ELK's own sections, so
+     * moving a node afterwards is not the lie it would be in a graph that drew ELK's splines.
+     *
+     * Nothing happens on a table without branches: every commit lands in track 0 and the function
+     * returns before touching a node.
+     */
+    private fun spreadSnapshotBranches(nodesById: Map<String, GraphNode>): Double {
+        val snapshots = nodesById.values.filterIsInstance<GraphNode.SnapshotNode>()
+        if (snapshots.size < 2) return 0.0
+
+        // One column for the layer is the assumption the shift rests on: lane zero is where the
+        // layer sits, and every node to the right of it moves. A snapshot ELK put somewhere else
+        // — one with no manifest list, so nothing pins it to this layer — would be dragged into
+        // another layer's band by the arithmetic below, so the whole pass stands down instead.
+        val layerX = snapshots.first().x
+        if (snapshots.any { kotlin.math.abs(it.x - layerX) > 1.0 }) return 0.0
+
+        val tracks = snapshotTracks(snapshots)
+        val widest = tracks.values.maxOrNull() ?: 0
+        if (widest == 0) return 0.0
+
+        val pitch = snapshots.maxOf { it.width } + SNAPSHOT_TRACK_GUTTER
+        val spread = widest * pitch
+        nodesById.values.forEach { node ->
+            when {
+                node is GraphNode.SnapshotNode -> node.x = layerX + (tracks[node.id] ?: 0) * pitch
+                node.x > layerX + 1.0 -> node.x += spread
+            }
+        }
+        return spread
     }
 
     private fun createElkNode(parent: ElkNode, id: String, w: Double, h: Double): ElkNode {
