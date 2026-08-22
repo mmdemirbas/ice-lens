@@ -19,6 +19,28 @@ fun perceivedBrightness(color: Color): Float =
 fun isDarkSurface(color: Color): Boolean =
     perceivedBrightness(color) < 0.5f
 
+/**
+ * The scan-pruning verdicts as colours, for the leading cell of a verdict table.
+ *
+ * Skipped is the good news — a manifest a query never opens — so it takes the green. A term
+ * nothing could be evaluated against takes the amber, because "would be read" for want of an
+ * evaluator must not look like a manifest that was checked and kept. Read itself stays neutral:
+ * it is the ordinary outcome and colouring it would spend attention on the majority of rows.
+ *
+ * Both accents are lightened on a dark surface. #0A7048 has a perceived brightness of 0.30,
+ * which is below the surface it would sit on.
+ */
+@Composable
+fun verdictSkippedColor(): Color =
+    if (isDarkSurface(MaterialTheme.colorScheme.surface)) Color(0xFF4CC38A) else Color(0xFF0A7048)
+
+@Composable
+fun verdictUnevaluatedColor(): Color =
+    if (isDarkSurface(MaterialTheme.colorScheme.surface)) Color(0xFFE0A64A) else Color(0xFFA8600C)
+
+@Composable
+fun verdictReadColor(): Color = MaterialTheme.colorScheme.onSurfaceVariant
+
 @Composable
 fun selectionHighlightColor(): Color {
     val surface = MaterialTheme.colorScheme.surface

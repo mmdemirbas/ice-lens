@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Enter a filter, see which manifests a scan would skip.** The table inspector takes a
+  conjunction of conditions — a column, an operator, a literal — and reports, per manifest,
+  whether a query carrying that filter would open it, with the term and the numbers that decided
+  it: "d_day — 2024-03-06 is above 2024-03-05 … 2024-03-05". The skipped manifests fade on the
+  canvas, and each manifest's own inspector shows every term's outcome against the bounds it was
+  measured with. Iceberg computes this during scan planning and then discards it — a query
+  reports how many files it read, never which it skipped or which predicate did the skipping —
+  so it is not available from any engine surface. Each manifest is evaluated against **its own**
+  partition spec, the same rule the bounds follow. The literal is bridged to the partition value
+  only through order-preserving transforms; `bucket[N]` reports that it did not evaluate rather
+  than a verdict that might be wrong, because pruning equality on a bucket means reproducing
+  Iceberg's murmur3 and there is no oracle here for it. `SKIPPED` is a proof, "would be read" is
+  only the absence of one, and a manifest nothing could be evaluated against is counted apart
+  from both.
 - **The canvas states what it is not drawing, and how much of a page it draws is a setting.** A
   badge in the bottom-left corner reads "Drawing 431 of 6,180 nodes" and, under it, why the rest
   are missing — "5,749 inside 37 collapsed groups", "335 removed by the snapshot filter". The two

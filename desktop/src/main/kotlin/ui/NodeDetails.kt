@@ -37,6 +37,9 @@ import model.GraphModel
 import model.GraphNode
 import model.KeyValuePairBytes
 import model.ManifestEntryStatus
+import model.ScanPredicate
+import model.TermEffect
+import model.evaluatePruning
 import model.manifestTallies
 import model.KeyValuePairLong
 import model.MetadataLogEntry
@@ -492,104 +495,6 @@ private fun dataFileResolutionLabel(resolution: model.PathResolution): String = 
         "by rebuilding the path under the local table directory (the recorded path is not present here)"
 }
 
-@Composable
-private fun SectionTitle(title: String) {
-    Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-    Spacer(Modifier.height(4.dp))
-}
-
-/**
- * A table wider than the panel it sits in, scrolled horizontally.
- *
- * [columnWidths] sizes columns individually; anything past its end falls back to [columnWidth].
- * One width for every column is the wrong default for this data — a field id needs four
- * characters and a decoded timestamp needs twenty, so a uniform width spends the panel on the
- * narrow columns and truncates the wide ones.
- *
- * Column order is load-bearing for the same reason. The reader sees the leftmost columns and
- * nothing else until they scroll, so the answer goes first and the identifiers follow it.
- */
-@Composable
-private fun WideTable(
-    headers: List<String>,
-    rows: List<List<String>>,
-    columnWidth: Dp = 180.dp,
-    columnWidths: List<Dp> = emptyList(),
-) {
-    val colors = MaterialTheme.colorScheme
-    val horizontalState = rememberScrollState()
-    val widths = List(headers.size) { index -> columnWidths.getOrNull(index) ?: columnWidth }
-    val tableWidth = widths.fold(0.dp) { total, width -> total + width } +
-        ((headers.size - 1).coerceAtLeast(0) * 9).dp + 16.dp
-    Column(Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(horizontalState)
-        ) {
-            Column(
-                Modifier
-                    .width(tableWidth)
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                    .border(1.dp, colors.outlineVariant, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-            ) {
-                WideTableRow(headers, headers.size, widths, isHeader = true)
-                rows.forEach { row -> WideTableRow(row, headers.size, widths, isHeader = false) }
-            }
-        }
-        // Without this the table simply appears to end at the panel edge: there is no cut, no
-        // shadow and no scrollbar, so a reader has no way to know the columns past it exist.
-        // The decoded value is one of those columns, which makes the missing affordance a
-        // correctness problem rather than a cosmetic one.
-        if (horizontalState.maxValue > 0) {
-            HorizontalScrollbar(
-                adapter = rememberScrollbarAdapter(horizontalState),
-                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun WideTableRow(cells: List<String>, columns: Int, widths: List<Dp>, isHeader: Boolean) {
-    val colors = MaterialTheme.colorScheme
-    val bgColor = if (isHeader) colors.surfaceVariant else Color.Transparent
-    val normalizedCells = if (cells.size < columns) {
-        cells + List(columns - cells.size) { "" }
-    } else {
-        cells.take(columns)
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(bgColor)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        normalizedCells.forEachIndexed { index, cell ->
-            if (index > 0) {
-                Box(Modifier.width(1.dp).height(16.dp).background(colors.outlineVariant))
-                Spacer(Modifier.width(8.dp))
-            }
-            Text(
-                text = cell,
-                modifier = Modifier.width(widths[index]),
-                fontSize = 11.sp,
-                fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
-                fontFamily = if (isHeader) null else FontFamily.Monospace,
-                // A row is as tall as its tallest cell, so a generous cap on one long cell costs
-                // every row in the table. Four lines keeps a row scannable; the ellipsis says the
-                // cell was cut, and the full value is on the node's own inspector — a partition
-                // tuple in the Partition section, a bound in Column Statistics.
-                maxLines = if (isHeader) 2 else 4,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-    HorizontalDivider(color = colors.outlineVariant, thickness = 0.5.dp)
-}
-
-/** A contribution's delta, signed, because a Paimon delta manifest can take files back out. */
 private fun deltaCell(value: Long): String = when {
     value > 0 -> "+${formatCount(value)}"
     else -> formatCount(value)
@@ -678,6 +583,9 @@ fun NodeDetailsContent(
     onExpandGroup: (String) -> Unit = {},
     /** Opens every remaining page of a group at once. Defaulted for the same reason. */
     onExpandGroupFully: (GraphNode.GroupNode) -> Unit = {},
+    /** The scan filter, and the way to change it. Defaulted so the render tests need no state. */
+    scanPredicates: List<ScanPredicate> = emptyList(),
+    onScanPredicatesChange: (List<ScanPredicate>) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     SelectionContainer {
@@ -810,6 +718,17 @@ fun NodeDetailsContent(
                         }
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
+
+                        // Directly under the table's identity, because it is the only control on
+                        // this panel and everything below it is a readout. It was first placed
+                        // after the history figures, which reads well in a listing of section
+                        // names and put it 6,000dp down the rendered panel — past the metadata
+                        // file times, the manifest list times, both stat blocks and both
+                        // derivation ledgers. A control nobody scrolls to is a control nobody
+                        // has. It costs about eighty dp here while no filter is entered.
+                        currentGraph?.let { graph ->
+                            ScanPruningSection(graph, scanPredicates, onScanPredicatesChange)
+                        }
 
                         Spacer(Modifier.height(16.dp))
                         SectionTitle("Metadata Files")
@@ -1294,6 +1213,47 @@ fun NodeDetailsContent(
                         // nodes per manifest so a manifest holding thousands of files stays
                         // readable; the inspector is a table and has no such constraint.
                         val manifestEntries = node.entries
+
+                        // What the reader's filter did to this one manifest, next to the bounds it
+                        // did it with. The table node says how many were skipped; this says why
+                        // this one was, which is the question asked from here.
+                        if (scanPredicates.isNotEmpty()) {
+                            val result = evaluatePruning(node.partitionSummaries, scanPredicates)
+                            Spacer(Modifier.height(16.dp))
+                            SectionTitle(
+                                if (result.isSkipped) "Scan Pruning — this manifest would be skipped"
+                                else "Scan Pruning — this manifest would be read"
+                            )
+                            val skippedColor = verdictSkippedColor()
+                            val unevaluatedColor = verdictUnevaluatedColor()
+                            val readColor = verdictReadColor()
+                            WideTable(
+                                headers = listOf("This term", "Condition", "Field", "Because"),
+                                columnWidths = listOf(120.dp, 120.dp, 90.dp, 320.dp),
+                                rows = result.outcomes.map { outcome ->
+                                    listOf(
+                                        // "cannot" on its own named no object: cannot what? The
+                                        // column says what each term did to this manifest, so
+                                        // every value has to be a complete answer to that.
+                                        when (outcome.effect) {
+                                            TermEffect.SKIPS -> "skips it"
+                                            TermEffect.KEEPS -> "cannot skip it"
+                                            TermEffect.NOT_EVALUATED -> "not evaluated"
+                                        },
+                                        outcome.predicate.toString(),
+                                        outcome.fieldName ?: "—",
+                                        outcome.reason,
+                                    )
+                                },
+                                leadCellColors = result.outcomes.map { outcome ->
+                                    when (outcome.effect) {
+                                        TermEffect.SKIPS -> skippedColor
+                                        TermEffect.KEEPS -> readColor
+                                        TermEffect.NOT_EVALUATED -> unevaluatedColor
+                                    }
+                                },
+                            )
+                        }
 
                         // Outside the entries check on purpose: a manifest list claiming three
                         // added files over a manifest that yielded no entries is the case most

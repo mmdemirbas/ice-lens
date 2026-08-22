@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import model.GraphModel
 import model.GraphNode
 import model.PaimonUnifiedTableModel
+import model.PredicateOp
+import model.ScanPredicate
 import model.SnapshotRefLabel
 import model.UnifiedTableModel
 import service.AggregationPolicy
@@ -207,6 +209,37 @@ class InspectorRenderTest {
     }
 
     /**
+     * The scan-pruning section, with a filter that skips one manifest and leaves the other.
+     *
+     * Two things only a render can check here. The section carries the app's only text fields and
+     * dropdowns, and they sit inside the inspector's `SelectionContainer` — a text field there
+     * fights the selection gesture, which is why the controls opt out of it. And the verdict table
+     * is three columns of prose in a panel far narrower than it, so whether the reason survives
+     * the column widths is a question about pixels.
+     */
+    @Test
+    fun `the scan pruning section renders a filter and its verdicts`() {
+        val graph = partedGraph()
+        val table = graph.nodes.filterIsInstance<GraphNode.TableNode>().first()
+        // 2024-03-06 rather than 2024-03-05 so the two manifests disagree: the wide one holds
+        // it, the single-row one is a day short of it and is skipped. A capture where every row
+        // says the same thing cannot show whether the verdicts are distinguishable at a glance,
+        // which is the one thing this column exists to be.
+        val predicates = listOf(
+            ScanPredicate("d", PredicateOp.EQ, "2024-03-06"),
+            ScanPredicate("id", PredicateOp.EQ, "7"),
+        )
+        renderScene("scan-pruning-table", width = 1400, height = 2400) {
+            NodeDetailsContent(graph, setOf(table.id), scanPredicates = predicates)
+        }
+
+        val manifest = graph.nodes.filterIsInstance<GraphNode.ManifestNode>().first()
+        renderScene("scan-pruning-manifest", width = 1400, height = 1600) {
+            NodeDetailsContent(graph, setOf(manifest.id), scanPredicates = predicates)
+        }
+    }
+
+    /**
      * The canvas itself. Everything else here renders one component in isolation, which cannot
      * see where a control ends up on the surface it belongs to — the badge sits opposite the
      * mini-map, and "opposite" is a claim about a screen, not about a composable.
@@ -380,12 +413,16 @@ class InspectorRenderTest {
         val manifest = graph.nodes.filterIsInstance<GraphNode.ManifestNode>().first()
         val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().first()
 
-        renderScene("graph-cards", width = 700, height = 1100) {
+        renderScene("graph-cards", width = 700, height = 1300) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 TableCard(table)
                 MetadataCard(metadata)
                 SnapshotCard(snapshot)
                 ManifestCard(manifest)
+                // The pruned state is drawn beside the ordinary one on purpose. It fades the card
+                // and lengthens its title line, which is exactly the pair of changes that costs a
+                // card its last line — and the two only read as distinguishable side by side.
+                ManifestCard(manifest, isPruned = true)
                 FileCard(file)
             }
         }

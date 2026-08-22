@@ -182,6 +182,8 @@ fun App() {
                 selectedNodeIds = state.selectedNodeIds,
                 onExpandGroup = state::expandGroup,
                 onExpandGroupFully = state::expandGroupFully,
+                scanPredicates = state.scanPredicates,
+                onScanPredicatesChange = state::updateScanPredicates,
             )
         }
     }
@@ -613,9 +615,18 @@ fun App() {
                 Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
                     val currentGraph = state.visibleGraphModel
                     if (currentGraph != null) {
+                        // Recomputed here rather than held in state: it is a pure function of the
+                        // drawn graph and the filter, and a second copy of it would be a second
+                        // thing to keep in step with the graph rebuilds aggregation causes.
+                        val prunedNodeIds = remember(currentGraph, state.scanPredicates) {
+                            evaluatePruning(currentGraph, state.scanPredicates)
+                                .filterValues { it.isSkipped }
+                                .keys
+                        }
                         key(state.graphRevision) {
                             GraphCanvas(
                                 graph = currentGraph,
+                                prunedNodeIds = prunedNodeIds,
                                 positions = state.nodePositions ?: NodePositions(currentGraph),
                                 graphRevision = state.graphRevision,
                                 fitGraphRequest = fitGraphRequest,

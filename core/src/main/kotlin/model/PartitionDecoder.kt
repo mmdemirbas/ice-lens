@@ -31,6 +31,14 @@ fun parsePartitionSpec(json: String, specId: Int? = null): PartitionSpec? = runC
 private val BUCKET_RE = Regex("""bucket\s*\[\s*(\d+)\s*]""")
 private val TRUNCATE_RE = Regex("""truncate\s*\[\s*(\d+)\s*]""")
 
+/** The `N` of `bucket[N]`, or null when the transform is not a bucket. */
+fun bucketCount(transform: String): Int? =
+    BUCKET_RE.matchEntire(transform.trim())?.groupValues?.get(1)?.toIntOrNull()
+
+/** The `W` of `truncate[W]`, or null when the transform is not a truncate. */
+fun truncateWidth(transform: String): Int? =
+    TRUNCATE_RE.matchEntire(transform.trim())?.groupValues?.get(1)?.toIntOrNull()
+
 /**
  * The type a partition transform produces, given the type of its source column.
  *
@@ -193,6 +201,16 @@ data class PartitionSummary(
     val containsNull: Boolean,
     /** Null when the writer did not record it, which is not the same as false. */
     val containsNan: Boolean?,
+    /**
+     * The column the transform reads, as the schema names it, and its type.
+     *
+     * Both are null when the manifest carried no schema. They are here because a scan predicate
+     * is written against the *source* column — `WHERE ts > ...`, never `WHERE ts_h_hour > ...` —
+     * so anything matching a predicate to a partition field needs the source name, and anything
+     * reading a literal needs the source type to read it in.
+     */
+    val sourceName: String? = null,
+    val sourceType: IcebergType? = null,
 ) {
     // `this.field`, not `field`: inside a property accessor the bare name is Kotlin's backing
     // field, so it resolves to this property rather than to the constructor parameter. The name
@@ -224,10 +242,13 @@ fun decodePartitionSummaries(
     if (summaries.size != spec.fields.size) return emptyList()
     return spec.fields.mapIndexed { index, field ->
         val summary = summaries[index]
-        val type = partitionResultType(field.transformName, field.sourceId?.let { schema?.typeOf(it) })
+        val sourceType = field.sourceId?.let { schema?.typeOf(it) }
+        val type = partitionResultType(field.transformName, sourceType)
         PartitionSummary(
             field = field,
             type = type,
+            sourceName = field.sourceId?.let { schema?.nameOf(it) },
+            sourceType = sourceType,
             lower = summary.lowerBound?.takeIf { it.isNotEmpty() }?.let { decodeSingleValue(it, type) },
             upper = summary.upperBound?.takeIf { it.isNotEmpty() }?.let { decodeSingleValue(it, type) },
             containsNull = summary.containsNull,

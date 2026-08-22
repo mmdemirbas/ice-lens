@@ -49,6 +49,8 @@ core/src/main/kotlin/
 │   ├── SingleValueDecoder.kt  # Appendix D: bytes + type → DecodedValue (bounds, partition values)
 │   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
+│   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
+│   ├── ScanPruning.kt         # Predicate → which manifests a scan would skip, and which term did it
 │   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 ├── service/
 │   ├── AvroReader.kt          # Shared Avro file reader (reified readAvro<T>), used by both Iceberg and Paimon
@@ -79,6 +81,7 @@ desktop/src/main/kotlin/
     ├── NodeDetails.kt         # Inspector panel — detailed metadata, JSON highlighting, changelogs, sample rows
     ├── Sidebar.kt             # Workspace panel — add/remove roots, search, drag-to-reorder, format badges (ICE/PMN)
     ├── NavigationTree.kt      # Structure tree view — flatten graph, search, expand/collapse
+    ├── ScanPruningSection.kt  # The filter form and its per-manifest verdicts, in the table inspector
     ├── GraphStatusBadge.kt    # Canvas overlay: how much of the table is drawn, and the page size
     └── ToolWindow.kt          # Draggable tool window bars and panes
 ```
@@ -146,6 +149,25 @@ desktop/src/main/kotlin/
   the read path checks them, so the inspector does. It is also the suite's only assertion that
   compares what this code decoded against what Iceberg recorded about the same bytes — a status
   misread or an entry dropped shows up as a disagreement on a checked-in table
+- **A manifest is evaluated against its own partition spec, never the table's current one.**
+  `evaluatePruning(graph, predicates)` in `model/ScanPruning.kt` reads each
+  `ManifestNode.partitionSummaries`, decoded against the spec that manifest records — the same
+  rule the bounds themselves follow. The bridge from a source literal to a partition value
+  exists only for order-preserving transforms (`identity`, `year`, `month`, `day`, `hour`,
+  `truncate[W]`). `bucket[N]` reports that it did not evaluate rather than a verdict that might
+  be wrong: pruning equality on a bucket means reproducing Iceberg's 32-bit murmur3 over its own
+  serialisation, and a hash re-implemented from a spec agrees with itself long before it agrees
+  with the writer. **`SKIPPED` is a proof; "would be read" is only the absence of one** — so a
+  manifest nothing could be evaluated against is counted and coloured separately, never folded
+  in with the ones that were checked and kept
+- **A verdict column is coloured and weighted, never prose at one weight.** `WideTable` takes
+  `leadCellColors`, one colour per row for the leading cell; `Theme.kt` carries the three
+  (`verdictSkippedColor` / `verdictUnevaluatedColor` / `verdictReadColor`, lightened on a dark
+  surface, since #0A7048 sits below it). The word stays — colour is never the only signal — but
+  a column of "would be read" with one "SKIPPED" in it has to be findable without reading every
+  row. The reason cell names the partition **field**, not the whole condition: the condition is
+  already in the form above and the reason names the literal, so printing it again put the same
+  date in one cell three times
 - **Partition transforms do not share a result type.** `day` produces a `date`; `year`, `month`
   and `hour` produce `int` ordinals counted from the epoch (a `year` partition for 2024 stores
   `54`). All four are four little-endian bytes, so the wrong choice yields a plausible value,
@@ -286,7 +308,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~456 tests across 46 files (354 in :core, 102 in :desktop) covering full pipelines for both formats (Avro fixtures
+~469 tests across 47 files (366 in :core, 103 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -303,6 +325,14 @@ itself to what it was measured at. That probe was written and run against a deli
 fix; it reported nothing. The scene is rendered twice before encoding: a control whose
 visibility depends on state that layout writes (the `WideTable` scrollbar) is absent from the
 first frame, so a single-frame capture shows a panel the running app never draws.
+
+**A capture where every row says the same thing checks nothing.** `scan-pruning-table-*.png`
+renders the filter over `parted` with a literal one day past the narrow manifest's range, so one
+manifest is skipped and one is read — a verdict column can only be judged scannable against
+another verdict. The same rule put the pruned manifest card next to the ordinary one in
+`graph-cards-1.png`. And placement is checked by rendering the whole panel, not the section: the
+scan-pruning form was first written after the history figures, which reads well as a list of
+section names and put the panel's only control 6,000dp down the render.
 
 `graph-canvas-partial-1.png` and `graph-canvas-whole-1.png` render `GraphCanvas` itself, which is
 where a control's *placement* on the surface can be checked rather than the control alone — and

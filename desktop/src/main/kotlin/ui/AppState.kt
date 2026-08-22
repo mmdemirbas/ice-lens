@@ -139,6 +139,24 @@ class AppState(
         private set
 
     // ═══════════════════════════════════════════════════════════════
+    //  Scan Filter
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * The predicate a reader is asking about, ANDed together.
+     *
+     * Deliberately not persisted and cleared whenever another table is opened: it is written
+     * against one table's partition columns, and carrying it across would leave a filter on
+     * screen naming columns the new table does not have.
+     */
+    var scanPredicates by mutableStateOf<List<ScanPredicate>>(emptyList())
+        private set
+
+    fun updateScanPredicates(next: List<ScanPredicate>) {
+        scanPredicates = next
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     //  Session Cache
     // ═══════════════════════════════════════════════════════════════
 
@@ -489,6 +507,10 @@ class AppState(
     ) {
         val normalizedTablePath = canonicalWorkspacePath(tablePath)
         val cacheKey = "$normalizedTablePath-rows_$withRows"
+        // The scan filter names one table's partition columns. Carrying it to another table would
+        // leave conditions on screen for columns that table does not have, all reporting that
+        // nothing matched them.
+        if (normalizedTablePath != selectedTablePath) scanPredicates = emptyList()
         selectedTablePath = normalizedTablePath
         prefs.put(PREF_SELECTED_TABLE_PATH, normalizedTablePath)
 

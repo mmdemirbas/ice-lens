@@ -506,24 +506,34 @@ fun SnapshotCard(node: GraphNode.SnapshotNode, isSelected: Boolean = false) {
     }
 }
 
+/**
+ * [isPruned] marks a manifest the reader's scan filter would let a query skip.
+ *
+ * It says so in the title line rather than on a line of its own, because a card that gains a line
+ * loses one under its own border — the node's declared height is what ELK reserved. The fade is
+ * the second signal, never the only one: a colour change alone is invisible to a reader who
+ * cannot see the colour, and "faded" could mean anything.
+ */
 @Composable
-fun ManifestCard(node: GraphNode.ManifestNode, isSelected: Boolean = false) {
+fun ManifestCard(node: GraphNode.ManifestNode, isSelected: Boolean = false, isPruned: Boolean = false) {
     val selectionBorderColor = selectionHighlightColor()
     val color = getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface))
     val borderColor = if (isSelected) selectionBorderColor else getGraphNodeBorderColor(node, isDarkSurface(MaterialTheme.colorScheme.surface))
     val borderWidth = if (isSelected) 6.dp else 2.dp
     val contentLabel = manifestContentLabel(node.data.content)
     val fileName = fileNameFromPath(node.localPath ?: node.data.manifestPath)
+    val fade = if (isPruned) 0.45f else 1f
 
     Box(
         modifier = Modifier
         .size(node.width.dp, node.height.dp)
-        .background(color, RoundedCornerShape(8.dp))
-        .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(8.dp))
+        .background(color.copy(alpha = color.alpha * fade), RoundedCornerShape(8.dp))
+        .border(BorderStroke(borderWidth, borderColor.copy(alpha = borderColor.alpha * fade)), RoundedCornerShape(8.dp))
         .padding(8.dp)) {
         CardColumn {
             Text(
-                "MANIFEST ${node.simpleId}: $contentLabel",
+                if (isPruned) "MANIFEST ${node.simpleId}: $contentLabel — SKIPPED"
+                else "MANIFEST ${node.simpleId}: $contentLabel",
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextSecondary()

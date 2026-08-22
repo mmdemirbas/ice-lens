@@ -104,6 +104,11 @@ fun GraphCanvas(
      * [GraphStatusBadge], which is what the app puts here.
      */
     statusOverlay: @Composable () -> Unit = {},
+    /**
+     * Manifests the reader's scan filter would let a query skip. Drawn faded and labelled — the
+     * answer belongs on the graph, where the manifests are, not only in a panel beside it.
+     */
+    prunedNodeIds: Set<String> = emptySet(),
 ) {
     val colors = MaterialTheme.colorScheme
     val isDarkSurface = isDarkSurface(colors.surface)
@@ -701,7 +706,8 @@ fun GraphCanvas(
                             is GraphNode.TableNode    -> TableCard(node, isSelected = isActive)
                             is GraphNode.MetadataNode -> MetadataCard(node, isSelected = isActive)
                             is GraphNode.SnapshotNode -> SnapshotCard(node, isSelected = isActive)
-                            is GraphNode.ManifestNode -> ManifestCard(node, isSelected = isActive)
+                            is GraphNode.ManifestNode ->
+                                ManifestCard(node, isSelected = isActive, isPruned = node.id in prunedNodeIds)
                             is GraphNode.FileNode     -> FileCard(node, isSelected = isActive)
                             is GraphNode.RowNode      -> RowCard(node, isSelected = isActive)
                             is GraphNode.ErrorNode    -> ErrorCard(node, isSelected = isActive)

@@ -7,11 +7,15 @@
 These are the differences between "renders the metadata tree" and "answers the questions a
 table-format engineer opens a debugger for". Ordered by how often the question comes up.
 
-- **Manifest pruning is shown per manifest, not per query.** `manifest_file.partitions` is read
-  and the manifest inspector shows the bounds a scan prunes on. What is missing is the other
-  half: entering a predicate and seeing which manifests it would skip. The data is all present
-  now — this is an evaluator over it, and it is the feature that would answer "why did my query
-  read 400 files" directly.
+- **Pruning is answered for a filter, but the filter is a form and not a clause.** Entering
+  conditions in the table inspector now reports which manifests a scan would skip and which term
+  did it (`model/ScanPruning.kt`). Three gaps remain. `bucket[N]` equality is reported as
+  not-evaluated rather than pruned, which is correct today and stops being the right answer once
+  there is an oracle for Iceberg's murmur3 — the fixture tables give one, since each file's own
+  bucket value is recorded beside it. A `WHERE` clause would be more familiar than the form and
+  is worth having, at the cost of a second place where a literal is read. And pruning stops at
+  the manifest: Iceberg prunes **files** on `lower_bounds`/`upper_bounds` too, which is where
+  "why did my query read 400 files" usually ends up, and the bounds are already decoded.
 
 - **Iceberg v3 is unmodelled.** Parsed without error — now *verified* rather than assumed,
   against `example/iceberg/default/v3` — but none of its additions are surfaced: deletion

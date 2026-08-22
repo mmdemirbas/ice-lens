@@ -1,0 +1,237 @@
+package model
+
+import java.io.File
+import java.nio.file.Paths
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/**
+ * Pruning verdicts against the two fixtures written to carry every transform shape.
+ *
+ * `parted` has eight partition fields over five source columns — identity on a string and on a
+ * decimal, `bucket[4]`, `truncate[3]`, `day`, and `year` / `month` / `hour` over three separate
+ * timestamptz columns — and two manifests whose ranges differ sharply: one spanning 1969 to 2025,
+ * one holding a single row. `respec` has two specs, so the same predicate meets `day` in one
+ * manifest and `month` in the other.
+ *
+ * The expected values here come from the fixtures' own recorded bounds, printed once and read off
+ * (`d_day` on the single-row manifest is `2024-03-05 … 2024-03-05`; `ts_y_year` is the ordinal
+ * `54 … 54`, which is 2024). They are not what this code produced.
+ */
+class ScanPruningTest {
+
+    private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }
+        .first { File(it, "settings.gradle.kts").isFile }
+
+    private fun manifests(fixture: String): List<UnifiedManifest> =
+        UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/$fixture").absolutePath))
+            .metadatas.flatMap { it.snapshots }.flatMap { it.manifests }
+            .distinctBy { it.metadata.manifestPath }
+
+    /** The manifest holding one row, whose every field is a single value. */
+    private fun oneRow(): UnifiedManifest = manifests("parted").first { it.dataFiles.size == 1 }
+
+    /** The manifest spanning 1969 to 2025. */
+    private fun wide(): UnifiedManifest = manifests("parted").first { it.dataFiles.size == 3 }
+
+    private fun evaluate(manifest: UnifiedManifest, vararg predicates: ScanPredicate) =
+        evaluatePruning(manifest.partitionSummaries, predicates.toList())
+
+    private fun effectOn(manifest: UnifiedManifest, field: String, predicate: ScanPredicate): TermEffect =
+        evaluate(manifest, predicate).outcomes.single { it.fieldName == field }.effect
+
+    @Test
+    fun `a date outside a manifest's day range skips it and inside it does not`() {
+        assertEquals(
+            TermEffect.SKIPS,
+            effectOn(oneRow(), "d_day", ScanPredicate("d", PredicateOp.EQ, "2020-01-01")),
+        )
+        assertEquals(
+            TermEffect.KEEPS,
+            effectOn(oneRow(), "d_day", ScanPredicate("d", PredicateOp.EQ, "2024-03-05")),
+        )
+        // The same predicate against the manifest that spans 1969 to 2025 cannot be ruled out.
+        assertEquals(
+            TermEffect.KEEPS,
+            effectOn(wide(), "d_day", ScanPredicate("d", PredicateOp.EQ, "2020-01-01")),
+        )
+    }
+
+    /**
+     * The bridge the whole feature turns on: the predicate is a timestamp and the manifest records
+     * an int ordinal, so the literal has to go through the transform before it can be compared.
+     * `ts_y_year` on the single-row manifest is `54 … 54`, which is 2024.
+     */
+    @Test
+    fun `a timestamp literal is compared as the ordinal the transform stores`() {
+        val ts2026 = ScanPredicate("ts_y", PredicateOp.GT, "2026-01-01T00:00:00Z")
+        val outcome = evaluate(oneRow(), ts2026).outcomes.single { it.fieldName == "ts_y_year" }
+
+        assertEquals(TermEffect.SKIPS, outcome.effect)
+        assertTrue(
+            outcome.reason.contains("2024") && outcome.reason.contains("2026"),
+            "the reason should name both the bound and the transformed literal, not the ordinals: " +
+                outcome.reason,
+        )
+    }
+
+    @Test
+    fun `an hour partition prunes on a timestamp below its range`() {
+        assertEquals(
+            TermEffect.SKIPS,
+            effectOn(oneRow(), "ts_h_hour", ScanPredicate("ts_h", PredicateOp.LT, "2020-01-01T00:00:00Z")),
+        )
+        assertEquals(
+            TermEffect.KEEPS,
+            effectOn(oneRow(), "ts_h_hour", ScanPredicate("ts_h", PredicateOp.LT, "2025-01-01T00:00:00Z")),
+        )
+    }
+
+    /**
+     * One predicate, two partition fields. `name` is partitioned twice — identity and
+     * `truncate[3]` — so naming the source column gives a scan two chances to eliminate the
+     * manifest, and this is the case where both take it.
+     */
+    @Test
+    fun `a predicate on a twice-partitioned column is evaluated against both fields`() {
+        val outcomes = evaluate(wide(), ScanPredicate("name", PredicateOp.EQ, "delta")).outcomes
+
+        assertEquals(listOf("name", "name_trunc"), outcomes.map { it.fieldName })
+        assertTrue(outcomes.all { it.effect == TermEffect.SKIPS }, "both should rule it out: $outcomes")
+        // 'delta' truncates to 'del', which is past 'cha' — a different comparison from the
+        // identity one, on a different value.
+        assertTrue(
+            outcomes.last().reason.contains("del"),
+            "the truncate outcome should show the truncated literal: ${outcomes.last().reason}",
+        )
+    }
+
+    @Test
+    fun `a decimal range prunes on the sign the manifest recorded`() {
+        // The wide manifest's amounts start at 0.01; the single-row one holds -5.50.
+        assertEquals(
+            TermEffect.SKIPS,
+            effectOn(wide(), "amount", ScanPredicate("amount", PredicateOp.LT, "0")),
+        )
+        assertEquals(
+            TermEffect.KEEPS,
+            effectOn(oneRow(), "amount", ScanPredicate("amount", PredicateOp.LT, "0")),
+        )
+    }
+
+    @Test
+    fun `a bucket field reports that it did not evaluate rather than a verdict`() {
+        val outcome = evaluate(wide(), ScanPredicate("id", PredicateOp.EQ, "7"))
+            .outcomes.single { it.fieldName == "id_bucket" }
+
+        assertEquals(TermEffect.NOT_EVALUATED, outcome.effect)
+        assertTrue(outcome.reason.contains("bucket"), outcome.reason)
+    }
+
+    @Test
+    fun `a column no partition field reads is reported, not silently dropped`() {
+        val result = evaluate(wide(), ScanPredicate("no_such_column", PredicateOp.EQ, "1"))
+
+        assertEquals(TermEffect.NOT_EVALUATED, result.outcomes.single().effect)
+        assertTrue(result.isUnevaluated, "a verdict of 'would be read' here carries no information")
+        assertTrue(!result.isSkipped)
+    }
+
+    @Test
+    fun `is null prunes on contains_null, which is recorded even where bounds are not`() {
+        assertEquals(
+            TermEffect.SKIPS,
+            effectOn(wide(), "d_day", ScanPredicate("d", PredicateOp.IS_NULL)),
+        )
+        assertEquals(
+            TermEffect.NOT_EVALUATED,
+            effectOn(wide(), "d_day", ScanPredicate("d", PredicateOp.IS_NOT_NULL)),
+        )
+    }
+
+    /**
+     * Only identity can prove a manifest holds nothing but one value. `day` maps a whole day of
+     * timestamps to one date, so bounds that meet do not mean every row carries the excluded value.
+     */
+    @Test
+    fun `not-equal prunes under identity and declines under a many-to-one transform`() {
+        assertEquals(
+            TermEffect.SKIPS,
+            effectOn(oneRow(), "name", ScanPredicate("name", PredicateOp.NOT_EQ, "alpha")),
+        )
+        assertEquals(
+            TermEffect.NOT_EVALUATED,
+            effectOn(oneRow(), "d_day", ScanPredicate("d", PredicateOp.NOT_EQ, "2024-03-05")),
+        )
+    }
+
+    /**
+     * The same predicate against a table that was repartitioned. `respec`'s first manifest
+     * partitions `d` by `day`, its second by `month`, and the evaluation has to follow each
+     * manifest's own spec — using the current spec for both is the silent mis-decode this
+     * fixture exists to catch.
+     */
+    @Test
+    fun `each manifest is evaluated against the spec it was written under`() {
+        val (byDay, byMonth) = manifests("respec").let { it.first { m -> m.metadata.partitionSpecId == 0 } to
+            it.first { m -> m.metadata.partitionSpecId == 3 } }
+
+        val old = ScanPredicate("d", PredicateOp.LT, "1969-01-01")
+        assertEquals("d_day", byDay.partitionSummaries.first { it.field.transformName == "day" }.field.name)
+        assertEquals(TermEffect.SKIPS, effectOn(byDay, "d_day", old))
+        assertEquals(TermEffect.SKIPS, effectOn(byMonth, "d_month", old))
+
+        val inRange = ScanPredicate("d", PredicateOp.EQ, "2024-03-05")
+        assertEquals(TermEffect.KEEPS, effectOn(byDay, "d_day", inRange))
+        assertEquals(TermEffect.KEEPS, effectOn(byMonth, "d_month", inRange))
+    }
+
+    @Test
+    fun `a manifest is skipped when any one term rules it out`() {
+        val result = evaluate(
+            oneRow(),
+            ScanPredicate("name", PredicateOp.EQ, "alpha"),
+            ScanPredicate("d", PredicateOp.EQ, "2020-01-01"),
+        )
+
+        assertTrue(result.isSkipped)
+        assertEquals("d_day", result.skippedBy?.fieldName)
+    }
+
+    /**
+     * The property that catches an inverted comparison anywhere in the evaluator: a file's own
+     * partition value must never rule out the manifest that lists the file.
+     *
+     * Run over every identity field of every manifest of every checked-in table, because identity
+     * is where a file's stored value is also a valid source literal. It is worth more than the
+     * cases above — those assert what one predicate does, this asserts that the evaluator cannot
+     * exclude something it is holding.
+     */
+    @Test
+    fun `no file's own partition value skips the manifest that lists it`() {
+        var checked = 0
+        listOf("parted", "respec").forEach { fixture ->
+            manifests(fixture).forEach { manifest ->
+                val identityFields = manifest.partitionSummaries.filter {
+                    it.field.transformName == "identity" && it.sourceName != null
+                }
+                manifest.dataFiles.forEach { file ->
+                    identityFields.forEach { summary ->
+                        val value = file.partition?.values
+                            ?.firstOrNull { it.field.name == summary.field.name } ?: return@forEach
+                        val predicate = ScanPredicate(summary.sourceName!!, PredicateOp.EQ, value.human)
+                        val effect = effectOn(manifest, summary.field.name!!, predicate)
+                        checked++
+                        assertTrue(
+                            effect != TermEffect.SKIPS,
+                            "$fixture: ${predicate} skipped a manifest that holds exactly that file",
+                        )
+                    }
+                }
+            }
+        }
+        println("Checked $checked file-own-value predicates against their own manifests")
+        assertTrue(checked > 0, "the fixtures should have identity partition fields to check")
+    }
+}
