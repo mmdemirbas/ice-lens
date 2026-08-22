@@ -201,7 +201,7 @@ fun ToolWindowPane(
             }
             Text(
                 text = title.uppercase(),
-                fontSize = 10.sp,
+                fontSize = TypeScale.micro,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.weight(1f)

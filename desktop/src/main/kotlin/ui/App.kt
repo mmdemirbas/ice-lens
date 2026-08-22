@@ -171,7 +171,7 @@ fun App() {
                 } else {
                     Text(
                         "No graph loaded.",
-                        fontSize = 12.sp,
+                        fontSize = TypeScale.small,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(8.dp)
                     )
@@ -305,7 +305,7 @@ fun App() {
                     Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
                     Text(
                         "${(zoom * 100).toInt()}%",
-                        fontSize = 11.sp,
+                        fontSize = TypeScale.small,
                         modifier = Modifier.width(45.dp),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
@@ -376,7 +376,7 @@ fun App() {
                                         )
                                         Text(
                                             "Show only nodes connected to selected snapshots",
-                                            fontSize = 11.sp,
+                                            fontSize = TypeScale.small,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
@@ -395,7 +395,7 @@ fun App() {
                                 ) {
                                     Icon(Icons.Default.DoneAll, contentDescription = "Select all", modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("All", fontSize = 11.sp)
+                                    Text("All", fontSize = TypeScale.small)
                                 }
                                 TextButton(
                                     onClick = { state.updateSnapshotFilterSelection(emptySet()) },
@@ -404,7 +404,7 @@ fun App() {
                                 ) {
                                     Icon(Icons.Default.Clear, contentDescription = "Clear selection", modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("None", fontSize = 11.sp)
+                                    Text("None", fontSize = TypeScale.small)
                                 }
                                 TextButton(
                                     onClick = {
@@ -415,7 +415,7 @@ fun App() {
                                 ) {
                                     Icon(Icons.Default.SwapHoriz, contentDescription = "Invert selection", modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("Invert", fontSize = 11.sp)
+                                    Text("Invert", fontSize = TypeScale.small)
                                 }
                             }
                             HorizontalDivider()
@@ -446,10 +446,10 @@ fun App() {
                                                     )
                                                     Spacer(Modifier.width(8.dp))
                                                     Column {
-                                                        Text(snapshotFilterLabel(option), fontSize = 12.sp)
+                                                        Text(snapshotFilterLabel(option), fontSize = TypeScale.small)
                                                         Text(
                                                             formatAppTimestamp(option.timestampMs),
-                                                            fontSize = 10.sp,
+                                                            fontSize = TypeScale.micro,
                                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                                         )
                                                     }
@@ -476,7 +476,7 @@ fun App() {
                         } else {
                             "${state.selectedSnapshotFilterNodeIds.size}/${state.snapshotFilterOptions.size}"
                         },
-                        fontSize = 11.sp,
+                        fontSize = TypeScale.small,
                         modifier = Modifier.padding(horizontal = 8.dp)
                     )
                 }
@@ -691,14 +691,14 @@ fun App() {
                             Spacer(Modifier.height(12.dp))
                             Text(
                                 "No tables in workspace",
-                                fontSize = 16.sp,
+                                fontSize = TypeScale.title,
                                 fontWeight = FontWeight.Medium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(Modifier.height(4.dp))
                             Text(
                                 "Add an Iceberg/Paimon table or warehouse directory to get started.",
-                                fontSize = 13.sp,
+                                fontSize = TypeScale.body,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
                             Spacer(Modifier.height(16.dp))
@@ -712,7 +712,7 @@ fun App() {
                             }) {
                                 Icon(Icons.Default.Add, contentDescription = "Add", modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("Add to Workspace", fontSize = 13.sp)
+                                Text("Add to Workspace", fontSize = TypeScale.body)
                             }
                         }
                     }
@@ -749,7 +749,7 @@ fun App() {
                                 Text(
                                     "Viewing cached data \u2014 table may have been deleted from filesystem",
                                     color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    fontSize = 11.sp
+                                    fontSize = TypeScale.small
                                 )
                             }
                         }
@@ -769,7 +769,7 @@ fun App() {
                                 Text(
                                     state.errorMsg!!,
                                     color = MaterialTheme.colorScheme.onErrorContainer,
-                                    fontSize = 13.sp,
+                                    fontSize = TypeScale.body,
                                     modifier = Modifier.weight(1f)
                                 )
                                 if (state.selectedTablePath != null) {
@@ -783,7 +783,7 @@ fun App() {
                                     ) {
                                         Icon(Icons.Default.Refresh, contentDescription = "Reload", modifier = Modifier.size(14.dp))
                                         Spacer(Modifier.width(4.dp))
-                                        Text("Reload", fontSize = 12.sp)
+                                        Text("Reload", fontSize = TypeScale.small)
                                     }
                                 }
                                 Spacer(Modifier.width(4.dp))

@@ -48,13 +48,13 @@ fun CompactSearchField(
         Spacer(Modifier.width(6.dp))
         Box(Modifier.weight(1f)) {
             if (value.isEmpty()) {
-                Text(placeholder, fontSize = 11.sp, color = colors.onSurfaceVariant)
+                Text(placeholder, fontSize = TypeScale.small, color = colors.onSurfaceVariant)
             }
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
                 singleLine = true,
-                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp, color = colors.onSurface),
+                textStyle = LocalTextStyle.current.copy(fontSize = TypeScale.small, color = colors.onSurface),
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -111,14 +111,14 @@ fun WorkspacePanel(
         ) {
             Icon(Icons.Default.Add, contentDescription = "Add", modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Add to Workspace", fontSize = 12.sp)
+            Text("Add to Workspace", fontSize = TypeScale.small)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
             text = "WORKSPACE",
-            fontSize = 10.sp,
+            fontSize = TypeScale.micro,
             fontWeight = FontWeight.Bold,
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp)
@@ -290,7 +290,7 @@ fun WorkspacePanel(
                                 if (formatBadge != null) {
                                     Text(
                                         text = formatBadge,
-                                        fontSize = 8.sp,
+                                        fontSize = TypeScale.micro,
                                         fontWeight = FontWeight.Bold,
                                         color = colors.onTertiaryContainer,
                                         modifier = Modifier
@@ -301,7 +301,7 @@ fun WorkspacePanel(
                                 }
                                 Text(
                                     text = label,
-                                    fontSize = 12.sp,
+                                    fontSize = TypeScale.small,
                                     color = textColor,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                 )
@@ -409,7 +409,7 @@ fun WorkspaceRootItem(
         if (formatBadge != null) {
             Text(
                 text = formatBadge,
-                fontSize = 8.sp,
+                fontSize = TypeScale.micro,
                 fontWeight = FontWeight.Bold,
                 color = colors.onTertiaryContainer,
                 modifier = Modifier
@@ -420,7 +420,7 @@ fun WorkspaceRootItem(
         }
         Text(
             text = "$prefix${item.name}$suffix",
-            fontSize = 13.sp,
+            fontSize = TypeScale.body,
             color = textColor,
             fontWeight = if (isSelected || item is WorkspaceItem.Warehouse) FontWeight.SemiBold else FontWeight.Normal,
             modifier = Modifier.weight(1f),

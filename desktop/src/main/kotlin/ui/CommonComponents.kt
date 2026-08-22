@@ -119,7 +119,7 @@ fun HoverTooltip(
                     .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(4.dp))
                     .padding(8.dp)
             ) {
-                Text(text = tooltip, color = MaterialTheme.colorScheme.inverseOnSurface, fontSize = 12.sp)
+                Text(text = tooltip, color = MaterialTheme.colorScheme.inverseOnSurface, fontSize = TypeScale.small)
             }
         },
         delayMillis = TOOLTIP_DELAY_MS,
@@ -134,7 +134,7 @@ fun HoverTooltip(
 
 @Composable
 fun SectionTitle(title: String) {
-    Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+    Text(title, fontWeight = FontWeight.Bold, fontSize = TypeScale.title)
     Spacer(Modifier.height(4.dp))
 }
 
@@ -230,7 +230,7 @@ fun WideTableRow(
             Text(
                 text = cell,
                 modifier = Modifier.width(widths[index]),
-                fontSize = 11.sp,
+                fontSize = TypeScale.small,
                 color = if (isVerdict) leadColor else Color.Unspecified,
                 fontWeight = if (isHeader || isVerdict) FontWeight.Bold else FontWeight.Normal,
                 fontFamily = if (isHeader) null else FontFamily.Monospace,

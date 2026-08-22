@@ -531,7 +531,7 @@ private fun DerivationSection(title: String, derivation: StatsDerivation) {
         "One row per manifest as the traversal reached it. The figures above are this table's " +
             "delta columns summed; a manifest a later snapshot re-lists contributes nothing and " +
             "names where it was counted first.",
-        fontSize = 11.sp,
+        fontSize = TypeScale.small,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(bottom = 4.dp)
     )
@@ -603,7 +603,7 @@ private fun ManifestLedgerSection(entries: List<ManifestEntryView>) {
             "has to read. What it adds beyond that depends on two rules. Deduplication here is " +
             "scoped to this manifest — the table's own totals also drop a file some other " +
             "manifest counted first, which cannot be seen from inside one.",
-        fontSize = 11.sp,
+        fontSize = TypeScale.small,
         color = colors.onSurfaceVariant,
         modifier = Modifier.padding(bottom = 4.dp),
     )
@@ -647,7 +647,7 @@ private fun ManifestLedgerSection(entries: List<ManifestEntryView>) {
     if (dropped.isEmpty()) {
         Text(
             "Every entry counted.",
-            fontSize = 11.sp,
+            fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -710,7 +710,7 @@ fun NodeDetailsContent(
             if (selectedNodeIds.isEmpty()) {
                 Text(
                     "Select a node to view details.",
-                    fontSize = 12.sp,
+                    fontSize = TypeScale.small,
                     color = colors.onSurfaceVariant,
                     modifier = Modifier.padding(8.dp)
                 )
@@ -722,7 +722,7 @@ fun NodeDetailsContent(
                     Text("${selectedNodeIds.size} Nodes Selected", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                     if (multiGraph == null) {
-                        Text("(graph not loaded)", fontSize = 12.sp, color = colors.onSurfaceVariant)
+                        Text("(graph not loaded)", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
                     } else {
                         DetailTable {
                             DetailRow("Type / ID", "Key", isHeader = true)
@@ -752,7 +752,7 @@ fun NodeDetailsContent(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(nodeTitle(node), fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                        Text(nodeTitle(node), fontWeight = FontWeight.Bold, fontSize = TypeScale.display, modifier = Modifier.weight(1f))
                         val openPath = inspectorOpenPath(node)
                         if (!openPath.isNullOrBlank() && isLocalPath(openPath)) {
                             TextButton(
@@ -766,11 +766,11 @@ fun NodeDetailsContent(
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(Modifier.width(4.dp))
-                                Text("Reveal", fontSize = 11.sp)
+                                Text("Reveal", fontSize = TypeScale.small)
                             }
                         }
                     }
-                    Text("Node ID: ${node.id}", fontSize = 11.sp, color = colors.onSurfaceVariant)
+                    Text("Node ID: ${node.id}", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
 
                     when (node) {
@@ -1000,7 +1000,7 @@ fun NodeDetailsContent(
                                     Text(
                                         "Schema ${schema.schemaId ?: "Unknown"}",
                                         fontWeight = FontWeight.SemiBold,
-                                        fontSize = 13.sp
+                                        fontSize = TypeScale.body
                                     )
                                     Spacer(Modifier.height(4.dp))
                                     WideTable(
@@ -1037,7 +1037,7 @@ fun NodeDetailsContent(
                                     Text(
                                         "Spec ${spec.specId ?: "Unknown"}",
                                         fontWeight = FontWeight.SemiBold,
-                                        fontSize = 13.sp
+                                        fontSize = TypeScale.body
                                     )
                                     Spacer(Modifier.height(4.dp))
                                     WideTable(
@@ -1064,7 +1064,7 @@ fun NodeDetailsContent(
                                     Text(
                                         "Order ${order.orderId ?: "Unknown"}",
                                         fontWeight = FontWeight.SemiBold,
-                                        fontSize = 13.sp
+                                        fontSize = TypeScale.body
                                     )
                                     Spacer(Modifier.height(4.dp))
                                     WideTable(
@@ -1197,7 +1197,7 @@ fun NodeDetailsContent(
                                 Text(
                                     text = highlightedJson,
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp
+                                    fontSize = TypeScale.small
                                 )
                             }
                         } else {
@@ -1251,7 +1251,7 @@ fun NodeDetailsContent(
                                 "Written by whatever engine made the commit, and read back verbatim — " +
                                     "nothing here recomputed them. Each manifest's Recorded Summary section " +
                                     "is where figures of this kind can be checked against the entries.",
-                                fontSize = 11.sp,
+                                fontSize = TypeScale.small,
                                 color = colors.onSurfaceVariant,
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
@@ -1282,7 +1282,7 @@ fun NodeDetailsContent(
                                     "columns are what the manifest list claims; \"Summary\" is that claim " +
                                     "checked against the entries of the manifest itself, which is a check " +
                                     "nothing on the read path performs.",
-                                fontSize = 11.sp,
+                                fontSize = TypeScale.small,
                                 color = colors.onSurfaceVariant,
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
@@ -1413,7 +1413,7 @@ fun NodeDetailsContent(
                             "The manifest list carries these counts so a scan can plan without opening this " +
                                 "manifest, and nothing on the read path checks them. Each one sits beside the " +
                                 "same figure counted from the entries.",
-                            fontSize = 11.sp,
+                            fontSize = TypeScale.small,
                             color = colors.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 4.dp)
                         )
@@ -1460,7 +1460,7 @@ fun NodeDetailsContent(
                                 Text(
                                     "The bounds a scan intersects with a partition predicate to decide whether to " +
                                         "open this manifest. One row per partition field, covering every file in it.",
-                                    fontSize = 11.sp,
+                                    fontSize = TypeScale.small,
                                     color = colors.onSurfaceVariant,
                                     modifier = Modifier.padding(bottom = 4.dp)
                                 )
@@ -1612,7 +1612,7 @@ fun NodeDetailsContent(
                             Text(
                                 "This manifest carried no partition spec, so the partition tuple " +
                                     "cannot be decoded. That is not the same as an unpartitioned table.",
-                                fontSize = 11.sp,
+                                fontSize = TypeScale.small,
                                 color = colors.onSurfaceVariant,
                             )
                         } else if (partition.isUnpartitioned) {
@@ -1620,7 +1620,7 @@ fun NodeDetailsContent(
                             SectionTitle("Partition")
                             Text(
                                 "This table is not partitioned — its spec has no fields.",
-                                fontSize = 11.sp,
+                                fontSize = TypeScale.small,
                                 color = colors.onSurfaceVariant,
                             )
                         } else {
@@ -1629,7 +1629,7 @@ fun NodeDetailsContent(
                             Text(
                                 "Iceberg stores the transform's result, not the source value. " +
                                     "Value is how Iceberg renders it; Stored is what is on disk.",
-                                fontSize = 11.sp,
+                                fontSize = TypeScale.small,
                                 color = colors.onSurfaceVariant,
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
@@ -1730,7 +1730,7 @@ fun NodeDetailsContent(
                                         "type in force then. The field id and the bytes sit next to each " +
                                         "decoded value so the reading can be checked rather than trusted."
                                 },
-                                fontSize = 11.sp,
+                                fontSize = TypeScale.small,
                                 color = colors.onSurfaceVariant,
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
@@ -1811,7 +1811,7 @@ fun NodeDetailsContent(
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                     modifier = Modifier.height(24.dp)
                                 ) {
-                                    Text("Copy", fontSize = 11.sp)
+                                    Text("Copy", fontSize = TypeScale.small)
                                 }
                             }
                         }
@@ -1829,7 +1829,7 @@ fun NodeDetailsContent(
                             Text(
                                 text = node.stackTrace ?: "N/A",
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp
+                                fontSize = TypeScale.small
                             )
                         }
                     }
@@ -1927,7 +1927,7 @@ fun NodeDetailsContent(
                                 "everything below them — ${formatCount(node.hiddenNodeCount)} nodes in all. " +
                                 "The metadata behind them is read and counted either way: the table " +
                                 "summary and every parent's own figures cover the whole table, drawn or not.",
-                            fontSize = 12.sp,
+                            fontSize = TypeScale.small,
                             color = colors.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 8.dp),
                         )
@@ -1935,7 +1935,7 @@ fun NodeDetailsContent(
                             Text(
                                 "${formatCount(node.hiddenErrorCount)} read errors are inside this group. " +
                                     "Open it to see which files failed.",
-                                fontSize = 12.sp,
+                                fontSize = TypeScale.small,
                                 fontWeight = FontWeight.SemiBold,
                                 color = colors.error,
                                 modifier = Modifier.padding(bottom = 8.dp),
@@ -1949,7 +1949,7 @@ fun NodeDetailsContent(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Button(onClick = { onExpandGroup(node.id) }) {
-                                Text("Show the next page", fontSize = 12.sp)
+                                Text("Show the next page", fontSize = TypeScale.small)
                             }
                             // The whole tail, for the reader who would rather wait than click
                             // two hundred times. The count is on the button because it is what
@@ -1958,7 +1958,7 @@ fun NodeDetailsContent(
                             OutlinedButton(onClick = { onExpandGroupFully(node) }) {
                                 Text(
                                     "Show all ${formatCount(node.memberCount)} ${node.kind.plural}",
-                                    fontSize = 12.sp,
+                                    fontSize = TypeScale.small,
                                 )
                             }
                         }
@@ -2095,7 +2095,7 @@ private fun SchemaEvolutionSection(metadataChildren: List<GraphNode.MetadataNode
         Text(
             "Schema $fromId \u2192 $toId",
             fontWeight = FontWeight.SemiBold,
-            fontSize = 12.sp,
+            fontSize = TypeScale.small,
             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
         )
         DetailTable {
@@ -2125,7 +2125,7 @@ private fun SchemaEvolutionSection(metadataChildren: List<GraphNode.MetadataNode
     Text(
         "Current Schema (ID ${latestSchema.schemaId ?: "?"}): ${latestSchema.fields.size} fields",
         fontWeight = FontWeight.Medium,
-        fontSize = 12.sp,
+        fontSize = TypeScale.small,
         modifier = Modifier.padding(bottom = 4.dp)
     )
     val identifierIds = latestSchema.identifierFieldIds.toSet()
@@ -2232,7 +2232,7 @@ private fun PropertiesEvolutionSection(metadataChildren: List<GraphNode.Metadata
         Text(
             "Property Changes",
             fontWeight = FontWeight.SemiBold,
-            fontSize = 12.sp,
+            fontSize = TypeScale.small,
             modifier = Modifier.padding(bottom = 4.dp)
         )
 

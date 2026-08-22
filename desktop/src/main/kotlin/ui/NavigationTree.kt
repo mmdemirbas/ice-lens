@@ -35,7 +35,7 @@ fun TreeIconButton(
                     .border(1.dp, colors.outlineVariant, RoundedCornerShape(4.dp))
                     .padding(8.dp)
             ) {
-                Text(text = tooltip, color = colors.inverseOnSurface, fontSize = 12.sp)
+                Text(text = tooltip, color = colors.inverseOnSurface, fontSize = TypeScale.small)
             }
         },
         delayMillis = TOOLTIP_DELAY_MS,
@@ -177,7 +177,7 @@ fun NavigationTree(
 
                             Text(
                                 text = getNodeLabel(node),
-                                fontSize = 11.sp,
+                                fontSize = TypeScale.small,
                                 color = textColor,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                 softWrap = false

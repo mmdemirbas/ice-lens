@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Five text sizes instead of eight.** Every size in the desktop shell now comes from
+  `TypeScale`, at a ratio near 1.2 — 10 / 12 / 14 / 17 / 21. What was there before ran from 8sp
+  to 16sp in steps averaging 1.09x, picked one call site at a time, which is under the difference
+  at which a size reads as deliberate: the screen had eight sizes and one apparent level. Card
+  text is slightly larger throughout as a result, and the inspector's section titles and node
+  header are now distinct from body text rather than a little heavier than it.
+
 ### Added
+- **A card that outgrows its node now fails a test.** `CardHeightTest` draws all thirteen card
+  shapes with 400dp of room to spare and requires each to have fitted inside what its node
+  declares. This was the missing half of a change to a text size: a card drawn at its own height
+  does not report that it wanted more — the `Column` simply does not place its last child, every
+  `Text` clips itself to what it was measured at, and nothing is painted outside the border for a
+  pixel probe to find. Measuring the same card with slack is what makes the overflow a number.
 - **Four more numbers explain themselves.** A manifest's inspector now says how its counted
   figures were reached — every entry takes a place in the entry count because that figure
   measures what a scan reads, and what it adds beyond that depends on two rules — and lists the

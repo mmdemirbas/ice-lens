@@ -231,7 +231,19 @@ desktop/src/main/kotlin/
   `Text` overriding only `fontSize` inherits it, so a 9sp label occupies 24dp and a five-line card
   wants 136dp whatever its font sizes say. That is what had the table card's snapshot count and
   current-version lines invisible on every table in the app for the whole life of the project. A
-  raw `Column` in a card reintroduces it, and no assertion can see it — only the render
+  raw `Column` in a card reintroduces it. **`CardHeightTest` is the assertion for all of this**:
+  it draws each card inside `LocalCardHeightSlack` — 400dp beyond what the node declares — so
+  `CardColumn` is measured unconstrained, and `LocalCardContentProbe` reports the height the
+  content actually came to. Measuring the card at its own size cannot work, because that is the
+  clamped number rather than a measurement of the clamp. The scene must be tall enough to hold
+  every card at its slack height: a `Column` out of room measures what is left with a maximum of
+  zero, and a probe reporting 0dp reads as a card that fits
+- **Text sizes come from `TypeScale` in `ui/Typography.kt`, and nothing else names a number of
+  `sp`.** Five steps at a ratio near 1.2 (10/12/14/17/21), replacing eight sizes from 8sp to 16sp
+  chosen a call site at a time — consecutive steps 1.09x apart read as one flat size with noise on
+  it rather than as a hierarchy. A step and a node's declared height are one decision: raising
+  `TypeScale.small` by 6sp overflows the table and metadata cards, which is what `CardHeightTest`
+  is there to catch
 - **The graph model is in dp and the canvas surface is in device pixels; `zoom * density` is the
   only conversion.** ELK laid the graph out against card sizes the nodes declare in dp, and the
   cards are drawn with `Modifier.size(...dp)` — but the pointer, `BoxWithConstraints`'
@@ -333,7 +345,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~480 tests across 49 files (376 in :core, 104 in :desktop) covering full pipelines for both formats (Avro fixtures
+~482 tests across 50 files (376 in :core, 106 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -342,12 +354,14 @@ Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimo
 draws `NodeDetailsContent` and every graph card into an off-screen Compose scene and writes PNGs
 to `desktop/build/reports/inspector/` — no window, no Screen Recording permission, which matters
 because screen capture on this machine returns bare wallpaper for every application. Open those
-files after any inspector *or card* change; `graph-cards-1.png` and `paimon-cards-1.png` are the
-only thing that can show a card losing a line to its declared height, because the composition
-succeeds and the PNG is valid either way — and a pixel probe looking for ink *below* the card
+files after any inspector *or card* change. A card losing a line to its declared height is
+covered by `CardHeightTest` rather than by looking at `graph-cards-1.png` — the composition
+succeeds and the PNG is valid either way, and a pixel probe looking for ink *below* the card
 cannot see it, since the `Column` is measured against the fixed height and each `Text` clips
 itself to what it was measured at. That probe was written and run against a deliberately reverted
-fix; it reported nothing. The scene is rendered twice before encoding: a control whose
+fix; it reported nothing. What the PNGs are still the only check for is everything a number
+cannot state: whether the lines that fit are the right lines, in the right order, at weights a
+reader can rank. The scene is rendered twice before encoding: a control whose
 visibility depends on state that layout writes (the `WideTable` scrollbar) is absent from the
 first frame, so a single-frame capture shows a panel the running app never draws.
 

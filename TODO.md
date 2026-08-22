@@ -128,7 +128,16 @@ What is left:
 
 - **App icon** — no custom icon; installers use the default Java icon. Need `.icns`/`.ico`/`.png` assets and `nativeDistributions { iconFile.set(...) }` in build.gradle.kts.
 
-- **Typography consistency** — 8 different font sizes used ad-hoc. Define a scale (e.g. 10, 12, 14, 16sp) and apply uniformly. FileNode/RowNode cards at 8-9sp are too small at default zoom.
+- **Node heights are declared with more room than the cards use.** `TypeScale` and
+  `CardHeightTest` landed together, and the probe's numbers show the reserve is generous: at the
+  instances the test measures, `PaimonManifestListNode` wants 38dp of a declared 80, the Paimon
+  schema card 50 of 80, `ManifestCard` 52 of 80, `SnapshotCard` with ref chips 69 of 112. The
+  graph is that much taller than it needs to be. What stops this being a two-line fix is that the
+  test measures **one instance of each kind**, and a card's line count varies with what the
+  artifact carries — a manifest list with a longer name wraps, a snapshot with three refs draws a
+  second chip row. Tightening a height off one sample is how a line goes missing on a table
+  nobody rendered. Doing it properly means measuring the worst instance across every fixture,
+  which is the same shape as `LayoutOverlapTest`'s sweep and could share it.
 
 - **Collapsible inspector sections** — TableNode inspector has 8+ sections stacked vertically. Add expand/collapse chevrons per section.
 

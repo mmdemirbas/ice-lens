@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,6 +17,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
@@ -213,7 +216,7 @@ fun DetailRow(key: String, value: String, isHeader: Boolean = false, isDark: Boo
         Text(
             text = key,
             modifier = Modifier.weight(0.20f),
-            fontSize = 11.sp,
+            fontSize = TypeScale.small,
             fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Medium,
             color = keyColor
         )
@@ -222,7 +225,7 @@ fun DetailRow(key: String, value: String, isHeader: Boolean = false, isDark: Boo
         Text(
             text = value,
             modifier = Modifier.weight(if (copyable) 0.62f else 0.68f),
-            fontSize = 11.sp,
+            fontSize = TypeScale.small,
             fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
             fontFamily = if (isHeader) null else FontFamily.Monospace,
             color = valColor,
@@ -278,7 +281,7 @@ fun NodeTooltip(node: GraphNode) {
         
         Text(
             text = title.uppercase(),
-            fontSize = 10.sp,
+            fontSize = TypeScale.micro,
             fontWeight = FontWeight.Bold,
             color = colors.inverseOnSurface,
             modifier = Modifier.padding(bottom = 4.dp)
@@ -394,13 +397,45 @@ fun NodeTooltip(node: GraphNode) {
  * setting under which the declared heights below stay true as the text sizes change.
  */
 @Composable
-private fun CardColumn(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+private fun CardColumn(
+    padding: Dp = 8.dp,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val probe = LocalCardContentProbe.current
     CompositionLocalProvider(
         LocalTextStyle provides LocalTextStyle.current.copy(lineHeight = TextUnit.Unspecified),
     ) {
-        Column(modifier, content = content)
+        Column(
+            modifier
+                // Before the padding, so what is reported is the whole a node has to declare,
+                // not the text alone. A test drawing the card with slack reads the height the
+                // content actually wanted; without slack this reports the clamped height, which
+                // is the bug rather than a measurement of it.
+                .then(if (probe == null) Modifier else Modifier.onSizeChanged { probe(it.height) })
+                .padding(padding),
+            content = content,
+        )
     }
 }
+
+/**
+ * Extra room, in dp, to draw a card with beyond what its node declares.
+ *
+ * Zero everywhere in the app. A test sets it so the card's content is measured unconstrained,
+ * which is the only way to see a line the declared height would have dropped — the drop happens
+ * where the `Column` runs out of constraint, and every `Text` clips itself to the size it was
+ * measured at, so nothing is ever painted outside the card for a probe to find.
+ */
+internal val LocalCardHeightSlack = staticCompositionLocalOf { 0.dp }
+
+/** Receives the height in pixels a card's content came to, including its padding. */
+internal val LocalCardContentProbe = staticCompositionLocalOf<((Int) -> Unit)?> { null }
+
+/** The box a card draws in: what its node declared, plus whatever slack a test asked for. */
+@Composable
+private fun Modifier.cardBox(node: GraphNode): Modifier =
+    size(node.width.dp, node.height.dp + LocalCardHeightSlack.current)
 
 @Composable
 fun TableCard(node: GraphNode.TableNode, isSelected: Boolean = false) {
@@ -409,22 +444,21 @@ fun TableCard(node: GraphNode.TableNode, isSelected: Boolean = false) {
     val borderColor = if (isSelected) selectionBorderColor else getGraphNodeBorderColor(node, isDarkSurface(MaterialTheme.colorScheme.surface))
     Box(
         modifier = Modifier
-            .size(node.width.dp, node.height.dp)
+            .cardBox(node)
             .background(getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface)), RoundedCornerShape(10.dp))
             .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(10.dp))
-            .padding(8.dp)
     ) {
-        CardColumn {
+        CardColumn(padding = 8.dp) {
             Text(
                 "TABLE",
-                fontSize = 10.sp,
+                fontSize = TypeScale.micro,
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextSecondary()
             )
-            Text(node.summary.tableName, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
-            Text("Metadata: ${node.summary.metadataFileCount}", fontSize = 11.sp, color = nodeCardTextPrimary())
-            Text("Snapshots: ${node.summary.snapshotCount}", fontSize = 11.sp, color = nodeCardTextPrimary())
-            Text("Current Version: ${node.summary.currentMetadataVersion ?: "N/A"}", fontSize = 10.sp, color = nodeCardTextSecondary())
+            Text(node.summary.tableName, fontWeight = FontWeight.Bold, fontSize = TypeScale.body, maxLines = 1, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
+            Text("Metadata: ${node.summary.metadataFileCount}", fontSize = TypeScale.small, color = nodeCardTextPrimary())
+            Text("Snapshots: ${node.summary.snapshotCount}", fontSize = TypeScale.small, color = nodeCardTextPrimary())
+            Text("Current Version: ${node.summary.currentMetadataVersion ?: "N/A"}", fontSize = TypeScale.micro, color = nodeCardTextSecondary())
         }
     }
 }
@@ -437,21 +471,20 @@ fun MetadataCard(node: GraphNode.MetadataNode, isSelected: Boolean = false) {
     val metadataId = node.simpleId.toString()
     Box(
         modifier = Modifier
-        .size(node.width.dp, node.height.dp)
+        .cardBox(node)
         .background(getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface)), RoundedCornerShape(8.dp))
-        .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(8.dp))
-        .padding(8.dp)) {
-        CardColumn {
+        .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(8.dp))) {
+        CardColumn(padding = 8.dp) {
             Text(
                 "METADATA $metadataId",
-                fontSize = 10.sp,
+                fontSize = TypeScale.micro,
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextSecondary()
             )
-            Text(node.fileName, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = nodeCardTextPrimary())
-            Text("Format V${node.data.formatVersion}", fontSize = 11.sp, color = nodeCardTextPrimary())
-            Text("Snapshots: ${node.data.snapshots.size}", fontSize = 11.sp, color = nodeCardTextPrimary())
-            Text("Current Snap: ${node.data.currentSnapshotId ?: "None"}", fontSize = 10.sp, color = nodeCardTextSecondary())
+            Text(node.fileName, fontWeight = FontWeight.Bold, fontSize = TypeScale.small, color = nodeCardTextPrimary())
+            Text("Format V${node.data.formatVersion}", fontSize = TypeScale.small, color = nodeCardTextPrimary())
+            Text("Snapshots: ${node.data.snapshots.size}", fontSize = TypeScale.small, color = nodeCardTextPrimary())
+            Text("Current Snap: ${node.data.currentSnapshotId ?: "None"}", fontSize = TypeScale.micro, color = nodeCardTextSecondary())
         }
     }
 }
@@ -464,15 +497,14 @@ fun SnapshotCard(node: GraphNode.SnapshotNode, isSelected: Boolean = false) {
     val fileName = fileNameFromPath(node.localPath ?: node.data.manifestList)
     Box(
         modifier = Modifier
-        .size(node.width.dp, node.height.dp)
+        .cardBox(node)
         .background(getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface)), RoundedCornerShape(8.dp))
-        .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(8.dp))
-        .padding(8.dp)) {
-        CardColumn {
-            Text("SNAPSHOT ${node.simpleId}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+        .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(8.dp))) {
+        CardColumn(padding = 8.dp) {
+            Text("SNAPSHOT ${node.simpleId}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
             Text(
                 fileName,
-                fontSize = 9.sp,
+                fontSize = TypeScale.micro,
                 // The chips take a line back from the file name rather than from the card's edge.
                 maxLines = if (node.refs.isEmpty()) 3 else 2,
                 overflow = TextOverflow.Ellipsis,
@@ -487,7 +519,7 @@ fun SnapshotCard(node: GraphNode.SnapshotNode, isSelected: Boolean = false) {
                     node.refs.forEach { ref ->
                         Text(
                             ref.display,
-                            fontSize = 8.sp,
+                            fontSize = TypeScale.micro,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -526,19 +558,18 @@ fun ManifestCard(node: GraphNode.ManifestNode, isSelected: Boolean = false, isPr
 
     Box(
         modifier = Modifier
-        .size(node.width.dp, node.height.dp)
+        .cardBox(node)
         .background(color.copy(alpha = color.alpha * fade), RoundedCornerShape(8.dp))
-        .border(BorderStroke(borderWidth, borderColor.copy(alpha = borderColor.alpha * fade)), RoundedCornerShape(8.dp))
-        .padding(8.dp)) {
-        CardColumn {
+        .border(BorderStroke(borderWidth, borderColor.copy(alpha = borderColor.alpha * fade)), RoundedCornerShape(8.dp))) {
+        CardColumn(padding = 8.dp) {
             Text(
                 if (isPruned) "MANIFEST ${node.simpleId}: $contentLabel — SKIPPED"
                 else "MANIFEST ${node.simpleId}: $contentLabel",
-                fontSize = 9.sp,
+                fontSize = TypeScale.micro,
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextSecondary()
             )
-            Text(fileName, fontSize = 9.sp, maxLines = 3, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
+            Text(fileName, fontSize = TypeScale.micro, maxLines = 3, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
         }
     }
 }
@@ -553,19 +584,18 @@ fun FileCard(node: GraphNode.FileNode, isSelected: Boolean = false) {
 
     Box(
         modifier = Modifier
-        .size(node.width.dp, node.height.dp)
+        .cardBox(node)
         .background(getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface)), RoundedCornerShape(4.dp))
-        .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(4.dp))
-        .padding(4.dp)) {
-        CardColumn {
+        .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(4.dp))) {
+        CardColumn(padding = 4.dp) {
             Text(
                 label,
-                fontSize = 8.sp,
+                fontSize = TypeScale.micro,
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextSecondary()
             )
-            Text(fileName, fontSize = 8.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
-            Text(rowCountLabel(node.data.recordCount), fontSize = 10.sp, color = nodeCardTextPrimary())
+            Text(fileName, fontSize = TypeScale.micro, maxLines = 2, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
+            Text(rowCountLabel(node.data.recordCount), fontSize = TypeScale.micro, color = nodeCardTextPrimary())
         }
     }
 }
@@ -583,14 +613,14 @@ fun RowCard(node: GraphNode.RowNode, isSelected: Boolean = false) {
     val detailEntries = rowCardDetailEntries(node)
     Box(
         modifier = Modifier
-        .size(node.width.dp, node.height.dp)
+        .cardBox(node)
         .background(getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface)), RoundedCornerShape(4.dp))
         .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(4.dp))
-        .padding(6.dp)) {
-        CardColumn(Modifier.fillMaxSize()) {
+    ) {
+        CardColumn(padding = 6.dp) {
             Text(
                 "ROW $fileNo.$rowIdx: ${rowStatusShortLabel(node.content)}",
-                fontSize = 9.sp,
+                fontSize = TypeScale.micro,
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextSecondary()
             )
@@ -598,7 +628,7 @@ fun RowCard(node: GraphNode.RowNode, isSelected: Boolean = false) {
                 val targetLabel = "${targetFileNo ?: "?"}.${targetRowPos ?: "?"}"
                 Text(
                     "Target: $targetLabel",
-                    fontSize = 9.sp,
+                    fontSize = TypeScale.micro,
                     color = nodeCardTextSecondary()
                 )
             }
@@ -608,14 +638,14 @@ fun RowCard(node: GraphNode.RowNode, isSelected: Boolean = false) {
                 .forEach { (k, v) ->
                 Text(
                     text = "$k: $v",
-                    fontSize = 10.sp,
+                    fontSize = TypeScale.micro,
                     color = nodeCardTextPrimary(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
             if (detailEntries.size > 3) {
-                Text("...", fontSize = 10.sp, color = nodeCardTextSecondary())
+                Text("...", fontSize = TypeScale.micro, color = nodeCardTextSecondary())
             }
         }
     }
@@ -628,17 +658,16 @@ fun ErrorCard(node: GraphNode.ErrorNode, isSelected: Boolean = false) {
     val borderColor = if (isSelected) selectionBorderColor else getGraphNodeBorderColor(node, isDarkSurface(MaterialTheme.colorScheme.surface))
     Box(
         modifier = Modifier
-            .size(node.width.dp, node.height.dp)
+            .cardBox(node)
             .background(getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface)), RoundedCornerShape(6.dp))
             .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(6.dp))
-            .padding(6.dp)
     ) {
-        CardColumn(Modifier.fillMaxSize()) {
-            Text("ERROR", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB71C1C))
-            Text(node.title, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("Stage: ${node.stage}", fontSize = 9.sp, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(node.path, fontSize = 9.sp, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(node.message, fontSize = 10.sp, color = nodeCardTextPrimary(), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        CardColumn(padding = 6.dp) {
+            Text("ERROR", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = Color(0xFFB71C1C))
+            Text(node.title, fontSize = TypeScale.micro, fontWeight = FontWeight.SemiBold, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("Stage: ${node.stage}", fontSize = TypeScale.micro, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(node.path, fontSize = TypeScale.micro, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(node.message, fontSize = TypeScale.micro, color = nodeCardTextPrimary(), maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -661,21 +690,20 @@ fun GroupCard(node: GraphNode.GroupNode, isSelected: Boolean = false) {
     val borderColor = if (isSelected) selectionBorderColor else getGraphNodeBorderColor(node, dark)
     Box(
         modifier = Modifier
-            .size(node.width.dp, node.height.dp)
+            .cardBox(node)
             .background(getGraphNodeColor(node, dark), RoundedCornerShape(8.dp))
             .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(8.dp))
-            .padding(8.dp)
     ) {
-        CardColumn(Modifier.fillMaxSize()) {
+        CardColumn(padding = 8.dp) {
             Text(
                 "NOT DRAWN",
-                fontSize = 9.sp,
+                fontSize = TypeScale.micro,
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextSecondary(),
             )
             Text(
                 "${formatCount(node.memberCount)} more ${node.kind.plural}",
-                fontSize = 13.sp,
+                fontSize = TypeScale.body,
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextPrimary(),
                 maxLines = 1,
@@ -684,7 +712,7 @@ fun GroupCard(node: GraphNode.GroupNode, isSelected: Boolean = false) {
             if (node.hiddenNodeCount > node.memberCount) {
                 Text(
                     "${formatCount(node.hiddenNodeCount)} nodes in total",
-                    fontSize = 10.sp,
+                    fontSize = TypeScale.micro,
                     color = nodeCardTextSecondary(),
                     maxLines = 1,
                 )
@@ -692,16 +720,19 @@ fun GroupCard(node: GraphNode.GroupNode, isSelected: Boolean = false) {
             if (node.hiddenErrorCount > 0) {
                 Text(
                     "${formatCount(node.hiddenErrorCount)} read errors inside",
-                    fontSize = 10.sp,
+                    fontSize = TypeScale.micro,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFFB71C1C),
                     maxLines = 1,
                 )
             }
-            Spacer(Modifier.weight(1f))
+            // A fixed gap rather than weight(1f): a column that fills its box reports the box's
+            // height, not the height its content wanted, and that measurement is the whole of
+            // what keeps a card inside the size its node declares.
+            Spacer(Modifier.height(4.dp))
             Text(
                 "Double-click to open",
-                fontSize = 9.sp,
+                fontSize = TypeScale.micro,
                 color = nodeCardTextSecondary(),
                 maxLines = 1,
             )
@@ -718,46 +749,45 @@ fun PaimonNodeCard(node: GraphNode, isSelected: Boolean = false) {
     val borderColor = if (isSelected) selectionBorderColor else getGraphNodeBorderColor(node, dark)
     Box(
         modifier = Modifier
-            .size(node.width.dp, node.height.dp)
+            .cardBox(node)
             .background(getGraphNodeColor(node, dark), RoundedCornerShape(8.dp))
             .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(8.dp))
-            .padding(6.dp)
     ) {
-        CardColumn {
+        CardColumn(padding = 6.dp) {
             when (node) {
                 is GraphNode.PaimonSnapshotNode -> {
-                    Text("PAIMON SNAP ${node.simpleId}", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
-                    Text(node.commitKind ?: "N/A", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary())
-                    Text("ID: ${node.data.id ?: "?"}", fontSize = 10.sp, color = nodeCardTextPrimary())
-                    Text("Records: ${node.data.totalRecordCount ?: "?"}", fontSize = 10.sp, color = nodeCardTextSecondary())
+                    Text("PAIMON SNAP ${node.simpleId}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+                    Text(node.commitKind ?: "N/A", fontSize = TypeScale.small, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary())
+                    Text("ID: ${node.data.id ?: "?"}", fontSize = TypeScale.micro, color = nodeCardTextPrimary())
+                    Text("Records: ${node.data.totalRecordCount ?: "?"}", fontSize = TypeScale.micro, color = nodeCardTextSecondary())
                 }
                 is GraphNode.PaimonSchemaNode -> {
-                    Text("PAIMON SCHEMA ${node.simpleId}", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
-                    Text("${node.data.fields.size} fields", fontSize = 11.sp, color = nodeCardTextPrimary())
+                    Text("PAIMON SCHEMA ${node.simpleId}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+                    Text("${node.data.fields.size} fields", fontSize = TypeScale.small, color = nodeCardTextPrimary())
                     val keys = node.data.primaryKeys.joinToString(", ")
-                    if (keys.isNotEmpty()) Text("PK: $keys", fontSize = 10.sp, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (keys.isNotEmpty()) Text("PK: $keys", fontSize = TypeScale.micro, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 is GraphNode.PaimonManifestListNode -> {
-                    Text("PAIMON ${node.kind.uppercase()}", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
-                    Text("Manifest List", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary())
+                    Text("PAIMON ${node.kind.uppercase()}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+                    Text("Manifest List", fontSize = TypeScale.small, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary())
                 }
                 is GraphNode.PaimonManifestNode -> {
-                    Text("PAIMON MANIFEST ${node.simpleId}", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
-                    Text(node.data.fileName ?: "N/A", fontSize = 9.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
-                    Text("+${node.data.numAddedFiles ?: 0} / -${node.data.numDeletedFiles ?: 0}", fontSize = 10.sp, color = nodeCardTextSecondary())
+                    Text("PAIMON MANIFEST ${node.simpleId}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+                    Text(node.data.fileName ?: "N/A", fontSize = TypeScale.micro, maxLines = 2, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
+                    Text("+${node.data.numAddedFiles ?: 0} / -${node.data.numDeletedFiles ?: 0}", fontSize = TypeScale.micro, color = nodeCardTextSecondary())
                 }
                 is GraphNode.PaimonDataFileNode -> {
                     val kindLabel = if (node.operationKind == 1) "DEL" else "ADD"
-                    Text("PAIMON FILE ${node.simpleId}: $kindLabel", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
-                    Text(node.entry.file?.fileName ?: "N/A", fontSize = 8.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
+                    Text("PAIMON FILE ${node.simpleId}: $kindLabel", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+                    Text(node.entry.file?.fileName ?: "N/A", fontSize = TypeScale.micro, maxLines = 2, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
                     val level = node.level
                     val rows = node.entry.file?.rowCount
-                    Text(rowCountLabel(rows) + if (level != null) " L$level" else "", fontSize = 10.sp, color = nodeCardTextPrimary())
+                    Text(rowCountLabel(rows) + if (level != null) " L$level" else "", fontSize = TypeScale.micro, color = nodeCardTextPrimary())
                 }
                 // PaimonNodeCard is only invoked from Paimon dispatch; non-Paimon types here would
                 // be a bug, so render the id but flag visibly with a "?" marker.
                 else -> {
-                    Text("?? ${node.id}", fontSize = 10.sp, color = nodeCardTextPrimary())
+                    Text("?? ${node.id}", fontSize = TypeScale.micro, color = nodeCardTextPrimary())
                 }
             }
         }

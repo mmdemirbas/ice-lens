@@ -46,7 +46,7 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
         Text(
             "This table is not partitioned, so no predicate can rule a manifest out before it is " +
                 "opened. Every scan reads every manifest.",
-            fontSize = 11.sp,
+            fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
         )
         return
@@ -58,7 +58,7 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
         "Iceberg intersects a query's predicate with each manifest's recorded partition bounds and " +
             "skips the ones that cannot match. It then reports how many files it read and never " +
             "which it skipped. Enter the filter and this says which — and which term did it.",
-        fontSize = 11.sp,
+        fontSize = TypeScale.small,
         color = colors.onSurfaceVariant,
         modifier = Modifier.padding(bottom = 6.dp),
     )
@@ -95,13 +95,13 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
                 onChange(predicates + ScanPredicate(first.name, PredicateOp.EQ, ""))
             },
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-        ) { Text(if (predicates.isEmpty()) "Add a condition" else "Add another", fontSize = 11.sp) }
+        ) { Text(if (predicates.isEmpty()) "Add a condition" else "Add another", fontSize = TypeScale.small) }
         if (predicates.isNotEmpty()) {
             Spacer(Modifier.width(8.dp))
             TextButton(
                 onClick = { onChange(emptyList()) },
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-            ) { Text("Clear", fontSize = 11.sp) }
+            ) { Text("Clear", fontSize = TypeScale.small) }
         }
     }
     }
@@ -116,7 +116,7 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
     Spacer(Modifier.height(8.dp))
     Text(
         "Would skip ${formatCount(skipped)} of ${formatCount(manifests.size)} manifests drawn",
-        fontSize = 13.sp,
+        fontSize = TypeScale.body,
         fontWeight = FontWeight.Bold,
     )
     // Named separately because a manifest nothing could be evaluated against is not a manifest a
@@ -124,7 +124,7 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
     if (unevaluated > 0) {
         Text(
             "${formatCount(unevaluated)} could not be evaluated at all; the reason is on each row.",
-            fontSize = 11.sp,
+            fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
         )
     }
@@ -173,7 +173,7 @@ private fun FormLabel(text: String, width: Dp) {
     Text(
         text,
         modifier = Modifier.width(width),
-        fontSize = 10.sp,
+        fontSize = TypeScale.micro,
         fontWeight = FontWeight.Bold,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -232,7 +232,7 @@ private fun PredicateRow(
                 onValueChange = { onChange(predicate.copy(literal = it)) },
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodySmall,
-                placeholder = { Text(column?.type?.typeName ?: "value", fontSize = 11.sp) },
+                placeholder = { Text(column?.type?.typeName ?: "value", fontSize = TypeScale.small) },
                 modifier = Modifier.width(LITERAL_FIELD_WIDTH),
             )
         } else {
@@ -240,7 +240,7 @@ private fun PredicateRow(
         }
         Spacer(Modifier.width(6.dp))
         TextButton(onClick = onRemove, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
-            Text("Remove", fontSize = 11.sp)
+            Text("Remove", fontSize = TypeScale.small)
         }
     }
     }
@@ -250,7 +250,7 @@ private fun PredicateRow(
         Text(
             "partitioned only by ${column.transforms.joinToString(", ")}, which cannot prune — " +
                 "every manifest will come back as read",
-            fontSize = 10.sp,
+            fontSize = TypeScale.micro,
             color = verdictUnevaluatedColor(),
             modifier = Modifier.padding(start = 4.dp, bottom = 2.dp),
         )
@@ -268,7 +268,7 @@ private fun Dropdown(label: String, width: Dp, options: List<String>, onPick: (S
         ) {
             // Left-aligned with the caret pinned right: centred text in a pill reads as a button
             // whose label happens to be `d`, and gives no sign that pressing it opens a list.
-            Text(label, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
+            Text(label, fontSize = TypeScale.small, maxLines = 1, modifier = Modifier.weight(1f))
             Icon(
                 Icons.Default.ArrowDropDown,
                 contentDescription = "open the list",
@@ -278,7 +278,7 @@ private fun Dropdown(label: String, width: Dp, options: List<String>, onPick: (S
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             options.forEach { option ->
                 DropdownMenuItem(
-                    text = { Text(option, fontSize = 11.sp) },
+                    text = { Text(option, fontSize = TypeScale.small) },
                     onClick = {
                         onPick(option)
                         expanded = false

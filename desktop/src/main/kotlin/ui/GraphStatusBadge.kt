@@ -84,7 +84,7 @@ fun GraphStatusBadge(
                     } else {
                         "Drawing all ${formatCount(total)} nodes"
                     },
-                    fontSize = 11.sp,
+                    fontSize = TypeScale.small,
                     fontWeight = FontWeight.SemiBold,
                     color = colors.onSurface,
                 )
@@ -99,14 +99,14 @@ fun GraphStatusBadge(
                 Text(
                     "${formatCount(hiddenByAggregation)} inside " +
                         (if (groupCount == 1) "1 collapsed group" else "${formatCount(groupCount)} collapsed groups"),
-                    fontSize = 10.sp,
+                    fontSize = TypeScale.micro,
                     color = colors.onSurfaceVariant,
                 )
             }
             if (hiddenByFilter > 0) {
                 Text(
                     "${formatCount(hiddenByFilter)} removed by the snapshot filter",
-                    fontSize = 10.sp,
+                    fontSize = TypeScale.micro,
                     color = colors.onSurfaceVariant,
                 )
             }
@@ -115,7 +115,7 @@ fun GraphStatusBadge(
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             Text(
                 "Siblings drawn per parent",
-                fontSize = 11.sp,
+                fontSize = TypeScale.small,
                 fontWeight = FontWeight.SemiBold,
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -140,7 +140,7 @@ fun GraphStatusBadge(
                                     )
                                 }
                             }
-                            Text("$choice", fontSize = 12.sp)
+                            Text("$choice", fontSize = TypeScale.small)
                         }
                     },
                     onClick = {
@@ -151,7 +151,7 @@ fun GraphStatusBadge(
             }
             HorizontalDivider()
             DropdownMenuItem(
-                text = { Text("Collapse every group", fontSize = 12.sp) },
+                text = { Text("Collapse every group", fontSize = TypeScale.small) },
                 enabled = hasExpandedGroups,
                 onClick = {
                     menuOpen = false

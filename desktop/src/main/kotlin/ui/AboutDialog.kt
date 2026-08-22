@@ -71,7 +71,7 @@ fun AboutDialog(
                     }
                     Text("A visual inspector for Apache Iceberg tables. It visualizes metadata, snapshots, manifests, and row-level delete relationships.")
                     Spacer(Modifier.height(8.dp))
-                    Text("Version: $appVersion", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Version: $appVersion", fontSize = TypeScale.body, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
                     Text("Author: Muhammed Demirbaş")
                     Spacer(Modifier.height(8.dp))
@@ -85,7 +85,7 @@ fun AboutDialog(
                         val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
                         clipboard.setContents(java.awt.datatransfer.StringSelection(info), null)
                     }) {
-                        Text("Copy diagnostic info", fontSize = 12.sp)
+                        Text("Copy diagnostic info", fontSize = TypeScale.small)
                     }
                     Spacer(Modifier.height(6.dp))
                     Text(
@@ -106,11 +106,11 @@ fun AboutDialog(
                 } else {
                     @Composable fun shortcutRow(action: String, shortcut: String) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                            Text(action, modifier = Modifier.weight(1f), fontSize = 13.sp)
-                            Text(shortcut, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                            Text(action, modifier = Modifier.weight(1f), fontSize = TypeScale.body)
+                            Text(shortcut, fontSize = TypeScale.body, color = MaterialTheme.colorScheme.primary)
                         }
                     }
-                    Text("Keyboard Shortcuts", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Keyboard Shortcuts", fontWeight = FontWeight.Bold, fontSize = TypeScale.body)
                     Spacer(Modifier.height(4.dp))
                     shortcutRow("Undo node drag", "Ctrl/Cmd + Z")
                     shortcutRow("Zoom in", "Ctrl/Cmd + =")
@@ -121,7 +121,7 @@ fun AboutDialog(
                     HorizontalDivider(Modifier.padding(vertical = 2.dp))
 
                     Spacer(Modifier.height(12.dp))
-                    Text("Graph Canvas", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Graph Canvas", fontWeight = FontWeight.Bold, fontSize = TypeScale.body)
                     Spacer(Modifier.height(4.dp))
                     shortcutRow("Pan / scroll", "Scroll wheel or trackpad")
                     shortcutRow("Zoom", "Ctrl/Cmd + scroll")
@@ -134,7 +134,7 @@ fun AboutDialog(
                     HorizontalDivider(Modifier.padding(vertical = 2.dp))
 
                     Spacer(Modifier.height(12.dp))
-                    Text("Panels", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Panels", fontWeight = FontWeight.Bold, fontSize = TypeScale.body)
                     Spacer(Modifier.height(4.dp))
                     shortcutRow("Toggle all panels", "Double-click empty area")
                     shortcutRow("Toggle inspector", "Double-click a node")
@@ -144,7 +144,7 @@ fun AboutDialog(
                     HorizontalDivider(Modifier.padding(vertical = 2.dp))
 
                     Spacer(Modifier.height(12.dp))
-                    Text("Workspace", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Workspace", fontWeight = FontWeight.Bold, fontSize = TypeScale.body)
                     Spacer(Modifier.height(4.dp))
                     shortcutRow("Add table/warehouse", "Click 'Add to Workspace'")
                     shortcutRow("Reorder items", "Drag workspace items")
