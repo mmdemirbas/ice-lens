@@ -50,6 +50,7 @@ core/src/main/kotlin/
 │   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
+│   ├── ManifestLedger.kt      # Per-entry: what it added to a manifest's figures, or which rule dropped it
 │   ├── ScanPruning.kt         # Predicate → which manifests a scan would skip, and which term did it
 │   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 ├── service/
@@ -144,6 +145,15 @@ desktop/src/main/kotlin/
   retained snapshot, deduplicated by manifest and data-file path). `manifestEntryCount` is
   status-blind in both — it measures scan cost — while file/record/byte totals cover live
   entries only. Delete-file `record_count` goes to `deleteRecordCount`, never `recordCount`.
+- **The same fold at three depths, never three implementations.** `manifestLedger` decides what
+  one entry contributes and which rule dropped it; `ContentStatsAccumulator.contributionOf` folds
+  it into one `ManifestContribution` per manifest; `StatsDerivation.total` folds those into the
+  table's figures. The manifest inspector's drill-down calls the same function with a *fresh*
+  `seenFileKeys` set, which scopes deduplication to that manifest — and says so on screen, because
+  the table's totals also drop a file another manifest counted first and that cannot be seen from
+  inside one. `ManifestLedgerTest` replays `mor`'s whole traversal through the ledger and requires
+  every contribution to come out identical; a drill-down computed separately would pass its own
+  unit tests and drift from the number it explains
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
@@ -323,7 +333,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~475 tests across 48 files (371 in :core, 104 in :desktop) covering full pipelines for both formats (Avro fixtures
+~480 tests across 49 files (376 in :core, 104 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -484,62 +484,30 @@ object IcebergGraphBuilder {
             return true
         }
 
+        /**
+         * Folds this manifest's entries through the shared per-entry ledger.
+         *
+         * The manifest-level counts are the only part that is not per entry, so they seed the
+         * fold rather than being added beside it — a total accumulated next to the rows it is
+         * supposed to explain is a second implementation of the number.
+         */
         private fun contributionOf(manifest: UnifiedManifest): ManifestContribution {
-            var entries = 0
-            var deletedEntries = 0
-            var dataFiles = 0
-            var posDeleteFiles = 0
-            var eqDeleteFiles = 0
-            var records = 0L
-            var deleteRecords = 0L
-            var dataBytes = 0L
-            var deleteBytes = 0L
-            var suppressed = 0
-
-            manifest.dataFiles.forEach { unifiedDataFile ->
-                // Every entry counts toward scan cost, including the ones recording a removal.
-                entries++
-                val isRemoval = unifiedDataFile.metadata.status == ManifestEntryStatus.DELETED
-                if (isRemoval) deletedEntries++
-                if (liveEntriesOnly && isRemoval) return@forEach
-                if (!seenFiles.add(dataFileKey(unifiedDataFile))) {
-                    suppressed++
-                    return@forEach
-                }
-
-                val dataFile = unifiedDataFile.metadata.dataFile
-                val rows = dataFile?.recordCount ?: 0L
-                val bytes = dataFile?.fileSizeInBytes ?: 0L
-                when (dataFile?.content ?: DataFileContent.DATA) {
-                    DataFileContent.POSITION_DELETES -> {
-                        posDeleteFiles++; deleteRecords += rows; deleteBytes += bytes
-                    }
-                    DataFileContent.EQUALITY_DELETES -> {
-                        eqDeleteFiles++; deleteRecords += rows; deleteBytes += bytes
-                    }
-                    else -> {
-                        dataFiles++; records += rows; dataBytes += bytes
-                    }
-                }
-            }
-
+            val ledger = manifestLedger(
+                entries = manifest.dataFiles.map {
+                    LedgerEntry(dataFileKey(it), it.metadata.status, it.metadata.dataFile)
+                },
+                liveEntriesOnly = liveEntriesOnly,
+                seenFileKeys = seenFiles,
+            )
             val isDeleteManifest = manifest.metadata.content == ManifestContent.DELETES
+            val seed = ContentStats(
+                dataManifestCount = if (isDeleteManifest) 0 else 1,
+                deleteManifestCount = if (isDeleteManifest) 1 else 0,
+            )
             return ManifestContribution(
                 manifestPath = manifest.path.toString(),
-                delta = ContentStats(
-                    dataManifestCount = if (isDeleteManifest) 0 else 1,
-                    deleteManifestCount = if (isDeleteManifest) 1 else 0,
-                    manifestEntryCount = entries,
-                    deletedEntryCount = deletedEntries,
-                    dataFileCount = dataFiles,
-                    posDeleteFileCount = posDeleteFiles,
-                    eqDeleteFileCount = eqDeleteFiles,
-                    recordCount = records,
-                    deleteRecordCount = deleteRecords,
-                    dataSizeBytes = dataBytes,
-                    deleteSizeBytes = deleteBytes,
-                ),
-                entriesSuppressedAsDuplicate = suppressed,
+                delta = ledger.fold(seed) { running, entry -> running + entry.delta },
+                entriesSuppressedAsDuplicate = ledger.count { it.fate == EntryFate.DUPLICATE },
             )
         }
 

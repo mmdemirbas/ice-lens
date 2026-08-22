@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Four more numbers explain themselves.** A manifest's inspector now says how its counted
+  figures were reached — every entry takes a place in the entry count because that figure
+  measures what a scan reads, and what it adds beyond that depends on two rules — and lists the
+  entries that added nothing, with the reason and what each would have added. It is the same
+  `manifestLedger` the table's totals are folded from, called with deduplication scoped to the
+  one manifest and saying so. A column statistic's decoded bound now sits directly beside the
+  bytes it was decoded from, with the field id, and names the schema it was read against: the two
+  used to be at opposite ends of an eleven-column table, so the value was on screen and its
+  evidence four columns past the panel edge. A snapshot's summary is marked as the one set of
+  figures the tool reports rather than computes. And a snapshot's manifest-list overview carries
+  a "Summary" column saying whether each manifest's recorded counts match its own entries.
 - **A fork is drawn as a fork.** A branch now gets its own column inside the snapshot layer,
   assigned the way `git log --graph` does it: a commit takes the column its parent kept for it,
   the first child continues in the parent's, and every later child opens a column and holds it

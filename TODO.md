@@ -90,18 +90,24 @@ The table summary's `current` and `history` figures are folded from a per-manife
 the inspector prints it (see `StatsDerivation` in `model/GraphTypes.kt`). Nothing else is
 covered yet, and each of these is a computed number a reader currently has to trust:
 
-- **Manifest node summaries** — the six counts in `manifest_file` are now shown against the
-  same figures folded from the manifest's own entries (`manifestTallies`), so the inspector
-  says whether the recorded summary is kept. The card still prints its counts bare, and the
-  snapshot inspector's per-manifest overview table does too.
-- **Column statistics** — a bound is decoded from bytes against a schema; the trace would name
-  the schema key, the field id and the raw bytes it came from. The raw bytes are already shown,
-  which is half of it.
-- **Snapshot summary counters** — read from the snapshot's own `summary` map, so the trace is
-  provenance ("Iceberg wrote this") rather than derivation. Worth marking as such: it is the
-  one place where a number the tool shows was not computed by the tool.
-- **Drill-down below a manifest** — the design allows re-running the accumulator scoped to one
-  manifest, giving a per-entry ledger on demand. Not wired up.
+Covered so far: the manifest's recorded counts against the same figures folded from its entries
+(`manifestTallies`), the per-entry ledger under them (`model/ManifestLedger.kt`), the decoded
+bound beside the bytes and the field id it came from, the snapshot summary marked as reported
+rather than computed, and a per-manifest verdict on the snapshot's manifest-list overview.
+
+What is left:
+
+- **The delete side has no ledger.** A positional delete file's rows name data files and row
+  positions; nothing counts how many rows of a given data file are deleted, so "3 delete files"
+  never becomes "and they remove 412 rows from these two files". That needs reading the delete
+  files themselves, which is the cost aggregation exists to avoid — it belongs behind an explicit
+  action, not on the graph-build path.
+- **Cross-manifest deduplication is invisible from a manifest.** The drill-down scopes it to the
+  manifest on screen and says so, but a reader who wants to know *which* manifest counted a file
+  first has to go back to the table's ledger and match by path.
+- **Paimon has no drill-down.** `PaimonGraphBuilder` builds its contributions with its own
+  accumulation, which the shared per-entry ledger does not cover — a delta manifest list applies
+  over a base, so its entries subtract as well as add.
 
 ---
 

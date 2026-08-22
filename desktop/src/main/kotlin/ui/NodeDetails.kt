@@ -29,6 +29,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import model.DataFile
+import model.EntryFate
+import model.LedgerEntry
+import model.ManifestEntryView
+import model.manifestLedger
+import model.normalizeFilePath
+import model.total
 import model.DataFileContent
 import model.DecodedPartition
 import model.StatsDerivation
@@ -553,6 +559,117 @@ private fun DerivationSection(title: String, derivation: StatsDerivation) {
                 contribution.firstCountedIn ?: "-",
             )
         }
+    )
+}
+
+/**
+ * How one manifest's counted figures come out of its entries, and which entries added nothing.
+ *
+ * The section above says whether the manifest list's recorded counts match what the entries add
+ * up to. This says how that side of the comparison was reached, which is the half a reader
+ * otherwise has to take on trust — and the same [manifestLedger] the table's own totals are
+ * folded from, so there is no second implementation to disagree with the first.
+ *
+ * Only the entries that added nothing are listed. Every other entry is already in the entries
+ * table below with its record count and its size; repeating all of them here would bury the
+ * three rows that are the reason to look.
+ */
+@Composable
+private fun ManifestLedgerSection(entries: List<ManifestEntryView>) {
+    if (entries.isEmpty()) return
+    val colors = MaterialTheme.colorScheme
+    // Scoped to this manifest: a fresh seen-set, so an entry naming a file some other manifest
+    // counted first still counts here. The prose says so, because the table's totals do drop it.
+    val ledger = remember(entries) {
+        manifestLedger(
+            entries = entries.map { view ->
+                val path = view.entry.dataFile?.filePath?.takeIf { it.isNotBlank() }
+                LedgerEntry(
+                    fileKey = path?.let(::normalizeFilePath) ?: "path:${view.localPath}",
+                    status = view.entry.status,
+                    dataFile = view.entry.dataFile,
+                )
+            },
+            liveEntriesOnly = true,
+        )
+    }
+    val total = ledger.total()
+    val dropped = ledger.filter { it.fate != EntryFate.COUNTED }
+
+    Spacer(Modifier.height(16.dp))
+    SectionTitle("How the counted figures were reached")
+    Text(
+        "Every entry takes a place in the entry count, because that figure measures what a scan " +
+            "has to read. What it adds beyond that depends on two rules. Deduplication here is " +
+            "scoped to this manifest — the table's own totals also drop a file some other " +
+            "manifest counted first, which cannot be seen from inside one.",
+        fontSize = 11.sp,
+        color = colors.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 4.dp),
+    )
+    WideTable(
+        headers = listOf("Figure", "Value", "From"),
+        columnWidths = listOf(160.dp, 110.dp, 360.dp),
+        rows = listOf(
+            listOf("Entries", formatCount(total.manifestEntryCount), "every entry, whatever became of it"),
+            listOf(
+                "counted",
+                formatCount(ledger.count { it.fate == EntryFate.COUNTED }),
+                "a live entry, first sighting of its data file",
+            ),
+            listOf(
+                "records a removal",
+                formatCount(ledger.count { it.fate == EntryFate.REMOVAL }),
+                "status = DELETED (2); the file it names is no longer in the table",
+            ),
+            listOf(
+                "already counted",
+                formatCount(ledger.count { it.fate == EntryFate.DUPLICATE }),
+                "another entry here names the same data-file path",
+            ),
+            listOf("Data files", formatCount(total.dataFileCount), "counted entries with content = 0"),
+            listOf(
+                "Delete files",
+                formatCount(total.deleteFileCount),
+                "counted entries with content 1 or 2 — ${formatCount(total.posDeleteFileCount)} positional, " +
+                    "${formatCount(total.eqDeleteFileCount)} equality",
+            ),
+            listOf("Records", formatCount(total.recordCount), "record_count summed over the data files"),
+            listOf(
+                "Delete records",
+                formatCount(total.deleteRecordCount),
+                "record_count summed over the delete files — rows deleted, not table rows",
+            ),
+            listOf("Bytes", formatBytes(total.totalSizeBytes), "file_size_in_bytes summed over both"),
+        ),
+    )
+
+    if (dropped.isEmpty()) {
+        Text(
+            "Every entry counted.",
+            fontSize = 11.sp,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        return
+    }
+    Spacer(Modifier.height(8.dp))
+    SectionTitle("Entries that added nothing (${formatCount(dropped.size)})")
+    WideTable(
+        headers = listOf("Why", "Entry", "Records it would have added"),
+        columnWidths = listOf(150.dp, 310.dp, 170.dp),
+        rows = dropped.map { entry ->
+            listOf(
+                when (entry.fate) {
+                    EntryFate.REMOVAL -> "records a removal"
+                    EntryFate.DUPLICATE -> "already counted"
+                    EntryFate.COUNTED -> "counted"
+                },
+                entry.filePath.substringAfterLast('/'),
+                formatCount(entry.recordCount),
+            )
+        },
+        leadCellColors = dropped.map { verdictUnevaluatedColor() },
     )
 }
 
@@ -1125,6 +1242,19 @@ fun NodeDetailsContent(
                         if (node.data.summary.isNotEmpty()) {
                             Spacer(Modifier.height(16.dp))
                             SectionTitle("Summary")
+                            // The one place in this app where a number was not computed here.
+                            // Every other figure the inspector shows is folded from something it
+                            // read and can be traced back to it; these are copied out of the
+                            // snapshot as the writer left them, and a writer that got them wrong
+                            // leaves no trace in them.
+                            Text(
+                                "Written by whatever engine made the commit, and read back verbatim — " +
+                                    "nothing here recomputed them. Each manifest's Recorded Summary section " +
+                                    "is where figures of this kind can be checked against the entries.",
+                                fontSize = 11.sp,
+                                color = colors.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
                             DetailTable {
                                 DetailRow("Key", "Value", isHeader = true)
                                 node.data.summary.toSortedMap().forEach { (k, v) ->
@@ -1147,9 +1277,19 @@ fun NodeDetailsContent(
                         if (manifestChildren.isNotEmpty()) {
                             Spacer(Modifier.height(16.dp))
                             SectionTitle("Manifest List Rows")
+                            Text(
+                                "One row per manifest this snapshot lists, in apply order. The six count " +
+                                    "columns are what the manifest list claims; \"Summary\" is that claim " +
+                                    "checked against the entries of the manifest itself, which is a check " +
+                                    "nothing on the read path performs.",
+                                fontSize = 11.sp,
+                                color = colors.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
                             WideTable(
                                 headers = listOf(
                                     "Apply Order",
+                                    "Summary",
                                     "Manifest Path",
                                     "Content",
                                     "Manifest Length",
@@ -1166,8 +1306,17 @@ fun NodeDetailsContent(
                                 ),
                                 rows = manifestChildren.mapIndexed { index, manifestNode ->
                                     val manifest = manifestNode.data
+                                    val tallies = manifestTallies(manifest, manifestNode.entries.map { it.entry })
+                                    val checkable = tallies.filter { it.agrees != null }
                                     listOf(
                                         "${index + 1}",
+                                        when {
+                                            manifestNode.entries.isEmpty() -> "no entries read"
+                                            checkable.isEmpty() -> "nothing recorded"
+                                            checkable.all { it.agrees == true } -> "matches"
+                                            else -> "${checkable.count { it.agrees == false }} of " +
+                                                "${checkable.size} DIFFER"
+                                        },
                                         normalizeText(manifest.manifestPath),
                                         if (manifest.content == 1) "Deletes (1)" else "Data (0)",
                                         "${manifest.manifestLength ?: "N/A"}",
@@ -1268,22 +1417,37 @@ fun NodeDetailsContent(
                             color = colors.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 4.dp)
                         )
+                        val tallies = manifestTallies(node.data, manifestEntries.map { it.entry })
                         WideTable(
-                            headers = listOf("Figure", "In the entries", "Recorded", "Agrees"),
-                            columnWidths = listOf(150.dp, 130.dp, 130.dp, 110.dp),
-                            rows = manifestTallies(node.data, manifestEntries.map { it.entry }).map { tally ->
+                            // The verdict leads, as it does on the pruning tables: the reader is
+                            // here to find out whether anything disagrees, not to read six pairs
+                            // of numbers and compare them by eye.
+                            headers = listOf("Agrees", "Figure", "In the entries", "Recorded"),
+                            columnWidths = listOf(110.dp, 150.dp, 130.dp, 130.dp),
+                            rows = tallies.map { tally ->
                                 listOf(
-                                    tally.label,
-                                    formatCount(tally.counted),
-                                    tally.recorded?.let { formatCount(it) } ?: "not recorded",
                                     when (tally.agrees) {
                                         true -> "yes"
                                         false -> "NO"
                                         null -> "nothing to check"
                                     },
+                                    tally.label,
+                                    formatCount(tally.counted),
+                                    tally.recorded?.let { formatCount(it) } ?: "not recorded",
                                 )
-                            }
+                            },
+                            // Agreement is the ordinary case and stays neutral — colouring every
+                            // row spends the attention this table needs for the one that differs.
+                            leadCellColors = tallies.map { tally ->
+                                when (tally.agrees) {
+                                    true -> verdictReadColor()
+                                    false -> colors.error
+                                    null -> verdictUnevaluatedColor()
+                                }
+                            },
                         )
+
+                        ManifestLedgerSection(manifestEntries)
 
                         if (manifestEntries.isNotEmpty()) {
                             Spacer(Modifier.height(16.dp))
@@ -1553,40 +1717,51 @@ fun NodeDetailsContent(
                         if (columnStats.isNotEmpty()) {
                             Spacer(Modifier.height(16.dp))
                             SectionTitle("Column Statistics (${formatCount(columnStats.size)})")
-                            if (node.schema == null) {
-                                Text(
+                            Text(
+                                if (node.schema == null) {
                                     "This manifest carried no schema, so bounds are shown as raw bytes. " +
-                                        "Decoding without a type would produce a plausible wrong value.",
-                                    fontSize = 11.sp,
-                                    color = colors.onSurfaceVariant,
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
-                            }
+                                        "Decoding without a type would produce a plausible wrong value."
+                                } else {
+                                    "A bound is a byte array in the manifest, keyed by field id, with no " +
+                                        "type beside it. It is read as the type that field id has in the " +
+                                        "schema this manifest carries under its own Avro `schema` key — the " +
+                                        "manifest's schema, not the table's current one, because a file " +
+                                        "written before a column was widened still describes itself by the " +
+                                        "type in force then. The field id and the bytes sit next to each " +
+                                        "decoded value so the reading can be checked rather than trusted."
+                                },
+                                fontSize = 11.sp,
+                                color = colors.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
                             WideTable(
+                                // Each decoded bound is followed by the bytes it was decoded from.
+                                // The two were at opposite ends of the table, which put the value
+                                // on screen and its evidence four columns past the panel edge.
                                 headers = listOf(
-                                    "Column", "Type", "Lower Bound", "Upper Bound",
-                                    "Values", "Nulls", "NaNs", "Column Size",
-                                    "Field ID", "Lower (raw)", "Upper (raw)"
+                                    "Column", "Field ID", "Type",
+                                    "Lower Bound", "Lower (raw)", "Upper Bound", "Upper (raw)",
+                                    "Values", "Nulls", "NaNs", "Column Size"
                                 ),
                                 columnWidths = listOf(
-                                    150.dp, 110.dp, 190.dp, 190.dp,
-                                    80.dp, 90.dp, 70.dp, 100.dp,
-                                    70.dp, 160.dp, 160.dp
+                                    150.dp, 70.dp, 110.dp,
+                                    180.dp, 150.dp, 180.dp, 150.dp,
+                                    80.dp, 90.dp, 70.dp, 100.dp
                                 ),
                                 rows = columnStats.map { stat ->
                                     listOf(
                                         stat.displayName,
+                                        "${stat.fieldId}",
                                         stat.type?.typeName ?: "unknown",
                                         boundDisplay(stat.lowerBound),
+                                        stat.lowerBound?.raw?.toHexShort() ?: "N/A",
                                         boundDisplay(stat.upperBound),
+                                        stat.upperBound?.raw?.toHexShort() ?: "N/A",
                                         stat.valueCount?.let { formatCount(it) } ?: "N/A",
                                         stat.nullValueCount?.let { formatCount(it) }
                                             ?.plus(if (stat.isAllNull) " (all)" else "") ?: "N/A",
                                         stat.nanValueCount?.let { formatCount(it) } ?: "N/A",
                                         stat.columnSizeBytes?.let { formatBytes(it) } ?: "N/A",
-                                        "${stat.fieldId}",
-                                        stat.lowerBound?.raw?.toHexShort() ?: "N/A",
-                                        stat.upperBound?.raw?.toHexShort() ?: "N/A",
                                     )
                                 }
                             )

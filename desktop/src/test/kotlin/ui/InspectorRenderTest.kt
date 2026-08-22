@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import model.GraphModel
 import model.GraphNode
+import model.ManifestEntryStatus
 import model.PaimonUnifiedTableModel
 import model.PredicateOp
 import model.ScanPredicate
@@ -135,7 +136,16 @@ class InspectorRenderTest {
         val graph = partedGraph()
         val manifest = graph.nodes.filterIsInstance<GraphNode.ManifestNode>().firstOrNull()
         assertNotNull(manifest, "graph should contain a manifest")
-        renderInspector(graph, manifest.id, "manifest-node", height = 4800)
+        renderInspector(graph, manifest.id, "manifest-node", height = 5600)
+
+        // parted's manifests are all additions, so the ledger's "entries that added nothing"
+        // table is empty there and the case it exists for goes unseen. mor's compaction leaves
+        // a manifest whose entries record removals.
+        val mor = graphFor("mor")
+        val withRemovals = mor.nodes.filterIsInstance<GraphNode.ManifestNode>()
+            .firstOrNull { node -> node.entries.any { it.entry.status == ManifestEntryStatus.DELETED } }
+        assertNotNull(withRemovals, "mor should have a manifest recording a removal")
+        renderInspector(mor, withRemovals.id, "manifest-node-removals", height = 5600)
     }
 
     /**
