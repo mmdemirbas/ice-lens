@@ -139,7 +139,12 @@ What is left:
   nobody rendered. Doing it properly means measuring the worst instance across every fixture,
   which is the same shape as `LayoutOverlapTest`'s sweep and could share it.
 
-- **Collapsible inspector sections** — TableNode inspector has 8+ sections stacked vertically. Add expand/collapse chevrons per section.
+- **The identity table at the top of a panel cannot be folded.** Every node type opens with an
+  unsectioned `DetailTable` naming the node — path, UUID, format version, timestamps — and
+  `Section` does not wrap it, so "Collapse all" on a table leaves about 1,100dp on screen above a
+  list of eight folded headings. Whether that is a defect is a real question: the identity is what
+  the reader selected the node to see, and a panel that folds to nothing but its own title is not
+  obviously better. Deciding it needs the folded panel in front of a reader, not an argument.
 
 - **Accessibility** — keyboard navigation (Tab/arrows in graph, tree, sidebar), visible focus indicators for keyboard users.
 

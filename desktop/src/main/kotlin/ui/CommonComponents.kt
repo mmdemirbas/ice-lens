@@ -6,7 +6,17 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -135,10 +145,88 @@ fun HoverTooltip(
 // Shared by NodeDetails and by the scan-pruning section; they live here rather than beside one
 // caller because more than one file draws a titled section and a table too wide for the panel.
 
+/**
+ * Which inspector sections the reader has folded away, keyed by [sectionKey].
+ *
+ * Held as a default plus the sections that differ from it, rather than as a set of collapsed
+ * keys, because "collapse all" has to reach sections that are not on screen — a section only
+ * exists while its node is selected, so a set built from what is drawn would forget every
+ * section on every other node type. The default answers for all of them at once.
+ */
+@Stable
+class SectionCollapseState {
+    private var everything by mutableStateOf(false)
+    private val differing = mutableStateMapOf<String, Boolean>()
+
+    fun isCollapsed(key: String): Boolean = differing[key] ?: everything
+
+    fun toggle(key: String) {
+        differing[key] = !isCollapsed(key)
+    }
+
+    /** True only when nothing is left expanded, so the one button can say what it will do. */
+    val allCollapsed: Boolean get() = everything && differing.none { !it.value }
+
+    fun setAll(collapsed: Boolean) {
+        everything = collapsed
+        differing.clear()
+    }
+}
+
+val LocalSectionCollapse = staticCompositionLocalOf { SectionCollapseState() }
+
+/**
+ * The stable half of a section title — what is left after the count and the verdict.
+ *
+ * A title carries live figures ("Manifest Entries (12)", "Scan Pruning — this manifest would be
+ * skipped"), so the displayed string changes as the table does. Keying collapse on it would
+ * silently re-expand a section whenever its count moved.
+ */
+fun sectionKey(title: String): String = title.substringBefore(" (").substringBefore(" —").trim()
+
+/**
+ * A titled inspector section, foldable.
+ *
+ * [content] is emitted straight into the caller's layout rather than into a `Column` of this
+ * function's own: the panel is one long `Column` and a wrapper would change what `fillMaxWidth`
+ * and `weight` inside a section resolve against. A lambda written at the call site keeps the
+ * enclosing `ColumnScope` as its implicit receiver, so nothing at a call site has to change.
+ *
+ * The header is inside `DisableSelection` because the panel is a `SelectionContainer`: without
+ * it, dragging across a title starts a text selection instead of the tap reaching the toggle,
+ * and selecting a title is not something anyone copying a value out of a table wants anyway.
+ */
 @Composable
-fun SectionTitle(title: String) {
-    Text(title, fontWeight = FontWeight.Bold, fontSize = TypeScale.title)
-    Spacer(Modifier.height(4.dp))
+fun Section(title: String, content: @Composable () -> Unit) {
+    val collapse = LocalSectionCollapse.current
+    val key = sectionKey(title)
+    val collapsed = collapse.isCollapsed(key)
+    // The gap above a section belongs to the section, not to whatever preceded it. With the
+    // spacing written at call sites, a folded panel kept an expanded panel's rhythm and read as
+    // eight headings floating a screen apart instead of as a list of what the node holds.
+    Spacer(Modifier.height(if (collapsed) 8.dp else 16.dp))
+    DisableSelection {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { collapse.toggle(key) }
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = if (collapsed) Icons.Default.ChevronRight else Icons.Default.ExpandMore,
+                contentDescription = if (collapsed) "Expand $title" else "Collapse $title",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(title, fontWeight = FontWeight.Bold, fontSize = TypeScale.title)
+        }
+    }
+    if (!collapsed) {
+        Spacer(Modifier.height(4.dp))
+        content()
+    }
 }
 
 /**

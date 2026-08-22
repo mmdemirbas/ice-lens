@@ -80,6 +80,26 @@ class InspectorRenderTest {
         renderInspector(graph, table.id, "table-node", height = 10400)
     }
 
+    /**
+     * The same panel with every section folded, which is the state a click produces and a render
+     * otherwise never reaches.
+     *
+     * It is worth a capture of its own because folding is where a titled section stops being a
+     * heading and becomes a control: the carets have to line up down the panel, the titles have
+     * to be readable as a list of what the node holds, and the whole table has to fit in a
+     * screen's worth of height or the feature has not paid for its chrome. The panel is 10,400dp
+     * expanded; this is the number that says whether folding it was worth doing.
+     */
+    @Test
+    fun `the table inspector renders with every section folded`() {
+        val graph = partedGraph()
+        val table = graph.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val folded = SectionCollapseState().apply { setAll(true) }
+        renderScene("table-node-folded", width = 1400, height = 2600) {
+            NodeDetailsContent(graph, setOf(table.id), sectionCollapse = folded)
+        }
+    }
+
     @Test
     fun `the file inspector renders its column statistics and partition sections`() {
         val graph = partedGraph()

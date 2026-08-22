@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.UnfoldLess
+import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -389,38 +391,38 @@ private fun RecursiveDataTableSection(
     val orderedDataColumns = identifierFields.filter { it in allDataColumns } +
         allDataColumns.filterNot { it in identifierFields }.sorted()
 
-    Spacer(Modifier.height(16.dp))
-    SectionTitle("Changelog")
+    Section("Changelog") {
 
-    WideTable(
-        headers = listOf("Idx", "Changelog", "Change") + orderedDataColumns,
-        rows = rows.mapIndexed { index, descendant ->
-            val rowNode = descendant.rowNode
-            val effectiveData = effectiveDataByRowId[rowNode.id] ?: rowNode.data
-            val change = when (rowNode.content) {
-                1 -> {
-                    val targetFile = rowNode.data["target_file_no"] ?: "?"
-                    val targetPos = rowNode.data["pos"] ?: rowNode.data["position"] ?: "?"
-                    "del file=$targetFile pos=$targetPos"
-                }
-                2 -> {
-                    val parts = identifierFields.mapNotNull { key ->
-                        effectiveData[key]?.let { value -> "$key=$value" }
+        WideTable(
+            headers = listOf("Idx", "Changelog", "Change") + orderedDataColumns,
+            rows = rows.mapIndexed { index, descendant ->
+                val rowNode = descendant.rowNode
+                val effectiveData = effectiveDataByRowId[rowNode.id] ?: rowNode.data
+                val change = when (rowNode.content) {
+                    1 -> {
+                        val targetFile = rowNode.data["target_file_no"] ?: "?"
+                        val targetPos = rowNode.data["pos"] ?: rowNode.data["position"] ?: "?"
+                        "del file=$targetFile pos=$targetPos"
                     }
-                    if (parts.isEmpty()) "del" else "del ${parts.joinToString(" ")}"
+                    2 -> {
+                        val parts = identifierFields.mapNotNull { key ->
+                            effectiveData[key]?.let { value -> "$key=$value" }
+                        }
+                        if (parts.isEmpty()) "del" else "del ${parts.joinToString(" ")}"
+                    }
+                    else -> "append"
                 }
-                else -> "append"
+                val dataValues = orderedDataColumns.map { column ->
+                    normalizeText(effectiveData[column]?.toString())
+                }
+                listOf(
+                    "${index + 1}",
+                    buildChangelogEvent(rowNode, effectiveData, orderedDataColumns),
+                    change
+                ) + dataValues
             }
-            val dataValues = orderedDataColumns.map { column ->
-                normalizeText(effectiveData[column]?.toString())
-            }
-            listOf(
-                "${index + 1}",
-                buildChangelogEvent(rowNode, effectiveData, orderedDataColumns),
-                change
-            ) + dataValues
-        }
-    )
+        )
+    }
 }
 
 /** Returns true when the path can be revealed via Desktop / Explorer (i.e. not a remote URI). */
@@ -525,41 +527,41 @@ private fun deltaBytesCell(value: Long): String = when {
 private fun DerivationSection(title: String, derivation: StatsDerivation) {
     if (derivation.contributions.isEmpty()) return
     val counted = derivation.contributions.count { !it.isRepeat }
-    Spacer(Modifier.height(8.dp))
-    SectionTitle("$title — ${formatCount(counted)} counted, ${formatCount(derivation.repeats.size)} already counted")
-    Text(
-        "One row per manifest as the traversal reached it. The figures above are this table's " +
-            "delta columns summed; a manifest a later snapshot re-lists contributes nothing and " +
-            "names where it was counted first.",
-        fontSize = TypeScale.small,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 4.dp)
-    )
-    WideTable(
-        // Counted sits second, before the numbers. A repeat contributes nothing, so its delta
-        // cells are all dashes — and a row of dashes with no nearby word for why is the same
-        // failure as a value column pushed off the panel edge. The snapshot that counted it
-        // first is the detail behind the flag, so it goes last.
-        headers = listOf(
-            "Manifest", "Counted", "Data Files", "Records", "Bytes",
-            "Entries", "Duplicate Entries", "First Counted In"
-        ),
-        columnWidths = listOf(200.dp, 70.dp, 90.dp, 90.dp, 110.dp, 80.dp, 130.dp, 240.dp),
-        rows = derivation.contributions.map { contribution ->
-            val delta = contribution.delta
-            fun cell(value: () -> String) = if (contribution.isRepeat) "-" else value()
-            listOf(
-                contribution.manifestPath.substringAfterLast('/'),
-                if (contribution.isRepeat) "repeat" else "yes",
-                cell { deltaCell(delta.dataFileCount.toLong()) },
-                cell { deltaCell(delta.recordCount) },
-                cell { deltaBytesCell(delta.totalSizeBytes) },
-                cell { formatCount(delta.manifestEntryCount) },
-                cell { formatCount(contribution.entriesSuppressedAsDuplicate) },
-                contribution.firstCountedIn ?: "-",
-            )
-        }
-    )
+    Section("$title — ${formatCount(counted)} counted, ${formatCount(derivation.repeats.size)} already counted") {
+        Text(
+            "One row per manifest as the traversal reached it. The figures above are this table's " +
+                "delta columns summed; a manifest a later snapshot re-lists contributes nothing and " +
+                "names where it was counted first.",
+            fontSize = TypeScale.small,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        WideTable(
+            // Counted sits second, before the numbers. A repeat contributes nothing, so its delta
+            // cells are all dashes — and a row of dashes with no nearby word for why is the same
+            // failure as a value column pushed off the panel edge. The snapshot that counted it
+            // first is the detail behind the flag, so it goes last.
+            headers = listOf(
+                "Manifest", "Counted", "Data Files", "Records", "Bytes",
+                "Entries", "Duplicate Entries", "First Counted In"
+            ),
+            columnWidths = listOf(200.dp, 70.dp, 90.dp, 90.dp, 110.dp, 80.dp, 130.dp, 240.dp),
+            rows = derivation.contributions.map { contribution ->
+                val delta = contribution.delta
+                fun cell(value: () -> String) = if (contribution.isRepeat) "-" else value()
+                listOf(
+                    contribution.manifestPath.substringAfterLast('/'),
+                    if (contribution.isRepeat) "repeat" else "yes",
+                    cell { deltaCell(delta.dataFileCount.toLong()) },
+                    cell { deltaCell(delta.recordCount) },
+                    cell { deltaBytesCell(delta.totalSizeBytes) },
+                    cell { formatCount(delta.manifestEntryCount) },
+                    cell { formatCount(contribution.entriesSuppressedAsDuplicate) },
+                    contribution.firstCountedIn ?: "-",
+                )
+            }
+        )
+    }
 }
 
 /**
@@ -596,81 +598,81 @@ private fun ManifestLedgerSection(entries: List<ManifestEntryView>) {
     val total = ledger.total()
     val dropped = ledger.filter { it.fate != EntryFate.COUNTED }
 
-    Spacer(Modifier.height(16.dp))
-    SectionTitle("How the counted figures were reached")
-    Text(
-        "Every entry takes a place in the entry count, because that figure measures what a scan " +
-            "has to read. What it adds beyond that depends on two rules. Deduplication here is " +
-            "scoped to this manifest — the table's own totals also drop a file some other " +
-            "manifest counted first, which cannot be seen from inside one.",
-        fontSize = TypeScale.small,
-        color = colors.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 4.dp),
-    )
-    WideTable(
-        headers = listOf("Figure", "Value", "From"),
-        columnWidths = listOf(160.dp, 110.dp, 360.dp),
-        rows = listOf(
-            listOf("Entries", formatCount(total.manifestEntryCount), "every entry, whatever became of it"),
-            listOf(
-                "counted",
-                formatCount(ledger.count { it.fate == EntryFate.COUNTED }),
-                "a live entry, first sighting of its data file",
-            ),
-            listOf(
-                "records a removal",
-                formatCount(ledger.count { it.fate == EntryFate.REMOVAL }),
-                "status = DELETED (2); the file it names is no longer in the table",
-            ),
-            listOf(
-                "already counted",
-                formatCount(ledger.count { it.fate == EntryFate.DUPLICATE }),
-                "another entry here names the same data-file path",
-            ),
-            listOf("Data files", formatCount(total.dataFileCount), "counted entries with content = 0"),
-            listOf(
-                "Delete files",
-                formatCount(total.deleteFileCount),
-                "counted entries with content 1 or 2 — ${formatCount(total.posDeleteFileCount)} positional, " +
-                    "${formatCount(total.eqDeleteFileCount)} equality",
-            ),
-            listOf("Records", formatCount(total.recordCount), "record_count summed over the data files"),
-            listOf(
-                "Delete records",
-                formatCount(total.deleteRecordCount),
-                "record_count summed over the delete files — rows deleted, not table rows",
-            ),
-            listOf("Bytes", formatBytes(total.totalSizeBytes), "file_size_in_bytes summed over both"),
-        ),
-    )
-
-    if (dropped.isEmpty()) {
+    Section("How the counted figures were reached") {
         Text(
-            "Every entry counted.",
+            "Every entry takes a place in the entry count, because that figure measures what a scan " +
+                "has to read. What it adds beyond that depends on two rules. Deduplication here is " +
+                "scoped to this manifest — the table's own totals also drop a file some other " +
+                "manifest counted first, which cannot be seen from inside one.",
             fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp),
+            modifier = Modifier.padding(bottom = 4.dp),
         )
-        return
-    }
-    Spacer(Modifier.height(8.dp))
-    SectionTitle("Entries that added nothing (${formatCount(dropped.size)})")
-    WideTable(
-        headers = listOf("Why", "Entry", "Records it would have added"),
-        columnWidths = listOf(150.dp, 310.dp, 170.dp),
-        rows = dropped.map { entry ->
-            listOf(
-                when (entry.fate) {
-                    EntryFate.REMOVAL -> "records a removal"
-                    EntryFate.DUPLICATE -> "already counted"
-                    EntryFate.COUNTED -> "counted"
-                },
-                entry.filePath.substringAfterLast('/'),
-                formatCount(entry.recordCount),
+        WideTable(
+            headers = listOf("Figure", "Value", "From"),
+            columnWidths = listOf(160.dp, 110.dp, 360.dp),
+            rows = listOf(
+                listOf("Entries", formatCount(total.manifestEntryCount), "every entry, whatever became of it"),
+                listOf(
+                    "counted",
+                    formatCount(ledger.count { it.fate == EntryFate.COUNTED }),
+                    "a live entry, first sighting of its data file",
+                ),
+                listOf(
+                    "records a removal",
+                    formatCount(ledger.count { it.fate == EntryFate.REMOVAL }),
+                    "status = DELETED (2); the file it names is no longer in the table",
+                ),
+                listOf(
+                    "already counted",
+                    formatCount(ledger.count { it.fate == EntryFate.DUPLICATE }),
+                    "another entry here names the same data-file path",
+                ),
+                listOf("Data files", formatCount(total.dataFileCount), "counted entries with content = 0"),
+                listOf(
+                    "Delete files",
+                    formatCount(total.deleteFileCount),
+                    "counted entries with content 1 or 2 — ${formatCount(total.posDeleteFileCount)} positional, " +
+                        "${formatCount(total.eqDeleteFileCount)} equality",
+                ),
+                listOf("Records", formatCount(total.recordCount), "record_count summed over the data files"),
+                listOf(
+                    "Delete records",
+                    formatCount(total.deleteRecordCount),
+                    "record_count summed over the delete files — rows deleted, not table rows",
+                ),
+                listOf("Bytes", formatBytes(total.totalSizeBytes), "file_size_in_bytes summed over both"),
+            ),
+        )
+
+        if (dropped.isEmpty()) {
+            Text(
+                "Every entry counted.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
             )
-        },
-        leadCellColors = dropped.map { verdictUnevaluatedColor() },
-    )
+            return@Section
+        }
+    }
+    Section("Entries that added nothing (${formatCount(dropped.size)})") {
+        WideTable(
+            headers = listOf("Why", "Entry", "Records it would have added"),
+            columnWidths = listOf(150.dp, 310.dp, 170.dp),
+            rows = dropped.map { entry ->
+                listOf(
+                    when (entry.fate) {
+                        EntryFate.REMOVAL -> "records a removal"
+                        EntryFate.DUPLICATE -> "already counted"
+                        EntryFate.COUNTED -> "counted"
+                    },
+                    entry.filePath.substringAfterLast('/'),
+                    formatCount(entry.recordCount),
+                )
+            },
+            leadCellColors = dropped.map { verdictUnevaluatedColor() },
+        )
+    }
 }
 
 private fun renderSnapshotLogRows(items: List<SnapshotLogEntry>): List<List<String>> =
@@ -703,10 +705,20 @@ fun NodeDetailsContent(
     /** The scan filter, and the way to change it. Defaulted so the render tests need no state. */
     scanPredicates: List<ScanPredicate> = emptyList(),
     onScanPredicatesChange: (List<ScanPredicate>) -> Unit = {},
+    /**
+     * Which sections are folded. Remembered here rather than held per node, because a reader who
+     * folds "Raw metadata.json" away means it for the table, not for the one metadata version
+     * they happened to be looking at. A parameter so a render can capture the folded state, which
+     * is otherwise unreachable without a click.
+     */
+    sectionCollapse: SectionCollapseState = remember { SectionCollapseState() },
 ) {
     val colors = MaterialTheme.colorScheme
     SelectionContainer {
-        CompositionLocalProvider(LocalContentColor provides colors.onSurface) {
+        CompositionLocalProvider(
+            LocalContentColor provides colors.onSurface,
+            LocalSectionCollapse provides sectionCollapse,
+        ) {
             if (selectedNodeIds.isEmpty()) {
                 Text(
                     "Select a node to view details.",
@@ -753,6 +765,26 @@ fun NodeDetailsContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(nodeTitle(node), fontWeight = FontWeight.Bold, fontSize = TypeScale.display, modifier = Modifier.weight(1f))
+                        // One button, not two. It states what the click will do, which is
+                        // unambiguous even when the reader has folded some sections by hand:
+                        // "Collapse all" until nothing is left open, "Expand all" after.
+                        val everythingFolded = sectionCollapse.allCollapsed
+                        TextButton(
+                            onClick = { sectionCollapse.setAll(!everythingFolded) },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (everythingFolded) Icons.Default.UnfoldMore else Icons.Default.UnfoldLess,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                if (everythingFolded) "Expand all" else "Collapse all",
+                                fontSize = TypeScale.small,
+                            )
+                        }
                         val openPath = inspectorOpenPath(node)
                         if (!openPath.isNullOrBlank() && isLocalPath(openPath)) {
                             TextButton(
@@ -847,105 +879,105 @@ fun NodeDetailsContent(
                             ScanPruningSection(graph, scanPredicates, onScanPredicatesChange)
                         }
 
-                        Spacer(Modifier.height(16.dp))
-                        SectionTitle("Metadata Files")
-                        DetailTable {
-                            DetailRow("Metric", "Value", isHeader = true)
-                            DetailRow("File Count", "${summary.metadataFileCount}")
-                            DetailRow("Known", "${summary.metadataFileTimes.knownCount}")
-                            DetailRow("Missing", "${summary.metadataFileTimes.missingCount}")
-                            DetailRow("Oldest", formatTimestamp(summary.metadataFileTimes.oldestMs))
-                            DetailRow("Latest", formatTimestamp(summary.metadataFileTimes.newestMs))
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-                        SectionTitle("Snapshot Manifest Lists")
-                        DetailTable {
-                            DetailRow("Metric", "Value", isHeader = true)
-                            DetailRow("Unique Snapshots", "${summary.snapshotCount}")
-                            DetailRow("File Count", "${summary.snapshotManifestListFileCount}")
-                            DetailRow("Known", "${summary.snapshotManifestListFileTimes.knownCount}")
-                            DetailRow("Missing", "${summary.snapshotManifestListFileTimes.missingCount}")
-                            DetailRow("Oldest", formatTimestamp(summary.snapshotManifestListFileTimes.oldestMs))
-                            DetailRow("Latest", formatTimestamp(summary.snapshotManifestListFileTimes.newestMs))
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-                        SectionTitle("Current Snapshot")
-                        val current = summary.current
-                        if (summary.currentSnapshotId == null) {
+                        Section("Metadata Files") {
                             DetailTable {
                                 DetailRow("Metric", "Value", isHeader = true)
-                                DetailRow("State", "No current snapshot — the table has no committed data")
+                                DetailRow("File Count", "${summary.metadataFileCount}")
+                                DetailRow("Known", "${summary.metadataFileTimes.knownCount}")
+                                DetailRow("Missing", "${summary.metadataFileTimes.missingCount}")
+                                DetailRow("Oldest", formatTimestamp(summary.metadataFileTimes.oldestMs))
+                                DetailRow("Latest", formatTimestamp(summary.metadataFileTimes.newestMs))
                             }
-                        } else {
+                        }
+
+                        Section("Snapshot Manifest Lists") {
                             DetailTable {
                                 DetailRow("Metric", "Value", isHeader = true)
-                                DetailRow("Snapshot ID", currentSnapshotLabel(summary.currentSnapshotId))
-                                DetailRow("Records", formatCount(current.recordCount))
-                                DetailRow("Data Files", "${formatCount(current.dataFileCount)}  (${formatBytes(current.dataSizeBytes)})")
+                                DetailRow("Unique Snapshots", "${summary.snapshotCount}")
+                                DetailRow("File Count", "${summary.snapshotManifestListFileCount}")
+                                DetailRow("Known", "${summary.snapshotManifestListFileTimes.knownCount}")
+                                DetailRow("Missing", "${summary.snapshotManifestListFileTimes.missingCount}")
+                                DetailRow("Oldest", formatTimestamp(summary.snapshotManifestListFileTimes.oldestMs))
+                                DetailRow("Latest", formatTimestamp(summary.snapshotManifestListFileTimes.newestMs))
+                            }
+                        }
+
+                        Section("Current Snapshot") {
+                            val current = summary.current
+                            if (summary.currentSnapshotId == null) {
+                                DetailTable {
+                                    DetailRow("Metric", "Value", isHeader = true)
+                                    DetailRow("State", "No current snapshot — the table has no committed data")
+                                }
+                            } else {
+                                DetailTable {
+                                    DetailRow("Metric", "Value", isHeader = true)
+                                    DetailRow("Snapshot ID", currentSnapshotLabel(summary.currentSnapshotId))
+                                    DetailRow("Records", formatCount(current.recordCount))
+                                    DetailRow("Data Files", "${formatCount(current.dataFileCount)}  (${formatBytes(current.dataSizeBytes)})")
+                                    DetailRow(
+                                        "Delete Files",
+                                        "${formatCount(current.deleteFileCount)}  (${formatBytes(current.deleteSizeBytes)})" +
+                                            " — ${formatCount(current.posDeleteFileCount)} pos / ${formatCount(current.eqDeleteFileCount)} eq"
+                                    )
+                                    DetailRow("Delete Records", formatCount(current.deleteRecordCount))
+                                    DetailRow("Total Size", formatBytes(current.totalSizeBytes))
+                                    DetailRow("Manifests", "${formatCount(current.manifestCount)}  (${formatCount(current.dataManifestCount)} data / ${formatCount(current.deleteManifestCount)} delete)")
+                                    DetailRow("Manifest Entries", "${formatCount(current.manifestEntryCount)}  (${formatCount(current.deletedEntryCount)} recording a removal)")
+                                }
+                                DerivationSection("How the current figures were derived", summary.currentDerivation)
+                            }
+                        }
+
+                        Section("All Retained History") {
+                            val history = summary.history
+                            DetailTable {
+                                DetailRow("Metric", "Value", isHeader = true)
+                                DetailRow("Snapshots", formatCount(summary.snapshotCount))
+                                DetailRow("Metadata Versions", formatCount(summary.metadataFileCount))
                                 DetailRow(
-                                    "Delete Files",
-                                    "${formatCount(current.deleteFileCount)}  (${formatBytes(current.deleteSizeBytes)})" +
-                                        " — ${formatCount(current.posDeleteFileCount)} pos / ${formatCount(current.eqDeleteFileCount)} eq"
+                                    "Manifests",
+                                    "${formatCount(history.manifestCount)}  (${formatCount(history.dataManifestCount)} data / ${formatCount(history.deleteManifestCount)} delete)"
                                 )
-                                DetailRow("Delete Records", formatCount(current.deleteRecordCount))
-                                DetailRow("Total Size", formatBytes(current.totalSizeBytes))
-                                DetailRow("Manifests", "${formatCount(current.manifestCount)}  (${formatCount(current.dataManifestCount)} data / ${formatCount(current.deleteManifestCount)} delete)")
-                                DetailRow("Manifest Entries", "${formatCount(current.manifestEntryCount)}  (${formatCount(current.deletedEntryCount)} recording a removal)")
+                                DetailRow("Manifest Entries", "${formatCount(history.manifestEntryCount)}  (${formatCount(history.deletedEntryCount)} recording a removal)")
+                                DetailRow("Distinct Data Files", "${formatCount(history.dataFileCount)}  (${formatBytes(history.dataSizeBytes)})")
+                                DetailRow(
+                                    "Distinct Delete Files",
+                                    "${formatCount(history.deleteFileCount)}  (${formatBytes(history.deleteSizeBytes)})"
+                                )
+                                DetailRow("Referenced Bytes", formatBytes(history.totalSizeBytes))
+                                DetailRow("Manifest Files Known / Missing", "${summary.manifestFileTimes.knownCount} / ${summary.manifestFileTimes.missingCount}")
+                                // One row per timestamp. formatTimestamp returns three lines (local,
+                                // UTC, epoch), so joining two of them into one cell runs the second
+                                // block's first line onto the first block's last one and pushes the
+                                // rest past maxLines — the arrow ends up mid-paragraph and the second
+                                // epoch is simply not drawn. The Metadata Files section above already
+                                // uses separate rows; this follows it.
+                                DetailRow("Manifest Files Oldest", formatTimestamp(summary.manifestFileTimes.oldestMs))
+                                DetailRow("Manifest Files Latest", formatTimestamp(summary.manifestFileTimes.newestMs))
+                                DetailRow("Data Files Known / Missing", "${summary.dataFileTimes.knownCount} / ${summary.dataFileTimes.missingCount}")
+                                DetailRow("Data Files Oldest", formatTimestamp(summary.dataFileTimes.oldestMs))
+                                DetailRow("Data Files Latest", formatTimestamp(summary.dataFileTimes.newestMs))
                             }
-                            DerivationSection("How the current figures were derived", summary.currentDerivation)
+                            DerivationSection("How the history figures were derived", summary.historyDerivation)
                         }
-
-                        Spacer(Modifier.height(16.dp))
-                        SectionTitle("All Retained History")
-                        val history = summary.history
-                        DetailTable {
-                            DetailRow("Metric", "Value", isHeader = true)
-                            DetailRow("Snapshots", formatCount(summary.snapshotCount))
-                            DetailRow("Metadata Versions", formatCount(summary.metadataFileCount))
-                            DetailRow(
-                                "Manifests",
-                                "${formatCount(history.manifestCount)}  (${formatCount(history.dataManifestCount)} data / ${formatCount(history.deleteManifestCount)} delete)"
-                            )
-                            DetailRow("Manifest Entries", "${formatCount(history.manifestEntryCount)}  (${formatCount(history.deletedEntryCount)} recording a removal)")
-                            DetailRow("Distinct Data Files", "${formatCount(history.dataFileCount)}  (${formatBytes(history.dataSizeBytes)})")
-                            DetailRow(
-                                "Distinct Delete Files",
-                                "${formatCount(history.deleteFileCount)}  (${formatBytes(history.deleteSizeBytes)})"
-                            )
-                            DetailRow("Referenced Bytes", formatBytes(history.totalSizeBytes))
-                            DetailRow("Manifest Files Known / Missing", "${summary.manifestFileTimes.knownCount} / ${summary.manifestFileTimes.missingCount}")
-                            // One row per timestamp. formatTimestamp returns three lines (local,
-                            // UTC, epoch), so joining two of them into one cell runs the second
-                            // block's first line onto the first block's last one and pushes the
-                            // rest past maxLines — the arrow ends up mid-paragraph and the second
-                            // epoch is simply not drawn. The Metadata Files section above already
-                            // uses separate rows; this follows it.
-                            DetailRow("Manifest Files Oldest", formatTimestamp(summary.manifestFileTimes.oldestMs))
-                            DetailRow("Manifest Files Latest", formatTimestamp(summary.manifestFileTimes.newestMs))
-                            DetailRow("Data Files Known / Missing", "${summary.dataFileTimes.knownCount} / ${summary.dataFileTimes.missingCount}")
-                            DetailRow("Data Files Oldest", formatTimestamp(summary.dataFileTimes.oldestMs))
-                            DetailRow("Data Files Latest", formatTimestamp(summary.dataFileTimes.newestMs))
-                        }
-                        DerivationSection("How the history figures were derived", summary.historyDerivation)
 
                         if (mergedMetadataRows.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Metadata Nodes & Timeline")
-                            WideTable(
-                                headers = listOf(
-                                    "Order",
-                                    "Node",
-                                    "File",
-                                    "Version",
-                                    "File Updated",
-                                    "Metadata Last Updated",
-                                    "Snapshots",
-                                    "Current Snapshot ID"
-                                ),
-                                rows = mergedMetadataRows
-                            )
+                            Section("Metadata Nodes & Timeline") {
+                                WideTable(
+                                    headers = listOf(
+                                        "Order",
+                                        "Node",
+                                        "File",
+                                        "Version",
+                                        "File Updated",
+                                        "Metadata Last Updated",
+                                        "Snapshots",
+                                        "Current Snapshot ID"
+                                    ),
+                                    rows = mergedMetadataRows
+                                )
+                            }
                         }
 
                         SchemaEvolutionSection(metadataChildren)
@@ -981,228 +1013,228 @@ fun NodeDetailsContent(
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 
                         if (node.data.properties.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Properties")
-                            DetailTable {
-                                DetailRow("Key", "Value", isHeader = true)
-                                node.data.properties.toSortedMap().forEach { (k, v) ->
-                                    DetailRow(k, v)
+                            Section("Properties") {
+                                DetailTable {
+                                    DetailRow("Key", "Value", isHeader = true)
+                                    node.data.properties.toSortedMap().forEach { (k, v) ->
+                                        DetailRow(k, v)
+                                    }
                                 }
                             }
                         }
 
                         if (node.data.schemas.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Schemas")
-                            node.data.schemas
-                                .sortedBy { it.schemaId ?: Int.MAX_VALUE }
-                                .forEach { schema ->
-                                    Text(
-                                        "Schema ${schema.schemaId ?: "Unknown"}",
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = TypeScale.body
-                                    )
-                                    Spacer(Modifier.height(4.dp))
-                                    WideTable(
-                                        headers = listOf(
-                                            "Field ID",
-                                            "Field Name",
-                                            "Required",
-                                            "Type",
-                                            "Is Identifier Field"
-                                        ),
-                                        rows = schema.fields
-                                            .sortedBy { it.id ?: Int.MAX_VALUE }
-                                            .map { field ->
-                                                val isIdentifier = field.id != null && field.id in schema.identifierFieldIds
-                                                listOf(
-                                                    "${field.id ?: "N/A"}",
-                                                    field.name ?: "N/A",
-                                                    "${field.required ?: false}",
-                                                    normalizeText(field.type?.toString()?.trim('"')),
-                                                    if (isIdentifier) "Yes" else "No"
-                                                )
-                                            }
-                                    )
-                                    Spacer(Modifier.height(12.dp))
-                                }
+                            Section("Schemas") {
+                                node.data.schemas
+                                    .sortedBy { it.schemaId ?: Int.MAX_VALUE }
+                                    .forEach { schema ->
+                                        Text(
+                                            "Schema ${schema.schemaId ?: "Unknown"}",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = TypeScale.body
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        WideTable(
+                                            headers = listOf(
+                                                "Field ID",
+                                                "Field Name",
+                                                "Required",
+                                                "Type",
+                                                "Is Identifier Field"
+                                            ),
+                                            rows = schema.fields
+                                                .sortedBy { it.id ?: Int.MAX_VALUE }
+                                                .map { field ->
+                                                    val isIdentifier = field.id != null && field.id in schema.identifierFieldIds
+                                                    listOf(
+                                                        "${field.id ?: "N/A"}",
+                                                        field.name ?: "N/A",
+                                                        "${field.required ?: false}",
+                                                        normalizeText(field.type?.toString()?.trim('"')),
+                                                        if (isIdentifier) "Yes" else "No"
+                                                    )
+                                                }
+                                        )
+                                        Spacer(Modifier.height(12.dp))
+                                    }
+                            }
                         }
 
                         if (node.data.partitionSpecs.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Partition Specs")
-                            node.data.partitionSpecs
-                                .sortedBy { it.specId ?: Int.MAX_VALUE }
-                                .forEach { spec ->
-                                    Text(
-                                        "Spec ${spec.specId ?: "Unknown"}",
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = TypeScale.body
-                                    )
-                                    Spacer(Modifier.height(4.dp))
-                                    WideTable(
-                                        headers = listOf("Source ID", "Field ID", "Name", "Transform"),
-                                        rows = if (spec.fields.isEmpty()) listOf(listOf("N/A", "N/A", "N/A", "N/A")) else spec.fields.map { field ->
-                                            listOf(
-                                                "${field.sourceId ?: "N/A"}",
-                                                "${field.fieldId ?: "N/A"}",
-                                                field.name ?: "N/A",
-                                                normalizeText(field.transform?.toString())
-                                            )
-                                        }
-                                    )
-                                    Spacer(Modifier.height(12.dp))
-                                }
+                            Section("Partition Specs") {
+                                node.data.partitionSpecs
+                                    .sortedBy { it.specId ?: Int.MAX_VALUE }
+                                    .forEach { spec ->
+                                        Text(
+                                            "Spec ${spec.specId ?: "Unknown"}",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = TypeScale.body
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        WideTable(
+                                            headers = listOf("Source ID", "Field ID", "Name", "Transform"),
+                                            rows = if (spec.fields.isEmpty()) listOf(listOf("N/A", "N/A", "N/A", "N/A")) else spec.fields.map { field ->
+                                                listOf(
+                                                    "${field.sourceId ?: "N/A"}",
+                                                    "${field.fieldId ?: "N/A"}",
+                                                    field.name ?: "N/A",
+                                                    normalizeText(field.transform?.toString())
+                                                )
+                                            }
+                                        )
+                                        Spacer(Modifier.height(12.dp))
+                                    }
+                            }
                         }
 
                         if (node.data.sortOrders.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Sort Orders")
-                            node.data.sortOrders
-                                .sortedBy { it.orderId ?: Int.MAX_VALUE }
-                                .forEach { order ->
-                                    Text(
-                                        "Order ${order.orderId ?: "Unknown"}",
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = TypeScale.body
-                                    )
-                                    Spacer(Modifier.height(4.dp))
-                                    WideTable(
-                                        headers = listOf("Source ID", "Transform", "Direction", "Null Order"),
-                                        rows = if (order.fields.isEmpty()) listOf(listOf("N/A", "N/A", "N/A", "N/A")) else order.fields.map { field ->
-                                            listOf(
-                                                "${field.sourceId ?: "N/A"}",
-                                                normalizeText(field.transform?.toString()),
-                                                field.direction ?: "N/A",
-                                                field.nullOrder ?: "N/A"
-                                            )
-                                        }
-                                    )
-                                    Spacer(Modifier.height(12.dp))
-                                }
+                            Section("Sort Orders") {
+                                node.data.sortOrders
+                                    .sortedBy { it.orderId ?: Int.MAX_VALUE }
+                                    .forEach { order ->
+                                        Text(
+                                            "Order ${order.orderId ?: "Unknown"}",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = TypeScale.body
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        WideTable(
+                                            headers = listOf("Source ID", "Transform", "Direction", "Null Order"),
+                                            rows = if (order.fields.isEmpty()) listOf(listOf("N/A", "N/A", "N/A", "N/A")) else order.fields.map { field ->
+                                                listOf(
+                                                    "${field.sourceId ?: "N/A"}",
+                                                    normalizeText(field.transform?.toString()),
+                                                    field.direction ?: "N/A",
+                                                    field.nullOrder ?: "N/A"
+                                                )
+                                            }
+                                        )
+                                        Spacer(Modifier.height(12.dp))
+                                    }
+                            }
                         }
 
                         if (node.data.refs.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Refs")
-                            WideTable(
-                                headers = listOf("Name", "Type", "Snapshot ID", "Max Ref Age MS", "Max Snapshot Age MS", "Min Snapshots To Keep"),
-                                rows = node.data.refs.toSortedMap().map { (name, ref) ->
-                                    listOf(
-                                        name,
-                                        ref.type ?: "N/A",
-                                        "${ref.snapshotId ?: "N/A"}",
-                                        "${ref.maxRefAgeMs ?: "N/A"}",
-                                        "${ref.maxSnapshotAgeMs ?: "N/A"}",
-                                        "${ref.minSnapshotsToKeep ?: "N/A"}"
-                                    )
-                                }
-                            )
+                            Section("Refs") {
+                                WideTable(
+                                    headers = listOf("Name", "Type", "Snapshot ID", "Max Ref Age MS", "Max Snapshot Age MS", "Min Snapshots To Keep"),
+                                    rows = node.data.refs.toSortedMap().map { (name, ref) ->
+                                        listOf(
+                                            name,
+                                            ref.type ?: "N/A",
+                                            "${ref.snapshotId ?: "N/A"}",
+                                            "${ref.maxRefAgeMs ?: "N/A"}",
+                                            "${ref.maxSnapshotAgeMs ?: "N/A"}",
+                                            "${ref.minSnapshotsToKeep ?: "N/A"}"
+                                        )
+                                    }
+                                )
+                            }
                         }
 
                         if (node.data.snapshots.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Snapshots")
-                            val snapshots = node.data.snapshots.sortedBy { it.timestampMs ?: Long.MAX_VALUE }
-                            WideTable(
-                                headers = listOf(
-                                    "Snapshot ID",
-                                    "Parent Snapshot ID",
-                                    "Sequence Number",
-                                    "Schema ID",
-                                    "Timestamp",
-                                    "Manifest List",
-                                    "Operation",
-                                    "Summary"
-                                ),
-                                rows = snapshots.map { snapshot ->
-                                    listOf(
-                                        "${snapshot.snapshotId ?: "N/A"}",
-                                        "${snapshot.parentSnapshotId ?: "None"}",
-                                        "${snapshot.sequenceNumber ?: "N/A"}",
-                                        "${snapshot.schemaId ?: "N/A"}",
-                                        formatTimestampShort(snapshot.timestampMs),
-                                        normalizeText(snapshot.manifestList),
-                                        snapshot.summary["operation"] ?: "N/A",
-                                        if (snapshot.summary.isEmpty()) "N/A"
-                                        else snapshot.summary.toSortedMap().entries.joinToString(", ") { "${it.key}=${it.value}" }
-                                    )
-                                }
-                            )
+                            Section("Snapshots") {
+                                val snapshots = node.data.snapshots.sortedBy { it.timestampMs ?: Long.MAX_VALUE }
+                                WideTable(
+                                    headers = listOf(
+                                        "Snapshot ID",
+                                        "Parent Snapshot ID",
+                                        "Sequence Number",
+                                        "Schema ID",
+                                        "Timestamp",
+                                        "Manifest List",
+                                        "Operation",
+                                        "Summary"
+                                    ),
+                                    rows = snapshots.map { snapshot ->
+                                        listOf(
+                                            "${snapshot.snapshotId ?: "N/A"}",
+                                            "${snapshot.parentSnapshotId ?: "None"}",
+                                            "${snapshot.sequenceNumber ?: "N/A"}",
+                                            "${snapshot.schemaId ?: "N/A"}",
+                                            formatTimestampShort(snapshot.timestampMs),
+                                            normalizeText(snapshot.manifestList),
+                                            snapshot.summary["operation"] ?: "N/A",
+                                            if (snapshot.summary.isEmpty()) "N/A"
+                                            else snapshot.summary.toSortedMap().entries.joinToString(", ") { "${it.key}=${it.value}" }
+                                        )
+                                    }
+                                )
+                            }
                         }
 
                         if (node.data.snapshotLog.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Snapshot Log")
-                            DetailTable {
-                                DetailRow("Timestamp", "Snapshot ID", isHeader = true)
-                                renderSnapshotLogRows(node.data.snapshotLog).forEach { row ->
-                                    DetailRow(row.getOrElse(0) { "N/A" }, row.getOrElse(1) { "N/A" })
+                            Section("Snapshot Log") {
+                                DetailTable {
+                                    DetailRow("Timestamp", "Snapshot ID", isHeader = true)
+                                    renderSnapshotLogRows(node.data.snapshotLog).forEach { row ->
+                                        DetailRow(row.getOrElse(0) { "N/A" }, row.getOrElse(1) { "N/A" })
+                                    }
                                 }
                             }
                         }
 
                         if (node.data.metadataLog.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Metadata Log")
-                            DetailTable {
-                                DetailRow("Timestamp", "Metadata File", isHeader = true)
-                                renderMetadataLogRows(node.data.metadataLog).forEach { row ->
-                                    DetailRow(row.getOrElse(0) { "N/A" }, row.getOrElse(1) { "N/A" })
+                            Section("Metadata Log") {
+                                DetailTable {
+                                    DetailRow("Timestamp", "Metadata File", isHeader = true)
+                                    renderMetadataLogRows(node.data.metadataLog).forEach { row ->
+                                        DetailRow(row.getOrElse(0) { "N/A" }, row.getOrElse(1) { "N/A" })
+                                    }
                                 }
                             }
                         }
 
                         if (node.data.statistics.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Statistics")
-                            WideTable(
-                                headers = listOf("Index", "Value"),
-                                rows = node.data.statistics.mapIndexed { index, stat ->
-                                    listOf("${index + 1}", normalizeText(stat.toString()))
-                                }
-                            )
+                            Section("Statistics") {
+                                WideTable(
+                                    headers = listOf("Index", "Value"),
+                                    rows = node.data.statistics.mapIndexed { index, stat ->
+                                        listOf("${index + 1}", normalizeText(stat.toString()))
+                                    }
+                                )
+                            }
                         }
 
                         if (node.data.partitionStatistics.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Partition Statistics")
-                            WideTable(
-                                headers = listOf("Index", "Value"),
-                                rows = node.data.partitionStatistics.mapIndexed { index, stat ->
-                                    listOf("${index + 1}", normalizeText(stat.toString()))
-                                }
-                            )
-                        }
-
-                        Spacer(Modifier.height(16.dp))
-                        SectionTitle("Raw metadata.json")
-                        val rawJson = node.rawJson
-                        if (!rawJson.isNullOrBlank()) {
-                            val rawJsonScrollX = rememberScrollState()
-                            val rawJsonScrollY = rememberScrollState()
-                            // H-4: highlight once per (rawJson, theme), not on every recomposition.
-                            val highlightedJson = remember(rawJson, colors) { jsonToAnnotatedString(rawJson, colors) }
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 220.dp, max = 420.dp)
-                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                    .border(1.dp, colors.outlineVariant, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                    .background(colors.surface)
-                                    .horizontalScroll(rawJsonScrollX)
-                                    .verticalScroll(rawJsonScrollY)
-                                    .padding(8.dp)
-                            ) {
-                                Text(
-                                    text = highlightedJson,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = TypeScale.small
+                            Section("Partition Statistics") {
+                                WideTable(
+                                    headers = listOf("Index", "Value"),
+                                    rows = node.data.partitionStatistics.mapIndexed { index, stat ->
+                                        listOf("${index + 1}", normalizeText(stat.toString()))
+                                    }
                                 )
                             }
-                        } else {
-                            DetailTable {
-                                DetailRow("Raw JSON", "N/A", isHeader = true)
+                        }
+
+                        Section("Raw metadata.json") {
+                            val rawJson = node.rawJson
+                            if (!rawJson.isNullOrBlank()) {
+                                val rawJsonScrollX = rememberScrollState()
+                                val rawJsonScrollY = rememberScrollState()
+                                // H-4: highlight once per (rawJson, theme), not on every recomposition.
+                                val highlightedJson = remember(rawJson, colors) { jsonToAnnotatedString(rawJson, colors) }
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 220.dp, max = 420.dp)
+                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                        .border(1.dp, colors.outlineVariant, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                        .background(colors.surface)
+                                        .horizontalScroll(rawJsonScrollX)
+                                        .verticalScroll(rawJsonScrollY)
+                                        .padding(8.dp)
+                                ) {
+                                    Text(
+                                        text = highlightedJson,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = TypeScale.small
+                                    )
+                                }
+                            } else {
+                                DetailTable {
+                                    DetailRow("Raw JSON", "N/A", isHeader = true)
+                                }
                             }
                         }
                     }
@@ -1240,25 +1272,25 @@ fun NodeDetailsContent(
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 
                         if (node.data.summary.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Summary")
-                            // The one place in this app where a number was not computed here.
-                            // Every other figure the inspector shows is folded from something it
-                            // read and can be traced back to it; these are copied out of the
-                            // snapshot as the writer left them, and a writer that got them wrong
-                            // leaves no trace in them.
-                            Text(
-                                "Written by whatever engine made the commit, and read back verbatim — " +
-                                    "nothing here recomputed them. Each manifest's Recorded Summary section " +
-                                    "is where figures of this kind can be checked against the entries.",
-                                fontSize = TypeScale.small,
-                                color = colors.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
-                            DetailTable {
-                                DetailRow("Key", "Value", isHeader = true)
-                                node.data.summary.toSortedMap().forEach { (k, v) ->
-                                    DetailRow(k, v)
+                            Section("Summary") {
+                                // The one place in this app where a number was not computed here.
+                                // Every other figure the inspector shows is folded from something it
+                                // read and can be traced back to it; these are copied out of the
+                                // snapshot as the writer left them, and a writer that got them wrong
+                                // leaves no trace in them.
+                                Text(
+                                    "Written by whatever engine made the commit, and read back verbatim — " +
+                                        "nothing here recomputed them. Each manifest's Recorded Summary section " +
+                                        "is where figures of this kind can be checked against the entries.",
+                                    fontSize = TypeScale.small,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                                DetailTable {
+                                    DetailRow("Key", "Value", isHeader = true)
+                                    node.data.summary.toSortedMap().forEach { (k, v) ->
+                                        DetailRow(k, v)
+                                    }
                                 }
                             }
                         }
@@ -1275,64 +1307,64 @@ fun NodeDetailsContent(
                             )
 
                         if (manifestChildren.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Manifest List Rows")
-                            Text(
-                                "One row per manifest this snapshot lists, in apply order. The six count " +
-                                    "columns are what the manifest list claims; \"Summary\" is that claim " +
-                                    "checked against the entries of the manifest itself, which is a check " +
-                                    "nothing on the read path performs.",
-                                fontSize = TypeScale.small,
-                                color = colors.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
-                            WideTable(
-                                headers = listOf(
-                                    "Apply Order",
-                                    "Summary",
-                                    "Manifest Path",
-                                    "Content",
-                                    "Manifest Length",
-                                    "Partition Spec ID",
-                                    "Sequence Number",
-                                    "Min Sequence Number",
-                                    "Added Snapshot ID",
-                                    "Added Files",
-                                    "Existing Files",
-                                    "Deleted Files",
-                                    "Added Rows",
-                                    "Existing Rows",
-                                    "Deleted Rows"
-                                ),
-                                rows = manifestChildren.mapIndexed { index, manifestNode ->
-                                    val manifest = manifestNode.data
-                                    val tallies = manifestTallies(manifest, manifestNode.entries.map { it.entry })
-                                    val checkable = tallies.filter { it.agrees != null }
-                                    listOf(
-                                        "${index + 1}",
-                                        when {
-                                            manifestNode.entries.isEmpty() -> "no entries read"
-                                            checkable.isEmpty() -> "nothing recorded"
-                                            checkable.all { it.agrees == true } -> "matches"
-                                            else -> "${checkable.count { it.agrees == false }} of " +
-                                                "${checkable.size} DIFFER"
-                                        },
-                                        normalizeText(manifest.manifestPath),
-                                        if (manifest.content == 1) "Deletes (1)" else "Data (0)",
-                                        "${manifest.manifestLength ?: "N/A"}",
-                                        "${manifest.partitionSpecId ?: "N/A"}",
-                                        "${manifest.sequenceNumber ?: "N/A"}",
-                                        "${manifest.minSequenceNumber ?: "N/A"}",
-                                        "${manifest.addedSnapshotId ?: "N/A"}",
-                                        "${manifest.addedFilesCount ?: 0}",
-                                        "${manifest.existingFilesCount ?: 0}",
-                                        "${manifest.deletedFilesCount ?: 0}",
-                                        "${manifest.addedRowsCount ?: 0}",
-                                        "${manifest.existingRowsCount ?: 0}",
-                                        "${manifest.deletedRowsCount ?: 0}"
-                                    )
-                                }
-                            )
+                            Section("Manifest List Rows") {
+                                Text(
+                                    "One row per manifest this snapshot lists, in apply order. The six count " +
+                                        "columns are what the manifest list claims; \"Summary\" is that claim " +
+                                        "checked against the entries of the manifest itself, which is a check " +
+                                        "nothing on the read path performs.",
+                                    fontSize = TypeScale.small,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                                WideTable(
+                                    headers = listOf(
+                                        "Apply Order",
+                                        "Summary",
+                                        "Manifest Path",
+                                        "Content",
+                                        "Manifest Length",
+                                        "Partition Spec ID",
+                                        "Sequence Number",
+                                        "Min Sequence Number",
+                                        "Added Snapshot ID",
+                                        "Added Files",
+                                        "Existing Files",
+                                        "Deleted Files",
+                                        "Added Rows",
+                                        "Existing Rows",
+                                        "Deleted Rows"
+                                    ),
+                                    rows = manifestChildren.mapIndexed { index, manifestNode ->
+                                        val manifest = manifestNode.data
+                                        val tallies = manifestTallies(manifest, manifestNode.entries.map { it.entry })
+                                        val checkable = tallies.filter { it.agrees != null }
+                                        listOf(
+                                            "${index + 1}",
+                                            when {
+                                                manifestNode.entries.isEmpty() -> "no entries read"
+                                                checkable.isEmpty() -> "nothing recorded"
+                                                checkable.all { it.agrees == true } -> "matches"
+                                                else -> "${checkable.count { it.agrees == false }} of " +
+                                                    "${checkable.size} DIFFER"
+                                            },
+                                            normalizeText(manifest.manifestPath),
+                                            if (manifest.content == 1) "Deletes (1)" else "Data (0)",
+                                            "${manifest.manifestLength ?: "N/A"}",
+                                            "${manifest.partitionSpecId ?: "N/A"}",
+                                            "${manifest.sequenceNumber ?: "N/A"}",
+                                            "${manifest.minSequenceNumber ?: "N/A"}",
+                                            "${manifest.addedSnapshotId ?: "N/A"}",
+                                            "${manifest.addedFilesCount ?: 0}",
+                                            "${manifest.existingFilesCount ?: 0}",
+                                            "${manifest.deletedFilesCount ?: 0}",
+                                            "${manifest.addedRowsCount ?: 0}",
+                                            "${manifest.existingRowsCount ?: 0}",
+                                            "${manifest.deletedRowsCount ?: 0}"
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
 
@@ -1368,84 +1400,84 @@ fun NodeDetailsContent(
                         // this one was, which is the question asked from here.
                         if (scanPredicates.isNotEmpty()) {
                             val result = evaluatePruning(node.partitionSummaries, scanPredicates)
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle(
+                            Section(
                                 if (result.isSkipped) "Scan Pruning — this manifest would be skipped"
                                 else "Scan Pruning — this manifest would be read"
-                            )
-                            val skippedColor = verdictSkippedColor()
-                            val unevaluatedColor = verdictUnevaluatedColor()
-                            val readColor = verdictReadColor()
-                            WideTable(
-                                headers = listOf("This term", "Condition", "Field", "Because"),
-                                columnWidths = listOf(120.dp, 120.dp, 90.dp, 320.dp),
-                                rows = result.outcomes.map { outcome ->
-                                    listOf(
-                                        // "cannot" on its own named no object: cannot what? The
-                                        // column says what each term did to this manifest, so
-                                        // every value has to be a complete answer to that.
+                            ) {
+                                val skippedColor = verdictSkippedColor()
+                                val unevaluatedColor = verdictUnevaluatedColor()
+                                val readColor = verdictReadColor()
+                                WideTable(
+                                    headers = listOf("This term", "Condition", "Field", "Because"),
+                                    columnWidths = listOf(120.dp, 120.dp, 90.dp, 320.dp),
+                                    rows = result.outcomes.map { outcome ->
+                                        listOf(
+                                            // "cannot" on its own named no object: cannot what? The
+                                            // column says what each term did to this manifest, so
+                                            // every value has to be a complete answer to that.
+                                            when (outcome.effect) {
+                                                TermEffect.SKIPS -> "skips it"
+                                                TermEffect.KEEPS -> "cannot skip it"
+                                                TermEffect.NOT_EVALUATED -> "not evaluated"
+                                            },
+                                            outcome.predicate.toString(),
+                                            outcome.fieldName ?: "—",
+                                            outcome.reason,
+                                        )
+                                    },
+                                    leadCellColors = result.outcomes.map { outcome ->
                                         when (outcome.effect) {
-                                            TermEffect.SKIPS -> "skips it"
-                                            TermEffect.KEEPS -> "cannot skip it"
-                                            TermEffect.NOT_EVALUATED -> "not evaluated"
-                                        },
-                                        outcome.predicate.toString(),
-                                        outcome.fieldName ?: "—",
-                                        outcome.reason,
-                                    )
-                                },
-                                leadCellColors = result.outcomes.map { outcome ->
-                                    when (outcome.effect) {
-                                        TermEffect.SKIPS -> skippedColor
-                                        TermEffect.KEEPS -> readColor
-                                        TermEffect.NOT_EVALUATED -> unevaluatedColor
-                                    }
-                                },
-                            )
+                                            TermEffect.SKIPS -> skippedColor
+                                            TermEffect.KEEPS -> readColor
+                                            TermEffect.NOT_EVALUATED -> unevaluatedColor
+                                        }
+                                    },
+                                )
+                            }
                         }
 
                         // Outside the entries check on purpose: a manifest list claiming three
                         // added files over a manifest that yielded no entries is the case most
                         // worth seeing, and it is the case where there is nothing below to look at.
-                        Spacer(Modifier.height(16.dp))
-                        SectionTitle("Recorded Summary")
-                        Text(
-                            "The manifest list carries these counts so a scan can plan without opening this " +
-                                "manifest, and nothing on the read path checks them. Each one sits beside the " +
-                                "same figure counted from the entries.",
-                            fontSize = TypeScale.small,
-                            color = colors.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
-                        val tallies = manifestTallies(node.data, manifestEntries.map { it.entry })
-                        WideTable(
-                            // The verdict leads, as it does on the pruning tables: the reader is
-                            // here to find out whether anything disagrees, not to read six pairs
-                            // of numbers and compare them by eye.
-                            headers = listOf("Agrees", "Figure", "In the entries", "Recorded"),
-                            columnWidths = listOf(110.dp, 150.dp, 130.dp, 130.dp),
-                            rows = tallies.map { tally ->
-                                listOf(
+                        Section("Recorded Summary") {
+                            Text(
+                                "The manifest list carries these counts so a scan can plan without opening this " +
+                                    "manifest, and nothing on the read path checks them. Each one sits beside the " +
+                                    "same figure counted from the entries.",
+                                fontSize = TypeScale.small,
+                                color = colors.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            val tallies = manifestTallies(node.data, manifestEntries.map { it.entry })
+                            WideTable(
+                                // The verdict leads, as it does on the pruning tables: the reader is
+                                // here to find out whether anything disagrees, not to read six pairs
+                                // of numbers and compare them by eye.
+                                headers = listOf("Agrees", "Figure", "In the entries", "Recorded"),
+                                columnWidths = listOf(110.dp, 150.dp, 130.dp, 130.dp),
+                                rows = tallies.map { tally ->
+                                    listOf(
+                                        when (tally.agrees) {
+                                            true -> "yes"
+                                            false -> "NO"
+                                            null -> "nothing to check"
+                                        },
+                                        tally.label,
+                                        formatCount(tally.counted),
+                                        tally.recorded?.let { formatCount(it) } ?: "not recorded",
+                                    )
+                                },
+                                // Agreement is the ordinary case and stays neutral — colouring every
+                                // row spends the attention this table needs for the one that differs.
+                                leadCellColors = tallies.map { tally ->
                                     when (tally.agrees) {
-                                        true -> "yes"
-                                        false -> "NO"
-                                        null -> "nothing to check"
-                                    },
-                                    tally.label,
-                                    formatCount(tally.counted),
-                                    tally.recorded?.let { formatCount(it) } ?: "not recorded",
-                                )
-                            },
-                            // Agreement is the ordinary case and stays neutral — colouring every
-                            // row spends the attention this table needs for the one that differs.
-                            leadCellColors = tallies.map { tally ->
-                                when (tally.agrees) {
-                                    true -> verdictReadColor()
-                                    false -> colors.error
-                                    null -> verdictUnevaluatedColor()
-                                }
-                            },
-                        )
+                                        true -> verdictReadColor()
+                                        false -> colors.error
+                                        null -> verdictUnevaluatedColor()
+                                    }
+                                },
+                            )
+                        }
 
                         ManifestLedgerSection(manifestEntries)
 
@@ -1456,116 +1488,118 @@ fun NodeDetailsContent(
                             // my query touch this file" — a question asked before any entry is.
                             val summaries = node.partitionSummaries
                             if (summaries.isNotEmpty()) {
-                                SectionTitle("Partition Ranges (${formatCount(summaries.size)})")
-                                Text(
-                                    "The bounds a scan intersects with a partition predicate to decide whether to " +
-                                        "open this manifest. One row per partition field, covering every file in it.",
-                                    fontSize = TypeScale.small,
-                                    color = colors.onSurfaceVariant,
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
-                                WideTable(
-                                    headers = listOf(
-                                        "Field", "Lower", "Upper", "Holds", "Nulls", "NaNs",
-                                        "Transform", "Result Type"
-                                    ),
-                                    columnWidths = listOf(
-                                        150.dp, 150.dp, 150.dp, 110.dp, 70.dp, 70.dp, 120.dp, 120.dp
-                                    ),
-                                    rows = summaries.map { summary ->
-                                        listOf(
-                                            summary.field.name ?: "N/A",
-                                            summary.humanLower ?: "N/A",
-                                            summary.humanUpper ?: "N/A",
-                                            // A manifest whose bounds meet holds exactly one
-                                            // partition, which is what a well-clustered write
-                                            // produces and what makes pruning effective.
-                                            if (summary.isSingleValue) "one partition" else "a range",
-                                            if (summary.containsNull) "yes" else "no",
-                                            summary.containsNan?.let { if (it) "yes" else "no" } ?: "not recorded",
-                                            summary.field.transformName.ifEmpty { "N/A" },
-                                            summary.type.typeName,
-                                        )
-                                    }
-                                )
+                                Section("Partition Ranges (${formatCount(summaries.size)})") {
+                                    Text(
+                                        "The bounds a scan intersects with a partition predicate to decide whether to " +
+                                            "open this manifest. One row per partition field, covering every file in it.",
+                                        fontSize = TypeScale.small,
+                                        color = colors.onSurfaceVariant,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+                                    WideTable(
+                                        headers = listOf(
+                                            "Field", "Lower", "Upper", "Holds", "Nulls", "NaNs",
+                                            "Transform", "Result Type"
+                                        ),
+                                        columnWidths = listOf(
+                                            150.dp, 150.dp, 150.dp, 110.dp, 70.dp, 70.dp, 120.dp, 120.dp
+                                        ),
+                                        rows = summaries.map { summary ->
+                                            listOf(
+                                                summary.field.name ?: "N/A",
+                                                summary.humanLower ?: "N/A",
+                                                summary.humanUpper ?: "N/A",
+                                                // A manifest whose bounds meet holds exactly one
+                                                // partition, which is what a well-clustered write
+                                                // produces and what makes pruning effective.
+                                                if (summary.isSingleValue) "one partition" else "a range",
+                                                if (summary.containsNull) "yes" else "no",
+                                                summary.containsNan?.let { if (it) "yes" else "no" } ?: "not recorded",
+                                                summary.field.transformName.ifEmpty { "N/A" },
+                                                summary.type.typeName,
+                                            )
+                                        }
+                                    )
+                                }
                                 Spacer(Modifier.height(16.dp))
                             }
 
-                            SectionTitle("Manifest Entries (${formatCount(manifestEntries.size)})")
-                            WideTable(
-                                headers = listOf(
-                                    "Apply Order",
-                                    "Simple ID",
-                                    "Status",
-                                    "Content",
-                                    "Snapshot ID",
-                                    "Sequence Number",
-                                    "File Sequence Number",
-                                    "File Path",
-                                    "Format",
-                                    "Record Count",
-                                    "File Size Bytes",
-                                    "Partition",
-                                    "Column Sizes",
-                                    "Value Counts",
-                                    "Null Value Counts",
-                                    "NaN Value Counts",
-                                    "Lower Bounds",
-                                    "Upper Bounds",
-                                    "Key Metadata",
-                                    "Split Offsets",
-                                    "Equality IDs",
-                                    "Sort Order ID"
-                                ),
-                                // Sized to the content. At a uniform width the partition tuple
-                                // and the bounds maps each wrapped to the line cap, and a row is
-                                // as tall as its tallest cell — so every row of this table was
-                                // eight lines high and two entries did not fit on a screen.
-                                columnWidths = listOf(
-                                    90.dp, 80.dp, 110.dp, 100.dp, 170.dp, 120.dp, 150.dp,
-                                    320.dp, 90.dp, 110.dp, 120.dp, 420.dp,
-                                    160.dp, 160.dp, 170.dp, 170.dp, 220.dp, 220.dp,
-                                    160.dp, 130.dp, 110.dp, 110.dp,
-                                ),
-                                rows = manifestEntries.mapIndexed { index, view ->
-                                    val data = view.entry.dataFile ?: DataFile(filePath = "unknown")
-                                    val status = when (view.entry.status) {
-                                        ManifestEntryStatus.EXISTING -> "EXISTING (0)"
-                                        ManifestEntryStatus.ADDED -> "ADDED (1)"
-                                        ManifestEntryStatus.DELETED -> "DELETED (2)"
-                                        else -> "Unknown (${view.entry.status})"
+                            Section("Manifest Entries (${formatCount(manifestEntries.size)})") {
+                                WideTable(
+                                    headers = listOf(
+                                        "Apply Order",
+                                        "Simple ID",
+                                        "Status",
+                                        "Content",
+                                        "Snapshot ID",
+                                        "Sequence Number",
+                                        "File Sequence Number",
+                                        "File Path",
+                                        "Format",
+                                        "Record Count",
+                                        "File Size Bytes",
+                                        "Partition",
+                                        "Column Sizes",
+                                        "Value Counts",
+                                        "Null Value Counts",
+                                        "NaN Value Counts",
+                                        "Lower Bounds",
+                                        "Upper Bounds",
+                                        "Key Metadata",
+                                        "Split Offsets",
+                                        "Equality IDs",
+                                        "Sort Order ID"
+                                    ),
+                                    // Sized to the content. At a uniform width the partition tuple
+                                    // and the bounds maps each wrapped to the line cap, and a row is
+                                    // as tall as its tallest cell — so every row of this table was
+                                    // eight lines high and two entries did not fit on a screen.
+                                    columnWidths = listOf(
+                                        90.dp, 80.dp, 110.dp, 100.dp, 170.dp, 120.dp, 150.dp,
+                                        320.dp, 90.dp, 110.dp, 120.dp, 420.dp,
+                                        160.dp, 160.dp, 170.dp, 170.dp, 220.dp, 220.dp,
+                                        160.dp, 130.dp, 110.dp, 110.dp,
+                                    ),
+                                    rows = manifestEntries.mapIndexed { index, view ->
+                                        val data = view.entry.dataFile ?: DataFile(filePath = "unknown")
+                                        val status = when (view.entry.status) {
+                                            ManifestEntryStatus.EXISTING -> "EXISTING (0)"
+                                            ManifestEntryStatus.ADDED -> "ADDED (1)"
+                                            ManifestEntryStatus.DELETED -> "DELETED (2)"
+                                            else -> "Unknown (${view.entry.status})"
+                                        }
+                                        val content = when (data.content ?: DataFileContent.DATA) {
+                                            DataFileContent.POSITION_DELETES -> "Position Delete (1)"
+                                            DataFileContent.EQUALITY_DELETES -> "Equality Delete (2)"
+                                            else -> "Data (0)"
+                                        }
+                                        listOf(
+                                            "${index + 1}",
+                                            "${view.simpleId}",
+                                            status,
+                                            content,
+                                            "${view.entry.snapshotId ?: "N/A"}",
+                                            "${view.entry.sequenceNumber ?: "N/A"}",
+                                            "${view.entry.fileSequenceNumber ?: "N/A"}",
+                                            normalizeText(data.filePath),
+                                            data.fileFormat ?: "N/A",
+                                            formatCount(data.recordCount ?: 0L),
+                                            formatBytes(data.fileSizeInBytes ?: 0L),
+                                            partitionCell(view.partition),
+                                            kvLongs(data.columnSizes),
+                                            kvLongs(data.valueCounts),
+                                            kvLongs(data.nullValueCounts),
+                                            kvLongs(data.nanValueCounts),
+                                            kvBytes(data.lowerBounds),
+                                            kvBytes(data.upperBounds),
+                                            data.keyMetadata?.toHexShort() ?: "N/A",
+                                            longs(data.splitOffsets),
+                                            data.equalityIds?.joinToString(", ") ?: "N/A",
+                                            "${data.sortOrderId ?: "N/A"}"
+                                        )
                                     }
-                                    val content = when (data.content ?: DataFileContent.DATA) {
-                                        DataFileContent.POSITION_DELETES -> "Position Delete (1)"
-                                        DataFileContent.EQUALITY_DELETES -> "Equality Delete (2)"
-                                        else -> "Data (0)"
-                                    }
-                                    listOf(
-                                        "${index + 1}",
-                                        "${view.simpleId}",
-                                        status,
-                                        content,
-                                        "${view.entry.snapshotId ?: "N/A"}",
-                                        "${view.entry.sequenceNumber ?: "N/A"}",
-                                        "${view.entry.fileSequenceNumber ?: "N/A"}",
-                                        normalizeText(data.filePath),
-                                        data.fileFormat ?: "N/A",
-                                        formatCount(data.recordCount ?: 0L),
-                                        formatBytes(data.fileSizeInBytes ?: 0L),
-                                        partitionCell(view.partition),
-                                        kvLongs(data.columnSizes),
-                                        kvLongs(data.valueCounts),
-                                        kvLongs(data.nullValueCounts),
-                                        kvLongs(data.nanValueCounts),
-                                        kvBytes(data.lowerBounds),
-                                        kvBytes(data.upperBounds),
-                                        data.keyMetadata?.toHexShort() ?: "N/A",
-                                        longs(data.splitOffsets),
-                                        data.equalityIds?.joinToString(", ") ?: "N/A",
-                                        "${data.sortOrderId ?: "N/A"}"
-                                    )
-                                }
-                            )
+                                )
+                            }
                         }
                     }
 
@@ -1607,55 +1641,55 @@ fun NodeDetailsContent(
                         // the file contains, the other what it means.
                         val partition = node.partition
                         if (partition == null) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Partition")
-                            Text(
-                                "This manifest carried no partition spec, so the partition tuple " +
-                                    "cannot be decoded. That is not the same as an unpartitioned table.",
-                                fontSize = TypeScale.small,
-                                color = colors.onSurfaceVariant,
-                            )
+                            Section("Partition") {
+                                Text(
+                                    "This manifest carried no partition spec, so the partition tuple " +
+                                        "cannot be decoded. That is not the same as an unpartitioned table.",
+                                    fontSize = TypeScale.small,
+                                    color = colors.onSurfaceVariant,
+                                )
+                            }
                         } else if (partition.isUnpartitioned) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Partition")
-                            Text(
-                                "This table is not partitioned — its spec has no fields.",
-                                fontSize = TypeScale.small,
-                                color = colors.onSurfaceVariant,
-                            )
+                            Section("Partition") {
+                                Text(
+                                    "This table is not partitioned — its spec has no fields.",
+                                    fontSize = TypeScale.small,
+                                    color = colors.onSurfaceVariant,
+                                )
+                            }
                         } else {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Partition (${formatCount(partition.values.size)})")
-                            Text(
-                                "Iceberg stores the transform's result, not the source value. " +
-                                    "Value is how Iceberg renders it; Stored is what is on disk.",
-                                fontSize = TypeScale.small,
-                                color = colors.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
-                            WideTable(
-                                headers = listOf(
-                                    "Field", "Value", "Stored", "Transform",
-                                    "Source Column", "Result Type", "Field ID", "Raw"
-                                ),
-                                columnWidths = listOf(
-                                    150.dp, 170.dp, 150.dp, 120.dp, 140.dp, 120.dp, 70.dp, 180.dp
-                                ),
-                                rows = partition.values.map { value ->
-                                    listOf(
-                                        value.field.name ?: "N/A",
-                                        value.human,
-                                        boundDisplay(value.stored),
-                                        value.field.transformName.ifEmpty { "N/A" },
-                                        value.field.sourceId?.let { sourceId ->
-                                            node.schema?.nameOf(sourceId) ?: "field $sourceId"
-                                        } ?: "N/A",
-                                        value.type.typeName,
-                                        "${value.field.fieldId ?: "N/A"}",
-                                        value.stored.raw.takeIf { it.isNotEmpty() }?.toHexShort() ?: "N/A",
-                                    )
-                                }
-                            )
+                            Section("Partition (${formatCount(partition.values.size)})") {
+                                Text(
+                                    "Iceberg stores the transform's result, not the source value. " +
+                                        "Value is how Iceberg renders it; Stored is what is on disk.",
+                                    fontSize = TypeScale.small,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                                WideTable(
+                                    headers = listOf(
+                                        "Field", "Value", "Stored", "Transform",
+                                        "Source Column", "Result Type", "Field ID", "Raw"
+                                    ),
+                                    columnWidths = listOf(
+                                        150.dp, 170.dp, 150.dp, 120.dp, 140.dp, 120.dp, 70.dp, 180.dp
+                                    ),
+                                    rows = partition.values.map { value ->
+                                        listOf(
+                                            value.field.name ?: "N/A",
+                                            value.human,
+                                            boundDisplay(value.stored),
+                                            value.field.transformName.ifEmpty { "N/A" },
+                                            value.field.sourceId?.let { sourceId ->
+                                                node.schema?.nameOf(sourceId) ?: "field $sourceId"
+                                            } ?: "N/A",
+                                            value.type.typeName,
+                                            "${value.field.fieldId ?: "N/A"}",
+                                            value.stored.raw.takeIf { it.isNotEmpty() }?.toHexShort() ?: "N/A",
+                                        )
+                                    }
+                                )
+                            }
                         }
 
                         // What this delete file applies to. Asked of every delete file, and the
@@ -1666,45 +1700,45 @@ fun NodeDetailsContent(
                         if (deleteContent == DataFileContent.POSITION_DELETES ||
                             deleteContent == DataFileContent.EQUALITY_DELETES
                         ) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("What this deletes from")
-                            val referenced = node.data.referencedDataFile
-                            DetailTable {
-                                DetailRow("Property", "Value", isHeader = true)
-                                when {
-                                    deleteContent == DataFileContent.EQUALITY_DELETES -> {
-                                        DetailRow("Applies by", "Predicate over the equality field ids below")
-                                        DetailRow(
-                                            "Equality Field IDs",
-                                            node.data.equalityIds?.joinToString(", ") { id ->
-                                                node.schema?.nameOf(id)?.let { "$id ($it)" } ?: "$id"
-                                            } ?: "N/A",
-                                        )
-                                        DetailRow(
-                                            "Target Files",
-                                            "Not recorded. An equality delete matches rows by value across " +
-                                                "every data file in its scope, so the format stores no link " +
-                                                "from it to any particular file.",
-                                        )
-                                    }
-                                    referenced != null -> {
-                                        DetailRow("Applies by", "Row position, as a v3 deletion vector")
-                                        DetailRow("Referenced Data File", referenced)
-                                        DetailRow(
-                                            "Vector Location",
-                                            "offset ${node.data.contentOffset ?: "N/A"}, " +
-                                                "${node.data.contentSizeInBytes?.let { formatBytes(it) } ?: "N/A"} " +
-                                                "inside the Puffin blob above",
-                                        )
-                                    }
-                                    else -> {
-                                        DetailRow("Applies by", "Row position")
-                                        DetailRow(
-                                            "Target Files",
-                                            "Recorded inside this file, not in the metadata. Its own " +
-                                                "file_path column names the data files and the pos column the " +
-                                                "rows — open the sample rows below to read them.",
-                                        )
+                            Section("What this deletes from") {
+                                val referenced = node.data.referencedDataFile
+                                DetailTable {
+                                    DetailRow("Property", "Value", isHeader = true)
+                                    when {
+                                        deleteContent == DataFileContent.EQUALITY_DELETES -> {
+                                            DetailRow("Applies by", "Predicate over the equality field ids below")
+                                            DetailRow(
+                                                "Equality Field IDs",
+                                                node.data.equalityIds?.joinToString(", ") { id ->
+                                                    node.schema?.nameOf(id)?.let { "$id ($it)" } ?: "$id"
+                                                } ?: "N/A",
+                                            )
+                                            DetailRow(
+                                                "Target Files",
+                                                "Not recorded. An equality delete matches rows by value across " +
+                                                    "every data file in its scope, so the format stores no link " +
+                                                    "from it to any particular file.",
+                                            )
+                                        }
+                                        referenced != null -> {
+                                            DetailRow("Applies by", "Row position, as a v3 deletion vector")
+                                            DetailRow("Referenced Data File", referenced)
+                                            DetailRow(
+                                                "Vector Location",
+                                                "offset ${node.data.contentOffset ?: "N/A"}, " +
+                                                    "${node.data.contentSizeInBytes?.let { formatBytes(it) } ?: "N/A"} " +
+                                                    "inside the Puffin blob above",
+                                            )
+                                        }
+                                        else -> {
+                                            DetailRow("Applies by", "Row position")
+                                            DetailRow(
+                                                "Target Files",
+                                                "Recorded inside this file, not in the metadata. Its own " +
+                                                    "file_path column names the data files and the pos column the " +
+                                                    "rows — open the sample rows below to read them.",
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1715,56 +1749,56 @@ fun NodeDetailsContent(
                         // as parallel maps keyed by field id, they are unreadable in their raw form.
                         val columnStats = node.columnStats
                         if (columnStats.isNotEmpty()) {
-                            Spacer(Modifier.height(16.dp))
-                            SectionTitle("Column Statistics (${formatCount(columnStats.size)})")
-                            Text(
-                                if (node.schema == null) {
-                                    "This manifest carried no schema, so bounds are shown as raw bytes. " +
-                                        "Decoding without a type would produce a plausible wrong value."
-                                } else {
-                                    "A bound is a byte array in the manifest, keyed by field id, with no " +
-                                        "type beside it. It is read as the type that field id has in the " +
-                                        "schema this manifest carries under its own Avro `schema` key — the " +
-                                        "manifest's schema, not the table's current one, because a file " +
-                                        "written before a column was widened still describes itself by the " +
-                                        "type in force then. The field id and the bytes sit next to each " +
-                                        "decoded value so the reading can be checked rather than trusted."
-                                },
-                                fontSize = TypeScale.small,
-                                color = colors.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
-                            WideTable(
-                                // Each decoded bound is followed by the bytes it was decoded from.
-                                // The two were at opposite ends of the table, which put the value
-                                // on screen and its evidence four columns past the panel edge.
-                                headers = listOf(
-                                    "Column", "Field ID", "Type",
-                                    "Lower Bound", "Lower (raw)", "Upper Bound", "Upper (raw)",
-                                    "Values", "Nulls", "NaNs", "Column Size"
-                                ),
-                                columnWidths = listOf(
-                                    150.dp, 70.dp, 110.dp,
-                                    180.dp, 150.dp, 180.dp, 150.dp,
-                                    80.dp, 90.dp, 70.dp, 100.dp
-                                ),
-                                rows = columnStats.map { stat ->
-                                    listOf(
-                                        stat.displayName,
-                                        "${stat.fieldId}",
-                                        stat.type?.typeName ?: "unknown",
-                                        boundDisplay(stat.lowerBound),
-                                        stat.lowerBound?.raw?.toHexShort() ?: "N/A",
-                                        boundDisplay(stat.upperBound),
-                                        stat.upperBound?.raw?.toHexShort() ?: "N/A",
-                                        stat.valueCount?.let { formatCount(it) } ?: "N/A",
-                                        stat.nullValueCount?.let { formatCount(it) }
-                                            ?.plus(if (stat.isAllNull) " (all)" else "") ?: "N/A",
-                                        stat.nanValueCount?.let { formatCount(it) } ?: "N/A",
-                                        stat.columnSizeBytes?.let { formatBytes(it) } ?: "N/A",
-                                    )
-                                }
-                            )
+                            Section("Column Statistics (${formatCount(columnStats.size)})") {
+                                Text(
+                                    if (node.schema == null) {
+                                        "This manifest carried no schema, so bounds are shown as raw bytes. " +
+                                            "Decoding without a type would produce a plausible wrong value."
+                                    } else {
+                                        "A bound is a byte array in the manifest, keyed by field id, with no " +
+                                            "type beside it. It is read as the type that field id has in the " +
+                                            "schema this manifest carries under its own Avro `schema` key — the " +
+                                            "manifest's schema, not the table's current one, because a file " +
+                                            "written before a column was widened still describes itself by the " +
+                                            "type in force then. The field id and the bytes sit next to each " +
+                                            "decoded value so the reading can be checked rather than trusted."
+                                    },
+                                    fontSize = TypeScale.small,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                                WideTable(
+                                    // Each decoded bound is followed by the bytes it was decoded from.
+                                    // The two were at opposite ends of the table, which put the value
+                                    // on screen and its evidence four columns past the panel edge.
+                                    headers = listOf(
+                                        "Column", "Field ID", "Type",
+                                        "Lower Bound", "Lower (raw)", "Upper Bound", "Upper (raw)",
+                                        "Values", "Nulls", "NaNs", "Column Size"
+                                    ),
+                                    columnWidths = listOf(
+                                        150.dp, 70.dp, 110.dp,
+                                        180.dp, 150.dp, 180.dp, 150.dp,
+                                        80.dp, 90.dp, 70.dp, 100.dp
+                                    ),
+                                    rows = columnStats.map { stat ->
+                                        listOf(
+                                            stat.displayName,
+                                            "${stat.fieldId}",
+                                            stat.type?.typeName ?: "unknown",
+                                            boundDisplay(stat.lowerBound),
+                                            stat.lowerBound?.raw?.toHexShort() ?: "N/A",
+                                            boundDisplay(stat.upperBound),
+                                            stat.upperBound?.raw?.toHexShort() ?: "N/A",
+                                            stat.valueCount?.let { formatCount(it) } ?: "N/A",
+                                            stat.nullValueCount?.let { formatCount(it) }
+                                                ?.plus(if (stat.isAllNull) " (all)" else "") ?: "N/A",
+                                            stat.nanValueCount?.let { formatCount(it) } ?: "N/A",
+                                            stat.columnSizeBytes?.let { formatBytes(it) } ?: "N/A",
+                                        )
+                                    }
+                                )
+                            }
                         }
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
@@ -1799,19 +1833,20 @@ fun NodeDetailsContent(
                         }
                         Spacer(Modifier.height(12.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            SectionTitle("Stack Trace")
-                            Spacer(Modifier.weight(1f))
-                            val trace = node.stackTrace
-                            if (!trace.isNullOrBlank()) {
-                                TextButton(
-                                    onClick = {
-                                        val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-                                        clipboard.setContents(java.awt.datatransfer.StringSelection(trace), null)
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(24.dp)
-                                ) {
-                                    Text("Copy", fontSize = TypeScale.small)
+                            Section("Stack Trace") {
+                                Spacer(Modifier.weight(1f))
+                                val trace = node.stackTrace
+                                if (!trace.isNullOrBlank()) {
+                                    TextButton(
+                                        onClick = {
+                                            val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                                            clipboard.setContents(java.awt.datatransfer.StringSelection(trace), null)
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(24.dp)
+                                    ) {
+                                        Text("Copy", fontSize = TypeScale.small)
+                                    }
                                 }
                             }
                         }
@@ -1864,21 +1899,21 @@ fun NodeDetailsContent(
                             DetailRow("Comment", node.data.comment ?: "N/A")
                         }
                         if (node.data.fields.isNotEmpty()) {
-                            Spacer(Modifier.height(12.dp))
-                            SectionTitle("Fields")
-                            DetailTable {
-                                DetailRow("Name", "Type", isHeader = true)
-                                node.data.fields.forEach { field ->
-                                    DetailRow(field.name ?: "?", field.type ?: "?")
+                            Section("Fields") {
+                                DetailTable {
+                                    DetailRow("Name", "Type", isHeader = true)
+                                    node.data.fields.forEach { field ->
+                                        DetailRow(field.name ?: "?", field.type ?: "?")
+                                    }
                                 }
                             }
                         }
                         if (node.data.options.isNotEmpty()) {
-                            Spacer(Modifier.height(12.dp))
-                            SectionTitle("Options")
-                            DetailTable {
-                                DetailRow("Key", "Value", isHeader = true)
-                                node.data.options.forEach { (k, v) -> DetailRow(k, v) }
+                            Section("Options") {
+                                DetailTable {
+                                    DetailRow("Key", "Value", isHeader = true)
+                                    node.data.options.forEach { (k, v) -> DetailRow(k, v) }
+                                }
                             }
                         }
                     }
@@ -1920,57 +1955,58 @@ fun NodeDetailsContent(
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
                     }
                     is GraphNode.GroupNode -> {
-                        SectionTitle("Not Drawn")
-                        Text(
-                            "The graph draws a page of siblings at a time. This stands for the " +
-                                "${formatCount(node.memberCount)} ${node.kind.plural} after the ones above it, and for " +
-                                "everything below them — ${formatCount(node.hiddenNodeCount)} nodes in all. " +
-                                "The metadata behind them is read and counted either way: the table " +
-                                "summary and every parent's own figures cover the whole table, drawn or not.",
-                            fontSize = TypeScale.small,
-                            color = colors.onSurfaceVariant,
-                            modifier = Modifier.padding(bottom = 8.dp),
-                        )
-                        if (node.hiddenErrorCount > 0) {
+                        Section("Not Drawn") {
                             Text(
-                                "${formatCount(node.hiddenErrorCount)} read errors are inside this group. " +
-                                    "Open it to see which files failed.",
+                                "The graph draws a page of siblings at a time. This stands for the " +
+                                    "${formatCount(node.memberCount)} ${node.kind.plural} after the ones above it, and for " +
+                                    "everything below them — ${formatCount(node.hiddenNodeCount)} nodes in all. " +
+                                    "The metadata behind them is read and counted either way: the table " +
+                                    "summary and every parent's own figures cover the whole table, drawn or not.",
                                 fontSize = TypeScale.small,
-                                fontWeight = FontWeight.SemiBold,
-                                color = colors.error,
+                                color = colors.onSurfaceVariant,
                                 modifier = Modifier.padding(bottom = 8.dp),
                             )
-                        }
-                        // FlowRow, not Row: the second label grows with the count, and a Row
-                        // would place the button that does not fit past the panel's edge, where
-                        // Compose neither wraps it nor clips it.
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Button(onClick = { onExpandGroup(node.id) }) {
-                                Text("Show the next page", fontSize = TypeScale.small)
-                            }
-                            // The whole tail, for the reader who would rather wait than click
-                            // two hundred times. The count is on the button because it is what
-                            // decides whether they want to; what it costs in nodes is the
-                            // paragraph above.
-                            OutlinedButton(onClick = { onExpandGroupFully(node) }) {
+                            if (node.hiddenErrorCount > 0) {
                                 Text(
-                                    "Show all ${formatCount(node.memberCount)} ${node.kind.plural}",
+                                    "${formatCount(node.hiddenErrorCount)} read errors are inside this group. " +
+                                        "Open it to see which files failed.",
                                     fontSize = TypeScale.small,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.error,
+                                    modifier = Modifier.padding(bottom = 8.dp),
                                 )
                             }
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        DetailTable {
-                            DetailRow("Property", "Value", isHeader = true)
-                            DetailRow("Kind", node.kind.plural)
-                            DetailRow("Siblings not drawn", formatCount(node.memberCount))
-                            DetailRow("Nodes not drawn", formatCount(node.hiddenNodeCount))
-                            DetailRow("Read errors inside", formatCount(node.hiddenErrorCount))
-                            DetailRow("Page", "${node.pageIndex}")
-                            DetailRow("Parent Node ID", node.parentId, copyable = true)
+                            // FlowRow, not Row: the second label grows with the count, and a Row
+                            // would place the button that does not fit past the panel's edge, where
+                            // Compose neither wraps it nor clips it.
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Button(onClick = { onExpandGroup(node.id) }) {
+                                    Text("Show the next page", fontSize = TypeScale.small)
+                                }
+                                // The whole tail, for the reader who would rather wait than click
+                                // two hundred times. The count is on the button because it is what
+                                // decides whether they want to; what it costs in nodes is the
+                                // paragraph above.
+                                OutlinedButton(onClick = { onExpandGroupFully(node) }) {
+                                    Text(
+                                        "Show all ${formatCount(node.memberCount)} ${node.kind.plural}",
+                                        fontSize = TypeScale.small,
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            DetailTable {
+                                DetailRow("Property", "Value", isHeader = true)
+                                DetailRow("Kind", node.kind.plural)
+                                DetailRow("Siblings not drawn", formatCount(node.memberCount))
+                                DetailRow("Nodes not drawn", formatCount(node.hiddenNodeCount))
+                                DetailRow("Read errors inside", formatCount(node.hiddenErrorCount))
+                                DetailRow("Page", "${node.pageIndex}")
+                                DetailRow("Parent Node ID", node.parentId, copyable = true)
+                            }
                         }
                     }
                 }
@@ -2069,79 +2105,79 @@ private fun SchemaEvolutionSection(metadataChildren: List<GraphNode.MetadataNode
 
     if (uniqueSchemas.size < 2) return // No evolution to show
 
-    Spacer(Modifier.height(16.dp))
-    SectionTitle("Schema Evolution")
+    Section("Schema Evolution") {
 
-    val changes = mutableListOf<Triple<Int, Int, List<SchemaChange>>>() // fromSchemaId, toSchemaId, changes
-    for (i in 0 until uniqueSchemas.size - 1) {
-        val oldSchema = uniqueSchemas[i].second
-        val newSchema = uniqueSchemas[i + 1].second
-        val diff = diffSchemas(oldSchema, newSchema)
-        if (diff.isNotEmpty()) {
-            changes.add(Triple(oldSchema.schemaId ?: i, newSchema.schemaId ?: (i + 1), diff))
+        val changes = mutableListOf<Triple<Int, Int, List<SchemaChange>>>() // fromSchemaId, toSchemaId, changes
+        for (i in 0 until uniqueSchemas.size - 1) {
+            val oldSchema = uniqueSchemas[i].second
+            val newSchema = uniqueSchemas[i + 1].second
+            val diff = diffSchemas(oldSchema, newSchema)
+            if (diff.isNotEmpty()) {
+                changes.add(Triple(oldSchema.schemaId ?: i, newSchema.schemaId ?: (i + 1), diff))
+            }
         }
-    }
 
-    if (changes.isEmpty()) {
-        DetailTable {
-            DetailRow("Status", "No field changes detected between schema versions")
+        if (changes.isEmpty()) {
+            DetailTable {
+                DetailRow("Status", "No field changes detected between schema versions")
+            }
+            return@Section
         }
-        return
-    }
 
-    val colors = MaterialTheme.colorScheme
+        val colors = MaterialTheme.colorScheme
 
-    changes.forEach { (fromId, toId, diffs) ->
+        changes.forEach { (fromId, toId, diffs) ->
+            Text(
+                "Schema $fromId \u2192 $toId",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = TypeScale.small,
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+            )
+            DetailTable {
+                diffs.forEach { change ->
+                    val changeColor = when (change) {
+                        is SchemaChange.Added -> colors.secondary
+                        is SchemaChange.Dropped -> colors.error
+                        else -> colors.onSurface
+                    }
+                    DetailRow(
+                        key = when (change) {
+                            is SchemaChange.Added -> "+ Added"
+                            is SchemaChange.Dropped -> "- Dropped"
+                            is SchemaChange.TypeChanged -> "\u0394 Type"
+                            is SchemaChange.Renamed -> "\u0394 Rename"
+                            is SchemaChange.RequiredChanged -> "\u0394 Required"
+                        },
+                        value = change.toString().substringAfter(": ")
+                    )
+                }
+            }
+        }
+
+        // Show current schema fields
+        val latestSchema = uniqueSchemas.last().second
+        Spacer(Modifier.height(8.dp))
         Text(
-            "Schema $fromId \u2192 $toId",
-            fontWeight = FontWeight.SemiBold,
+            "Current Schema (ID ${latestSchema.schemaId ?: "?"}): ${latestSchema.fields.size} fields",
+            fontWeight = FontWeight.Medium,
             fontSize = TypeScale.small,
-            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+            modifier = Modifier.padding(bottom = 4.dp)
         )
+        val identifierIds = latestSchema.identifierFieldIds.toSet()
         DetailTable {
-            diffs.forEach { change ->
-                val changeColor = when (change) {
-                    is SchemaChange.Added -> colors.secondary
-                    is SchemaChange.Dropped -> colors.error
-                    else -> colors.onSurface
+            DetailRow("ID", "Name / Type / Required", isHeader = true)
+            latestSchema.fields.forEach { field ->
+                val isIdentifier = (field.id ?: -1) in identifierIds
+                val typeStr = field.type?.toString()?.removeSurrounding("\"") ?: "unknown"
+                val suffix = buildString {
+                    if (field.required == true) append(", required")
+                    if (isIdentifier) append(", identifier")
                 }
                 DetailRow(
-                    key = when (change) {
-                        is SchemaChange.Added -> "+ Added"
-                        is SchemaChange.Dropped -> "- Dropped"
-                        is SchemaChange.TypeChanged -> "\u0394 Type"
-                        is SchemaChange.Renamed -> "\u0394 Rename"
-                        is SchemaChange.RequiredChanged -> "\u0394 Required"
-                    },
-                    value = change.toString().substringAfter(": ")
+                    "${field.id ?: "?"}",
+                    "${field.name ?: "?"} ($typeStr$suffix)"
                 )
             }
-        }
-    }
-
-    // Show current schema fields
-    val latestSchema = uniqueSchemas.last().second
-    Spacer(Modifier.height(8.dp))
-    Text(
-        "Current Schema (ID ${latestSchema.schemaId ?: "?"}): ${latestSchema.fields.size} fields",
-        fontWeight = FontWeight.Medium,
-        fontSize = TypeScale.small,
-        modifier = Modifier.padding(bottom = 4.dp)
-    )
-    val identifierIds = latestSchema.identifierFieldIds.toSet()
-    DetailTable {
-        DetailRow("ID", "Name / Type / Required", isHeader = true)
-        latestSchema.fields.forEach { field ->
-            val isIdentifier = (field.id ?: -1) in identifierIds
-            val typeStr = field.type?.toString()?.removeSurrounding("\"") ?: "unknown"
-            val suffix = buildString {
-                if (field.required == true) append(", required")
-                if (isIdentifier) append(", identifier")
-            }
-            DetailRow(
-                "${field.id ?: "?"}",
-                "${field.name ?: "?"} ($typeStr$suffix)"
-            )
         }
     }
 }
@@ -2165,91 +2201,91 @@ private fun PropertiesEvolutionSection(metadataChildren: List<GraphNode.Metadata
     val allKeys = versions.flatMap { it.props.keys }.toSortedSet()
     if (allKeys.isEmpty()) return
 
-    Spacer(Modifier.height(16.dp))
-    SectionTitle("Table Properties")
+    Section("Table Properties") {
 
-    val colors = MaterialTheme.colorScheme
+        val colors = MaterialTheme.colorScheme
 
-    // If only one metadata version, show a simple table
-    if (versions.size == 1) {
+        // If only one metadata version, show a simple table
+        if (versions.size == 1) {
+            DetailTable {
+                DetailRow("Key", "Value", isHeader = true)
+                versions[0].props.toSortedMap().forEach { (k, v) ->
+                    DetailRow(k, v)
+                }
+            }
+            return@Section
+        }
+
+        // Multiple versions: show evolution
+        // First show the current values
+        val latestProps = versions.last().props
+
+        // Detect changes across versions
+        data class PropChange(
+            val key: String,
+            val fromVersion: String,
+            val toVersion: String,
+            val oldValue: String?,
+            val newValue: String?,
+        )
+
+        val changes = mutableListOf<PropChange>()
+        for (i in 0 until versions.size - 1) {
+            val oldV = versions[i]
+            val newV = versions[i + 1]
+            // Use a set to avoid double-reporting keys present in both versions.
+            val bothKeys = oldV.props.keys union newV.props.keys
+            bothKeys.forEach { key ->
+                val oldVal = oldV.props[key]
+                val newVal = newV.props[key]
+                if (oldVal != newVal) {
+                    changes.add(PropChange(key, oldV.version, newV.version, oldVal, newVal))
+                }
+            }
+        }
+
+        // Show current properties with change indicators
         DetailTable {
             DetailRow("Key", "Value", isHeader = true)
-            versions[0].props.toSortedMap().forEach { (k, v) ->
-                DetailRow(k, v)
+            allKeys.forEach { key ->
+                val currentVal = latestProps[key]
+                val hasChanges = changes.any { it.key == key }
+                if (currentVal != null) {
+                    DetailRow(
+                        key = if (hasChanges) "\u0394 $key" else key,
+                        value = currentVal
+                    )
+                } else {
+                    DetailRow(key = "- $key", value = "(removed)")
+                }
             }
         }
-        return
-    }
 
-    // Multiple versions: show evolution
-    // First show the current values
-    val latestProps = versions.last().props
+        // Show change log if there are any
+        if (changes.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Property Changes",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = TypeScale.small,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
 
-    // Detect changes across versions
-    data class PropChange(
-        val key: String,
-        val fromVersion: String,
-        val toVersion: String,
-        val oldValue: String?,
-        val newValue: String?,
-    )
-
-    val changes = mutableListOf<PropChange>()
-    for (i in 0 until versions.size - 1) {
-        val oldV = versions[i]
-        val newV = versions[i + 1]
-        // Use a set to avoid double-reporting keys present in both versions.
-        val bothKeys = oldV.props.keys union newV.props.keys
-        bothKeys.forEach { key ->
-            val oldVal = oldV.props[key]
-            val newVal = newV.props[key]
-            if (oldVal != newVal) {
-                changes.add(PropChange(key, oldV.version, newV.version, oldVal, newVal))
-            }
-        }
-    }
-
-    // Show current properties with change indicators
-    DetailTable {
-        DetailRow("Key", "Value", isHeader = true)
-        allKeys.forEach { key ->
-            val currentVal = latestProps[key]
-            val hasChanges = changes.any { it.key == key }
-            if (currentVal != null) {
-                DetailRow(
-                    key = if (hasChanges) "\u0394 $key" else key,
-                    value = currentVal
+            val changeHeaders = listOf("Property", "From", "To", "Old Value", "New Value")
+            val changeRows = changes.map { change ->
+                listOf(
+                    change.key,
+                    change.fromVersion,
+                    change.toVersion,
+                    change.oldValue ?: "(not set)",
+                    change.newValue ?: "(removed)"
                 )
-            } else {
-                DetailRow(key = "- $key", value = "(removed)")
             }
-        }
-    }
-
-    // Show change log if there are any
-    if (changes.isNotEmpty()) {
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "Property Changes",
-            fontWeight = FontWeight.SemiBold,
-            fontSize = TypeScale.small,
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
-
-        val changeHeaders = listOf("Property", "From", "To", "Old Value", "New Value")
-        val changeRows = changes.map { change ->
-            listOf(
-                change.key,
-                change.fromVersion,
-                change.toVersion,
-                change.oldValue ?: "(not set)",
-                change.newValue ?: "(removed)"
+            WideTable(
+                headers = changeHeaders,
+                rows = changeRows,
+                columnWidth = 160.dp
             )
         }
-        WideTable(
-            headers = changeHeaders,
-            rows = changeRows,
-            columnWidth = 160.dp
-        )
     }
 }

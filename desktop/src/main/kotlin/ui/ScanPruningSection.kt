@@ -41,126 +41,126 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
     val colors = MaterialTheme.colorScheme
     val columns = remember(graph) { prunableColumns(graph) }
     if (columns.isEmpty()) {
-        Spacer(Modifier.height(16.dp))
-        SectionTitle("Scan Pruning")
-        Text(
-            "This table is not partitioned, so no predicate can rule a manifest out before it is " +
-                "opened. Every scan reads every manifest.",
-            fontSize = TypeScale.small,
-            color = colors.onSurfaceVariant,
-        )
+        Section("Scan Pruning") {
+            Text(
+                "This table is not partitioned, so no predicate can rule a manifest out before it is " +
+                    "opened. Every scan reads every manifest.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+            )
+        }
         return
     }
 
-    Spacer(Modifier.height(16.dp))
-    SectionTitle("Scan Pruning")
-    Text(
-        "Iceberg intersects a query's predicate with each manifest's recorded partition bounds and " +
-            "skips the ones that cannot match. It then reports how many files it read and never " +
-            "which it skipped. Enter the filter and this says which — and which term did it.",
-        fontSize = TypeScale.small,
-        color = colors.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 6.dp),
-    )
-
-    // The three controls are unlabelled pills on their own — a reader sees `d` and `=` and has no
-    // way to know which is the column and which the operator, nor that either opens a menu. The
-    // header names them once, above the first row, the way the field it names sits above it.
-    if (predicates.isNotEmpty()) {
-        DisableSelection {
-            Row(modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 2.dp)) {
-                FormLabel("Field", COLUMN_PICKER_WIDTH)
-                Spacer(Modifier.width(6.dp))
-                FormLabel("Condition", OP_PICKER_WIDTH)
-                Spacer(Modifier.width(6.dp))
-                FormLabel("Value", LITERAL_FIELD_WIDTH)
-            }
-        }
-    }
-
-    predicates.forEachIndexed { index, predicate ->
-        PredicateRow(
-            predicate = predicate,
-            columns = columns,
-            onChange = { updated -> onChange(predicates.toMutableList().also { it[index] = updated }) },
-            onRemove = { onChange(predicates.toMutableList().also { it.removeAt(index) }) },
-        )
-    }
-
-    DisableSelection {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        OutlinedButton(
-            onClick = {
-                val first = columns.firstOrNull { it.isPrunable } ?: columns.first()
-                onChange(predicates + ScanPredicate(first.name, PredicateOp.EQ, ""))
-            },
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-        ) { Text(if (predicates.isEmpty()) "Add a condition" else "Add another", fontSize = TypeScale.small) }
-        if (predicates.isNotEmpty()) {
-            Spacer(Modifier.width(8.dp))
-            TextButton(
-                onClick = { onChange(emptyList()) },
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-            ) { Text("Clear", fontSize = TypeScale.small) }
-        }
-    }
-    }
-
-    if (predicates.isEmpty()) return
-
-    val results = remember(graph, predicates) { evaluatePruning(graph, predicates) }
-    val manifests = remember(graph) { graph.nodes.filterIsInstance<GraphNode.ManifestNode>() }
-    val skipped = manifests.count { results[it.id]?.isSkipped == true }
-    val unevaluated = manifests.count { results[it.id]?.isUnevaluated == true }
-
-    Spacer(Modifier.height(8.dp))
-    Text(
-        "Would skip ${formatCount(skipped)} of ${formatCount(manifests.size)} manifests drawn",
-        fontSize = TypeScale.body,
-        fontWeight = FontWeight.Bold,
-    )
-    // Named separately because a manifest nothing could be evaluated against is not a manifest a
-    // scan decided to read — folding the two together would overstate what this screen knows.
-    if (unevaluated > 0) {
+    Section("Scan Pruning") {
         Text(
-            "${formatCount(unevaluated)} could not be evaluated at all; the reason is on each row.",
+            "Iceberg intersects a query's predicate with each manifest's recorded partition bounds and " +
+                "skips the ones that cannot match. It then reports how many files it read and never " +
+                "which it skipped. Enter the filter and this says which — and which term did it.",
             fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 6.dp),
+        )
+
+        // The three controls are unlabelled pills on their own — a reader sees `d` and `=` and has no
+        // way to know which is the column and which the operator, nor that either opens a menu. The
+        // header names them once, above the first row, the way the field it names sits above it.
+        if (predicates.isNotEmpty()) {
+            DisableSelection {
+                Row(modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 2.dp)) {
+                    FormLabel("Field", COLUMN_PICKER_WIDTH)
+                    Spacer(Modifier.width(6.dp))
+                    FormLabel("Condition", OP_PICKER_WIDTH)
+                    Spacer(Modifier.width(6.dp))
+                    FormLabel("Value", LITERAL_FIELD_WIDTH)
+                }
+            }
+        }
+
+        predicates.forEachIndexed { index, predicate ->
+            PredicateRow(
+                predicate = predicate,
+                columns = columns,
+                onChange = { updated -> onChange(predicates.toMutableList().also { it[index] = updated }) },
+                onRemove = { onChange(predicates.toMutableList().also { it.removeAt(index) }) },
+            )
+        }
+
+        DisableSelection {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(
+                    onClick = {
+                        val first = columns.firstOrNull { it.isPrunable } ?: columns.first()
+                        onChange(predicates + ScanPredicate(first.name, PredicateOp.EQ, ""))
+                    },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                ) { Text(if (predicates.isEmpty()) "Add a condition" else "Add another", fontSize = TypeScale.small) }
+                if (predicates.isNotEmpty()) {
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(
+                        onClick = { onChange(emptyList()) },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    ) { Text("Clear", fontSize = TypeScale.small) }
+                }
+            }
+        }
+
+        if (predicates.isEmpty()) return@Section
+
+        val results = remember(graph, predicates) { evaluatePruning(graph, predicates) }
+        val manifests = remember(graph) { graph.nodes.filterIsInstance<GraphNode.ManifestNode>() }
+        val skipped = manifests.count { results[it.id]?.isSkipped == true }
+        val unevaluated = manifests.count { results[it.id]?.isUnevaluated == true }
+
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Would skip ${formatCount(skipped)} of ${formatCount(manifests.size)} manifests drawn",
+            fontSize = TypeScale.body,
+            fontWeight = FontWeight.Bold,
+        )
+        // Named separately because a manifest nothing could be evaluated against is not a manifest a
+        // scan decided to read — folding the two together would overstate what this screen knows.
+        if (unevaluated > 0) {
+            Text(
+                "${formatCount(unevaluated)} could not be evaluated at all; the reason is on each row.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+
+        val skippedColor = verdictSkippedColor()
+        val unevaluatedColor = verdictUnevaluatedColor()
+        val readColor = verdictReadColor()
+        WideTable(
+            headers = listOf("Verdict", "Manifest", "Because"),
+            // 634dp of table in a panel that is rarely wider: the reason is the payload, and a
+            // payload only reachable by dragging a horizontal scrollbar is a payload most readers
+            // never see. The two identifier columns are sized to their longest value and no more.
+            columnWidths = listOf(100.dp, 100.dp, 400.dp),
+            rows = manifests.map { manifest ->
+                val result = results[manifest.id]
+                listOf(
+                    when {
+                        result == null -> "would be read"
+                        result.isSkipped -> "SKIPPED"
+                        result.isUnevaluated -> "not evaluated"
+                        else -> "would be read"
+                    },
+                    "MANIFEST ${manifest.simpleId}",
+                    result.summarise(),
+                )
+            },
+            leadCellColors = manifests.map { manifest ->
+                val result = results[manifest.id]
+                when {
+                    result?.isSkipped == true -> skippedColor
+                    result?.isUnevaluated == true -> unevaluatedColor
+                    else -> readColor
+                }
+            },
         )
     }
-    Spacer(Modifier.height(6.dp))
-
-    val skippedColor = verdictSkippedColor()
-    val unevaluatedColor = verdictUnevaluatedColor()
-    val readColor = verdictReadColor()
-    WideTable(
-        headers = listOf("Verdict", "Manifest", "Because"),
-        // 634dp of table in a panel that is rarely wider: the reason is the payload, and a
-        // payload only reachable by dragging a horizontal scrollbar is a payload most readers
-        // never see. The two identifier columns are sized to their longest value and no more.
-        columnWidths = listOf(100.dp, 100.dp, 400.dp),
-        rows = manifests.map { manifest ->
-            val result = results[manifest.id]
-            listOf(
-                when {
-                    result == null -> "would be read"
-                    result.isSkipped -> "SKIPPED"
-                    result.isUnevaluated -> "not evaluated"
-                    else -> "would be read"
-                },
-                "MANIFEST ${manifest.simpleId}",
-                result.summarise(),
-            )
-        },
-        leadCellColors = manifests.map { manifest ->
-            val result = results[manifest.id]
-            when {
-                result?.isSkipped == true -> skippedColor
-                result?.isUnevaluated == true -> unevaluatedColor
-                else -> readColor
-            }
-        },
-    )
 }
 
 private val COLUMN_PICKER_WIDTH = 150.dp

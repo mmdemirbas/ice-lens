@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   header are now distinct from body text rather than a little heavier than it.
 
 ### Added
+- **Inspector sections fold.** Every titled section in the inspector — 39 of them across the node
+  types — now carries a caret and folds away, and the panel header has one button that collapses
+  or expands the lot. Folded, a table's panel is a list of what the table holds: eight lines
+  instead of ten thousand device-independent pixels of scrolling to find out that "Table
+  Properties" is down there. The fold state is keyed on the stable half of the title, so a
+  section whose heading carries a live count ("Manifest Entries (12)") does not silently re-open
+  when the count moves, and it is held for the panel rather than per node, because a reader who
+  folds "Raw metadata.json" away means it for the table.
 - **A card that outgrows its node now fails a test.** `CardHeightTest` draws all thirteen card
   shapes with 400dp of room to spare and requires each to have fitted inside what its node
   declares. This was the missing half of a change to a text size: a card drawn at its own height

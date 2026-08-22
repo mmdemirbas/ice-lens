@@ -282,6 +282,18 @@ desktop/src/main/kotlin/
 - **`manifest_file.partitions` pairs with the partition spec positionally** — the summaries
   carry no field ids. A spec of a different length decodes to nothing rather than mislabelling
   fields, because a bound attributed to the wrong partition field reads as an answer
+- **A titled inspector section is a `Section`, and it owns the gap above itself.** `Section` in
+  `ui/CommonComponents.kt` draws the caret, folds the body, and emits `content()` straight into
+  the caller's layout rather than into a `Column` of its own — a wrapper would change what
+  `fillMaxWidth` and `weight` inside a section resolve against, and a lambda written at the call
+  site keeps the enclosing `ColumnScope` as its implicit receiver anyway. Its header sits in
+  `DisableSelection` because the panel is a `SelectionContainer` and a drag across a title would
+  otherwise start a text selection instead of reaching the toggle. **Do not write a `Spacer`
+  before a `Section`**: separation is decided inside it, 16dp expanded and 8dp folded, because a
+  folded panel that keeps an expanded panel's rhythm reads as headings floating a screen apart
+  rather than as a list of what the node holds. Fold state is keyed on `sectionKey(title)` — the
+  title minus its ` (count)` and ` — verdict` suffixes — so a section does not re-open when its
+  count moves, and it is held by `NodeDetailsContent` for the panel rather than per node
 - **`WideTable` column order is load-bearing, and so are its widths.** The inspector panel is
   far narrower than the table, and the reader sees the leftmost columns and nothing else until
   they scroll — so the answer goes first and identifiers follow it. Pass `columnWidths`: one
@@ -345,7 +357,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~482 tests across 50 files (376 in :core, 106 in :desktop) covering full pipelines for both formats (Avro fixtures
+~483 tests across 50 files (376 in :core, 107 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -364,6 +376,13 @@ cannot state: whether the lines that fit are the right lines, in the right order
 reader can rank. The scene is rendered twice before encoding: a control whose
 visibility depends on state that layout writes (the `WideTable` scrollbar) is absent from the
 first frame, so a single-frame capture shows a panel the running app never draws.
+
+**A state a click produces is a state a render never reaches unless it is passed in.**
+`NodeDetailsContent` takes `sectionCollapse` as a defaulted parameter so `table-node-folded-*.png`
+can capture the panel with every section folded. That capture is what the folding is judged by —
+whether the carets line up, whether the titles read as a list of what the node holds, and whether
+the whole thing fits in a screen. It is also what showed that the identity table at the top of
+every panel is not inside a `Section` and so does not fold, which no assertion was going to say.
 
 **A capture where every row says the same thing checks nothing.** `scan-pruning-table-*.png`
 renders the filter over `parted` with a literal one day past the narrow manifest's range, so one
