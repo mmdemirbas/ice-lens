@@ -84,7 +84,10 @@ The table summary's `current` and `history` figures are folded from a per-manife
 the inspector prints it (see `StatsDerivation` in `model/GraphTypes.kt`). Nothing else is
 covered yet, and each of these is a computed number a reader currently has to trust:
 
-- **Manifest node summaries** — the per-manifest counts on `ManifestNode` and its card.
+- **Manifest node summaries** — the six counts in `manifest_file` are now shown against the
+  same figures folded from the manifest's own entries (`manifestTallies`), so the inspector
+  says whether the recorded summary is kept. The card still prints its counts bare, and the
+  snapshot inspector's per-manifest overview table does too.
 - **Column statistics** — a bound is decoded from bytes against a schema; the trace would name
   the schema key, the field id and the raw bytes it came from. The raw bytes are already shown,
   which is half of it.
