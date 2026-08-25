@@ -300,7 +300,18 @@ desktop/src/main/kotlin/
   content actually came to. Measuring the card at its own size cannot work, because that is the
   clamped number rather than a measurement of the clamp. The scene must be tall enough to hold
   every card at its slack height: a `Column` out of room measures what is left with a maximum of
-  zero, and a probe reporting 0dp reads as a card that fits
+  zero, and a probe reporting 0dp reads as a card that fits. It sweeps **every node of every
+  fixture in both filter states**, not one instance per kind — a card's line count varies with what
+  the artifact carries, so one sample measures whichever instance a fixture listed first — and a
+  second pass draws them all again with the long names a real table has. `fileNameFromPath` throws
+  the directories away, so the *last segment* is what has to be long; the first version of that
+  constant measured a card as getting **shorter** under stress. Every `Text` a table's content can
+  lengthen is now `maxLines`-capped, which is what makes the stressed measurement a bound rather
+  than the tallest thing eight fixtures happen to contain, and the heights were tightened against
+  it. Kind coverage is checked against `GraphNode::class.sealedSubclasses`, so a node type added
+  without a card fails here instead of needing a hand-maintained count, and the card a node gets is
+  chosen by `GraphNodeCard` — one composable shared with the canvas, because a `when` written twice
+  would let the sweep measure a card the app does not draw
 - **Text sizes come from `TypeScale` in `ui/Typography.kt`, and nothing else names a number of
   `sp`.** Five steps at a ratio near 1.2 (10/12/14/17/21), replacing eight sizes from 8sp to 16sp
   chosen a call site at a time — consecutive steps 1.09x apart read as one flat size with noise on
@@ -447,7 +458,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~531 tests across 56 files (405 in :core, 126 in :desktop) covering full pipelines for both formats (Avro fixtures
+~538 tests across 57 files (411 in :core, 127 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

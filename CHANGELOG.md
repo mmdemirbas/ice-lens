@@ -71,6 +71,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the canvas fades every node the query does not touch, files included.
 
 ### Changed
+- **A card's height is now a bound rather than a coincidence, and the graph is shorter for it.**
+  Most cards printed a file name with no line cap, so "does this fit" had only ever been asked of
+  the short names eight checked-in fixtures carry. Under a catalog's own
+  `00147-<uuid>.metadata.json` the metadata card measured *exactly* its declared height, with
+  nothing left for the rounding another display scale does to a font metric. Every text a table's
+  content can lengthen is now capped at the lines its node reserves, which makes the measurement a
+  worst case — and against that, the snapshot card came down from 112dp to 88 with ref chips and
+  from 84 to 68 without, roughly 25dp of empty space under every snapshot in the graph. The cards
+  that had measured at exactly their declared height gained 4dp instead. The Paimon heights are
+  left alone: there is one Paimon table checked in, with one snapshot, so a conditional line that
+  never appears in it would be invisible to the measurement.
 - **A verdict column now marks only the exception.** Every leading cell in the pruning and tally
   tables was bold, because each row supplied a colour and `WideTable` bolded any cell that had
   one — including the neutral colour that exists to say "ordinary". The ordinary rows now pass no

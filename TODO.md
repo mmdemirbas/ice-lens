@@ -128,15 +128,19 @@ What is left:
 
 ## UI / UX
 
-- **Node heights are declared with more room than the cards use.** The sweep now measures the
-  worst instance of every kind across every fixture, so the numbers are no longer a sample — they
-  are printed by `CardHeightTest` on every run. The reserve at the top of that list:
-  `SnapshotNode` 69dp of a declared 112, `PaimonManifestListNode` 38 of 80, `PaimonSchemaNode`
-  50 of 80, `PaimonSnapshotNode` 62 of 84, `PaimonManifestNode` 60 of 80, `ManifestNode` 64 of 80.
-  `FileNode` and `PaimonDataFileNode` are already exact. What still stops this being a
-  find-and-replace is that a *fixture's* worst instance is not a *kind's* worst instance: the
-  bound that would justify a number is structural — the `maxLines` on each `Text` and on the ref
-  `FlowRow` — not the tallest thing eight checked-in tables happen to contain.
+- **The Paimon cards still reserve more than they use.** Every card's height is now a bound rather
+  than a sample — each `Text` a table's content can lengthen is capped, and `CardHeightTest`'s
+  stress pass measures the capped worst — and the Iceberg kinds were tightened against it. The
+  Paimon ones were not: `PaimonManifestListNode` measures 38dp of a declared 80, `PaimonSchemaNode`
+  50 of 80, `PaimonManifestNode` 60 of 80, `PaimonSnapshotNode` 62 of 84. The reason for leaving
+  them is the fixture — there is exactly one Paimon table checked in, with one snapshot, so a
+  conditional line that never appears in it would be invisible to the measurement. A second Paimon
+  fixture (more snapshots, a changelog manifest list, an ANALYZE commit) settles it, and the
+  numbers are printed on every run either way.
+
+- **`TableNode` and `ErrorNode` have 11dp and 16dp of reserve.** Measured and bounded; left alone
+  because neither is a repeated node — a graph draws one table root and, on a healthy table, no
+  errors at all, so the space costs nothing a reader scrolls past.
 
 - **A group card truncates the one word that says what it hides.** At 200dp the count line reads
   `6 more metadata versi…`, because `AggregationKind.METADATA.plural` is the longest of the ten.
