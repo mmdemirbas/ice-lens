@@ -19,6 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checked-in fixture, which holds one array container with one position in it; the array/bitset
   boundary at 4,096 and the run container are pinned by containers built from the spec text.
 
+### Fixed
+- **A deletion vector is named as one.** It declares `content = 1` exactly as a v2 positional
+  delete file does, so both cards read `POS DELETE` and only the `.puffin` extension told them
+  apart. The card, its tooltip and the inspector title now say `DELETE VECTOR`, from one function
+  rather than the three copies of the decision that existed before.
+- **A file card's row count says what the number counts.** `record_count` is rows held for a data
+  file, rows removed for a positional delete or a deletion vector, and predicate tuples for an
+  equality delete — where one tuple can remove thousands of rows. All three read `1 row`; they now
+  read `1 row`, `deletes 1 row` and `1 equality row`.
+- **A file node reserves 68dp instead of 60.** `FILE 5: DELETE VECTOR — NOT READ` is the longest
+  first line a file card can draw and it wraps at 200dp, and the verdict is appended when a filter
+  is on — after the layout that reserved the height. The card was losing its last line silently,
+  which is the failure `CardHeightTest` exists for and which it did not see, because it measured
+  no pruned card and no vector. It measures both now.
+
 - **Pruning now answers a file count, not just a manifest count.** Iceberg prunes twice — a
   manifest by the partition summaries its list records, then a file by the bounds it records about
   its own columns — and only the first stage was modelled. The panel now reports both, and leads

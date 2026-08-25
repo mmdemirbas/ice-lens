@@ -81,11 +81,7 @@ private fun nodeTitle(node: GraphNode): String = when (node) {
     is GraphNode.MetadataNode -> "METADATA ${node.simpleId}"
     is GraphNode.SnapshotNode -> "SNAPSHOT ${node.simpleId}"
     is GraphNode.ManifestNode -> "MANIFEST ${node.simpleId}: ${if (node.data.content == 1) "DELETE" else "DATA"}"
-    is GraphNode.FileNode -> "FILE ${node.simpleId}: ${when (node.data.content ?: 0) {
-        1 -> "POS DELETE"
-        2 -> "EQ DELETE"
-        else -> "DATA"
-    }}"
+    is GraphNode.FileNode -> "FILE ${node.simpleId}: ${fileContentLabel(node)}"
     is GraphNode.RowNode -> when (node.content) {
         1 -> "POS DELETE ROW"
         2 -> "EQ DELETE ROW"

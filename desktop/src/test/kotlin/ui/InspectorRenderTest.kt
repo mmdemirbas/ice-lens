@@ -468,8 +468,9 @@ class InspectorRenderTest {
         val snapshot = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().first()
         val manifest = graph.nodes.filterIsInstance<GraphNode.ManifestNode>().first()
         val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().first()
+        val vector = graphFor("v3").nodes.filterIsInstance<GraphNode.FileNode>().first { it.isDeletionVector }
 
-        renderScene("graph-cards", width = 700, height = 1400) {
+        renderScene("graph-cards", width = 700, height = 2000) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 TableCard(table)
                 MetadataCard(metadata)
@@ -485,6 +486,13 @@ class InspectorRenderTest {
                 // "the fade is still legible and the extra word still fits" is a separate
                 // question from the one the manifest pair answers.
                 FileCard(file, isPruned = true)
+                // A v3 deletion vector, which declares `content = 1` exactly as the positional
+                // delete file above it does. Whether the two are distinguishable in the drawing is
+                // the whole question, and it is only askable with both of them on screen. Pruned,
+                // because `FILE n: DELETE VECTOR — NOT READ` is the longest first line any file
+                // card draws and is what the node's 68dp is reserved for.
+                FileCard(vector)
+                FileCard(vector, isPruned = true)
             }
         }
     }

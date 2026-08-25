@@ -21,9 +21,7 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   positions decoded (`service/PuffinReader.kt`), so the inspector answers which rows a vector
   deletes rather than only where the blob sits. What is still unsurfaced: **row lineage**
   (`first-row-id`, `added-rows`, `_row_id`, `_last_updated_sequence_number`) and the **variant /
-  geometry / geography / timestamp_ns** types. Two smaller gaps in the vector work itself — a
-  vector is still labelled `POS DELETE` on its card, exactly as a v2 positional delete file is,
-  since both declare `content = 1` and only the `.puffin` extension tells them apart; and the
+  geometry / geography / timestamp_ns** types. One smaller gap in the vector work itself: the
   sample rows shown for the *referenced* data file are not marked as deleted, which is the one
   place the decoded positions would be worth the most.
 

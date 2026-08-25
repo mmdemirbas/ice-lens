@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
+import model.DataFileContent
 import model.GraphNode
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
@@ -35,10 +36,23 @@ import java.util.Locale
 private fun manifestContentLabel(content: Int?): String =
     if (content == 1) "DELETE" else "DATA"
 
-private fun fileContentLabel(content: Int?): String = when (content ?: 0) {
-    1 -> "POS DELETE"
-    2 -> "EQ DELETE"
-    else -> "DATA"
+/**
+ * What a file node calls itself, in one place because three surfaces print it — the card, its
+ * tooltip and the inspector's title — and a fourth case had to be added to all three.
+ *
+ * A v3 deletion vector and a v2 positional delete file both declare `content = 1`, so both read
+ * `POS DELETE` unless the vector is named. They are not the same artifact: one is a Roaring bitmap
+ * in a Puffin blob covering exactly one data file, the other is a Parquet file of
+ * `(file_path, pos)` rows that may cover many. Telling them apart from the drawing is the point of
+ * looking at the drawing.
+ */
+internal fun fileContentLabel(node: GraphNode.FileNode): String = when {
+    node.isDeletionVector -> "DELETE VECTOR"
+    else -> when (node.data.content ?: 0) {
+        1 -> "POS DELETE"
+        2 -> "EQ DELETE"
+        else -> "DATA"
+    }
 }
 
 private fun rowContentLabel(content: Int): String = when (content) {
@@ -73,6 +87,24 @@ private fun rowCardDetailEntries(node: GraphNode.RowNode): List<Map.Entry<String
 /** Row count with a thousands separator and an ending that matches it. */
 private fun rowCountLabel(count: Long?): String =
     if (count == 1L) "1 row" else "${formatCount(count)} rows"
+
+/**
+ * What a file card's row count means, which is not the same thing for the three kinds of file.
+ *
+ * `record_count` is the number of rows a **data** file holds, the number of positions a
+ * **positional delete** file or a **deletion vector** removes, and the number of predicate tuples
+ * an **equality delete** holds — and one equality tuple can remove thousands of rows. All three
+ * read `1 row` before this existed, which says the wrong thing about two of them.
+ */
+private fun fileRowCountLabel(node: GraphNode.FileNode): String {
+    val count = node.data.recordCount
+    return when (node.data.content ?: DataFileContent.DATA) {
+        DataFileContent.POSITION_DELETES -> "deletes ${rowCountLabel(count)}"
+        DataFileContent.EQUALITY_DELETES ->
+            if (count == 1L) "1 equality row" else "${formatCount(count)} equality rows"
+        else -> rowCountLabel(count)
+    }
+}
 
 private fun isPrimaryMetadataFile(fileName: String): Boolean =
     model.metadataVersionFromFileName(fileName) != null
@@ -268,7 +300,7 @@ fun NodeTooltip(node: GraphNode) {
             is GraphNode.MetadataNode -> "METADATA ${node.simpleId}"
             is GraphNode.SnapshotNode -> "SNAPSHOT ${node.simpleId}"
             is GraphNode.ManifestNode -> "MANIFEST ${node.simpleId}: ${manifestContentLabel(node.data.content)}"
-            is GraphNode.FileNode -> "FILE ${node.simpleId}: ${fileContentLabel(node.data.content)}"
+            is GraphNode.FileNode -> "FILE ${node.simpleId}: ${fileContentLabel(node)}"
             is GraphNode.RowNode -> rowContentLabel(node.content)
             is GraphNode.ErrorNode -> "ERROR"
             is GraphNode.PaimonSnapshotNode -> "PAIMON SNAPSHOT ${node.simpleId}"
@@ -580,7 +612,7 @@ fun FileCard(node: GraphNode.FileNode, isSelected: Boolean = false, isPruned: Bo
     // Same treatment as a pruned manifest, and for the same reason: the word says which, the fade
     // says how much of the drawing the query does not touch, and neither alone is enough — colour
     // is never the only signal, and a label on forty cards is not a shape the eye can take in.
-    val label = "FILE ${node.simpleId}: ${fileContentLabel(node.data.content)}" +
+    val label = "FILE ${node.simpleId}: ${fileContentLabel(node)}" +
         if (isPruned) " — NOT READ" else ""
     val borderWidth = if (isSelected) 5.dp else 1.dp
     val borderColor = if (isSelected) selectionBorderColor else getGraphNodeBorderColor(node, isDarkSurface(MaterialTheme.colorScheme.surface))
@@ -601,7 +633,7 @@ fun FileCard(node: GraphNode.FileNode, isSelected: Boolean = false, isPruned: Bo
                 color = nodeCardTextSecondary()
             )
             Text(fileName, fontSize = TypeScale.micro, maxLines = 2, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
-            Text(rowCountLabel(node.data.recordCount), fontSize = TypeScale.micro, color = nodeCardTextPrimary())
+            Text(fileRowCountLabel(node), fontSize = TypeScale.micro, color = nodeCardTextPrimary())
         }
     }
 }

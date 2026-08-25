@@ -337,7 +337,14 @@ sealed class GraphNode(
          * of them has since read a blob.
          */
         private val deletionVectorLoader: (() -> DeletionVector?)? = null,
-    ) : GraphNode(id, initialX, initialY, 200.0, 60.0) {
+        // 68dp, not 60, because the card's first line is `FILE 5: DELETE VECTOR — NOT READ` at its
+        // longest and that wraps at 200dp. The verdict is appended when a scan filter is on, which
+        // is *after* the layout that reserved this height, so the reservation has to cover the
+        // longest label the card can ever draw rather than the one it draws today. It is declared
+        // for every file node and not only for a vector: two heights in one layer would make a
+        // deletion vector sit 8dp taller than the data file beside it, for a line neither of them
+        // is drawing.
+    ) : GraphNode(id, initialX, initialY, 200.0, 68.0) {
         val data: DataFile get() = entry.dataFile ?: DataFile(filePath = "unknown")
 
         /** Per-column statistics with bounds decoded against [schema]. */

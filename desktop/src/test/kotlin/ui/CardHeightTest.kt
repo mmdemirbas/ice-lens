@@ -64,6 +64,10 @@ class CardHeightTest {
         val parted = icebergGraph("parted")
         val branched = icebergGraph("branched")
         val paged = icebergGraph("branched", pageSize = 1)
+        // v3 for the deletion vector: its label is the longest a file card draws, and longer
+        // again when the card is pruned, which is the state that has to be measured rather than
+        // the one that is easy to reach.
+        val v3 = icebergGraph("v3")
         val cards = buildList {
             parted.nodes.filterIsInstance<GraphNode.TableNode>().firstOrNull()
                 ?.let { add("TableCard" to Card(it) { TableCard(it) }) }
@@ -83,8 +87,14 @@ class CardHeightTest {
                 ?.let { add("SnapshotCard" to Card(it) { SnapshotCard(it) }) }
             paged.nodes.filterIsInstance<GraphNode.GroupNode>().firstOrNull()
                 ?.let { add("GroupCard" to Card(it) { GroupCard(it) }) }
+            parted.nodes.filterIsInstance<GraphNode.FileNode>().firstOrNull()
+                ?.let { add("FileCard, pruned" to Card(it) { FileCard(it, isPruned = true) }) }
+            v3.nodes.filterIsInstance<GraphNode.FileNode>().firstOrNull { it.isDeletionVector }
+                ?.let { add("FileCard deletion vector" to Card(it) { FileCard(it) }) }
+            v3.nodes.filterIsInstance<GraphNode.FileNode>().firstOrNull { it.isDeletionVector }
+                ?.let { add("FileCard deletion vector, pruned" to Card(it) { FileCard(it, isPruned = true) }) }
         }
-        assertTrue(cards.size == 8, "only measured ${cards.map { it.first }}")
+        assertTrue(cards.size == 11, "only measured ${cards.map { it.first }}")
         assertFits(cards)
     }
 
