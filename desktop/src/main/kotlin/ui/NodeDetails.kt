@@ -4,6 +4,7 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FirstPage
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.UnfoldLess
 import androidx.compose.material.icons.filled.UnfoldMore
@@ -40,6 +41,7 @@ import service.PositionalDeleteTally
 import service.SampleRowReader
 import model.DataFile
 import model.ComparableSnapshot
+import service.GraphAggregation
 import model.DiffSide
 import model.snapshotDiff
 import model.EntryFate
@@ -722,6 +724,15 @@ fun NodeDetailsContent(
      * is otherwise unreachable without a click.
      */
     sectionCollapse: SectionCollapseState = remember { SectionCollapseState() },
+    /**
+     * Page ids the reader has opened, so the panel can offer the inverse.
+     *
+     * Passed rather than read off the graph because there is nothing on the graph to read: a
+     * parent whose last page has been opened has no group node left standing for it, which is
+     * exactly the state that needed a way back.
+     */
+    expandedGroupIds: Set<String> = emptySet(),
+    onCollapseGroupsUnder: (String) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     SelectionContainer {
@@ -796,11 +807,30 @@ fun NodeDetailsContent(
                         .verticalScroll(scrollState)
                         .padding(8.dp)
                 ) {
-                    Row(
+                    // The title takes its own line and the actions wrap under it.
+                    //
+                    // These shared one `Row` until a third action arrived, and a `Row` is the wrong
+                    // container for it: it neither wraps nor clips, and it measures the unweighted
+                    // children — the buttons — before the weighted title. The inspector pane opens at
+                    // **300dp** and can be dragged to 200dp, so at the width this is actually read
+                    // the buttons took the whole line and the title was laid out one character per
+                    // line beneath them, with the last button painted past the edge where the reader
+                    // could not reach it. The wide render looked correct throughout, which is why
+                    // `collapse-pages-narrow-1.png` renders the panel at 300dp: a `Row` overflowing
+                    // is invisible at any width where it happens to fit.
+                    Text(
+                        nodeTitle(node),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = TypeScale.display,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        Text(nodeTitle(node), fontWeight = FontWeight.Bold, fontSize = TypeScale.display, modifier = Modifier.weight(1f))
                         // One button, not two. It states what the click will do, which is
                         // unambiguous even when the reader has folded some sections by hand:
                         // "Collapse all" until nothing is left open, "Expand all" after.
@@ -837,6 +867,7 @@ fun NodeDetailsContent(
                                 Text("Reveal", fontSize = TypeScale.small)
                             }
                         }
+                        CollapseGroupsAction(node, expandedGroupIds, onCollapseGroupsUnder)
                     }
                     Text("Node ID: ${node.id}", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
                     Spacer(Modifier.height(8.dp))
@@ -2194,6 +2225,49 @@ private fun diffSchemas(oldSchema: TableSchema, newSchema: TableSchema): List<Sc
  * vector whose bytes do not match its own CRC is a corrupted table, and a reader looking at this
  * panel is the person who needs to know.
  */
+/**
+ * The inverse of expanding, on the parent it applies to.
+ *
+ * **This has to reach a parent that has no group node left**, which is the whole case it exists
+ * for: opening every page of a node removes the last `GroupNode` beside it, and with it the only
+ * thing on the canvas that knew those siblings were paged. So it hangs off the parent rather than
+ * off a group, and it is one control for every kind of parent rather than thirteen.
+ *
+ * It sits in the header row because that row is what this panel does to the node — `Collapse all`
+ * folds its sections, `Reveal` opens its directory — and because the alternative displaced the
+ * identity table, which is what the reader selected the node to see. Its wording is the inverse of
+ * the group card's `Show the next page`, deliberately not "collapse": the neighbouring
+ * `Collapse all` is about sections, and two adjacent buttons reading "Collapse" would be about two
+ * different things.
+ *
+ * Drawn only when this parent has pages open, so an ordinary panel pays one set lookup for it.
+ */
+@Composable
+private fun CollapseGroupsAction(
+    node: GraphNode,
+    expandedGroupIds: Set<String>,
+    onCollapseGroupsUnder: (String) -> Unit,
+) {
+    val mine = remember(node.id, expandedGroupIds) {
+        GraphAggregation.expandedGroupIdsUnder(node.id, expandedGroupIds)
+    }
+    if (mine.isEmpty()) return
+
+    TextButton(
+        onClick = { onCollapseGroupsUnder(node.id) },
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+        modifier = Modifier.height(28.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.FirstPage,
+            contentDescription = "Draw only the first page of this node's children",
+            modifier = Modifier.size(14.dp),
+        )
+        Spacer(Modifier.width(4.dp))
+        Text("Back to one page", fontSize = TypeScale.small)
+    }
+}
+
 /**
  * The two selected snapshots, oldest first, or null when the selection is not exactly two of them.
  *

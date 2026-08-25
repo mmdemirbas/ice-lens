@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A parent whose pages were opened can be put back to one page, without touching any other
+  parent.** Opening every page of a node removed the last `GroupNode` beside it, and with it the
+  only thing on the canvas that knew those siblings were paged — so the only way back was "collapse
+  every group", which closed the other parents too. The inverse now hangs off the parent itself,
+  as a `Back to one page` action in the inspector's header row, drawn only when that parent has
+  pages open. Which groups belong to a parent is decided by *generating* the candidate ids and
+  intersecting, never by parsing one: a group id is `grp_<parentId>_<kind>_<page>` and a parent id
+  contains underscores, so taking the parent back out of it is ambiguous.
 - **A `bucket[N]` partition field now prunes on equality.** It used to report that it did not
   evaluate, and that was the right answer while it lasted: pruning a bucket means computing
   `bucket(v)`, and a hash written from a spec agrees with itself long before it agrees with the
@@ -106,6 +114,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **The inspector's header put its buttons past the edge of the panel at the width the panel
+  actually opens at.** The title and the action buttons shared a `Row`, which neither wraps nor
+  clips and which measures its unweighted children — the buttons — before the weighted title. The
+  pane opens at 300dp and can be dragged to 200dp; at that width the buttons took the whole line
+  and the title was laid out one character per line underneath them, with the rightmost button
+  painted past the panel edge where nothing could reach it. The title now takes its own line,
+  capped at two, and the actions are a `FlowRow` that wraps. Found by rendering the panel at 300dp
+  rather than at the 1400dp every existing capture uses — a `Row` overflowing is invisible at any
+  width where it happens to fit, so `collapse-pages-narrow-1.png` renders it at the narrow one.
 - **A node's deferred read was part of its identity, against a comment saying it was not.**
   `FileNode.deletionVectorLoader` was a `private val` lambda in a data class's primary
   constructor, which is a component of the generated `equals` — so two nodes for the same manifest

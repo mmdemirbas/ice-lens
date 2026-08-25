@@ -80,9 +80,6 @@ that leaves open:
   `AppStateAggregationTest` and looked at by nobody. Hoisting `menuOpen` to a parameter would
   make it capturable, at the cost of a parameter that exists for the test.
 
-- **A group's own members are never re-paged after expansion.** Opening every page of a parent
-  leaves no group node behind, so the only way back is "collapse every group", which closes the
-  other parents too.
 
 ---
 

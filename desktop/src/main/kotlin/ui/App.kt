@@ -179,6 +179,8 @@ fun App() {
                 onExpandGroupFully = state::expandGroupFully,
                 scanPredicates = state.scanPredicates,
                 onScanPredicatesChange = state::updateScanPredicates,
+                expandedGroupIds = state.expandedGroupIds,
+                onCollapseGroupsUnder = state::collapseGroupsUnder,
             )
         }
     }

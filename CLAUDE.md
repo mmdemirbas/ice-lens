@@ -329,6 +329,22 @@ desktop/src/main/kotlin/
   group, so `sum(group.hiddenNodeCount)` equals what actually went; and an `ErrorNode` is never
   grouped, with errors inside a collapsed subtree counted in `hiddenErrorCount` and shown in red
   on the card. Never add a cap that isn't visible in the UI
+- **Expanding is per group; the inverse is per parent.** Opening every page of a node leaves no
+  `GroupNode` beside it, so the affordance that expanded is gone and the reader has nothing left to
+  click — which is why `Back to one page` hangs off the *parent* in the inspector's header row
+  rather than off a group, and why it is one control for all thirteen node branches rather than
+  thirteen. `GraphAggregation.expandedGroupIdsUnder(parentId, expanded)` decides which ids belong
+  to a parent by **generating** candidates for every `AggregationKind` and page and intersecting
+  with the expanded set, never by parsing one: an id is `grp_<parentId>_<kind>_<page>` and a parent
+  id contains underscores, so `man_3` and `man_3_manifest` cannot be told apart by splitting
+- **The inspector header is a `FlowRow`, and the render that proves it is the narrow one.** The
+  title and the actions shared a `Row` until a third action arrived. A `Row` neither wraps nor
+  clips, and it measures unweighted children before weighted ones — so at the 300dp the pane opens
+  at (200dp minimum, `App.kt`), the buttons took the whole line, the title laid out one character
+  per line under them, and the rightmost button painted past the panel edge unreachable. Every
+  existing capture renders at 1400dp and looked correct throughout; `collapse-pages-narrow-1.png`
+  renders at 300dp, which is the width the defect exists at. Any new header action goes in that
+  `FlowRow`, and the title stays `maxLines`-capped
 - **Paging can be switched off entirely, and that is a decision about one table.**
   `AppState.drawEverything` swaps the policy for `AggregationPolicy.NONE` — the same "draw every
   node" the layout tests have always used — because expanding group by group could never reach a
@@ -558,7 +574,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~542 tests across 57 files (411 in :core, 131 in :desktop) covering full pipelines for both formats (Avro fixtures
+~594 tests across 66 files (455 in :core, 139 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

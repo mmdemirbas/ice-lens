@@ -308,6 +308,39 @@ class InspectorRenderTest {
     }
 
     /**
+     * The per-parent collapse, which appears only on a parent whose pages were opened.
+     *
+     * Another state a click produces: `expandedGroupIds` is passed in for the same reason
+     * `sectionCollapse` is. Worth a capture rather than only an assertion because the control's
+     * whole job is to be findable on a node that no longer has a group beside it on the canvas —
+     * whether the sentence explains which pages it means, and whether the button reads as the
+     * inverse of "Show all", are questions about words on a screen.
+     */
+    @Test
+    fun `a parent whose pages were opened offers to collapse them`() {
+        val graph = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/branched").absolutePath)),
+            showRows = false,
+            policy = AggregationPolicy(pageSize = 2),
+        )
+        val table = graph.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val expanded = setOf(
+            service.GraphAggregation.groupId(table.id, model.AggregationKind.METADATA, 1),
+            service.GraphAggregation.groupId(table.id, model.AggregationKind.METADATA, 2),
+        )
+        renderScene("collapse-pages", width = 1400, height = 1400) {
+            NodeDetailsContent(graph, setOf(table.id), expandedGroupIds = expanded)
+        }
+        // And at the width the pane actually opens at. `App.kt` starts the inspector at 300dp and
+        // lets it be dragged to 200dp, so that — not the wide capture above — is where the header's
+        // action row has to survive. A `Row` would have placed the third button past this edge,
+        // painted and unreachable, with the wide capture still looking correct.
+        renderScene("collapse-pages-narrow", width = 300, height = 900, density = 1f) {
+            NodeDetailsContent(graph, setOf(table.id), expandedGroupIds = expanded)
+        }
+    }
+
+    /**
      * Equality on a bucketed column, which is the one shape no other capture reaches.
      *
      * `id <= 7` above deliberately shows a bucket **declining** — a hash orders nothing. Equality

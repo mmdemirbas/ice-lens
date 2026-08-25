@@ -302,4 +302,68 @@ class AppStateAggregationTest {
             other.deleteRecursively()
         }
     }
+
+    /**
+     * A fully-opened parent can be closed again, which it could not before.
+     *
+     * Opening the last page removes the group node standing for the tail, so the canvas has
+     * nothing left to double-click and the only route back was "collapse every group". This is the
+     * per-parent inverse, and the shape of the check is that the graph returns to exactly the
+     * state it was in before anything was expanded.
+     */
+    @Test
+    fun `collapsing under a parent puts it back to one page`() {
+        val state = newState()
+        state.loadTable(tableWithMetadataVersions(60))
+
+        val drawnBefore = metadataCount(state)
+        val groupBefore = assertNotNull(state.graphModel!!.groups.singleOrNull())
+
+        state.expandGroupFully(groupBefore)
+        assertEquals(60, metadataCount(state), "every version should be drawn")
+        assertTrue(state.graphModel!!.groups.isEmpty(), "and no group node is left to click back")
+        assertTrue(state.hasExpandedGroupsUnder("table_root"))
+
+        state.collapseGroupsUnder("table_root")
+
+        assertEquals(drawnBefore, metadataCount(state), "back to one page")
+        assertTrue(state.expandedGroupIds.isEmpty())
+        assertEquals(
+            groupBefore.memberCount,
+            assertNotNull(state.graphModel!!.groups.singleOrNull()).memberCount,
+            "and the group standing for the tail is back",
+        )
+    }
+
+    /** Collapsing one parent leaves the others alone — the whole difference from "collapse all". */
+    @Test
+    fun `collapsing under one parent does not touch another`() {
+        val state = newState()
+        state.loadTable(tableWithMetadataVersions(60))
+        val group = assertNotNull(state.graphModel!!.groups.singleOrNull())
+        state.expandGroup(group.id)
+
+        // A page id belonging to a parent this table does not have. Collapsing that parent must
+        // leave the real expansion in place; a prefix match or a loose parse would take it.
+        val foreign = service.GraphAggregation.groupId("snap_999", model.AggregationKind.MANIFEST, 1)
+        state.collapseGroupsUnder("snap_999")
+        assertEquals(setOf(group.id), state.expandedGroupIds, "another parent's collapse took ours")
+        assertTrue(foreign !in state.expandedGroupIds)
+
+        assertTrue(!state.hasExpandedGroupsUnder("snap_999"))
+        assertTrue(state.hasExpandedGroupsUnder("table_root"))
+    }
+
+    /** Collapsing a parent with nothing open is a no-op rather than a rebuild. */
+    @Test
+    fun `collapsing a parent with nothing open changes nothing`() {
+        val state = newState()
+        state.loadTable(tableWithMetadataVersions(60))
+        val before = state.graphModel
+
+        state.collapseGroupsUnder("table_root")
+
+        assertTrue(state.expandedGroupIds.isEmpty())
+        assertTrue(before === state.graphModel, "no expansion means no rebuild")
+    }
 }

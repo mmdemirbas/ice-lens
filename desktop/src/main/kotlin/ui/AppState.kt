@@ -769,6 +769,25 @@ class AppState(
         rebuildDrawnGraph()
     }
 
+    /**
+     * Closes the groups under one parent, leaving every other parent as it was.
+     *
+     * The inverse of expanding, which had none. Opening a parent's last page removes the group
+     * node standing for the tail, so there is nothing left on the canvas to double-click back —
+     * and [collapseAllGroups] closes the other parents too, which is a different action a reader
+     * who wanted this one did not ask for.
+     */
+    fun collapseGroupsUnder(parentId: String) {
+        val mine = GraphAggregation.expandedGroupIdsUnder(parentId, expandedGroupIds)
+        if (mine.isEmpty()) return
+        expandedGroupIds = expandedGroupIds - mine
+        rebuildDrawnGraph()
+    }
+
+    /** Whether [collapseGroupsUnder] would do anything for this parent. */
+    fun hasExpandedGroupsUnder(parentId: String): Boolean =
+        GraphAggregation.expandedGroupIdsUnder(parentId, expandedGroupIds).isNotEmpty()
+
     /** Closes every group, back to one page per parent. */
     fun collapseAllGroups() {
         if (expandedGroupIds.isEmpty()) return

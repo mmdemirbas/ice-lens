@@ -198,6 +198,29 @@ object GraphAggregation {
         "grp_${parentId}_${kind.key}_$pageIndex"
 
     /**
+     * The expanded page ids that belong to one parent — the inverse of expanding it.
+     *
+     * Expanding a parent's last page leaves no group node behind, so once it is fully drawn there
+     * is nothing on the canvas to double-click back: the only route was "collapse every group",
+     * which closes the other parents too. This is what a per-parent collapse needs, and there is no
+     * group node to ask, which is exactly the situation.
+     *
+     * **Generated and intersected rather than parsed.** A group id is
+     * `grp_<parentId>_<kind>_<page>` and a parent id contains underscores of its own (`man_3`,
+     * `table_root`), so taking a parent back out of the string means guessing where the kind
+     * begins — and a kind key that appears inside a parent id makes the guess wrong silently.
+     * Building the ids this parent *could* have and keeping the ones that are actually expanded
+     * cannot be ambiguous. The candidate range is bounded by [expanded] because a page id can only
+     * be in the set if something put it there, and nothing adds more ids than pages.
+     */
+    fun expandedGroupIdsUnder(parentId: String, expanded: Set<String>): Set<String> {
+        if (expanded.isEmpty()) return emptySet()
+        return AggregationKind.entries
+            .flatMap { kind -> (1..expanded.size).map { page -> groupId(parentId, kind, page) } }
+            .filterTo(mutableSetOf()) { it in expanded }
+    }
+
+    /**
      * The ids that, added to the expanded set, draw every sibling [group] stands for.
      *
      * One page at a time is the right default and the wrong only option — a parent with 5,000
