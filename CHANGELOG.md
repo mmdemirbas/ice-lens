@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **A verdict column now marks only the exception.** Every leading cell in the pruning and tally
+  tables was bold, because each row supplied a colour and `WideTable` bolded any cell that had
+  one — including the neutral colour that exists to say "ordinary". The ordinary rows now pass no
+  colour at all and read as body text, which leaves `SKIPPED` as the one bold, green cell in its
+  column.
 - **The toolbar is its own file.** 266 lines came out of `App.kt`'s thousand-line composable into
   `Toolbar.kt`, with the snapshot-filter menu — half of it by line count — split off again into
   its own composable. It is stateless: it reads values and reports intent, and every write to

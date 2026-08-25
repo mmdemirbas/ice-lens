@@ -27,6 +27,11 @@ fun isDarkSurface(color: Color): Boolean =
  * evaluator must not look like a manifest that was checked and kept. Read itself stays neutral:
  * it is the ordinary outcome and colouring it would spend attention on the majority of rows.
  *
+ * There is no third function for the ordinary outcome. A verdict table passes `null` for those
+ * rows, which leaves them at body colour and body weight — `WideTable` bolds a leading cell only
+ * where one of these two was supplied, and a column bolded on every row has spent its emphasis
+ * before the exception arrives.
+ *
  * Both accents are lightened on a dark surface. #0A7048 has a perceived brightness of 0.30,
  * which is below the surface it would sit on.
  */
@@ -37,9 +42,6 @@ fun verdictSkippedColor(): Color =
 @Composable
 fun verdictUnevaluatedColor(): Color =
     if (isDarkSurface(MaterialTheme.colorScheme.surface)) Color(0xFFE0A64A) else Color(0xFFA8600C)
-
-@Composable
-fun verdictReadColor(): Color = MaterialTheme.colorScheme.onSurfaceVariant
 
 @Composable
 fun selectionHighlightColor(): Color {

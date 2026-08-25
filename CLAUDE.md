@@ -173,12 +173,15 @@ desktop/src/main/kotlin/
   with the writer. **`SKIPPED` is a proof; "would be read" is only the absence of one** — so a
   manifest nothing could be evaluated against is counted and coloured separately, never folded
   in with the ones that were checked and kept
-- **A verdict column is coloured and weighted, never prose at one weight.** `WideTable` takes
-  `leadCellColors`, one colour per row for the leading cell; `Theme.kt` carries the three
-  (`verdictSkippedColor` / `verdictUnevaluatedColor` / `verdictReadColor`, lightened on a dark
-  surface, since #0A7048 sits below it). The word stays — colour is never the only signal — but
-  a column of "would be read" with one "SKIPPED" in it has to be findable without reading every
-  row. The reason cell names the partition **field**, not the whole condition: the condition is
+- **A verdict column marks the exception, not every row.** `WideTable` takes `leadCellColors`,
+  one entry per row for the leading cell, and bolds that cell **only where a colour was supplied**
+  — so a verdict table passes `null` for the ordinary outcome and it stays at body colour and body
+  weight. `Theme.kt` carries the two that are not ordinary (`verdictSkippedColor` /
+  `verdictUnevaluatedColor`, lightened on a dark surface, since #0A7048 sits below it); there is
+  deliberately no third for "would be read". The word stays — colour is never the only signal —
+  but a column of "would be read" with one "SKIPPED" in it has to be findable without reading
+  every row, and a column bolded on every row has spent its emphasis before the exception
+  arrives. The reason cell names the partition **field**, not the whole condition: the condition is
   already in the form above and the reason names the literal, so printing it again put the same
   date in one cell three times
 - **Partition transforms do not share a result type.** `day` produces a `date`; `year`, `month`

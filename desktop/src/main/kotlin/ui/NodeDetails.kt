@@ -1406,7 +1406,6 @@ fun NodeDetailsContent(
                             ) {
                                 val skippedColor = verdictSkippedColor()
                                 val unevaluatedColor = verdictUnevaluatedColor()
-                                val readColor = verdictReadColor()
                                 WideTable(
                                     headers = listOf("This term", "Condition", "Field", "Because"),
                                     columnWidths = listOf(120.dp, 120.dp, 90.dp, 320.dp),
@@ -1428,7 +1427,7 @@ fun NodeDetailsContent(
                                     leadCellColors = result.outcomes.map { outcome ->
                                         when (outcome.effect) {
                                             TermEffect.SKIPS -> skippedColor
-                                            TermEffect.KEEPS -> readColor
+                                            TermEffect.KEEPS -> null
                                             TermEffect.NOT_EVALUATED -> unevaluatedColor
                                         }
                                     },
@@ -1471,7 +1470,7 @@ fun NodeDetailsContent(
                                 // row spends the attention this table needs for the one that differs.
                                 leadCellColors = tallies.map { tally ->
                                     when (tally.agrees) {
-                                        true -> verdictReadColor()
+                                        true -> null
                                         false -> colors.error
                                         null -> verdictUnevaluatedColor()
                                     }

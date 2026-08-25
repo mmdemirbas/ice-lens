@@ -131,7 +131,6 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
 
         val skippedColor = verdictSkippedColor()
         val unevaluatedColor = verdictUnevaluatedColor()
-        val readColor = verdictReadColor()
         WideTable(
             headers = listOf("Verdict", "Manifest", "Because"),
             // 634dp of table in a panel that is rarely wider: the reason is the payload, and a
@@ -156,7 +155,9 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
                 when {
                     result?.isSkipped == true -> skippedColor
                     result?.isUnevaluated == true -> unevaluatedColor
-                    else -> readColor
+                    // No colour and no weight. This is the ordinary row, and a column where
+                    // every cell is bold has spent its emphasis before the exception arrives.
+                    else -> null
                 }
             },
         )
