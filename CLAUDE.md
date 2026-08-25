@@ -47,6 +47,7 @@ core/src/main/kotlin/
 │   ├── GraphTypes.kt          # Point, GraphModel (nodeById, layoutPositions, groups), GraphNode (sealed incl. Paimon + GroupNode), AggregationKind, GraphEdge, TableSummary/ContentStats
 │   ├── IcebergTypes.kt        # Iceberg type model + parser (field-id → type, from a manifest's own schema)
 │   ├── SingleValueDecoder.kt  # Appendix D: bytes + type → DecodedValue (bounds, partition values)
+│   ├── PuffinSchema.kt        # Puffin footer JSON + DeletionVector (positions, and the two figures it is checked against)
 │   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
@@ -61,6 +62,7 @@ core/src/main/kotlin/
 │   ├── IcebergReader.kt       # Iceberg JSON/Avro reading (delegates Avro to AvroReader)
 │   ├── PaimonReader.kt        # Paimon JSON snapshot/schema + Avro manifest list/manifest reading
 │   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet, ORC, Avro — max 50)
+│   ├── PuffinReader.kt        # Puffin footer + `deletion-vector-v1` blob → the row positions a v3 vector marks
 │   ├── IcebergGraphBuilder.kt # Iceberg-specific graph construction: UnifiedTableModel → nodes + edges
 │   ├── PaimonGraphBuilder.kt  # Paimon-specific graph construction: PaimonUnifiedTableModel → nodes + edges
 │   ├── GraphAggregation.kt    # Format-agnostic: long sibling runs → one expandable GroupNode
@@ -164,6 +166,21 @@ desktop/src/main/kotlin/
   the read path checks them, so the inspector does. It is also the suite's only assertion that
   compares what this code decoded against what Iceberg recorded about the same bytes — a status
   misread or an entry dropped shows up as a disagreement on a checked-in table
+- **A deletion vector is decoded, and decoded lazily.** `service/PuffinReader.kt` reads the
+  Puffin container and the `deletion-vector-v1` blob inside it — a 4-byte big-endian length, the
+  magic `D1 D3 39 64`, a 64-bit "portable" Roaring bitmap, and a 4-byte big-endian **CRC-32**
+  (not CRC-32C; the fixture's own bytes settled that before any code shipped). It is written
+  against the two published specs rather than against the fixture, because the fixture holds
+  exactly one shape — one array container, one position — and a decoder written from that agrees
+  with itself and fails on the first table with more than 4,096 deleted rows in a 64k block.
+  `FileNode.deletionVectorLoader` is a lambda, not a value: the graph is built for every artifact
+  the metadata names and drawn for a page of them, so reading every vector at build time would
+  open a file per delete on a table where most are never looked at. It is excluded from the data
+  class's `equals` — the node is a value, and two nodes for the same entry are the same node
+  whether or not one has since read a blob. **Two recorded figures sit beside what was decoded**,
+  for the same reason `manifestTallies` exists: the blob's own CRC-32, and the *manifest's*
+  `record_count`, which the spec requires to equal the cardinality and which a scan plans against
+  without opening the Puffin file at all. Both are passed in by the builder, not read here.
 - **Pruning has two stages and they prune on different things.** `evaluateScan` in
   `model/ScanPruning.kt` returns a `ScanPlan` carrying both: a manifest is ruled out by the
   partition summaries its list records, a **file** by the `lower_bounds`/`upper_bounds` it records
@@ -402,7 +419,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~524 tests across 55 files (402 in :core, 122 in :desktop) covering full pipelines for both formats (Avro fixtures
+~530 tests across 56 files (403 in :core, 127 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

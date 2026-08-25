@@ -17,14 +17,15 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   predicates are a conjunction only**: there is no `OR`, no `NOT` and no grouping, which is fine
   for "why did this read so much" and wrong for reproducing a real query's plan.
 
-- **Iceberg v3 is unmodelled.** Parsed without error — now *verified* rather than assumed,
-  against `example/iceberg/default/v3` — but none of its additions are surfaced: deletion
-  vectors (`content_offset` / `content_size_in_bytes` / `referenced_data_file` on the data file,
-  with the vector living in a Puffin blob), row lineage (`first-row-id`, `added-rows`,
-  `_row_id`, `_last_updated_sequence_number`), and the variant / geometry / geography /
-  timestamp_ns types. Iceberg 1.8.1 writes deletion vectors for a v3 merge-on-read table, so the
-  fixture exercises the real thing; today a vector is distinguishable from a v2 delete file only
-  by its `.puffin` extension, since both declare `content = 1`.
+- **Iceberg v3 is half-modelled.** A deletion vector's Puffin blob is now opened and its
+  positions decoded (`service/PuffinReader.kt`), so the inspector answers which rows a vector
+  deletes rather than only where the blob sits. What is still unsurfaced: **row lineage**
+  (`first-row-id`, `added-rows`, `_row_id`, `_last_updated_sequence_number`) and the **variant /
+  geometry / geography / timestamp_ns** types. Two smaller gaps in the vector work itself — a
+  vector is still labelled `POS DELETE` on its card, exactly as a v2 positional delete file is,
+  since both declare `content = 1` and only the `.puffin` extension tells them apart; and the
+  sample rows shown for the *referenced* data file are not marked as deleted, which is the one
+  place the decoded positions would be worth the most.
 
 - **Delete-file targeting is drawn where the format records it, and only there.** A v3 deletion
   vector's `referenced_data_file` is now an edge (`e_dv_*`, withheld from ELK). The two cases

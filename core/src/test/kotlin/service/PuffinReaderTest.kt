@@ -1,5 +1,7 @@
 package service
 
+import model.GraphNode
+import model.UnifiedTableModel
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -86,6 +88,49 @@ class PuffinReaderTest {
             PuffinReader.readDeletionVector(path, blob.offset, blob.length).positions,
             PuffinReader.readDeletionVector(path, 4, blob.length).positions,
         )
+    }
+
+    /**
+     * The wiring, not the reader: that a graph built from the fixture actually reaches the blob.
+     *
+     * Coverage measures code that runs in tests, not whether production calls it. The reader had a
+     * passing suite of its own while nothing in the app opened a single vector, and the only thing
+     * that would have said so is an assertion starting from a `GraphModel`.
+     */
+    @Test
+    fun `a graph built from the fixture decodes the vectors its file nodes carry`() {
+        val dir = File(repoRoot, "example/iceberg/default/v3")
+        val graph = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(dir.toPath()), showRows = false,
+        )
+        val vectors = graph.nodes.filterIsInstance<GraphNode.FileNode>().filter { it.isDeletionVector }
+        assertEquals(2, vectors.size, "the v3 fixture holds two deletion vectors")
+
+        vectors.forEach { node ->
+            val decoded = node.deletionVector
+            assertTrue(decoded != null, "${node.id} carries a vector the graph never opened")
+            assertEquals(listOf(0L), decoded.positions, "${node.id} deletes row 0")
+            assertTrue(decoded.checksumMatches)
+            assertEquals(
+                1L, decoded.recordedCardinality,
+                "the manifest's record_count reaches the panel, or it says 'not recorded' about a " +
+                    "figure the writer did record",
+            )
+            assertTrue(decoded.cardinalityAgrees)
+
+            // Two statements written independently of each other about the same vector: the
+            // manifest's `record_count` and the Puffin footer's `cardinality` property. Nothing on
+            // a read path compares them, and this is the suite's only place that does.
+            val footer = PuffinReader.readFooter(Path.of(node.localPath!!)).blobs.single()
+            assertEquals(
+                footer.recordedCardinality, decoded.recordedCardinality,
+                "the manifest and the Puffin footer disagree about ${node.id}",
+            )
+        }
+
+        val ordinary = graph.nodes.filterIsInstance<GraphNode.FileNode>().filterNot { it.isDeletionVector }
+        assertTrue(ordinary.isNotEmpty(), "and the data files are not mistaken for vectors")
+        assertTrue(ordinary.all { it.deletionVector == null })
     }
 
     // ── Containers the fixture does not have, built from the spec ────────────────────────────

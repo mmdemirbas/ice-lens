@@ -142,7 +142,7 @@ class InspectorRenderTest {
         val vector = v3.nodes.filterIsInstance<GraphNode.FileNode>()
             .firstOrNull { it.data.referencedDataFile != null }
         assertNotNull(vector, "the v3 fixture should have a deletion vector naming its data file")
-        renderInspector(v3, vector.id, "delete-vector-node", height = 2000)
+        renderInspector(v3, vector.id, "delete-vector-node", height = 2500)
 
         val eqdel = graphFor("eqdel")
         val equality = eqdel.nodes.filterIsInstance<GraphNode.FileNode>()

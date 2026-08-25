@@ -100,8 +100,18 @@ object PuffinReader {
      * [offset] and [length] are the blob's own coordinates — the manifest records them on the
      * delete file as `content_offset` and `content_size_in_bytes`, which is why this can be read
      * without the footer at all. Passing the footer's `offset`/`length` gives the same bytes.
+     *
+     * [referencedDataFile] and [recordedCardinality] are what the *manifest* says about this blob,
+     * passed in rather than read here: they are the figures a scan plans against without ever
+     * opening the Puffin file, so a disagreement between them and the bytes is the finding.
      */
-    fun readDeletionVector(path: Path, offset: Long, length: Long, referencedDataFile: String? = null): DeletionVector {
+    fun readDeletionVector(
+        path: Path,
+        offset: Long,
+        length: Long,
+        referencedDataFile: String? = null,
+        recordedCardinality: Long? = null,
+    ): DeletionVector {
         if (length < 12) throw PuffinFormatException("a $length-byte blob is too short to hold a vector")
         val blob = ByteArray(length.toInt())
         RandomAccessFile(path.toFile(), "r").use { file ->
@@ -111,7 +121,7 @@ object PuffinReader {
             file.seek(offset)
             file.readFully(blob)
         }
-        return decodeDeletionVector(blob, referencedDataFile)
+        return decodeDeletionVector(blob, referencedDataFile, recordedCardinality)
     }
 
     /**
@@ -123,7 +133,11 @@ object PuffinReader {
      * this code — the spec says the outer fields were made big-endian for compatibility with
      * Delta's deletion vectors.
      */
-    internal fun decodeDeletionVector(blob: ByteArray, referencedDataFile: String? = null): DeletionVector {
+    internal fun decodeDeletionVector(
+        blob: ByteArray,
+        referencedDataFile: String? = null,
+        recordedCardinality: Long? = null,
+    ): DeletionVector {
         val outer = ByteBuffer.wrap(blob).order(ByteOrder.BIG_ENDIAN)
         val declared = outer.getInt()
         if (declared < 4 || 4 + declared + 4 > blob.size) {
@@ -148,7 +162,7 @@ object PuffinReader {
         return DeletionVector(
             positions = positions,
             cardinality = cardinality,
-            recordedCardinality = null,
+            recordedCardinality = recordedCardinality,
             checksumMatches = recordedCrc == computedCrc,
             referencedDataFile = referencedDataFile,
         )

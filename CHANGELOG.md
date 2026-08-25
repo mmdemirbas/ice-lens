@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A v3 deletion vector's rows are now readable.** Iceberg 1.8.1 writes deletes for a
+  format-version-3 table as a Roaring bitmap inside a Puffin blob, and the panel could say where
+  that blob sat and nothing about what was in it. The blob is now opened and decoded, so the
+  inspector lists the row positions the vector marks — run-folded, so a compacted file reads
+  `0-3999` rather than four thousand lines. Two figures the writer recorded sit beside the count
+  decoded from the bytes: the blob's own CRC-32, and the manifest's `record_count`, which a scan
+  plans against without ever opening the Puffin file. Nothing on a read path compares either, so
+  this does. The reader is written against the Puffin and Roaring specs rather than against the
+  checked-in fixture, which holds one array container with one position in it; the array/bitset
+  boundary at 4,096 and the run container are pinned by containers built from the spec text.
+
 - **Pruning now answers a file count, not just a manifest count.** Iceberg prunes twice — a
   manifest by the partition summaries its list records, then a file by the bounds it records about
   its own columns — and only the first stage was modelled. The panel now reports both, and leads

@@ -1741,6 +1741,7 @@ fun NodeDetailsContent(
                                     }
                                 }
                             }
+                            DeletionVectorSection(node)
                         }
 
                         // The five per-column statistics maps, pivoted into one row per column and
@@ -2090,6 +2091,115 @@ private fun diffSchemas(oldSchema: TableSchema, newSchema: TableSchema): List<Sc
     }
 
     return changes.sortedBy { it.fieldId }
+}
+
+/**
+ * The rows a v3 deletion vector marks, decoded from the Puffin blob it lives in.
+ *
+ * This is the only thing a deletion vector is for, and it is the one thing the metadata does not
+ * say: the manifest records where the blob is and how many rows it covers, and the positions
+ * themselves are inside it.
+ *
+ * Two figures the writer recorded sit beside what was decoded, for the same reason
+ * `manifestTallies` exists — nothing on a read path checks either, so the inspector does. A
+ * cardinality that disagrees, or a checksum that fails, is shown rather than smoothed over: a
+ * vector whose bytes do not match its own CRC is a corrupted table, and a reader looking at this
+ * panel is the person who needs to know.
+ */
+@Composable
+private fun DeletionVectorSection(node: GraphNode.FileNode) {
+    if (!node.isDeletionVector) return
+    val colors = MaterialTheme.colorScheme
+    val vector = node.deletionVector
+
+    if (vector == null) {
+        Section("Deleted Rows") {
+            Text(
+                "The Puffin blob could not be read, so the positions this vector marks are not " +
+                    "known. The file may have moved since the manifest recorded it — the path it " +
+                    "was looked for at is above.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+            )
+        }
+        return
+    }
+
+    Section("Deleted Rows (${formatCount(vector.cardinality)})") {
+        DetailTable {
+            DetailRow("Property", "Value", isHeader = true)
+            DetailRow(
+                "Positions Decoded",
+                "${formatCount(vector.cardinality)} from the Roaring bitmap in the blob",
+            )
+            DetailRow(
+                "Recorded Cardinality",
+                when {
+                    vector.recordedCardinality == null -> "not recorded by the writer"
+                    vector.cardinalityAgrees -> "${formatCount(vector.recordedCardinality)} — agrees"
+                    else -> "${formatCount(vector.recordedCardinality)} — DISAGREES with the " +
+                        "${formatCount(vector.cardinality)} decoded"
+                },
+            )
+            DetailRow(
+                "Checksum",
+                if (vector.checksumMatches) {
+                    "the blob's CRC-32 agrees with its bytes"
+                } else {
+                    "FAILS — the blob's CRC-32 does not agree with its bytes"
+                },
+            )
+        }
+        // The caption belongs to the list below it, not to the table above it, so the gap above
+        // is the larger of the two. Equal gaps put it between two things and attached to neither.
+        Spacer(Modifier.height(12.dp))
+        Text(
+            if (vector.truncated) {
+                "The first ${formatCount(vector.positions.size)} of " +
+                    "${formatCount(vector.cardinality)} positions. Row positions are zero-based " +
+                    "and count from the start of the referenced data file."
+            } else {
+                "Row positions, zero-based, counting from the start of the referenced data file."
+            },
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        // Run-folded rather than one per line: a compaction leaves vectors that delete a
+        // contiguous block, and four hundred consecutive numbers down the panel say less than
+        // "0-399" does while taking four hundred times the room. In a surface of its own for the
+        // same reason every other value in this panel is: a bare `0` at the left margin reads as
+        // a stray character rather than as the answer the section exists to give.
+        DetailTable {
+            Text(
+                foldRuns(vector.positions),
+                fontSize = TypeScale.small,
+                fontFamily = FontFamily.Monospace,
+                color = colors.onSurface,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            )
+        }
+    }
+}
+
+/** `[0, 1, 2, 5, 9, 10]` becomes `"0-2, 5, 9-10"`. A run of one stays a bare number. */
+internal fun foldRuns(positions: List<Long>): String {
+    if (positions.isEmpty()) return "none"
+    val parts = mutableListOf<String>()
+    var start = positions.first()
+    var previous = start
+    fun close() = parts.add(if (start == previous) "$start" else "$start-$previous")
+    positions.drop(1).forEach { position ->
+        if (position == previous + 1) {
+            previous = position
+        } else {
+            close()
+            start = position
+            previous = position
+        }
+    }
+    close()
+    return parts.joinToString(", ")
 }
 
 @Composable

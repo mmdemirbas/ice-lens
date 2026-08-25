@@ -326,11 +326,34 @@ sealed class GraphNode(
         val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
+        /**
+         * Opens this file's Puffin blob, for a v3 deletion vector and nothing else.
+         *
+         * A lambda rather than a decoded value because the graph is built for every artifact the
+         * metadata names and drawn for a page of them — the same reason sample rows are attached
+         * after aggregation. Reading every vector at build time would open a file per delete on a
+         * table where most of them are never looked at. Excluded from `equals` deliberately: the
+         * node is a value, and two nodes for the same entry are the same node whether or not one
+         * of them has since read a blob.
+         */
+        private val deletionVectorLoader: (() -> DeletionVector?)? = null,
     ) : GraphNode(id, initialX, initialY, 200.0, 60.0) {
         val data: DataFile get() = entry.dataFile ?: DataFile(filePath = "unknown")
 
         /** Per-column statistics with bounds decoded against [schema]. */
         val columnStats: List<ColumnStats> by lazy { columnStatsFor(data, schema) }
+
+        /**
+         * True when this delete file is a v3 deletion vector rather than a v2 delete file.
+         *
+         * Both declare `content = 1`, so without this the two are distinguishable only by a
+         * `.puffin` extension — which is a naming convention, not a statement in the metadata.
+         * `content_offset` is: only a vector carries one.
+         */
+        val isDeletionVector: Boolean get() = data.contentOffset != null
+
+        /** The positions this vector marks, read on first ask. Null when it is not a vector. */
+        val deletionVector: DeletionVector? by lazy { deletionVectorLoader?.invoke() }
     }
 
     data class RowNode(

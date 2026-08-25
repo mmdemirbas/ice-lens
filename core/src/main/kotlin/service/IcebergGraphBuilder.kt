@@ -228,6 +228,7 @@ object IcebergGraphBuilder {
                                         partition = unifiedDataFile.partition,
                                         localPath = unifiedDataFile.path.toString(),
                                         pathResolution = unifiedDataFile.pathResolution,
+                                        deletionVectorLoader = deletionVectorLoader(dataFile, unifiedDataFile.path),
                                     )
                                 }
 
@@ -308,6 +309,30 @@ object IcebergGraphBuilder {
      * one and picking which would be a claim about which manifest the vector "belongs" to, and
      * the vector does not record one.
      */
+    /**
+     * The lambda a [GraphNode.FileNode] opens its Puffin blob with, or null when there is nothing
+     * to open.
+     *
+     * Only a v3 deletion vector records `content_offset`, so that field is the test rather than a
+     * `.puffin` extension — a file name is a convention and this is a statement in the metadata.
+     * A read that fails returns null rather than throwing: the vector is a few lines of an
+     * inspector panel, and a table whose delete file has been moved should still draw.
+     */
+    private fun deletionVectorLoader(dataFile: DataFile, path: Path): (() -> DeletionVector?)? {
+        val offset = dataFile.contentOffset ?: return null
+        val length = dataFile.contentSizeInBytes ?: return null
+        val referenced = dataFile.referencedDataFile
+        // The manifest's own `record_count`, which the spec requires to be the vector's
+        // cardinality. It is what a scan plans against without opening the Puffin file at all,
+        // so it is the figure worth putting beside the count decoded from the bytes.
+        val recorded = dataFile.recordCount
+        return {
+            runCatching { PuffinReader.readDeletionVector(path, offset, length, referenced, recorded) }
+                .onFailure { logger.warn("Could not read the deletion vector in {}: {}", path, it.message) }
+                .getOrNull()
+        }
+    }
+
     private fun addDeletionVectorEdges(
         logicalNodes: Map<String, GraphNode>,
         edges: MutableList<GraphEdge>,
