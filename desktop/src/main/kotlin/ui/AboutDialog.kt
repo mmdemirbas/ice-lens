@@ -136,6 +136,14 @@ fun AboutDialog(
                     HorizontalDivider(Modifier.padding(vertical = 2.dp))
 
                     Spacer(Modifier.height(12.dp))
+                    Text("Structure Tree", fontWeight = FontWeight.Bold, fontSize = TypeScale.body)
+                    Spacer(Modifier.height(4.dp))
+                    shortcutRow("Move a line", "Up / Down arrow")
+                    shortcutRow("Open, or step in", "Right arrow")
+                    shortcutRow("Close, or step out", "Left arrow")
+                    HorizontalDivider(Modifier.padding(vertical = 2.dp))
+
+                    Spacer(Modifier.height(12.dp))
                     Text("Panels", fontWeight = FontWeight.Bold, fontSize = TypeScale.body)
                     Spacer(Modifier.height(4.dp))
                     shortcutRow("Toggle all panels", "Double-click empty area")

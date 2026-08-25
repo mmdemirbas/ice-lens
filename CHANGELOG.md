@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   header are now distinct from body text rather than a little heavier than it.
 
 ### Added
+- **The structure tree answers to the arrow keys too**, with the keymap every file browser uses:
+  up and down move a line whatever its depth, right opens a closed line and otherwise steps into
+  it, left closes an open one and otherwise steps out to its parent. The selection is the cursor,
+  so there is no second highlight to keep in step and the existing scroll-into-view already brings
+  a keyboard move on screen. The rules are stated against the flattened list rather than against
+  the graph — the first child of an open line **is** the line below it — so the keyboard cannot
+  disagree with what is drawn. Clicking a row hands the list the keyboard as well, and the list
+  shows a border while it holds focus.
 - **The graph answers to the arrow keys.** Left and right move to the parent or the child drawn
   across from you; up and down walk the column. Nothing selected and the first arrow lands on the
   root. The step is decided from where the nodes are actually drawn rather than from the order a

@@ -280,6 +280,13 @@ desktop/src/main/kotlin/
   main line out of a branch column drawn at a similar height. Only structural edges are followed
   — an `isSibling` edge joins two nodes at one depth, and an `affectsLayout = false` edge is an
   annotation, so neither answers "what contains this"
+- **The tree's arrow keys are a different keymap from the canvas's, deliberately.** A canvas is a
+  picture and its rules are geometric; a tree is a list, and up on a list means the line above
+  whatever its depth. `treeKeyAction` in `ui/NavigationTree.kt` states the file-browser keymap
+  against the **flattened** rows, which is what keeps it short and what stops the keyboard
+  disagreeing with the drawing: the first child of an open line is the next line, and the parent
+  is the nearest line above with a smaller depth. The list is one focus target rather than one per
+  row, because the selection is already the cursor
 - **`GraphEdge.affectsLayout = false` records a relationship without letting it shape the
   graph**, and it is also what the canvas draws dashed. Snapshot lineage runs between nodes in
   the same layer; feeding it to ELK stretches the graph by the length of the commit history
@@ -372,7 +379,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~490 tests across 51 files (383 in :core, 107 in :desktop) covering full pipelines for both formats (Avro fixtures
+~496 tests across 52 files (383 in :core, 113 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

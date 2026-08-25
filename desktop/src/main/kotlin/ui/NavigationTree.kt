@@ -10,12 +10,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import model.GraphDirection
 import model.GraphModel
 import model.GraphNode
 
@@ -71,13 +76,37 @@ fun NavigationTree(
     val horizontalScrollState = rememberScrollState()
     val density = androidx.compose.ui.platform.LocalDensity.current
 
+    // The list is one focus target, not one per row. A tree with a thousand lines would otherwise
+    // put a thousand stops in the Tab order, and the cursor here is the selection anyway.
+    val listFocus = remember { FocusRequester() }
+    var listFocused by remember { mutableStateOf(false) }
+
+    fun handleArrow(event: KeyEvent): Boolean {
+        val direction = treeArrow(event) ?: return false
+        val action = treeKeyAction(
+            rows = flattenedTree,
+            expandedIds = expandedNodeIds,
+            selectedId = selectedNodeIds.singleOrNull(),
+            direction = direction,
+        )
+        when (action) {
+            is TreeKeyAction.Select -> graph.nodeById[action.nodeId]?.let(onNodeSelect)
+            is TreeKeyAction.Expand -> expandedNodeIds = expandedNodeIds + action.nodeId
+            is TreeKeyAction.Collapse -> expandedNodeIds = expandedNodeIds - action.nodeId
+            null -> Unit
+        }
+        // Consumed either way: an arrow falling through scrolls the pane behind the tree, which
+        // reads as the selection having moved somewhere off screen.
+        return true
+    }
+
     LaunchedEffect(selectedNodeIds) {
         if (selectedNodeIds.size == 1) {
             val selectedId = selectedNodeIds.first()
             val path = findPathToNode(graph, selectedId)
             expandedNodeIds = expandedNodeIds + path
 
-            val index = flattenedTree.indexOfFirst { it.first.id == selectedId }
+            val index = flattenedTree.indexOfFirst { it.node.id == selectedId }
             if (index >= 0) {
                 val itemHeightPx = with(density) { 32.dp.toPx() }
                 val targetScroll = (index * itemHeightPx).toInt()
@@ -113,7 +142,21 @@ fun NavigationTree(
             )
         }
 
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .focusRequester(listFocus)
+                .onFocusChanged { listFocused = it.isFocused }
+                .focusable()
+                // Bubbling, not preview: the search field above consumes its own arrows, and a
+                // preview handler here would take them before the reader could move the caret.
+                .onKeyEvent { handleArrow(it) }
+                .border(
+                    width = 1.dp,
+                    color = if (listFocused) colors.primary else Color.Transparent,
+                )
+        ) {
             Box(modifier = Modifier.fillMaxSize().horizontalScroll(horizontalScrollState)) {
                 Column(
                     modifier = Modifier
@@ -122,10 +165,7 @@ fun NavigationTree(
                         .width(IntrinsicSize.Max)
                         .defaultMinSize(minWidth = 300.dp)
                 ) {
-                    flattenedTree.forEach { triple ->
-                        val node = triple.first
-                        val depth = triple.second
-                        val hasChildren = triple.third
+                    flattenedTree.forEach { (node, depth, hasChildren) ->
                         
                         val isSelected = selectedNodeIds.contains(node.id)
                         val isExpanded = expandedNodeIds.contains(node.id)
@@ -137,7 +177,12 @@ fun NavigationTree(
                                 .fillMaxWidth()
                                 .height(32.dp)
                                 .background(bgColor)
-                                .clickable { onNodeSelect(node) }
+                                .clickable {
+                                    // Clicking a row hands the list the keyboard too, so the
+                                    // arrows carry on from where the reader just pointed.
+                                    listFocus.requestFocus()
+                                    onNodeSelect(node)
+                                }
                                 .padding(horizontal = 8.dp)
                                 .padding(start = (depth * 16).dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -198,12 +243,95 @@ fun NavigationTree(
     }
 }
 
+/**
+ * The direction a key press means for a tree, or null when it is not a bare arrow.
+ *
+ * Modifiers are left alone for the same reason as on the canvas: Cmd+Left is "back" and
+ * Alt+Arrow moves by word, and a pane that swallows them makes the window feel broken.
+ */
+private fun treeArrow(event: KeyEvent): GraphDirection? {
+    if (event.type != KeyEventType.KeyDown) return null
+    if (event.isMetaPressed || event.isCtrlPressed || event.isAltPressed || event.isShiftPressed) return null
+    return when (event.key) {
+        Key.DirectionLeft -> GraphDirection.LEFT
+        Key.DirectionRight -> GraphDirection.RIGHT
+        Key.DirectionUp -> GraphDirection.UP
+        Key.DirectionDown -> GraphDirection.DOWN
+        else -> null
+    }
+}
+
+/** What an arrow key asks the tree to do. */
+internal sealed interface TreeKeyAction {
+    data class Select(val nodeId: String) : TreeKeyAction
+    data class Expand(val nodeId: String) : TreeKeyAction
+    data class Collapse(val nodeId: String) : TreeKeyAction
+}
+
+/**
+ * The arrow-key rules for a tree, decided entirely from the lines currently visible.
+ *
+ * This is the keymap every file browser and IDE tree uses, and readers arrive already knowing it:
+ * up and down move a line, right opens a closed line and otherwise steps into it, left closes an
+ * open line and otherwise steps out to its parent. Stating it against the **flattened** list is
+ * what makes it short — the first child of an open line is the next line, and the parent is the
+ * nearest line above with a smaller depth, so no second traversal of the graph is needed and the
+ * keyboard can never disagree with what is drawn.
+ *
+ * It is deliberately not [model.stepFrom]. The canvas is a picture and its rules are geometric;
+ * a tree is a list, and up on a list means the line above whatever its depth is. One shared
+ * keymap across the two would be wrong in both.
+ *
+ * The selection is the cursor. There is no separate focused row to keep in step with it, which
+ * also means the existing scroll-into-view effect already brings a keyboard move on screen.
+ */
+internal fun treeKeyAction(
+    rows: List<TreeRow>,
+    expandedIds: Set<String>,
+    selectedId: String?,
+    direction: GraphDirection,
+): TreeKeyAction? {
+    if (rows.isEmpty()) return null
+    val index = rows.indexOfFirst { it.node.id == selectedId }
+    // Nothing selected, or a selection the search box has filtered out of view: any arrow starts
+    // at the top rather than doing nothing, which is what a reader pressing a key expects.
+    if (index < 0) return TreeKeyAction.Select(rows.first().node.id)
+
+    val row = rows[index]
+    val isOpen = row.node.id in expandedIds
+    return when (direction) {
+        GraphDirection.UP -> rows.getOrNull(index - 1)?.let { TreeKeyAction.Select(it.node.id) }
+        GraphDirection.DOWN -> rows.getOrNull(index + 1)?.let { TreeKeyAction.Select(it.node.id) }
+        GraphDirection.RIGHT -> when {
+            !row.hasChildren -> null
+            !isOpen -> TreeKeyAction.Expand(row.node.id)
+            // Open already, so the first child is the line below — by construction, since that is
+            // the order `flattenGraph` emits.
+            else -> rows.getOrNull(index + 1)?.let { TreeKeyAction.Select(it.node.id) }
+        }
+        GraphDirection.LEFT -> when {
+            row.hasChildren && isOpen -> TreeKeyAction.Collapse(row.node.id)
+            else -> rows.take(index).lastOrNull { it.depth < row.depth }
+                ?.let { TreeKeyAction.Select(it.node.id) }
+        }
+    }
+}
+
+/**
+ * One visible line of the tree: which node, how deep, and whether it can open.
+ *
+ * A named record rather than a `Triple` because the keyboard rules below are written against
+ * `depth` and `hasChildren` — "the parent is the nearest line above me with a smaller depth" is a
+ * sentence, and `triple.second < triple.second` is not.
+ */
+internal data class TreeRow(val node: GraphNode, val depth: Int, val hasChildren: Boolean)
+
 private fun flattenGraph(
     graph: GraphModel,
     expandedIds: Set<String>,
     searchQuery: String = ""
-): List<Triple<GraphNode, Int, Boolean>> {
-    val result = mutableListOf<Triple<GraphNode, Int, Boolean>>()
+): List<TreeRow> {
+    val result = mutableListOf<TreeRow>()
     val edgesBySource = graph.edges.groupBy { it.fromId }
     val visited = mutableSetOf<String>()
 
@@ -235,7 +363,7 @@ private fun flattenGraph(
         val children = edgesBySource[nodeId]?.map { it.toId } ?: emptyList()
         val filteredChildren = if (visibleIds == null) children else children.filter { visibleIds.contains(it) }
 
-        result.add(Triple(node, depth, filteredChildren.isNotEmpty()))
+        result.add(TreeRow(node, depth, filteredChildren.isNotEmpty()))
 
         val shouldExpand = expandedIds.contains(nodeId) || (searchQuery.isNotBlank() && visibleIds?.contains(nodeId) == true)
         if (shouldExpand) {
