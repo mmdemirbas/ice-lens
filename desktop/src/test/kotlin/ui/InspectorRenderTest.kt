@@ -224,31 +224,45 @@ class InspectorRenderTest {
      */
     @Test
     fun `the graph status badge renders every state it has`() {
-        renderScene("graph-status-badge", width = 700, height = 760) {
+        renderScene("graph-status-badge", width = 700, height = 900) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 GraphStatusBadge(
                     drawnNodeCount = 118, hiddenByAggregation = 0, groupCount = 0,
                     hiddenByFilter = 0, pageSize = 24,
                     pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
-                    hasExpandedGroups = false, onPageSizeChange = {}, onCollapseAllGroups = {},
+                    hasExpandedGroups = false, drawEverything = false,
+                    onPageSizeChange = {}, onDrawEverythingChange = {}, onCollapseAllGroups = {},
                 )
                 GraphStatusBadge(
                     drawnNodeCount = 431, hiddenByAggregation = 5_749, groupCount = 1,
                     hiddenByFilter = 0, pageSize = 24,
                     pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
-                    hasExpandedGroups = false, onPageSizeChange = {}, onCollapseAllGroups = {},
+                    hasExpandedGroups = false, drawEverything = false,
+                    onPageSizeChange = {}, onDrawEverythingChange = {}, onCollapseAllGroups = {},
                 )
                 GraphStatusBadge(
                     drawnNodeCount = 96, hiddenByAggregation = 0, groupCount = 0,
                     hiddenByFilter = 335, pageSize = 24,
                     pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
-                    hasExpandedGroups = false, onPageSizeChange = {}, onCollapseAllGroups = {},
+                    hasExpandedGroups = false, drawEverything = false,
+                    onPageSizeChange = {}, onDrawEverythingChange = {}, onCollapseAllGroups = {},
                 )
                 GraphStatusBadge(
                     drawnNodeCount = 96, hiddenByAggregation = 5_749, groupCount = 37,
                     hiddenByFilter = 335, pageSize = 8,
                     pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
-                    hasExpandedGroups = true, onPageSizeChange = {}, onCollapseAllGroups = {},
+                    hasExpandedGroups = true, drawEverything = false,
+                    onPageSizeChange = {}, onDrawEverythingChange = {}, onCollapseAllGroups = {},
+                )
+                // Paging off: the badge says "all", and the reason it says so is a decision the
+                // reader took rather than a table that happened to be small. The two read the
+                // same from the outside, which is why the menu carries the check mark.
+                GraphStatusBadge(
+                    drawnNodeCount = 6_180, hiddenByAggregation = 0, groupCount = 0,
+                    hiddenByFilter = 0, pageSize = 24,
+                    pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
+                    hasExpandedGroups = false, drawEverything = true,
+                    onPageSizeChange = {}, onDrawEverythingChange = {}, onCollapseAllGroups = {},
                 )
             }
         }
@@ -461,7 +475,9 @@ class InspectorRenderTest {
                         pageSize = pageSize,
                         pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
                         hasExpandedGroups = false,
+                        drawEverything = false,
                         onPageSizeChange = {},
+                        onDrawEverythingChange = {},
                         onCollapseAllGroups = {},
                     )
                 },

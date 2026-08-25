@@ -127,7 +127,19 @@ class AppState(
     var graphPageSize by mutableStateOf(AggregationPolicy.DEFAULT_PAGE_SIZE)
         private set
 
-    private val aggregationPolicy: AggregationPolicy get() = AggregationPolicy(graphPageSize)
+    /**
+     * Whether the reader has asked for the whole table at once, paging switched off.
+     *
+     * Not persisted, unlike [graphPageSize]. A page size is a statement about this reader's
+     * screen and holds for every table they open; "draw all of it" is a decision about *this*
+     * table, taken knowing its node count — re-applying it silently to the next table opened
+     * would be applying a consent that was never given for it.
+     */
+    var drawEverything by mutableStateOf(false)
+        private set
+
+    private val aggregationPolicy: AggregationPolicy
+        get() = if (drawEverything) AggregationPolicy.NONE else AggregationPolicy(graphPageSize)
 
     // ═══════════════════════════════════════════════════════════════
     //  Snapshot Filter State
@@ -511,6 +523,10 @@ class AppState(
         // leave conditions on screen for columns that table does not have, all reporting that
         // nothing matched them.
         if (normalizedTablePath != selectedTablePath) scanPredicates = emptyList()
+        // "Draw all of it" was consented to for a table whose node count the reader had in front
+        // of them. Carrying it to the next table applies that consent to a figure they have not
+        // seen, which on a production table is the difference between a graph and a hung window.
+        if (normalizedTablePath != selectedTablePath) drawEverything = false
         selectedTablePath = normalizedTablePath
         prefs.put(PREF_SELECTED_TABLE_PATH, normalizedTablePath)
 
@@ -761,6 +777,26 @@ class AppState(
     }
 
     /**
+     * Draws the whole table, or goes back to paging it.
+     *
+     * "Show all" opens one group's run, and a reader with a small table and a small page size
+     * wants the table — which was otherwise reachable only by expanding every group of every
+     * parent, one at a time, and was not reachable at all for a parent revealed *by* an
+     * expansion. Switching paging off answers all of it in one rebuild, and it is the same code
+     * path the layout tests have always used ([AggregationPolicy.NONE]).
+     *
+     * Expansion state is cleared on the way in and on the way out. A group id names a page at a
+     * size, and there are no pages while this is on; keeping the ids would restore a set of
+     * expansions the reader has not seen since before they asked for the whole table.
+     */
+    fun drawWholeTable(enabled: Boolean) {
+        if (enabled == drawEverything) return
+        drawEverything = enabled
+        expandedGroupIds = emptySet()
+        rebuildDrawnGraph()
+    }
+
+    /**
      * Changes how many siblings a page holds, and redraws under the new size.
      *
      * Two things have to go with it. A group id names *a page at a size*, so an expansion
@@ -772,7 +808,10 @@ class AppState(
      */
     fun updateGraphPageSize(pageSize: Int) {
         val clamped = pageSize.coerceIn(MIN_GRAPH_PAGE_SIZE, MAX_GRAPH_PAGE_SIZE)
-        if (clamped == graphPageSize) return
+        if (clamped == graphPageSize && !drawEverything) return
+        // Choosing a page size is asking for paging, so it turns "draw all of it" off. Leaving
+        // both on would set a size that nothing then applies, and the badge would state it.
+        drawEverything = false
         graphPageSize = clamped
         prefs.putInt(PREF_GRAPH_PAGE_SIZE, clamped)
         expandedGroupIds = emptySet()

@@ -423,7 +423,9 @@ fun App() {
                                         pageSize = state.graphPageSize,
                                         pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
                                         hasExpandedGroups = state.expandedGroupIds.isNotEmpty(),
+                                        drawEverything = state.drawEverything,
                                         onPageSizeChange = state::updateGraphPageSize,
+                                        onDrawEverythingChange = state::drawWholeTable,
                                         onCollapseAllGroups = state::collapseAllGroups,
                                     )
                                 },

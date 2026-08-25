@@ -224,4 +224,82 @@ class AppStateAggregationTest {
 
         assertEquals(revision, state.graphRevision, "no rebuild for a no-op")
     }
+
+    // ── Drawing the whole table ──────────────────────────────────────────────────────────────
+
+    /**
+     * The action a reader with a small table and a small page size actually wants.
+     *
+     * "Show all" opens one group's run, and before this the only route to a whole table was
+     * expanding every group of every parent one at a time — and there was no route at all for a
+     * parent that only appears *because* of an expansion.
+     */
+    @Test
+    fun `drawing the whole table leaves no group behind`() {
+        val state = newState()
+        state.loadTable(tableWithMetadataVersions(200))
+        assertEquals(24, metadataCount(state))
+        assertTrue(state.graphModel!!.groups.isNotEmpty())
+
+        state.drawWholeTable(true)
+
+        assertEquals(200, metadataCount(state), "every version should be drawn")
+        assertTrue(state.graphModel!!.groups.isEmpty(), "and nothing left folded")
+        assertEquals(0, state.graphModel!!.hiddenNodeCount)
+    }
+
+    @Test
+    fun `turning it back off returns to one page per parent`() {
+        val state = newState()
+        state.loadTable(tableWithMetadataVersions(200))
+        state.drawWholeTable(true)
+        state.drawWholeTable(false)
+
+        assertEquals(24, metadataCount(state))
+        assertEquals(176, state.graphModel!!.hiddenNodeCount)
+    }
+
+    /**
+     * Choosing a page size is asking for paging. Leaving both on would set a size that nothing
+     * applies while the badge above the canvas states it.
+     */
+    @Test
+    fun `choosing a page size turns paging back on`() {
+        val state = newState()
+        state.loadTable(tableWithMetadataVersions(200))
+        state.drawWholeTable(true)
+
+        state.updateGraphPageSize(48)
+
+        assertTrue(!state.drawEverything)
+        assertEquals(48, metadataCount(state))
+    }
+
+    /**
+     * The consent was given for a table whose node count was on screen. Carrying it to the next
+     * table applies it to a figure the reader has not seen, which on a production table is the
+     * difference between a graph and a hung window.
+     */
+    @Test
+    fun `opening another table goes back to paging`() {
+        val state = newState()
+        state.loadTable(tableWithMetadataVersions(200))
+        state.drawWholeTable(true)
+        assertTrue(state.drawEverything)
+
+        val other = File(tmpDir.parentFile, "other-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            File(other, "metadata").mkdirs()
+            (1..40).forEach { version ->
+                File(other, "metadata/v$version.metadata.json").writeText(
+                    File(tmpDir, "metadata/v1.metadata.json").readText(),
+                )
+            }
+            state.loadTable(other.canonicalPath)
+            assertTrue(!state.drawEverything, "the next table is paged until this reader says otherwise")
+            assertEquals(24, metadataCount(state))
+        } finally {
+            other.deleteRecursively()
+        }
+    }
 }

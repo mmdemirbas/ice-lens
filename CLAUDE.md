@@ -266,6 +266,15 @@ desktop/src/main/kotlin/
   group, so `sum(group.hiddenNodeCount)` equals what actually went; and an `ErrorNode` is never
   grouped, with errors inside a collapsed subtree counted in `hiddenErrorCount` and shown in red
   on the card. Never add a cap that isn't visible in the UI
+- **Paging can be switched off entirely, and that is a decision about one table.**
+  `AppState.drawEverything` swaps the policy for `AggregationPolicy.NONE` — the same "draw every
+  node" the layout tests have always used — because expanding group by group could never reach a
+  parent that only appears *because* of an expansion. It is **not persisted**, unlike
+  `graphPageSize`: a page size describes this reader's screen and holds for every table, while
+  "draw all of it" was consented to against a node count the reader had in front of them, and
+  re-applying that to the next table opened applies a consent never given for it. Opening another
+  table and choosing a page size both turn it back off, and the menu item carries the count it is
+  about to draw, because that figure is the whole of what is being agreed to
 - **The page size is a setting, and two things travel with a change of it.** `AppState.graphPageSize`
   is persisted and feeds `AggregationPolicy`; `GraphStatusBadge` on the canvas both states the
   figures and offers the choices. Changing it clears `expandedGroupIds` — a group id names a page
@@ -458,7 +467,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~538 tests across 57 files (411 in :core, 127 in :desktop) covering full pipelines for both formats (Avro fixtures
+~542 tests across 57 files (411 in :core, 131 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

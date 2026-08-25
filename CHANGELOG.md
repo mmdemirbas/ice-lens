@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The whole table can be drawn in one action.** "Show all" opened one group's run, so reaching a
+  complete graph meant expanding every group of every parent one at a time — and there was no
+  route at all to a parent that only appears *because* of an expansion. The badge's menu now
+  offers "Draw all N nodes", which switches paging off rather than expanding anything, and the
+  count is in the label because that figure is the whole of what is being agreed to. It is a
+  decision about the table in front of the reader: opening another table, or choosing a page size,
+  turns it back off.
 - **A snapshot now says what its commit did.** The panel reports the files that commit added and
   removed, and puts every figure beside the same figure from the snapshot's own `summary` — the
   engine's account of its own work, which sits in `metadata.json` where nothing on the read path

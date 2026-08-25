@@ -73,9 +73,11 @@ that leaves open:
   another table re-reads it from disk. Rebuilding those graphs from their retained table models
   would keep the read.
 
-- **Expanding is still per group.** "Show all" opens one group's whole run; there is no way to
-  say "draw this entire table", which is what a reader with a small table and a small page size
-  actually wants.
+- **The badge's menu is the one control no capture covers.** `DropdownMenu` opens from state a
+  render never reaches — `menuOpen` is a `remember` inside the composable — so the page-size
+  check mark, the "Draw all N nodes" item and its disabled states are asserted by
+  `AppStateAggregationTest` and looked at by nobody. Hoisting `menuOpen` to a parameter would
+  make it capturable, at the cost of a parameter that exists for the test.
 
 - **A group's own members are never re-paged after expansion.** Opening every page of a parent
   leaves no group node behind, so the only way back is "collapse every group", which closes the

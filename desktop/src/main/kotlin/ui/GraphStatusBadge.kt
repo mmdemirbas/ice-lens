@@ -53,7 +53,10 @@ fun GraphStatusBadge(
     /** Whether anything is open to collapse. Not derivable from [groupCount]: expanding every
      *  page of a parent leaves no group behind and still needs a way back. */
     hasExpandedGroups: Boolean,
+    /** Whether paging is currently switched off entirely — see `AppState.drawEverything`. */
+    drawEverything: Boolean,
     onPageSizeChange: (Int) -> Unit,
+    onDrawEverythingChange: (Boolean) -> Unit,
     onCollapseAllGroups: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -150,9 +153,47 @@ fun GraphStatusBadge(
                 )
             }
             HorizontalDivider()
+            // The count is in the label because it is the whole of what the reader is consenting
+            // to: paging exists because a production table is tens of thousands of nodes, and an
+            // action that switches it off must say how many before it is taken, not after.
+            DropdownMenuItem(
+                text = {
+                    Row(
+                        modifier = Modifier.widthIn(min = 180.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.size(16.dp)) {
+                            if (drawEverything) {
+                                Icon(
+                                    Icons.Default.Check,
+                                    contentDescription = "paging is off",
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        }
+                        Text(
+                            if (drawEverything) {
+                                "Paging off — drawing all ${formatCount(total)}"
+                            } else {
+                                "Draw all ${formatCount(total)} nodes"
+                            },
+                            fontSize = TypeScale.small,
+                        )
+                    }
+                },
+                // Off when there is nothing more to draw: the graph is already whole, and an
+                // action that would change nothing is one the reader has to try to find out.
+                enabled = drawEverything || hiddenByAggregation > 0,
+                onClick = {
+                    menuOpen = false
+                    onDrawEverythingChange(!drawEverything)
+                },
+            )
             DropdownMenuItem(
                 text = { Text("Collapse every group", fontSize = TypeScale.small) },
-                enabled = hasExpandedGroups,
+                enabled = hasExpandedGroups && !drawEverything,
                 onClick = {
                     menuOpen = false
                     onCollapseAllGroups()
