@@ -575,18 +575,24 @@ fun ManifestCard(node: GraphNode.ManifestNode, isSelected: Boolean = false, isPr
 }
 
 @Composable
-fun FileCard(node: GraphNode.FileNode, isSelected: Boolean = false) {
+fun FileCard(node: GraphNode.FileNode, isSelected: Boolean = false, isPruned: Boolean = false) {
     val selectionBorderColor = selectionHighlightColor()
-    val label = "FILE ${node.simpleId}: ${fileContentLabel(node.data.content)}"
+    // Same treatment as a pruned manifest, and for the same reason: the word says which, the fade
+    // says how much of the drawing the query does not touch, and neither alone is enough — colour
+    // is never the only signal, and a label on forty cards is not a shape the eye can take in.
+    val label = "FILE ${node.simpleId}: ${fileContentLabel(node.data.content)}" +
+        if (isPruned) " — NOT READ" else ""
     val borderWidth = if (isSelected) 5.dp else 1.dp
     val borderColor = if (isSelected) selectionBorderColor else getGraphNodeBorderColor(node, isDarkSurface(MaterialTheme.colorScheme.surface))
     val fileName = fileNameFromPath(node.localPath ?: node.data.filePath)
+    val color = getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface))
+    val fade = if (isPruned) 0.45f else 1f
 
     Box(
         modifier = Modifier
         .cardBox(node)
-        .background(getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface)), RoundedCornerShape(4.dp))
-        .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(4.dp))) {
+        .background(color.copy(alpha = color.alpha * fade), RoundedCornerShape(4.dp))
+        .border(BorderStroke(borderWidth, borderColor.copy(alpha = borderColor.alpha * fade)), RoundedCornerShape(4.dp))) {
         CardColumn(padding = 4.dp) {
             Text(
                 label,

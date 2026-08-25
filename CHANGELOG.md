@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Pruning now answers a file count, not just a manifest count.** Iceberg prunes twice — a
+  manifest by the partition summaries its list records, then a file by the bounds it records about
+  its own columns — and only the first stage was modelled. The panel now reports both, and leads
+  with the file line, because "would read 1 of 4 data files" is the number a reader arrives with;
+  a query reports how many files it read and never which. Three consequences worth knowing:
+  an **unpartitioned** table is no longer told there is nothing to do here, since its file bounds
+  still prune; a **bucketed** column, which no range can rule a manifest out on, still eliminates
+  files, because file bounds are the plain source values; and `IS NOT NULL` can be settled at the
+  file stage, which records how many values it holds and how many are null, where a manifest
+  summary records only that a null exists somewhere. A file under a ruled-out manifest reads
+  `not reached` rather than `skipped` — a scan never opens it, so the verdict is not its own — and
+  the canvas fades every node the query does not touch, files included.
+
 ### Changed
 - **A verdict column now marks only the exception.** Every leading cell in the pruning and tally
   tables was bold, because each row supplied a colour and `WideTable` bolded any cell that had

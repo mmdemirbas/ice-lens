@@ -7,15 +7,15 @@
 These are the differences between "renders the metadata tree" and "answers the questions a
 table-format engineer opens a debugger for". Ordered by how often the question comes up.
 
-- **Pruning is answered for a filter, but the filter is a form and not a clause.** Entering
-  conditions in the table inspector now reports which manifests a scan would skip and which term
-  did it (`model/ScanPruning.kt`). Three gaps remain. `bucket[N]` equality is reported as
-  not-evaluated rather than pruned, which is correct today and stops being the right answer once
-  there is an oracle for Iceberg's murmur3 — the fixture tables give one, since each file's own
-  bucket value is recorded beside it. A `WHERE` clause would be more familiar than the form and
-  is worth having, at the cost of a second place where a literal is read. And pruning stops at
-  the manifest: Iceberg prunes **files** on `lower_bounds`/`upper_bounds` too, which is where
-  "why did my query read 400 files" usually ends up, and the bounds are already decoded.
+- **Pruning is answered for a filter, but the filter is a form and not a clause.** Both stages are
+  modelled now — manifests by partition summary, files by their own column bounds — and the panel
+  reports which and why (`model/ScanPruning.kt`). Three gaps remain. `bucket[N]` equality is
+  reported as not-evaluated rather than pruned, which is correct today and stops being the right
+  answer once there is an oracle for Iceberg's murmur3 — the fixture tables give one, since each
+  file's own bucket value is recorded beside it. A `WHERE` clause would be more familiar than the
+  form and is worth having, at the cost of a second place where a literal is read. And **the
+  predicates are a conjunction only**: there is no `OR`, no `NOT` and no grouping, which is fine
+  for "why did this read so much" and wrong for reproducing a real query's plan.
 
 - **Iceberg v3 is unmodelled.** Parsed without error — now *verified* rather than assumed,
   against `example/iceberg/default/v3` — but none of its additions are surfaced: deletion
@@ -216,15 +216,10 @@ What is left:
   scrollbar exists exactly when the table is wider than the panel, and the leading columns fit
   within the panel width. Neither is expressible without measuring the composition.
 
-  **Card clipping cannot be caught by a pixel probe outside the card, and this was tried.** The
-  idea was to draw each card over a field colour and look for ink below its declared height. It
-  finds nothing even with the line-height fix reverted, because the surplus line is dropped where
-  the `Column` runs out of constraint — `Text` clips itself to the size it was measured at, so
-  nothing is ever painted outside the box. (The knowledge-base note saying the lines are "painted
-  and then covered by the card's own border" describes the outcome correctly and the mechanism
-  wrongly.) What would work is comparing a card against itself drawn with more room, which needs
-  the declared height to be injectable — the card composables take a node, not a size. Until
-  then this class is caught by looking at `graph-cards-*.png`, and by nothing else.
+  Card clipping is no longer in this bucket: `CardHeightTest` draws each card inside
+  `LocalCardHeightSlack` and asserts the content fitted the height its node declares. What remains
+  eye-only is everything a number cannot state — whether the lines that fit are the right lines,
+  in the right order, at weights a reader can rank.
 
 - **Iceberg pipeline fixtures on disk** — Iceberg pipeline tests currently write Avro
   fixtures at runtime via `avro4k`. Snapshotting representative fixtures into

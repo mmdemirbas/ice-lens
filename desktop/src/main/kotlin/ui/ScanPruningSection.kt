@@ -20,7 +20,9 @@ import model.PredicateOutcome
 import model.PrunableColumn
 import model.ScanPredicate
 import model.TermEffect
-import model.evaluatePruning
+import model.FileFate
+import model.FilePruneResult
+import model.evaluateScan
 import model.prunableColumns
 
 /**
@@ -43,8 +45,9 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
     if (columns.isEmpty()) {
         Section("Scan Pruning") {
             Text(
-                "This table is not partitioned, so no predicate can rule a manifest out before it is " +
-                    "opened. Every scan reads every manifest.",
+                "Nothing here records a bound: no partition summary and no column statistics, so " +
+                    "there is nothing a predicate could be intersected with. Every scan reads " +
+                    "every file.",
                 fontSize = TypeScale.small,
                 color = colors.onSurfaceVariant,
             )
@@ -54,13 +57,26 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
 
     Section("Scan Pruning") {
         Text(
-            "Iceberg intersects a query's predicate with each manifest's recorded partition bounds and " +
-                "skips the ones that cannot match. It then reports how many files it read and never " +
-                "which it skipped. Enter the filter and this says which — and which term did it.",
+            "Iceberg prunes twice: a manifest is ruled out by the partition bounds its list records, " +
+                "then a file by the column bounds it records about itself. A query reports how many " +
+                "files it read and never which it skipped. Enter the filter and this says which — " +
+                "and which term did it.",
             fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 6.dp),
         )
+        // Worth saying once, above the form: an unpartitioned table used to get "nothing to do
+        // here", which is true of the manifest stage and wrong about the question the reader
+        // arrived with.
+        if (columns.none { it.prunesManifests }) {
+            Text(
+                "No column here prunes a manifest — nothing is partitioned on one a range can be " +
+                    "intersected with. File bounds still apply.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 6.dp),
+            )
+        }
 
         // The three controls are unlabelled pills on their own — a reader sees `d` and `=` and has no
         // way to know which is the column and which the operator, nor that either opens a menu. The
@@ -107,30 +123,53 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
 
         if (predicates.isEmpty()) return@Section
 
-        val results = remember(graph, predicates) { evaluatePruning(graph, predicates) }
+        val plan = remember(graph, predicates) { evaluateScan(graph, predicates) }
+        val results = plan.manifests
         val manifests = remember(graph) { graph.nodes.filterIsInstance<GraphNode.ManifestNode>() }
-        val skipped = manifests.count { results[it.id]?.isSkipped == true }
+        val files = remember(graph) { graph.nodes.filterIsInstance<GraphNode.FileNode>() }
         val unevaluated = manifests.count { results[it.id]?.isUnevaluated == true }
 
         Spacer(Modifier.height(8.dp))
+        // The file line first: it is the number the reader came for. A scan reports how many files
+        // it read and never which, and the manifest count is the intermediate step that produced
+        // it — worth showing, and worth showing second.
         Text(
-            "Would skip ${formatCount(skipped)} of ${formatCount(manifests.size)} manifests drawn",
+            "Would read ${formatCount(plan.readFiles)} of ${formatCounted(files.size, "data file")} drawn",
             fontSize = TypeScale.body,
             fontWeight = FontWeight.Bold,
+        )
+        // One clause per stage, in the order a scan runs them, so the two numbers add up in front
+        // of the reader rather than needing to be reconciled after.
+        Text(
+            "${formatCount(plan.skippedManifests)} of ${formatCounted(manifests.size, "manifest")} " +
+                "ruled out, so ${formatCounted(plan.unreachedFiles, "file")} never opened. " +
+                "${formatCounted(plan.skippedFiles, "file")} ruled out by their own bounds.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
         )
         // Named separately because a manifest nothing could be evaluated against is not a manifest a
         // scan decided to read — folding the two together would overstate what this screen knows.
         if (unevaluated > 0) {
             Text(
-                "${formatCount(unevaluated)} could not be evaluated at all; the reason is on each row.",
+                "${formatCounted(unevaluated, "manifest")} could not be evaluated at all; " +
+                    "the reason is on each row.",
                 fontSize = TypeScale.small,
                 color = colors.onSurfaceVariant,
             )
         }
-        Spacer(Modifier.height(6.dp))
 
         val skippedColor = verdictSkippedColor()
         val unevaluatedColor = verdictUnevaluatedColor()
+
+        Spacer(Modifier.height(10.dp))
+        Text("Manifests", fontSize = TypeScale.body, fontWeight = FontWeight.Bold)
+        Text(
+            "Ruled out by the partition summaries the manifest list records, before the manifest " +
+                "is opened.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
         WideTable(
             headers = listOf("Verdict", "Manifest", "Because"),
             // 634dp of table in a panel that is rarely wider: the reason is the payload, and a
@@ -157,6 +196,44 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
                     result?.isUnevaluated == true -> unevaluatedColor
                     // No colour and no weight. This is the ordinary row, and a column where
                     // every cell is bold has spent its emphasis before the exception arrives.
+                    else -> null
+                }
+            },
+        )
+
+        Spacer(Modifier.height(12.dp))
+        Text("Data files", fontSize = TypeScale.body, fontWeight = FontWeight.Bold)
+        Text(
+            "Ruled out by the bounds each file records about its own columns — which every column " +
+                "carries, partitioned or not. This is the stage that answers a file count.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        val unreachedColor = colors.onSurfaceVariant.copy(alpha = 0.7f)
+        WideTable(
+            headers = listOf("Verdict", "File", "Because"),
+            columnWidths = listOf(110.dp, 90.dp, 400.dp),
+            rows = files.map { file ->
+                val result = plan.files[file.id]
+                listOf(
+                    when (result?.fate) {
+                        FileFate.SKIPPED -> "SKIPPED"
+                        FileFate.NOT_REACHED -> "not reached"
+                        FileFate.UNEVALUATED -> "not evaluated"
+                        else -> "would be read"
+                    },
+                    "FILE ${file.simpleId}",
+                    result.summarise(),
+                )
+            },
+            leadCellColors = files.map { file ->
+                when (plan.files[file.id]?.fate) {
+                    FileFate.SKIPPED -> skippedColor
+                    // Dimmer than the others on purpose: it is not this file's verdict. The row
+                    // is here so the count adds up, not because anything was decided about it.
+                    FileFate.NOT_REACHED -> unreachedColor
+                    FileFate.UNEVALUATED -> unevaluatedColor
                     else -> null
                 }
             },
@@ -189,13 +266,36 @@ private fun FormLabel(text: String, width: Dp) {
  * anywhere else: one term over `ts` is evaluated separately against `ts_year`, `ts_month` and
  * `ts_hour`, and they do not all reach the same verdict.
  */
-private fun ManifestPruneResult?.summarise(): String {
+/**
+ * The one sentence for a file's verdict.
+ *
+ * `not reached` says whose decision it was, because the file's own bounds are irrelevant once the
+ * manifest above it is gone — printing what its bounds happen to say would invite the reader to
+ * credit the wrong term.
+ */
+private fun FilePruneResult?.summarise(): String {
     if (this == null) return "no filter"
+    if (fate == FileFate.NOT_REACHED) return "its manifest was ruled out, so a scan never opens it"
+    return outcomes.summarise()
+}
+
+private fun ManifestPruneResult?.summarise(): String =
+    if (this == null) "no filter" else outcomes.summarise()
+
+/**
+ * A proof if there is one, otherwise every term that did not produce one.
+ *
+ * A term that **could not be evaluated** is kept beside the ones that were, rather than dropped
+ * as soon as some other term reports a range it checked. It is the more interesting of the two:
+ * "would be read" earned by checking is a different statement from "would be read" because
+ * nothing here turns on that column, and a row showing only the first hides the second. On
+ * `parted` this is the whole difference between the two tables — `id` is bucketed, so the
+ * manifest stage cannot use it and the file stage can.
+ */
+private fun List<PredicateOutcome>.summarise(): String {
     fun PredicateOutcome.line() = "${fieldName ?: predicate.column} — $reason"
-    skippedBy?.let { return it.line() }
-    val evaluated = outcomes.filter { it.effect == TermEffect.KEEPS }
-    if (evaluated.isNotEmpty()) return evaluated.joinToString("; ") { it.line() }
-    return outcomes.joinToString("; ") { it.line() }
+    firstOrNull { it.effect == TermEffect.SKIPS }?.let { return it.line() }
+    return joinToString("; ") { it.line() }
 }
 
 @Composable

@@ -375,9 +375,11 @@ fun App() {
                         // drawn graph and the filter, and a second copy of it would be a second
                         // thing to keep in step with the graph rebuilds aggregation causes.
                         val prunedNodeIds = remember(currentGraph, state.scanPredicates) {
-                            evaluatePruning(currentGraph, state.scanPredicates)
-                                .filterValues { it.isSkipped }
-                                .keys
+                            val plan = evaluateScan(currentGraph, state.scanPredicates)
+                            plan.manifests.filterValues { it.isSkipped }.keys +
+                                plan.files.filterValues {
+                                    it.fate == FileFate.SKIPPED || it.fate == FileFate.NOT_REACHED
+                                }.keys
                         }
                         key(state.graphRevision) {
                             GraphCanvas(

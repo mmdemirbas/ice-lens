@@ -22,6 +22,15 @@ fun formatCount(value: Long?): String = value?.let { String.format(Locale.US, "%
 
 fun formatCount(value: Int?): String = formatCount(value?.toLong())
 
+/**
+ * A count and the noun it counts, with an ending that agrees: `1` → `"1 file"`, `4` → `"4 files"`.
+ *
+ * Worth a function rather than an `if` at each call site, because the call sites are prose and
+ * "1 files never opened" is the kind of thing that reads as a machine wrote the screen.
+ */
+fun formatCounted(value: Int, singular: String, plural: String = singular + "s"): String =
+    "${formatCount(value)} ${if (value == 1) singular else plural}"
+
 private val BYTE_UNITS = listOf("KiB", "MiB", "GiB", "TiB", "PiB", "EiB")
 
 /**

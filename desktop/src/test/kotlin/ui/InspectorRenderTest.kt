@@ -251,15 +251,23 @@ class InspectorRenderTest {
     fun `the scan pruning section renders a filter and its verdicts`() {
         val graph = partedGraph()
         val table = graph.nodes.filterIsInstance<GraphNode.TableNode>().first()
-        // 2024-03-06 rather than 2024-03-05 so the two manifests disagree: the wide one holds
-        // it, the single-row one is a day short of it and is skipped. A capture where every row
-        // says the same thing cannot show whether the verdicts are distinguishable at a glance,
-        // which is the one thing this column exists to be.
+        // Chosen so all three verdicts appear and both stages visibly do different work — a
+        // capture where every row says the same thing cannot show whether the column is scannable,
+        // and one where the file table only ever repeats the manifest table's reason would not
+        // show why there are two tables.
+        //
+        // `d >= 2024-03-06` skips the single-day manifest, so the file under it reads `not
+        // reached` rather than a verdict of its own. Under the manifest that survives, the same
+        // term skips two files outright and the third passes both terms and is read.
+        //
+        // `id <= 7` is the second half of the point: `parted` buckets `id`, which is not
+        // order-preserving, so the manifest stage declines the term and says so — and the file
+        // bounds answer it anyway, because they are the plain source values.
         val predicates = listOf(
-            ScanPredicate("d", PredicateOp.EQ, "2024-03-06"),
-            ScanPredicate("id", PredicateOp.EQ, "7"),
+            ScanPredicate("d", PredicateOp.GTE, "2024-03-06"),
+            ScanPredicate("id", PredicateOp.LTE, "7"),
         )
-        renderScene("scan-pruning-table", width = 1400, height = 2400) {
+        renderScene("scan-pruning-table", width = 1400, height = 3200) {
             NodeDetailsContent(graph, setOf(table.id), scanPredicates = predicates)
         }
 

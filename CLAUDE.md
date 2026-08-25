@@ -162,6 +162,17 @@ desktop/src/main/kotlin/
   the read path checks them, so the inspector does. It is also the suite's only assertion that
   compares what this code decoded against what Iceberg recorded about the same bytes — a status
   misread or an entry dropped shows up as a disagreement on a checked-in table
+- **Pruning has two stages and they prune on different things.** `evaluateScan` in
+  `model/ScanPruning.kt` returns a `ScanPlan` carrying both: a manifest is ruled out by the
+  partition summaries its list records, a **file** by the `lower_bounds`/`upper_bounds` it records
+  about its own columns. Only a partitioned column reaches the first; every column reaches the
+  second, which is why `prunableColumns` offers the union and why `id > 1000` on an unpartitioned
+  table is now a question this answers. The file stage needs no transform bridge — a column
+  statistic's bounds *are* the source values — and it can settle one term the manifest stage never
+  can: `IS NOT NULL` is proved empty when `null_value_count == value_count`. **The two are composed
+  in one function on purpose**: a scan that ruled a manifest out never opens the entries inside it,
+  so a file under it is `NOT_REACHED` and not `SKIPPED`, whatever its own bounds say. Reporting it
+  as skipped would credit the wrong term and double-count it against the file stage
 - **A manifest is evaluated against its own partition spec, never the table's current one.**
   `evaluatePruning(graph, predicates)` in `model/ScanPruning.kt` reads each
   `ManifestNode.partitionSummaries`, decoded against the spec that manifest records — the same
@@ -389,7 +400,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~505 tests across 53 files (383 in :core, 122 in :desktop) covering full pipelines for both formats (Avro fixtures
+~513 tests across 54 files (391 in :core, 122 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

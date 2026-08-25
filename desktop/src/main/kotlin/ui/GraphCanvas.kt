@@ -113,6 +113,12 @@ fun GraphCanvas(
      * Manifests the reader's scan filter would let a query skip. Drawn faded and labelled — the
      * answer belongs on the graph, where the manifests are, not only in a panel beside it.
      */
+    /**
+     * Every node a scan under the reader's filter does not read — manifests it rules out, and the
+     * data files it never opens, whether because their own bounds excluded them or because the
+     * manifest listing them was gone. One set rather than two, because what the drawing has to
+     * show is the query's footprint, and the reason belongs in the panel that has room for it.
+     */
     prunedNodeIds: Set<String> = emptySet(),
 ) {
     val colors = MaterialTheme.colorScheme
@@ -745,7 +751,8 @@ fun GraphCanvas(
                             is GraphNode.SnapshotNode -> SnapshotCard(node, isSelected = isActive)
                             is GraphNode.ManifestNode ->
                                 ManifestCard(node, isSelected = isActive, isPruned = node.id in prunedNodeIds)
-                            is GraphNode.FileNode     -> FileCard(node, isSelected = isActive)
+                            is GraphNode.FileNode     ->
+                                FileCard(node, isSelected = isActive, isPruned = node.id in prunedNodeIds)
                             is GraphNode.RowNode      -> RowCard(node, isSelected = isActive)
                             is GraphNode.ErrorNode    -> ErrorCard(node, isSelected = isActive)
                             is GraphNode.GroupNode    -> GroupCard(node, isSelected = isActive)
