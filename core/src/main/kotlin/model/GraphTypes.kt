@@ -1,6 +1,45 @@
 package model
 
 /**
+ * Something a node can read on demand, held so that reading it is not part of the node's identity.
+ *
+ * A `GraphNode` is a value: two nodes describing the same artifact are the same node, whether or
+ * not one of them has since opened a file. Several nodes carry a read they defer — a deletion
+ * vector's Puffin blob, the live file set behind a snapshot — because the graph is built for every
+ * artifact the metadata names and most are never looked at.
+ *
+ * A bare lambda in a data class's primary constructor cannot express that. **A `private val`
+ * parameter is still a component of the generated `equals`**, and two lambdas written at the same
+ * source position are two distinct objects, so two nodes for the same artifact from two graph
+ * builds compared *unequal* — which is a comment claiming an invariant the compiler had already
+ * decided against, and which costs Compose the chance to skip a card that has not changed.
+ *
+ * So the lambda lives in here, and this type's `equals` says what the node means: all deferred
+ * reads are alike, because none of them is part of what the node *is*. That is the whole reason
+ * this class exists; do not reach for it as a general lazy holder, where ignoring the contents in
+ * `equals` would be a lie rather than a definition.
+ */
+class DeferredRead<T : Any> private constructor(private val load: (() -> T?)?) {
+
+    /** The value, read on first ask. Null when there is nothing to read, or the read gave nothing. */
+    val value: T? by lazy { load?.invoke() }
+
+    /** Whether there is anything to read at all, answerable without reading it. */
+    val isPresent: Boolean get() = load != null
+
+    override fun equals(other: Any?): Boolean = other is DeferredRead<*>
+    override fun hashCode(): Int = 0
+    override fun toString(): String = if (isPresent) "DeferredRead(unread or read)" else "DeferredRead(nothing)"
+
+    companion object {
+        /** Nothing to read — the ordinary case for a node the deferred read does not apply to. */
+        fun <T : Any> none(): DeferredRead<T> = DeferredRead(null)
+
+        fun <T : Any> of(load: () -> T?): DeferredRead<T> = DeferredRead(load)
+    }
+}
+
+/**
  * A point in graph coordinate space.
  *
  * Core carries its own point type rather than a UI toolkit's, so that the engine can be used
@@ -353,11 +392,13 @@ sealed class GraphNode(
          * A lambda rather than a decoded value because the graph is built for every artifact the
          * metadata names and drawn for a page of them — the same reason sample rows are attached
          * after aggregation. Reading every vector at build time would open a file per delete on a
-         * table where most of them are never looked at. Excluded from `equals` deliberately: the
-         * node is a value, and two nodes for the same entry are the same node whether or not one
-         * of them has since read a blob.
+         * table where most of them are never looked at.
+         *
+         * A [DeferredRead] rather than a bare lambda, so it stays out of this node's identity —
+         * see that class for why a `private val` lambda could not. The node is a value, and two
+         * nodes for the same entry are the same node whether or not one has since read a blob.
          */
-        private val deletionVectorLoader: (() -> DeletionVector?)? = null,
+        private val deletionVectorLoader: DeferredRead<DeletionVector> = DeferredRead.none(),
         // 68dp, not 60, because the card's first line is `FILE 5: DELETE VECTOR — NOT READ` at its
         // longest and that wraps at 200dp. The verdict is appended when a scan filter is on, which
         // is *after* the layout that reserved this height, so the reservation has to cover the
@@ -383,7 +424,7 @@ sealed class GraphNode(
         val isDeletionVector: Boolean get() = data.contentOffset != null
 
         /** The positions this vector marks, read on first ask. Null when it is not a vector. */
-        val deletionVector: DeletionVector? by lazy { deletionVectorLoader?.invoke() }
+        val deletionVector: DeletionVector? get() = deletionVectorLoader.value
     }
 
     data class RowNode(

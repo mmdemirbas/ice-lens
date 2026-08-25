@@ -76,6 +76,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **A node's deferred read was part of its identity, against a comment saying it was not.**
+  `FileNode.deletionVectorLoader` was a `private val` lambda in a data class's primary
+  constructor, which is a component of the generated `equals` — so two nodes for the same manifest
+  entry, built by two graph builds, carried two distinct lambda objects and compared unequal.
+  Nothing failed and no test asked; the only symptom was Compose re-composing a deletion-vector
+  card that had not changed. It goes through a `DeferredRead` now, whose `equals` states the
+  invariant instead of a comment claiming it, and `DeferredReadTest` pins both halves — two nodes
+  for one entry are equal, and nodes for different entries are still not.
 - **A group card was truncating the word that says what it hides.** At 200dp the count line read
   `6 more metadata versi…` — the number survived and the noun did not, which is the half a reader
   needs. It was one sentence at body size, and no width fits that sentence for every kind: at a

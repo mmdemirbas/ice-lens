@@ -335,15 +335,15 @@ object IcebergGraphBuilder {
      * A read that fails returns null rather than throwing: the vector is a few lines of an
      * inspector panel, and a table whose delete file has been moved should still draw.
      */
-    private fun deletionVectorLoader(dataFile: DataFile, path: Path): (() -> DeletionVector?)? {
-        val offset = dataFile.contentOffset ?: return null
-        val length = dataFile.contentSizeInBytes ?: return null
+    private fun deletionVectorLoader(dataFile: DataFile, path: Path): DeferredRead<DeletionVector> {
+        val offset = dataFile.contentOffset ?: return DeferredRead.none()
+        val length = dataFile.contentSizeInBytes ?: return DeferredRead.none()
         val referenced = dataFile.referencedDataFile
         // The manifest's own `record_count`, which the spec requires to be the vector's
         // cardinality. It is what a scan plans against without opening the Puffin file at all,
         // so it is the figure worth putting beside the count decoded from the bytes.
         val recorded = dataFile.recordCount
-        return {
+        return DeferredRead.of {
             runCatching { PuffinReader.readDeletionVector(path, offset, length, referenced, recorded) }
                 .onFailure { logger.warn("Could not read the deletion vector in {}: {}", path, it.message) }
                 .getOrNull()

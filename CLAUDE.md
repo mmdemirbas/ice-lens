@@ -218,11 +218,15 @@ desktop/src/main/kotlin/
   against the two published specs rather than against the fixture, because the fixture holds
   exactly one shape — one array container, one position — and a decoder written from that agrees
   with itself and fails on the first table with more than 4,096 deleted rows in a 64k block.
-  `FileNode.deletionVectorLoader` is a lambda, not a value: the graph is built for every artifact
-  the metadata names and drawn for a page of them, so reading every vector at build time would
-  open a file per delete on a table where most are never looked at. It is excluded from the data
-  class's `equals` — the node is a value, and two nodes for the same entry are the same node
-  whether or not one has since read a blob. **Two recorded figures sit beside what was decoded**,
+  `FileNode.deletionVectorLoader` is a `DeferredRead`, not a value: the graph is built for every
+  artifact the metadata names and drawn for a page of them, so reading every vector at build time
+  would open a file per delete on a table where most are never looked at. **A deferred read is
+  kept out of the node's identity, and `DeferredRead` in `GraphTypes.kt` is what makes that
+  true** — a bare `private val` lambda does not, because a private primary-constructor parameter
+  is still a component of a data class's generated `equals`, so two nodes for the same entry
+  built by two graph builds compared unequal while a comment claimed the opposite. Any future
+  deferred read on a node goes through the same type; `DeferredReadTest` pins it.
+  **Two recorded figures sit beside what was decoded**,
   for the same reason `manifestTallies` exists: the blob's own CRC-32, and the *manifest's*
   `record_count`, which the spec requires to equal the cardinality and which a scan plans against
   without opening the Puffin file at all. Both are passed in by the builder, not read here.
