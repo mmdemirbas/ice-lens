@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Each column of snapshots is named after its branch.** A fork already drew as a fork — its
+  commits took a column of their own and the lineage edge was dashed — but nothing said *which*
+  column was `main`. The ref chips sit on whichever commit a ref happens to point at, so reading
+  the column meant following the dashes back to a chip, which is the work the columns were
+  supposed to remove. A chip above each column now names it. The bottom-most commit names the
+  column and only if a **branch** points at it: commits are drawn oldest-first downwards, so the
+  bottom of a column is the tip of that line. A tag is rejected at both ends of that rule —
+  partway up it marks a point in history rather than the line, and on the tip it names the column
+  only by today's coincidence, so `prod` pointing where `main` does no longer prints a second
+  name over a line that has one. A column no branch points into is left unnamed rather than named
+  after something else.
 - **The whole table can be drawn in one action.** "Show all" opened one group's run, so reaching a
   complete graph meant expanding every group of every parent one at a time — and there was no
   route at all to a parent that only appears *because* of an expansion. The badge's menu now

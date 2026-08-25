@@ -63,6 +63,65 @@ internal fun snapshotTracks(snapshots: List<GraphNode.SnapshotNode>): Map<String
 }
 
 /**
+ * One drawn column of snapshots, and the branch whose tip sits at the bottom of it.
+ *
+ * [x] and [topY] are where the column is, so a caller can put the name above it. [labels] is
+ * empty for a column no branch points into — which is a real state, not a gap: a column can be a
+ * chain of commits kept alive only by a tag, or by an ancestor's ref.
+ */
+data class SnapshotColumn(
+    val x: Double,
+    val topY: Double,
+    val labels: List<model.SnapshotRefLabel>,
+)
+
+/**
+ * Names each column of snapshots after the branch whose tip is drawn at the bottom of it.
+ *
+ * A fork already reads as a fork — [snapshotTracks] gives each branch its own column and the
+ * lineage edges are dashed — but nothing said *which* column was `main`. The ref chips are on
+ * whichever commit a ref happens to point at, so reading the column meant following the dashes
+ * back to a chip, which is the work the columns were supposed to remove.
+ *
+ * **The bottom-most commit names the column, and only if a branch points at it.** Commits are
+ * drawn oldest-first downwards, so the bottom of a column is the tip of that line, and a branch
+ * ref on the tip is what a line of commits *is*.
+ *
+ * Both halves of that rule reject a tag, for the same reason. A tag partway up marks a point in
+ * history rather than the line — `release` sitting three commits back does not make the column
+ * `release`. And a tag *on* the tip names the column only by today's coincidence: `prod` pointing
+ * at the same commit `main` does says nothing about the column, and drawing both over it prints a
+ * second name for a line that has one. So the header carries branches only, and the tags stay on
+ * the ref chips of the commit they actually address.
+ *
+ * Positions come in through [positionOf] rather than being read from the layout, the same way
+ * [model.stepFrom] takes them: a reader who has dragged a snapshot has made the drawing, and the
+ * label belongs over the column they are looking at.
+ *
+ * Returns nothing for a single column. A linear history is one line, and a name floating over the
+ * only column there is says nothing the graph did not already say.
+ */
+fun snapshotColumns(
+    snapshots: List<GraphNode.SnapshotNode>,
+    positionOf: (String) -> model.Point,
+): List<SnapshotColumn> {
+    if (snapshots.size < 2) return emptyList()
+    // Rounded, because two nodes of one column are placed at the same x by layout but a drag can
+    // leave a fraction of a dp between them.
+    val byColumn = snapshots.groupBy { Math.round(positionOf(it.id).x.toDouble()) }
+    if (byColumn.size < 2) return emptyList()
+
+    return byColumn.map { (x, column) ->
+        val tip = column.maxBy { positionOf(it.id).y }
+        SnapshotColumn(
+            x = x.toDouble(),
+            topY = column.minOf { positionOf(it.id).y.toDouble() },
+            labels = tip.refs.filter { it.isBranch },
+        )
+    }.sortedBy { it.x }
+}
+
+/**
  * Each snapshot's children, in the order they are drawn.
  *
  * Shared with [GraphLayoutService.snapshotLineageOrder] rather than rebuilt: the two have to

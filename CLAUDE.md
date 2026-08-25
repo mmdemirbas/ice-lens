@@ -67,7 +67,7 @@ core/src/main/kotlin/
 │   ├── PaimonGraphBuilder.kt  # Paimon-specific graph construction: PaimonUnifiedTableModel → nodes + edges
 │   ├── GraphAggregation.kt    # Format-agnostic: long sibling runs → one expandable GroupNode
 │   ├── SiblingOrder.kt        # One order per kind — read by layout AND by aggregation
-│   ├── SnapshotTracks.kt      # Which column each snapshot draws in, so a fork reads as a fork
+│   ├── SnapshotTracks.kt      # Which column each snapshot draws in, and which branch names it
 │   ├── GraphLayoutService.kt  # Format-agnostic ELK layout + post-processing (ordering, alignment, overlap prevention)
 │   └── TableFormatDetector.kt # Directory-based table format detection (Iceberg / Paimon / Unknown)
 
@@ -349,6 +349,21 @@ desktop/src/main/kotlin/
   down entirely if the snapshots are not all at one x, since the shift is defined relative to
   that. `lineageChildren` is shared with `snapshotLineageOrder` because the two have to agree on
   which child is first: one walks it next, the other gives it the parent's column
+- **A column is named by the branch at its bottom, and a tag never names one.** `snapshotColumns`
+  in `service/SnapshotTracks.kt` groups the drawn snapshots by rounded x and takes the refs of the
+  bottom-most commit in each — commits are drawn oldest-first downwards, so the bottom of a column
+  is the tip of that line, and a branch ref on the tip is what a line of commits *is*. It filters
+  to `isBranch`, which rejects a tag at both ends of the rule: partway up a column a tag marks a
+  point in history rather than the line, and *on* the tip it names the column only by today's
+  coincidence — `prod` pointing where `main` does printed `main  prod (tag)` over the column in
+  the first render, a second name for a line that has one. Positions arrive through a `positionOf`
+  lambda rather than being read from `layoutPositions`, the same rule as `model.stepFrom`: a
+  reader who has dragged a snapshot labels the drawing they made. One column returns nothing, the
+  same standing-down as `spreadSnapshotBranches`. The chip is drawn inside `GraphCanvas`'
+  transformed `Box` so it pans and zooms with what it labels, and **its colours come from the
+  theme, not from `RefBranchChip`** — those are fixed light-mode values chosen against a card, and
+  this chip sits on `colors.surfaceVariant`, the canvas field itself, where a 20%-black pill under
+  dark-grey text is a smudge on a dark canvas
 - **Arrow-key navigation is defined against where the nodes are drawn**, not against a
   comparator. `model/GraphNavigation.kt` takes a `positionOf` lambda rather than reading
   `layoutPositions`, so the canvas passes its own `NodePositions` and a reader who has dragged a

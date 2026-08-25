@@ -32,13 +32,14 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   an equality delete has no target at all. Drawing the first would mean reading every delete row
   at graph-build time, which is the cost aggregation exists to avoid.
 
-- **A fork is drawn as a fork, but the branch is not named where it diverges.** Branches take
-  separate columns (`service/SnapshotTracks.kt`) and lineage edges are dashed, so a divergence
-  reads as one. `example/iceberg/default/branched` covers a single fork; nothing here has been
-  seen against three branches open at once, which is where the column assignment earns its keep
-  and where the fixture stops. What is missing on top: a branch name against the column rather
-  than only on the ref chips of whichever commit a ref happens to point at, so the column can be
-  read without following the dashes back.
+- **The branch columns have never been seen with three branches open at once.** Branches take
+  separate columns (`service/SnapshotTracks.kt`), lineage edges are dashed, and each column now
+  carries its branch name above it (`snapshotColumns`), so a divergence reads as one and the
+  column can be read without following the dashes back.
+  `example/iceberg/default/branched` covers a single fork, which is where the fixture stops and
+  where the column assignment stops being exercised — the reuse rule, the held reservation and
+  the header layout all have their interesting cases at three. A second branched fixture needs
+  docker, same as the row-lineage and statistics-file gaps below.
 
 - **Statistics and partition-statistics files are untyped.** Held as `List<JsonElement>` and
   rendered as raw JSON; the Puffin blobs they point at (NDV sketches, etc.) are never opened.

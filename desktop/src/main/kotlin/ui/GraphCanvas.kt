@@ -46,6 +46,7 @@ import model.GraphEdge
 import model.Point
 import model.firstNode
 import model.stepFrom
+import service.snapshotColumns
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -65,6 +66,15 @@ internal val MINI_MAP_HEIGHT = 160.dp
 internal val MINI_MAP_MARGIN = 16.dp
 private val MINI_MAP_INSET = 4.dp
 private val MINI_MAP_SHAPE = RoundedCornerShape(8.dp)
+
+/**
+ * The gap between a branch label and the topmost snapshot card of the column it names.
+ *
+ * In model dp, because that is the space the label is positioned in — a chip is about 15dp tall,
+ * so this leaves a little under a card's own vertical rhythm between the two. Close enough to
+ * read as belonging to the column rather than to the layer above it.
+ */
+private const val BRANCH_LABEL_GAP = 22.0
 
 private fun tonedEdgeColor(base: Color, sourceId: String): Color {
     val hash = sourceId.hashCode()
@@ -651,6 +661,51 @@ fun GraphCanvas(
                     }
                 }
             }
+
+            // The branch each snapshot column belongs to, over the top of the column.
+            //
+            // Inside the transformed layer so it pans and zooms with the graph it labels — a
+            // header pinned to the viewport would drift off its own column the moment anything
+            // moved. Drawn before the cards so a card that has been dragged up over the header
+            // sits above it rather than under it.
+            //
+            // Same shape and weight as the ref chips on a snapshot card, because it is the same
+            // word meaning the same thing — but not the same colours. Those are fixed light-mode
+            // values (`RefBranchChip` is 20% black) chosen against a card, and a card is always
+            // light here. This chip sits on `colors.surfaceVariant`, the canvas field itself, so
+            // it is derived from the theme: on a dark canvas a 20%-black pill under dark-grey
+            // text is a smudge.
+            // The list is hoisted, the positions are not: `positions.of` is the Compose-observable
+            // read that has to happen in composition for a drag to move the label with its column.
+            val snapshotNodes = remember(graph) { graph.nodes.filterIsInstance<GraphNode.SnapshotNode>() }
+            snapshotColumns(snapshotNodes) { id -> positions.of(id).let { Point(it.x, it.y) } }
+                .filter { it.labels.isNotEmpty() }
+                .forEach { column ->
+                    Box(modifier = Modifier.offset {
+                        IntOffset(
+                            column.x.dp.roundToPx(),
+                            (column.topY - BRANCH_LABEL_GAP).dp.roundToPx(),
+                        )
+                    }) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                            column.labels.forEach { ref ->
+                                Text(
+                                    ref.name,
+                                    fontSize = TypeScale.micro,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier
+                                        .background(
+                                            colors.onSurfaceVariant.copy(alpha = 0.16f),
+                                            RoundedCornerShape(3.dp),
+                                        )
+                                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                    }
+                }
 
             visibleNodes.forEach { node ->
                 Box(modifier = Modifier.offset {
