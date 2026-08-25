@@ -4,8 +4,6 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.HelpOutline
-import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,15 +22,12 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import model.*
-import java.awt.Desktop
 import java.io.File
-import java.net.URI
 import java.util.prefs.Preferences
 
 private val prefs = Preferences.userRoot().node("com.github.mmdemirbas.icelens")
@@ -258,272 +253,28 @@ fun App() {
             Column(Modifier.fillMaxSize()) {
 
             // ═══ Toolbar ═══
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ToolbarGroup {
-                    // Both tooltips say what dragging the empty canvas does, because that is the
-                    // only thing the two modes disagree about — a node is dragged and the wheel
-                    // pans in either one. "Pan Mode" and "Selection Mode" named the modes and
-                    // left the reader to try them.
-                    ToolbarIconButton(
-                        icon = Icons.Default.PanTool,
-                        tooltip = "Pan mode — drag the empty canvas to move the view",
-                        onClick = {
-                            isSelectMode = false
-                            prefs.putBoolean(PREF_IS_SELECT_MODE, isSelectMode)
-                        },
-                        isSelected = !isSelectMode,
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
-                    ToolbarIconButton(
-                        icon = Icons.Default.AdsClick,
-                        tooltip = "Select mode — drag the empty canvas to select what it covers " +
-                            "(hold Shift to add or remove)",
-                        onClick = {
-                            isSelectMode = true
-                            prefs.putBoolean(PREF_IS_SELECT_MODE, isSelectMode)
-                        },
-                        isSelected = isSelectMode,
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-
-                Spacer(Modifier.width(16.dp))
-
-                ToolbarGroup {
-                    ToolbarIconButton(
-                        icon = Icons.Default.ZoomOut,
-                        tooltip = "Zoom Out (Ctrl/Cmd + −)",
-                        onClick = {
-                            zoom = (zoom / 1.2f).coerceAtLeast(MIN_ZOOM)
-                            prefs.putFloat(PREF_ZOOM, zoom)
-                        },
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
-                    Text(
-                        "${(zoom * 100).toInt()}%",
-                        fontSize = TypeScale.small,
-                        modifier = Modifier.width(45.dp),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                    Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
-                    ToolbarIconButton(
-                        icon = Icons.Default.ZoomIn,
-                        tooltip = "Zoom In (Ctrl/Cmd + =)",
-                        onClick = {
-                            zoom = (zoom * 1.2f).coerceAtMost(MAX_ZOOM)
-                            prefs.putFloat(PREF_ZOOM, zoom)
-                        },
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
-                    ToolbarIconButton(
-                        icon = Icons.Default.ZoomOutMap,
-                        tooltip = "Reset Zoom to 100% (Ctrl/Cmd + 0)",
-                        onClick = {
-                            zoom = 1f
-                            prefs.putFloat(PREF_ZOOM, zoom)
-                        },
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-
-                Spacer(Modifier.width(12.dp))
-
-                ToolbarGroup {
-                    ToolbarIconButton(
-                        icon = Icons.Default.FullscreenExit,
-                        tooltip = "Fit Graph (Ctrl/Cmd + Shift + F)",
-                        onClick = {
-                            if (state.visibleGraphModel != null) fitGraphRequest++
-                        },
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
-                    ToolbarIconButton(
-                        icon = Icons.Default.Schema,
-                        tooltip = "Re-apply Layout (Ctrl/Cmd + L)",
-                        onClick = { state.reapplyCurrentLayout() },
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-
-                Spacer(Modifier.width(10.dp))
-
-                ToolbarGroup {
-                    Box {
-                        ToolbarIconButton(
-                            icon = Icons.Default.FilterList,
-                            tooltip = "Filter by snapshots",
-                            onClick = { snapshotFilterMenuExpanded = !snapshotFilterMenuExpanded },
-                            isSelected = state.selectedSnapshotFilterNodeIds.isNotEmpty(),
-                            modifier = Modifier.size(32.dp)
-                        )
-                        DropdownMenu(
-                            expanded = snapshotFilterMenuExpanded,
-                            onDismissRequest = { snapshotFilterMenuExpanded = false },
-                            modifier = Modifier.widthIn(min = 320.dp, max = 520.dp)
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Column {
-                                        Text(
-                                            "Snapshot Filter",
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                        Text(
-                                            "Show only nodes connected to selected snapshots",
-                                            fontSize = TypeScale.small,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                },
-                                onClick = {}
-                            )
-                            HorizontalDivider()
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                TextButton(
-                                    onClick = { state.updateSnapshotFilterSelection(state.allSnapshotFilterNodeIds) },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(30.dp)
-                                ) {
-                                    Icon(Icons.Default.DoneAll, contentDescription = "Select all", modifier = Modifier.size(14.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("All", fontSize = TypeScale.small)
-                                }
-                                TextButton(
-                                    onClick = { state.updateSnapshotFilterSelection(emptySet()) },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(30.dp)
-                                ) {
-                                    Icon(Icons.Default.Clear, contentDescription = "Clear selection", modifier = Modifier.size(14.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("None", fontSize = TypeScale.small)
-                                }
-                                TextButton(
-                                    onClick = {
-                                        state.updateSnapshotFilterSelection(state.allSnapshotFilterNodeIds - state.selectedSnapshotFilterNodeIds)
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(30.dp)
-                                ) {
-                                    Icon(Icons.Default.SwapHoriz, contentDescription = "Invert selection", modifier = Modifier.size(14.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("Invert", fontSize = TypeScale.small)
-                                }
-                            }
-                            HorizontalDivider()
-                            if (state.snapshotFilterOptions.isEmpty()) {
-                                DropdownMenuItem(
-                                    text = { Text("No snapshots") },
-                                    onClick = {}
-                                )
-                            } else {
-                                // H-10: cap height + scroll so long snapshot lists don't overflow the screen.
-                                val filterScroll = rememberScrollState()
-                                Column(
-                                    Modifier
-                                        .heightIn(max = 420.dp)
-                                        .verticalScroll(filterScroll)
-                                ) {
-                                    state.snapshotFilterOptions.forEach { option ->
-                                        val isSelected = option.nodeId in state.selectedSnapshotFilterNodeIds
-                                        DropdownMenuItem(
-                                            text = {
-                                                Row(
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Checkbox(
-                                                        checked = isSelected,
-                                                        onCheckedChange = null
-                                                    )
-                                                    Spacer(Modifier.width(8.dp))
-                                                    Column {
-                                                        Text(snapshotFilterLabel(option), fontSize = TypeScale.small)
-                                                        Text(
-                                                            formatAppTimestamp(option.timestampMs),
-                                                            fontSize = TypeScale.micro,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        )
-                                                    }
-                                                }
-                                            },
-                                            onClick = {
-                                                val updated = if (isSelected) {
-                                                    state.selectedSnapshotFilterNodeIds - option.nodeId
-                                                } else {
-                                                    state.selectedSnapshotFilterNodeIds + option.nodeId
-                                                }
-                                                state.updateSnapshotFilterSelection(updated)
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
-                    Text(
-                        text = if (state.selectedSnapshotFilterNodeIds.isEmpty()) {
-                            "All"
-                        } else {
-                            "${state.selectedSnapshotFilterNodeIds.size}/${state.snapshotFilterOptions.size}"
-                        },
-                        fontSize = TypeScale.small,
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
-                }
-
-                Spacer(Modifier.weight(1f))
-
-                ToolbarGroup {
-                    ToolbarIconButton(
-                        icon = if (isDarkMode) Icons.Default.LightMode else Icons.Default.DarkMode,
-                        tooltip = if (isDarkMode) "Switch to light mode" else "Switch to dark mode",
-                        onClick = {
-                            isDarkMode = !isDarkMode
-                            prefs.putBoolean(PREF_IS_DARK_MODE, isDarkMode)
-                        },
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
-                    fun openGithubLink() {
-                        runCatching {
-                            if (!Desktop.isDesktopSupported()) {
-                                error("Desktop browsing is not supported on this platform.")
-                            }
-                            Desktop.getDesktop().browse(URI("https://github.com/mmdemirbas/ice-lens"))
-                        }.onFailure { e ->
-                            state.errorMsg = "Failed to open GitHub link: ${e.message}"
-                        }
-                    }
-                    ToolbarIconButton(
-                        icon = Icons.AutoMirrored.Filled.HelpOutline,
-                        tooltip = "About",
-                        onClick = { showAboutDialog = true },
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
-                    ToolbarIconButton(
-                        icon = Icons.AutoMirrored.Filled.OpenInNew,
-                        tooltip = "Open GitHub",
-                        onClick = { openGithubLink() },
-                        modifier = Modifier.size(32.dp)
-                    )
-                }
-            }
+            Toolbar(
+                state = state,
+                isSelectMode = isSelectMode,
+                onSelectModeChange = {
+                    isSelectMode = it
+                    prefs.putBoolean(PREF_IS_SELECT_MODE, isSelectMode)
+                },
+                zoom = zoom,
+                onZoomChange = {
+                    zoom = it
+                    prefs.putFloat(PREF_ZOOM, zoom)
+                },
+                onFitGraph = { fitGraphRequest++ },
+                isDarkMode = isDarkMode,
+                onDarkModeChange = {
+                    isDarkMode = it
+                    prefs.putBoolean(PREF_IS_DARK_MODE, isDarkMode)
+                },
+                onShowAbout = { showAboutDialog = true },
+                snapshotFilterMenuExpanded = snapshotFilterMenuExpanded,
+                onSnapshotFilterMenuChange = { snapshotFilterMenuExpanded = it },
+            )
             HorizontalDivider()
 
             // ═══ Main Content Area ═══

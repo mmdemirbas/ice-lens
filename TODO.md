@@ -113,8 +113,11 @@ What is left:
 
 ## Code quality
 
-- **Extract `Toolbar` from `App.kt`** — `App.kt` is ~1k lines; the toolbar (~250 lines) is the
-  largest remaining inline block. `AppState` and `AboutDialog` have already been extracted.
+- **`App.kt` is ~850 lines and the next block is the tool-window layout.** The toolbar is out
+  (`Toolbar.kt`), along with `AppState` and `AboutDialog`. What remains inline is the
+  three-pane arrangement with its drag handles and persisted sizes — about 300 lines, and unlike
+  the toolbar it is not a component with a boundary: the panes, the dividers and the visibility
+  flags are one interlocking thing. Extracting it means designing that boundary first.
 
 ---
 

@@ -10,6 +10,15 @@
 *.log
 *.tmp
 *.bak
+# Scratch. The directory, not only the *.tmp suffix: a working script or a
+# captured log in here has neither, and `git status` staying clean is not
+# evidence that it is ignored.
+tmp/
+
+# Session artifacts, not project history. The directory itself is not ignored:
+# a shared skill or settings file placed there later should still be seen.
+.claude/settings.local.json
+.claude/HANDOFF.md
 # oku report build output and kit symlink
 docs/reports/dist/
 docs/reports/_oku

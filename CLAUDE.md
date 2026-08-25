@@ -72,6 +72,7 @@ desktop/src/main/kotlin/
 └── ui/
     ├── AppState.kt            # Business logic: workspace mgmt, table loading, caching, snapshot filter (testable, no UI)
     ├── App.kt                 # Thin UI layer — layout, keyboard shortcuts, LaunchedEffects (delegates to AppState)
+    ├── Toolbar.kt             # The row above the canvas, and the snapshot-filter menu. Stateless
     ├── NodePositions.kt       # Drag state layered over core's immutable layout positions (Compose-observable)
     ├── ToolWindowTypes.kt     # ToolWindowAnchor enum, ToolWindowConfig (holds an ImageVector → shell, not core)
     ├── AboutDialog.kt         # About dialog with version info, diagnostics, cheat sheet
@@ -356,7 +357,8 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 
 ## Known issues and tech debt
 
-1. **`App.kt` is ~1k lines** — toolbar still inline; business logic already extracted to `AppState.kt`. Toolbar extraction tracked in `TODO.md`.
+1. **`App.kt` is ~850 lines** — business logic lives in `AppState.kt` and the toolbar in
+   `Toolbar.kt`; what is left is the window, the tool-window layout and the `LaunchedEffect`s.
 2. **`@Suppress("DEPRECATION")` on avro4k** — `decodeFromGenericData` API may change
 
 ## Testing

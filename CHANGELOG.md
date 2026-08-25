@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **The toolbar is its own file.** 266 lines came out of `App.kt`'s thousand-line composable into
+  `Toolbar.kt`, with the snapshot-filter menu — half of it by line count — split off again into
+  its own composable. It is stateless: it reads values and reports intent, and every write to
+  `java.util.prefs` stays with the caller that owns the value. The question the extraction had to
+  answer was which of `App`'s mutable state the toolbar actually touched, which could not be read
+  off the old code; it was eight things, and the signature now says so.
 - **The two canvas modes say what they do.** The toolbar's tooltips read "Pan mode — drag the
   empty canvas to move the view" and "Select mode — drag the empty canvas to select what it covers
   (hold Shift to add or remove)". They named the modes before, which tells a reader nothing about
