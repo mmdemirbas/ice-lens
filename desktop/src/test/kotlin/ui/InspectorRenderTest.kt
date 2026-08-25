@@ -359,6 +359,44 @@ class InspectorRenderTest {
     }
 
     /**
+     * What a positional delete file removes, after the button that reads it has been pressed.
+     *
+     * The result is a state a click produces, so the composable takes `startRequested` for the
+     * same reason `NodeDetailsContent` takes `sectionCollapse` — a render never reaches it
+     * otherwise, and a capture of the button alone says nothing about the table underneath it,
+     * which is the whole feature. Rendered against `mor`, whose delete files are real ones written
+     * by Spark.
+     *
+     * More frames than the usual two because the read is genuinely asynchronous: `produceState`
+     * hands the query to `Dispatchers.IO` and the result arrives back on the scene's own
+     * dispatcher, which only advances when the scene is rendered.
+     */
+    @Test
+    fun `a positional delete file names what it deletes from`() {
+        val graph = graphFor("mor")
+        val delete = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+            .filter { it.data.content == model.DataFileContent.POSITION_DELETES && !it.isDeletionVector }
+            .firstOrNull { node -> node.localPath?.let { File(it).isFile } == true }
+        assertNotNull(delete, "the mor fixture should draw a positional delete file that is on disk")
+
+        // The loading line is a state the running app shows and so is captured too. Two frames is
+        // enough to be sure of catching it: the read cannot have completed, because the scene has
+        // not been rendered enough times to deliver its result.
+        renderScene("delete-targets-loading", width = 1400, height = 200) {
+            Column(Modifier.padding(16.dp)) {
+                PositionalDeleteTargets(delete, startRequested = true)
+            }
+        }
+
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("delete-targets", width = 1400, height = 320, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                PositionalDeleteTargets(delete, startRequested = true) { settled.set(true) }
+            }
+        }
+    }
+
+    /**
      * The same graph at two display scales, and the assertion that it is the same drawing.
      *
      * A scene twice as wide, twice as tall and at twice the density is the same window on a
@@ -572,8 +610,15 @@ class InspectorRenderTest {
     private fun renderInspector(graph: GraphModel, nodeId: String, name: String, height: Int) =
         renderScene(name, width = 1400, height = height) { InspectorUnderTest(graph, nodeId) }
 
-    private fun renderScene(name: String, width: Int, height: Int, density: Float = 2f, content: @Composable () -> Unit) {
-        val png = renderPng(name, width, height, density, content)
+    private fun renderScene(
+        name: String,
+        width: Int,
+        height: Int,
+        density: Float = 2f,
+        frames: Int = 2,
+        content: @Composable () -> Unit,
+    ) {
+        val png = renderPng(name, width, height, density, frames, content)
 
         outputDir.mkdirs()
         writeBands(png, name)
@@ -581,11 +626,55 @@ class InspectorRenderTest {
         assertTrue(png.size > 5_000, "$name rendered to ${png.size} bytes, which is a blank panel")
     }
 
+    /**
+     * Renders until [ready] says the content has settled, then captures.
+     *
+     * For content whose interesting state arrives from a coroutine rather than from layout. The
+     * usual two-frame capture cannot reach it and neither can sixty: an `ImageComposeScene` only
+     * advances its own dispatcher when it is rendered, so a tight render loop finishes long before
+     * an off-thread read comes back, and the PNG shows the loading line. Polling with a deadline
+     * is the fix — the sleep paces the poll, it is not the synchronisation.
+     *
+     * A timeout fails rather than capturing whatever was on screen, because a PNG of a spinner is
+     * exactly what this is here to stop being mistaken for a capture of the result.
+     */
+    private fun renderUntil(
+        name: String,
+        width: Int,
+        height: Int,
+        density: Float = 2f,
+        timeoutMs: Long = 20_000,
+        ready: () -> Boolean,
+        content: @Composable () -> Unit,
+    ) {
+        val scene = ImageComposeScene(width = width, height = height, density = Density(density)) {
+            Themed(content)
+        }
+        val png = try {
+            val deadline = System.nanoTime() + timeoutMs * 1_000_000
+            while (!ready() && System.nanoTime() < deadline) {
+                scene.render()
+                Thread.sleep(10)
+            }
+            assertTrue(ready(), "$name never settled within ${timeoutMs}ms")
+            // Two more after it settled, for the same reason every capture renders twice: the
+            // frame that delivers the value is not the frame that has laid it out.
+            scene.render()
+            scene.render().encodeToData()?.bytes
+        } finally {
+            scene.close()
+        }
+
+        outputDir.mkdirs()
+        writeBands(assertNotNull(png, "scene produced no image for $name"), name)
+    }
+
     private fun renderPng(
         name: String,
         width: Int,
         height: Int,
         density: Float,
+        frames: Int = 2,
         content: @Composable () -> Unit,
     ): ByteArray {
         val scene = ImageComposeScene(width = width, height = height, density = Density(density)) {
@@ -596,7 +685,7 @@ class InspectorRenderTest {
             // scrollbar that appears only once the content is known to overflow — is absent from
             // the first frame, because the recomposition that reads it has not run yet. A
             // single-frame capture would show a panel the running app never draws.
-            scene.render()
+            repeat(frames - 1) { scene.render() }
             scene.render().encodeToData()?.bytes
         } finally {
             scene.close()

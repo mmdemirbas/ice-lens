@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A positional delete file now says what it deletes from.** The panel used to point at the
+  sample rows and leave the reader to read `(file_path, pos)` pairs fifty at a time; "3 delete
+  files" never became "and they remove 412 rows from these two files", because that breakdown is
+  inside the delete files and nothing on a read path produces it. "Read the file" gives one row
+  per targeted data file with the rows deleted and the span of positions, and puts the counted
+  total beside the manifest's `record_count` — the same recorded-against-counted move as
+  `manifestTallies` and the deletion vector's two figures, and the same reason: a scan plans
+  against that figure without opening the file. Behind a button rather than on the graph-build
+  path, because a graph is built for every artifact the metadata names. The aggregation is
+  DuckDB's `GROUP BY`, so a delete file with four hundred thousand positions costs the same round
+  trip as one with a single position.
 - **Each column of snapshots is named after its branch.** A fork already drew as a fork — its
   commits took a column of their own and the lineage edge was dashed — but nothing said *which*
   column was `main`. The ref chips sit on whichever commit a ref happens to point at, so reading

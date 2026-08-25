@@ -99,11 +99,13 @@ rather than computed, and a per-manifest verdict on the snapshot's manifest-list
 
 What is left:
 
-- **The delete side has no ledger.** A positional delete file's rows name data files and row
-  positions; nothing counts how many rows of a given data file are deleted, so "3 delete files"
-  never becomes "and they remove 412 rows from these two files". That needs reading the delete
-  files themselves, which is the cost aggregation exists to avoid — it belongs behind an explicit
-  action, not on the graph-build path.
+- **The delete side's ledger stops at one delete file.** "Read the file" on a positional delete
+  file now names every data file it deletes from and how many rows out of each
+  (`SampleRowReader.queryPositionalDeleteTargets`, aggregated by DuckDB so an unbounded read is
+  one click). What has no equivalent is the other direction: standing on a **data file**, how many
+  of its rows are deleted and by which delete files. That is a scatter-gather over every delete
+  file in the snapshot rather than one file open, so it needs its own decision about where the
+  cost sits. Equality deletes stay out of both — they match by value with no link to any file.
 - **Cross-manifest deduplication is invisible from a manifest — and measurement says the case is
   empty where the panel would show it.** The drill-down scopes deduplication to the manifest on
   screen and says so; naming *which* manifest counted a file first would need the table's claim

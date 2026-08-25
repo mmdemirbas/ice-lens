@@ -18,6 +18,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,6 +34,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import service.PositionalDeleteTally
+import service.SampleRowReader
 import model.DataFile
 import model.EntryFate
 import model.LedgerEntry
@@ -1769,10 +1777,13 @@ fun NodeDetailsContent(
                                                 "Target Files",
                                                 "Recorded inside this file, not in the metadata. Its own " +
                                                     "file_path column names the data files and the pos column the " +
-                                                    "rows — open the sample rows below to read them.",
+                                                    "rows — read them below.",
                                             )
                                         }
                                     }
+                                }
+                                if (deleteContent == DataFileContent.POSITION_DELETES && referenced == null) {
+                                    PositionalDeleteTargets(node)
                                 }
                             }
                             DeletionVectorSection(node)
@@ -2154,6 +2165,131 @@ private fun diffSchemas(oldSchema: TableSchema, newSchema: TableSchema): List<Sc
  * vector whose bytes do not match its own CRC is a corrupted table, and a reader looking at this
  * panel is the person who needs to know.
  */
+/**
+ * Which data files a v2 positional delete file removes rows from, and how many out of each.
+ *
+ * "3 delete files" is what the metadata can tell you; "and they remove 412 rows from these two
+ * files" is inside the delete files themselves, one row per deleted position. Nothing on a read
+ * path needs the breakdown — a scan applies the deletes rather than counting them — so nothing
+ * produces it, which is why the panel has to.
+ *
+ * **It is behind a button, and that is the design rather than caution.** A graph is built for every
+ * artifact the metadata names, so reading each delete file at build time would be a file open per
+ * delete on a table where most are never looked at — the cost aggregation exists to avoid. The
+ * deletion vector next door is lazy for the same reason and takes the same shape: a `FileNode`
+ * carries the means to read, not the result of reading.
+ *
+ * The aggregation is DuckDB's. What crosses back is one row per targeted data file, whether the
+ * file holds one position or four hundred thousand, which is what makes an unbounded read safe to
+ * offer as a single click.
+ *
+ * The counted total is put beside the manifest's `record_count`, which is the same move as
+ * `manifestTallies` and the vector's two figures: a scan plans against the recorded number and
+ * never opens the file, so a disagreement has nowhere else to surface.
+ *
+ * [startRequested] is the same idea as `NodeDetailsContent`'s `sectionCollapse`: the interesting
+ * state here is the one a click produces, and a render never reaches it unless it is passed in. It
+ * is `internal` rather than private for that one caller, and there is no second code path — the
+ * render exercises the same button, the same read and the same table the app draws.
+ *
+ * [onSettled] fires once the read has come back, either way. A capture needs it because the read
+ * really is asynchronous: an `ImageComposeScene` only advances its own dispatcher when it is
+ * rendered, so sixty frames in a tight loop finish long before a DuckDB query does and the PNG
+ * shows the loading line. It is the same mechanism as `LocalCardContentProbe`, as a parameter
+ * because there is exactly one call site rather than a card kind's worth.
+ */
+@Composable
+internal fun PositionalDeleteTargets(
+    node: GraphNode.FileNode,
+    startRequested: Boolean = false,
+    onSettled: () -> Unit = {},
+) {
+    val colors = MaterialTheme.colorScheme
+    val path = node.localPath
+    if (path.isNullOrBlank()) return
+
+    // Keyed on the node so switching files puts the button back rather than showing the previous
+    // file's answer under the new file's name.
+    var requested by remember(node.id) { mutableStateOf(startRequested) }
+    val outcome by produceState<Result<List<PositionalDeleteTally>>?>(null, node.id, requested) {
+        value = null
+        if (requested) {
+            value = withContext(Dispatchers.IO) {
+                runCatching { SampleRowReader.queryPositionalDeleteTargets(path) }
+            }
+            onSettled()
+        }
+    }
+
+    Spacer(Modifier.height(8.dp))
+    when {
+        !requested -> {
+            OutlinedButton(onClick = { requested = true }) {
+                Text("Read the file — which data files, and how many rows each")
+            }
+        }
+        outcome == null -> Text(
+            "Reading ${fileNameFromPath(path)}…",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+        )
+        else -> outcome?.fold(
+            onSuccess = { tallies ->
+                val counted = tallies.sumOf { it.positions }
+                val recorded = node.data.recordCount
+                Text(
+                    buildString {
+                        append(
+                            "${formatCount(counted)} deleted ${if (counted == 1L) "position" else "positions"}" +
+                                " across ${formatCount(tallies.size)} data " +
+                                if (tallies.size == 1) "file." else "files.",
+                        )
+                        when {
+                            recorded == null -> append(" The manifest recorded no record_count to check it against.")
+                            recorded == counted -> append(" The manifest records $recorded, which agrees.")
+                            else -> append(
+                                " The manifest records $recorded, which does not agree — a scan plans " +
+                                    "against that figure without opening this file.",
+                            )
+                        }
+                    },
+                    fontSize = TypeScale.small,
+                    color = if (recorded != null && recorded != counted) colors.error else colors.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                if (tallies.isNotEmpty()) {
+                    // The bounds are one column, not two. They are read as a span — whether the
+                    // deletes are a run or scattered over the file — rather than compared down
+                    // the page, and two number columns spent 240dp of a panel that is narrower
+                    // than this table to say what one says.
+                    WideTable(
+                        headers = listOf("Rows deleted", "Data file", "Positions"),
+                        columnWidths = listOf(100.dp, 380.dp, 150.dp),
+                        rows = tallies.map { tally ->
+                            listOf(
+                                formatCount(tally.positions),
+                                fileNameFromPath(tally.dataFilePath),
+                                if (tally.lowestPosition == tally.highestPosition) {
+                                    formatCount(tally.lowestPosition)
+                                } else {
+                                    "${formatCount(tally.lowestPosition)}–${formatCount(tally.highestPosition)}"
+                                },
+                            )
+                        },
+                    )
+                }
+            },
+            onFailure = { failure ->
+                Text(
+                    "Could not read ${fileNameFromPath(path)}: ${failure.message ?: failure::class.simpleName}",
+                    fontSize = TypeScale.small,
+                    color = colors.error,
+                )
+            },
+        )
+    }
+}
+
 @Composable
 private fun DeletionVectorSection(node: GraphNode.FileNode) {
     if (!node.isDeletionVector) return

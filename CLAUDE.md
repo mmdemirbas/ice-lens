@@ -182,6 +182,23 @@ desktop/src/main/kotlin/
   the read path checks them, so the inspector does. It is also the suite's only assertion that
   compares what this code decoded against what Iceberg recorded about the same bytes — a status
   misread or an entry dropped shows up as a disagreement on a checked-in table
+- **What a positional delete file removes is counted by DuckDB, behind a button.**
+  `SampleRowReader.queryPositionalDeleteTargets` runs `GROUP BY file_path` over the delete file's
+  own rows, so what crosses back is one row per targeted data file whether the file holds one
+  position or four hundred thousand — grouping in this process would pull the whole file into
+  memory to produce a handful of counts. Nothing in the metadata answers this: `record_count` is
+  how many positions the file holds and `referenced_data_file` exists only when the writer made
+  one file per target, so the breakdown is the file's contents. It sits behind an action for the
+  same reason `deletionVectorLoader` is a lambda — a graph is built for every artifact the
+  metadata names, and reading each delete file at build time is a file open per delete on a table
+  where most are never looked at. The counted total is put beside the manifest's `record_count`,
+  and `PositionalDeleteTallyTest` is where that comparison is asserted on `mor`'s real
+  Spark-written deletes. **The result state is one a click produces**, so
+  `PositionalDeleteTargets` takes `startRequested` (the `sectionCollapse` rule) *and* an
+  `onSettled` callback: the read is genuinely async, an `ImageComposeScene` only advances its
+  dispatcher when rendered, and sixty frames in a tight loop finish long before a DuckDB query
+  does — the first capture attempt was a PNG of the loading line. `renderUntil` polls with a
+  deadline and fails rather than capturing a spinner
 - **A sampled row's position is asked for, not inferred.** DuckDB is given
   `read_parquet(?, file_row_number = true)`, and `UnifiedRow.position` carries the answer as
   something separate from the row's cells — it is DuckDB's statement about the file, not a column

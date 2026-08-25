@@ -11,6 +11,25 @@ private val logger = LoggerFactory.getLogger(SampleRowReader::class.java)
 private val ALLOWED_DATA_FILE_EXTENSIONS = setOf("parquet", "orc", "avro")
 
 /**
+ * What one positional delete file removes from one data file.
+ *
+ * [positions] is every row the delete file names in that data file, not a sample — the counting is
+ * done by DuckDB, so a delete file with four hundred thousand positions costs the same round trip
+ * as one with a single position and nothing large crosses back.
+ *
+ * [lowestPosition] and [highestPosition] are there because a delete file's *shape* is the
+ * interesting part after its size: positions clustered in one run mean a range of the data file
+ * was deleted, spread across the whole file means scattered single-row deletes, and the two have
+ * very different costs at read time.
+ */
+data class PositionalDeleteTally(
+    val dataFilePath: String,
+    val positions: Long,
+    val lowestPosition: Long,
+    val highestPosition: Long,
+)
+
+/**
  * Reads sample rows from data files using DuckDB.
  *
  * DuckDB supports Parquet, ORC, and Avro via `read_parquet()` which auto-detects format.
@@ -120,6 +139,60 @@ object SampleRowReader {
                 rs.close()
                 logger.debug("Sample rows queried: {} rows from {}", rows.size, safePath)
                 return rows
+            }
+        }
+    }
+
+    /**
+     * Which data files a positional delete file deletes from, and how many rows out of each.
+     *
+     * Nothing in the metadata answers this. A manifest entry for a positional delete file records
+     * its `record_count` — how many positions it holds — and, since v2.1, an optional
+     * `referenced_data_file` when the writer happened to produce one file per target. It never
+     * records the breakdown, because the breakdown is the file's contents: one row per deleted
+     * position, `file_path` naming the data file and `pos` the row in it. So "3 delete files" can
+     * only become "and they remove 412 rows from these two files" by opening them.
+     *
+     * **Which is why this is behind an explicit action and not on the graph-build path.** A table
+     * with a thousand delete files would pay a thousand file opens to draw a graph, which is the
+     * cost aggregation exists to avoid.
+     *
+     * The aggregation is DuckDB's, not this process's: what comes back is one row per targeted
+     * data file however many positions the file holds. Reading the rows and grouping them here
+     * would pull the whole delete file into memory to produce a handful of counts.
+     *
+     * `file_path` and `pos` are the Iceberg spec's own names for the two required fields of a
+     * positional delete file (field ids 2147483546 and 2147483545). A file missing them is not a
+     * positional delete file, and the SQL error says so more usefully than a silent empty result.
+     */
+    fun queryPositionalDeleteTargets(filePath: String): List<PositionalDeleteTally> {
+        val canonicalFile = File(filePath).canonicalFile
+        require(canonicalFile.isFile) { "Not a regular file: $canonicalFile" }
+        val ext = canonicalFile.extension.lowercase()
+        require(ext in ALLOWED_DATA_FILE_EXTENSIONS) {
+            "Unsupported file extension '$ext'. Allowed: $ALLOWED_DATA_FILE_EXTENSIONS"
+        }
+        val safePath = canonicalFile.path.replace("\\", "/")
+
+        synchronized(lock) {
+            val conn = getConnection()
+            val sql = "SELECT file_path, count(*) AS positions, min(pos) AS lowest, max(pos) AS highest " +
+                "FROM read_parquet(?) GROUP BY file_path ORDER BY positions DESC, file_path"
+            conn.prepareStatement(sql).use { pstmt ->
+                pstmt.setString(1, safePath)
+                pstmt.executeQuery().use { rs ->
+                    val tallies = mutableListOf<PositionalDeleteTally>()
+                    while (rs.next()) {
+                        tallies += PositionalDeleteTally(
+                            dataFilePath = rs.getString("file_path") ?: "",
+                            positions = rs.getLong("positions"),
+                            lowestPosition = rs.getLong("lowest"),
+                            highestPosition = rs.getLong("highest"),
+                        )
+                    }
+                    logger.debug("Delete targets queried: {} data files from {}", tallies.size, safePath)
+                    return tallies
+                }
             }
         }
     }
