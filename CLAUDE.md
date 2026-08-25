@@ -52,6 +52,7 @@ core/src/main/kotlin/
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
 │   ├── ManifestLedger.kt      # Per-entry: what it added to a manifest's figures, or which rule dropped it
 │   ├── ScanPruning.kt         # Predicate → which manifests a scan would skip, and which term did it
+│   ├── GraphNavigation.kt     # Arrow keys → the next node, decided from where the nodes are drawn
 │   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 ├── service/
 │   ├── AvroReader.kt          # Shared Avro file reader (reified readAvro<T>), used by both Iceberg and Paimon
@@ -266,6 +267,15 @@ desktop/src/main/kotlin/
   down entirely if the snapshots are not all at one x, since the shift is defined relative to
   that. `lineageChildren` is shared with `snapshotLineageOrder` because the two have to agree on
   which child is first: one walks it next, the other gives it the parent's column
+- **Arrow-key navigation is defined against where the nodes are drawn**, not against a
+  comparator. `model/GraphNavigation.kt` takes a `positionOf` lambda rather than reading
+  `layoutPositions`, so the canvas passes its own `NodePositions` and a reader who has dragged a
+  node navigates the drawing they made. Left and right follow the edges to the parent or child
+  whose vertical centre is nearest; up and down move to the nearest node whose horizontal span
+  **overlaps** yours, which is the column as the eye reads it and is what keeps a walk down the
+  main line out of a branch column drawn at a similar height. Only structural edges are followed
+  — an `isSibling` edge joins two nodes at one depth, and an `affectsLayout = false` edge is an
+  annotation, so neither answers "what contains this"
 - **`GraphEdge.affectsLayout = false` records a relationship without letting it shape the
   graph**, and it is also what the canvas draws dashed. Snapshot lineage runs between nodes in
   the same layer; feeding it to ELK stretches the graph by the length of the commit history
@@ -357,7 +367,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~483 tests across 50 files (376 in :core, 107 in :desktop) covering full pipelines for both formats (Avro fixtures
+~490 tests across 51 files (383 in :core, 107 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

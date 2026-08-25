@@ -146,7 +146,12 @@ What is left:
   the reader selected the node to see, and a panel that folds to nothing but its own title is not
   obviously better. Deciding it needs the folded panel in front of a reader, not an argument.
 
-- **Accessibility** — keyboard navigation (Tab/arrows in graph, tree, sidebar), visible focus indicators for keyboard users.
+- **Keyboard navigation stops at the canvas.** Arrows walk the graph and a focused inspector
+  section shows a focus ring, but the structure tree and the workspace sidebar are still
+  mouse-only: neither is a focus target, so Tab does not reach them and nothing indicates where
+  focus is when it arrives. The tree is the harder of the two — it is a flattened list with
+  expand and collapse, so it wants Up/Down plus Left/Right for the carets, which is a different
+  keymap from the canvas's and needs deciding rather than copying.
 
 ---
 

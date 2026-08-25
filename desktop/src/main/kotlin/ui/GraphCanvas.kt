@@ -39,9 +39,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import model.GraphDirection
 import model.GraphModel
 import model.GraphNode
 import model.GraphEdge
+import model.Point
+import model.firstNode
+import model.stepFrom
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -86,6 +90,25 @@ private fun liftEdgeColor(base: Color, target: Color, minimumBrightness: Float):
 }
 
 @OptIn(ExperimentalFoundationApi::class)
+/**
+ * The direction a key press means, or null when the key is not an arrow.
+ *
+ * Bare arrows only. A modifier turns the same key into somebody else's shortcut — Cmd+Left is
+ * "back" on macOS and Alt+Arrow moves by word in every text field — and a canvas that swallows
+ * those makes the rest of the window feel broken.
+ */
+private fun arrowStep(event: KeyEvent): GraphDirection? {
+    if (event.type != KeyEventType.KeyDown) return null
+    if (event.isMetaPressed || event.isCtrlPressed || event.isAltPressed || event.isShiftPressed) return null
+    return when (event.key) {
+        Key.DirectionLeft -> GraphDirection.LEFT
+        Key.DirectionRight -> GraphDirection.RIGHT
+        Key.DirectionUp -> GraphDirection.UP
+        Key.DirectionDown -> GraphDirection.DOWN
+        else -> null
+    }
+}
+
 @Composable
 fun GraphCanvas(
     graph: GraphModel,
@@ -300,7 +323,28 @@ fun GraphCanvas(
                     }
                     true
                 } else {
-                    false
+                    arrowStep(keyEvent)?.let { direction ->
+                        // The graph is a picture, so the step is decided against where the nodes
+                        // are drawn — `positions` and not `layoutPositions`, because a reader who
+                        // has dragged a node is navigating the drawing they made. Selecting is
+                        // all this does: the existing scroll-into-view effect brings the node on
+                        // screen, the same one that runs when a node is clicked in the tree.
+                        val current = latestSelectedNodeIds.singleOrNull()
+                        val next = if (current == null) {
+                            firstNode(graph) { node -> Point(nodeX(node), nodeY(node)) }
+                        } else {
+                            stepFrom(graph, current, direction) { node -> Point(nodeX(node), nodeY(node)) }
+                        }
+                        if (next != null) {
+                            onSelectionChange(setOf(next))
+                            true
+                        } else {
+                            // Consumed anyway. An arrow that falls through at the edge of the
+                            // graph scrolls whatever is behind the canvas, which reads as the
+                            // selection having jumped somewhere off screen.
+                            true
+                        }
+                    } ?: false
                 }
             }
             .pointerInput(isSelectMode) {

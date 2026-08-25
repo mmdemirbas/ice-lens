@@ -112,6 +112,8 @@ fun AboutDialog(
                     }
                     Text("Keyboard Shortcuts", fontWeight = FontWeight.Bold, fontSize = TypeScale.body)
                     Spacer(Modifier.height(4.dp))
+                    shortcutRow("Move to parent / child", "Left / Right arrow")
+                    shortcutRow("Move up / down the column", "Up / Down arrow")
                     shortcutRow("Undo node drag", "Ctrl/Cmd + Z")
                     shortcutRow("Zoom in", "Ctrl/Cmd + =")
                     shortcutRow("Zoom out", "Ctrl/Cmd + -")

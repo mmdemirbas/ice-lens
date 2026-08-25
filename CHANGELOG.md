@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   header are now distinct from body text rather than a little heavier than it.
 
 ### Added
+- **The graph answers to the arrow keys.** Left and right move to the parent or the child drawn
+  across from you; up and down walk the column. Nothing selected and the first arrow lands on the
+  root. The step is decided from where the nodes are actually drawn rather than from the order a
+  comparator would put them in, which is what makes a fork behave: a branch has a column of its
+  own, so walking down the main line does not step sideways into a commit that merely sits at a
+  similar height. Lineage and deletion-vector edges are not steps — they are annotations over the
+  tree, which is why they are drawn dashed, and following them would make one keystroke mean two
+  different things by "parent". Bare arrows only, so Cmd+Left still means "back" and Alt+Arrow
+  still moves by word in the field beside the canvas.
 - **Inspector sections fold.** Every titled section in the inspector — 39 of them across the node
   types — now carries a caret and folds away, and the panel header has one button that collapses
   or expands the lot. Folded, a table's panel is a list of what the table holds: eight lines
