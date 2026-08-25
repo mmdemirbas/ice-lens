@@ -252,7 +252,12 @@ sealed class GraphNode(
         val rawJson: String? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 240.0, 96.0)
+        // 100, not 96. `CardHeightTest`'s stress pass measured this card at exactly 96.0dp of a
+        // declared 96.0 once the file name is a catalog's `00147-<uuid>.metadata.json` rather
+        // than a fixture's `v1.metadata.json` — it fit by coincidence, with nothing left for the
+        // rounding a different display scale does to a font metric. The name itself is capped at
+        // two lines in `MetadataCard`, so this is now a bound rather than a sample.
+    ) : GraphNode(id, initialX, initialY, 240.0, 100.0)
 
     data class SnapshotNode(
         override val id: String,
@@ -278,7 +283,15 @@ sealed class GraphNode(
         // reserves, so a card that draws more than it declares overflows into its neighbour —
         // and Compose clips nothing by default, so the chip simply disappears under the border
         // with nothing failing. Two chip rows is the cap the card allows for.
-    ) : GraphNode(id, initialX, initialY, 210.0, if (refs.isEmpty()) 84.0 else 112.0)
+        //
+        // 68 and 88, down from 84 and 112. Both were set by eye against the fixtures; the sweep
+        // measures 64 and 83 as the *bounds* — every text on this card is capped, the chip row at
+        // two lines and the file name at two or three depending on whether chips take a line from
+        // it — so the reserve was 20dp and 29dp of empty space under every snapshot in the graph.
+        // Measured with a path far longer than Iceberg's own naming produces and with more refs
+        // than the chip row can hold, which is what makes 64 and 83 upper bounds rather than the
+        // tallest thing eight checked-in tables happen to contain.
+    ) : GraphNode(id, initialX, initialY, 210.0, if (refs.isEmpty()) 68.0 else 88.0)
 
     data class ManifestNode(
         override val id: String,
@@ -344,7 +357,9 @@ sealed class GraphNode(
         // for every file node and not only for a vector: two heights in one layer would make a
         // deletion vector sit 8dp taller than the data file beside it, for a line neither of them
         // is drawing.
-    ) : GraphNode(id, initialX, initialY, 200.0, 68.0) {
+            // 72, not 68: the stress pass measured the pruned deletion-vector card at exactly 68.0
+        // of a declared 68.0, which is a fit with nothing left for rounding at another scale.
+    ) : GraphNode(id, initialX, initialY, 200.0, 72.0) {
         val data: DataFile get() = entry.dataFile ?: DataFile(filePath = "unknown")
 
         /** Per-column statistics with bounds decoded against [schema]. */
@@ -462,7 +477,9 @@ sealed class GraphNode(
         val localPath: String? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 200.0, 60.0)
+        // 64, not 60: the stress pass measured this card at exactly its declared height, which
+        // leaves nothing for rounding at another display scale.
+    ) : GraphNode(id, initialX, initialY, 200.0, 64.0)
 
     data class ErrorNode(
         override val id: String,

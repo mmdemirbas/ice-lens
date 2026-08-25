@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import model.GraphModel
 import model.GraphNode
 import model.PaimonUnifiedTableModel
+import model.SnapshotRefLabel
 import model.UnifiedTableModel
 import service.AggregationPolicy
 import service.GraphLayoutService
@@ -104,6 +105,81 @@ class CardHeightTest {
     }
 
     /**
+     * The same cards with the long names a real table has, which the fixtures do not.
+     *
+     * Eight checked-in tables in one warehouse produce names like `test`, `v3.metadata.json` and
+     * `00000-3-…-00001.parquet`. A table in use is `s3://bucket/warehouse/analytics/…` with a
+     * business name on it, and most of these cards print a file name with no `maxLines` at all —
+     * so the question "does this card fit" has been asked only of the short case. A card that
+     * wraps one line further loses its last line, silently, on the only tables anybody actually
+     * opens.
+     *
+     * The strings stressed here are the ones whose length the *table* decides: paths, file names,
+     * the table's own name, and branch names. A field from a fixed vocabulary is left alone —
+     * making `commitKind` long would measure a value Paimon cannot write.
+     */
+    @Test
+    fun `every card still fits when the table's names are long`() {
+        val cards = buildList {
+            ICEBERG_FIXTURES.forEach { fixture ->
+                icebergGraph(fixture).nodes.mapNotNull(::stressed)
+                    .forEach { node -> addAll(cardsFor("$fixture!", node)) }
+            }
+            paimonGraph().nodes.mapNotNull(::stressed)
+                .forEach { node -> addAll(cardsFor("paimon!", node)) }
+            // The chip-loaded snapshot: a long path *and* more refs than the two-line chip row
+            // can hold, which is the taller of that card's two declared heights.
+            icebergGraph("branched").nodes.filterIsInstance<GraphNode.SnapshotNode>().first()
+                .copy(
+                    localPath = LONG_PATH,
+                    refs = List(8) { SnapshotRefLabel("release-candidate-2026-q3-$it", isBranch = true) },
+                )
+                .let { node -> add("SnapshotNode [synthetic! 8 refs]" to Card(node) { GraphNodeCard(node) }) }
+            // Built rather than copied: a row's cells arrive through a loader the node keeps
+            // private, so the only way to put long values in one is to make a row that has them.
+            add(
+                "RowNode [synthetic! long cells]" to GraphNode.RowNode(
+                    id = "row_probe",
+                    data = mapOf(
+                        "file_no" to 12, "row_idx" to 3,
+                        "customer_reference" to "AGREEMENT-2026-EMEA-0000731188-REV-C",
+                        "settlement_account" to "TR33 0006 1005 1978 6457 8413 26",
+                        "product_description" to "annual subscription, enterprise tier, 36 months",
+                    ),
+                ).let { node -> Card(node) { GraphNodeCard(node) } },
+            )
+        }
+        assertFits(cards)
+    }
+
+    /**
+     * One node with the longest content the *table* can give it, or null where nothing can be
+     * stressed from outside.
+     *
+     * `GroupNode` draws a count and two fixed phrases, so there is nothing a table can lengthen.
+     * `RowNode` is not here because it cannot be copied into — see the test above, which builds
+     * one instead.
+     */
+    private fun stressed(node: GraphNode): GraphNode? = when (node) {
+        is GraphNode.TableNode -> node.copy(summary = node.summary.copy(tableName = LONG_TABLE_NAME))
+        is GraphNode.MetadataNode -> node.copy(fileName = LONG_METADATA_NAME, localPath = LONG_PATH)
+        // Refs are left as the fixture wrote them, because a snapshot card declares a different
+        // height with and without them and `branched` carries both. The chip-loaded variant is
+        // added separately below, or stressing would erase the one without.
+        is GraphNode.SnapshotNode -> node.copy(localPath = LONG_PATH)
+        is GraphNode.ManifestNode -> node.copy(localPath = LONG_PATH)
+        is GraphNode.FileNode -> node.copy(localPath = LONG_PATH)
+        is GraphNode.PaimonSnapshotNode -> node.copy(localPath = LONG_PATH)
+        is GraphNode.PaimonSchemaNode -> node.copy(localPath = LONG_PATH)
+        is GraphNode.PaimonManifestListNode -> node.copy(localPath = LONG_PATH)
+        is GraphNode.PaimonManifestNode -> node.copy(localPath = LONG_PATH)
+        is GraphNode.PaimonDataFileNode -> node.copy(localPath = LONG_PATH)
+        is GraphNode.ErrorNode -> node.copy(path = LONG_PATH, message = LONG_ERROR)
+        is GraphNode.RowNode -> null
+        is GraphNode.GroupNode -> null
+    }
+
+    /**
      * One card per state a node can be drawn in.
      *
      * The pruned state is not cosmetic here: it lengthens the title line, which is what costs a
@@ -163,6 +239,25 @@ class CardHeightTest {
 
         /** Cards per scene. The surface is `800 x (batch x (height + slack)) x density` pixels. */
         const val BATCH = 24
+
+        // What a table in use looks like, as against what a checked-in fixture looks like.
+        //
+        // The *last segment* is what has to be long: every card prints `fileNameFromPath(...)`,
+        // which throws the directories away — so a path long only in its directories stresses
+        // nothing, and an early version of this constant measured a card as getting *shorter*
+        // under stress. This tail is past anything Iceberg's own naming produces (a manifest list
+        // is `snap-<id>-<attempt>-<uuid>.avro`, about 60 characters), so the number it yields is
+        // an upper bound rather than a sample of one writer's convention.
+        const val LONG_PATH =
+            "/Volumes/warehouse/analytics_production/customer_settlements_daily/data/" +
+                "event_date=2026-08-25/" +
+                "snap-8788892783725052840-17-a09a30b3-7885-4812-abb3-d15246196bd4" +
+                "-9a995d1b-5910-427d-ab3b-14a18e95beca-00001.parquet"
+        const val LONG_METADATA_NAME = "00147-3f2b9c48-6e51-4d7a-8b0c-1e2f3a4b5c6d.metadata.json"
+        const val LONG_TABLE_NAME = "customer_settlements_daily_enriched"
+        const val LONG_ERROR =
+            "org.apache.avro.InvalidAvroMagicException: Not an Avro data file. The manifest this " +
+                "snapshot lists is present but its first four bytes are not the Avro magic"
     }
 
     /**
@@ -246,7 +341,7 @@ class CardHeightTest {
         density: Float,
     ) {
         val worst = cards
-            .groupBy { (_, card) -> card.node::class.simpleName ?: "?" }
+            .groupBy { (_, card) -> "${card.node::class.simpleName ?: "?"}@${card.node.height}" }
             .mapValues { (_, group) ->
                 group.maxBy { (name, _) -> measured[name] ?: 0 }
                     .let { (name, card) -> Triple((measured[name] ?: 0) / density, card.node.height, name) }
