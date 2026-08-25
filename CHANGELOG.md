@@ -26,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   DuckDB's answer about the file rather than something the table declares.
 
 ### Fixed
+- **A collapsed group was losing the line that says it is a control.** `GroupNode` declared a 58dp
+  base and the plainest group card measures 60.5, so any group standing for exactly its members —
+  no hidden subtree, no read errors — drew "NOT DRAWN", its count, and then nothing: the
+  "Double-click to open" hint went under the card's own border, where Compose clips nothing and
+  reports no error. It survived the render check because every group the capture drew happened to
+  stand for a subtree, and so declared the taller height. `CardHeightTest` now sweeps every node
+  of every fixture in both filter states rather than one instance per kind, which is what reached
+  the shape that was broken; the capture now draws it too.
 - **A deletion vector is named as one.** It declares `content = 1` exactly as a v2 positional
   delete file does, so both cards read `POS DELETE` and only the `.puffin` extension told them
   apart. The card, its tooltip and the inspector title now say `DELETE VECTOR`, from one function

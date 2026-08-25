@@ -128,16 +128,19 @@ What is left:
 
 ## UI / UX
 
-- **Node heights are declared with more room than the cards use.** `TypeScale` and
-  `CardHeightTest` landed together, and the probe's numbers show the reserve is generous: at the
-  instances the test measures, `PaimonManifestListNode` wants 38dp of a declared 80, the Paimon
-  schema card 50 of 80, `ManifestCard` 52 of 80, `SnapshotCard` with ref chips 69 of 112. The
-  graph is that much taller than it needs to be. What stops this being a two-line fix is that the
-  test measures **one instance of each kind**, and a card's line count varies with what the
-  artifact carries — a manifest list with a longer name wraps, a snapshot with three refs draws a
-  second chip row. Tightening a height off one sample is how a line goes missing on a table
-  nobody rendered. Doing it properly means measuring the worst instance across every fixture,
-  which is the same shape as `LayoutOverlapTest`'s sweep and could share it.
+- **Node heights are declared with more room than the cards use.** The sweep now measures the
+  worst instance of every kind across every fixture, so the numbers are no longer a sample — they
+  are printed by `CardHeightTest` on every run. The reserve at the top of that list:
+  `SnapshotNode` 69dp of a declared 112, `PaimonManifestListNode` 38 of 80, `PaimonSchemaNode`
+  50 of 80, `PaimonSnapshotNode` 62 of 84, `PaimonManifestNode` 60 of 80, `ManifestNode` 64 of 80.
+  `FileNode` and `PaimonDataFileNode` are already exact. What still stops this being a
+  find-and-replace is that a *fixture's* worst instance is not a *kind's* worst instance: the
+  bound that would justify a number is structural — the `maxLines` on each `Text` and on the ref
+  `FlowRow` — not the tallest thing eight checked-in tables happen to contain.
+
+- **A group card truncates the one word that says what it hides.** At 200dp the count line reads
+  `6 more metadata versi…`, because `AggregationKind.METADATA.plural` is the longest of the ten.
+  Visible in `group-card-1.png`. Every other kind fits.
 
 - **The identity table at the top of a panel cannot be folded.** Every node type opens with an
   unsectioned `DetailTable` naming the node — path, UUID, format version, timestamps — and

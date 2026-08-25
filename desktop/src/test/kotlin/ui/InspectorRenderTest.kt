@@ -175,9 +175,15 @@ class InspectorRenderTest {
      * enough to trip the default — and a card nobody has looked at is how the last round's
      * clipped ref chips got shipped.
      *
-     * Three states worth seeing side by side: the plain case, one where the group also stands
-     * for a subtree, and one carrying read errors. The third is the one that must not read as
-     * decoration; a failure folded into "and 40 more" is a failure nobody investigates.
+     * Four states worth seeing side by side: a group standing for exactly its members, one that
+     * also stands for a subtree, and one carrying read errors. The third is the one that must not
+     * read as decoration; a failure folded into "and 40 more" is a failure nobody investigates.
+     *
+     * The first is here because it was missing. Every group this fixture produces stands for a
+     * subtree, so all three captured states drew the "nodes in total" line and declared the taller
+     * height — and the plainest shape, which declares the base, was never in front of anybody. It
+     * had been losing its "Double-click to open" line, the one line saying the card is a control.
+     * `CardHeightTest`'s sweep found it; this is the capture that would have.
      */
     @Test
     fun `the group card and inspector render what is not drawn`() {
@@ -189,8 +195,9 @@ class InspectorRenderTest {
         val group = graph.groups.firstOrNull()
         assertNotNull(group, "a page size of one should collapse something in the merge-on-read fixture")
 
-        renderScene("group-card", width = 700, height = 700) {
+        renderScene("group-card", width = 700, height = 900) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                GroupCard(group.copy(hiddenNodeCount = group.memberCount))
                 GroupCard(group)
                 GroupCard(group.copy(hiddenNodeCount = group.hiddenNodeCount + 4_812))
                 GroupCard(group.copy(hiddenNodeCount = group.hiddenNodeCount + 4_812, hiddenErrorCount = 3))

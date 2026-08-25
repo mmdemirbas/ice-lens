@@ -475,6 +475,36 @@ internal val LocalCardContentProbe = staticCompositionLocalOf<((Int) -> Unit)?> 
 private fun Modifier.cardBox(node: GraphNode): Modifier =
     size(node.width.dp, node.height.dp + LocalCardHeightSlack.current)
 
+/**
+ * The card for a node — the one place that decides which one a kind gets.
+ *
+ * It lives here rather than inline on the canvas because it has a second caller: the height sweep
+ * in `CardHeightTest`, which draws every node of every fixture and requires each to fit the height
+ * its node declares. A `when` written twice would let the test measure a card the app does not
+ * draw, which is the failure the sweep exists to prevent, one level up.
+ *
+ * [isPruned] is shell state, not node state — a scan filter fades what a query does not read — so
+ * it is passed rather than read off the node.
+ */
+@Composable
+fun GraphNodeCard(node: GraphNode, isSelected: Boolean = false, isPruned: Boolean = false) {
+    when (node) {
+        is GraphNode.TableNode    -> TableCard(node, isSelected = isSelected)
+        is GraphNode.MetadataNode -> MetadataCard(node, isSelected = isSelected)
+        is GraphNode.SnapshotNode -> SnapshotCard(node, isSelected = isSelected)
+        is GraphNode.ManifestNode -> ManifestCard(node, isSelected = isSelected, isPruned = isPruned)
+        is GraphNode.FileNode     -> FileCard(node, isSelected = isSelected, isPruned = isPruned)
+        is GraphNode.RowNode      -> RowCard(node, isSelected = isSelected)
+        is GraphNode.ErrorNode    -> ErrorCard(node, isSelected = isSelected)
+        is GraphNode.GroupNode    -> GroupCard(node, isSelected = isSelected)
+        is GraphNode.PaimonSnapshotNode,
+        is GraphNode.PaimonSchemaNode,
+        is GraphNode.PaimonManifestListNode,
+        is GraphNode.PaimonManifestNode,
+        is GraphNode.PaimonDataFileNode -> PaimonNodeCard(node, isSelected = isSelected)
+    }
+}
+
 @Composable
 fun TableCard(node: GraphNode.TableNode, isSelected: Boolean = false) {
     val selectionBorderColor = selectionHighlightColor()

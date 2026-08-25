@@ -744,24 +744,11 @@ fun GraphCanvas(
                             }
                             // Removed redundant .clickable to avoid double selection triggers
                     ) {
-                        val isActive = hoveredNodeId == node.id || selectedNodeIds.contains(node.id)
-                        when (node) {
-                            is GraphNode.TableNode    -> TableCard(node, isSelected = isActive)
-                            is GraphNode.MetadataNode -> MetadataCard(node, isSelected = isActive)
-                            is GraphNode.SnapshotNode -> SnapshotCard(node, isSelected = isActive)
-                            is GraphNode.ManifestNode ->
-                                ManifestCard(node, isSelected = isActive, isPruned = node.id in prunedNodeIds)
-                            is GraphNode.FileNode     ->
-                                FileCard(node, isSelected = isActive, isPruned = node.id in prunedNodeIds)
-                            is GraphNode.RowNode      -> RowCard(node, isSelected = isActive)
-                            is GraphNode.ErrorNode    -> ErrorCard(node, isSelected = isActive)
-                            is GraphNode.GroupNode    -> GroupCard(node, isSelected = isActive)
-                            is GraphNode.PaimonSnapshotNode,
-                            is GraphNode.PaimonSchemaNode,
-                            is GraphNode.PaimonManifestListNode,
-                            is GraphNode.PaimonManifestNode,
-                            is GraphNode.PaimonDataFileNode -> PaimonNodeCard(node, isSelected = isActive)
-                        }
+                        GraphNodeCard(
+                            node = node,
+                            isSelected = hoveredNodeId == node.id || selectedNodeIds.contains(node.id),
+                            isPruned = node.id in prunedNodeIds,
+                        )
                     }
                 }
             }

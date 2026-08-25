@@ -20,6 +20,9 @@ dependencies {
     implementation(libs.logback.classic)
 
     testImplementation(libs.kotlin.test.junit5)
+    // Test-only: CardHeightTest asks the sealed GraphNode hierarchy what its subtypes are,
+    // so a node kind added without a card is a failure rather than a number to bump by hand.
+    testImplementation(libs.kotlin.reflect)
     testImplementation(libs.junit.jupiter)
     // AppState's tests build real tables on disk to load, which means writing Avro manifests.
     // Core keeps Avro as an implementation detail, so the fixture writers ask for it directly

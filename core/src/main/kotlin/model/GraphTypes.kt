@@ -508,9 +508,16 @@ sealed class GraphNode(
         // subtotal line was sliced through the middle and both the read-error line and the
         // "double-click to open" hint never appeared, which was found by looking at the render
         // and could not have been found any other way.
+        //
+        // The base was 58 and the plainest group measures 60.5, so every group carrying neither
+        // extra line lost its "Double-click to open" hint — the one line that says the card is a
+        // control. It survived a render check because the group in front of the reader had a
+        // subtotal line and so declared 73; only sweeping every group in every fixture reached
+        // the shape that did not. 62 is 60.5 with a dp of margin for the rounding a different
+        // display scale does to a font metric.
     ) : GraphNode(
         id, initialX, initialY, 200.0,
-        58.0 +
+        62.0 +
             (if (hiddenNodeCount > memberIds.size) 15.0 else 0.0) +
             (if (hiddenErrorCount > 0) 15.0 else 0.0),
     ) {
