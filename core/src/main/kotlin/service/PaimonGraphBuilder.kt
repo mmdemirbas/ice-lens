@@ -101,6 +101,9 @@ object PaimonGraphBuilder {
                     simpleId = simpleId,
                     commitKind = snap.commitKind,
                     localPath = unifiedSnapshot.path.toString(),
+                    // Deferred: replaying a snapshot's base and delta is work only a comparison
+                    // asks for, and it asks about two of them.
+                    liveFilesLoader = DeferredRead.of { paimonLiveFilesOf(unifiedSnapshot) },
                 )
             }
 
@@ -270,98 +273,18 @@ object PaimonGraphBuilder {
     }
 
     /** Identity of a Paimon manifest file, for deduplicating it across snapshots. */
-    private fun manifestKey(manifest: PaimonUnifiedManifest): String =
-        manifest.metadata.fileName?.takeIf { it.isNotBlank() } ?: "path:${manifest.path}"
 
-    /** Identity of a Paimon data file, for deduplicating it across manifests. */
-    private fun dataFileKey(entry: PaimonUnifiedDataFile): String =
-        entry.metadata.file?.fileName?.takeIf { it.isNotBlank() } ?: "path:${entry.path}"
 
     /**
      * The set of data files the latest snapshot actually exposes.
      *
-     * Paimon splits a snapshot's manifest lists into a *base* (the accumulated state carried
-     * forward) and a *delta* (this commit's changes), and the delta is applied over the base:
-     * a `_KIND=1` entry removes a file the base still lists. Counting ADD entries alone would
-     * therefore report every file the table has ever held. The changelog manifest list is
-     * deliberately excluded — it carries the change stream, not the table's contents.
+     * The walk itself is [replayPaimonSnapshot], in core's model layer beside the Iceberg ledger,
+     * because it answers a question about a Paimon snapshot rather than about a graph — and
+     * because the comparison panel needs the same walk's *other* half, the file set it ends on.
+     * Two walks would be two implementations of one rule.
      */
-    private fun currentStatsFor(snapshot: PaimonUnifiedSnapshot?): StatsDerivation {
-        if (snapshot == null) return StatsDerivation()
-
-        val liveFiles = LinkedHashMap<String, PaimonDataFileMeta?>()
-        val countedManifests = mutableMapOf<String, String>()
-        val contributions = mutableListOf<ManifestContribution>()
-        // Running totals rather than a sum over liveFiles per manifest: the delta is the change
-        // this manifest made, and re-summing the map for each one would be quadratic.
-        var liveRecords = 0L
-        var liveBytes = 0L
-
-        fun consume(manifests: List<PaimonUnifiedManifest>, listLabel: String) {
-            manifests.forEach { manifest ->
-                val key = manifestKey(manifest)
-                countedManifests[key]?.let { firstCountedIn ->
-                    contributions += ManifestContribution(
-                        manifestPath = manifest.path.toString(),
-                        delta = ContentStats(),
-                        firstCountedIn = firstCountedIn,
-                    )
-                    return@forEach
-                }
-                countedManifests[key] = listLabel
-
-                val filesBefore = liveFiles.size
-                val recordsBefore = liveRecords
-                val bytesBefore = liveBytes
-                var entries = 0
-                var deletedEntries = 0
-                var suppressed = 0
-
-                manifest.entries.forEach { entry ->
-                    entries++
-                    val fileKey = dataFileKey(entry)
-                    val wasLive = liveFiles.containsKey(fileKey)
-                    // containsKey rather than the result of remove/put: the map's value type is
-                    // itself nullable, so a null return cannot tell "absent" from "present, no
-                    // metadata" and the running totals would drift on files with no meta block.
-                    if (wasLive) {
-                        val previous = liveFiles[fileKey]
-                        liveRecords -= previous?.rowCount ?: 0L
-                        liveBytes -= previous?.fileSize ?: 0L
-                    }
-                    if ((entry.metadata.kind ?: PaimonEntryKind.ADD) == PaimonEntryKind.DELETE) {
-                        deletedEntries++
-                        liveFiles.remove(fileKey)
-                    } else {
-                        if (wasLive) suppressed++
-                        liveFiles[fileKey] = entry.metadata.file
-                        liveRecords += entry.metadata.file?.rowCount ?: 0L
-                        liveBytes += entry.metadata.file?.fileSize ?: 0L
-                    }
-                }
-
-                contributions += ManifestContribution(
-                    manifestPath = manifest.path.toString(),
-                    delta = ContentStats(
-                        // Paimon has no data/delete manifest split — every manifest carries both
-                        // kinds of entry — so all manifests are data manifests and removals show
-                        // as deletedEntryCount.
-                        dataManifestCount = 1,
-                        manifestEntryCount = entries,
-                        deletedEntryCount = deletedEntries,
-                        dataFileCount = liveFiles.size - filesBefore,
-                        recordCount = liveRecords - recordsBefore,
-                        dataSizeBytes = liveBytes - bytesBefore,
-                    ),
-                    entriesSuppressedAsDuplicate = suppressed,
-                )
-            }
-        }
-
-        consume(snapshot.baseManifests, "base manifest list")
-        consume(snapshot.deltaManifests, "delta manifest list")
-        return StatsDerivation(contributions.toList())
-    }
+    private fun currentStatsFor(snapshot: PaimonUnifiedSnapshot?): StatsDerivation =
+        StatsDerivation(replayPaimonSnapshot(snapshot).contributions)
 
     internal fun buildTableSummary(tableModel: PaimonUnifiedTableModel): TableSummary {
         val seenManifests = mutableMapOf<String, String>()
@@ -373,7 +296,7 @@ object PaimonGraphBuilder {
                 ?: "snapshot file ${snapshot.path.fileName}"
             val allManifests = snapshot.baseManifests + snapshot.deltaManifests + snapshot.changelogManifests
             allManifests.forEach { manifest ->
-                val key = manifestKey(manifest)
+                val key = paimonManifestKey(manifest)
                 seenManifests[key]?.let { firstCountedIn ->
                     historyContributions += ManifestContribution(
                         manifestPath = manifest.path.toString(),
@@ -395,7 +318,7 @@ object PaimonGraphBuilder {
                     if ((entry.metadata.kind ?: PaimonEntryKind.ADD) == PaimonEntryKind.DELETE) {
                         deletedEntries++
                     }
-                    if (seenFiles.add(dataFileKey(entry))) {
+                    if (seenFiles.add(paimonDataFileKey(entry))) {
                         files++
                         records += entry.metadata.file?.rowCount ?: 0L
                         sizeBytes += entry.metadata.file?.fileSize ?: 0L

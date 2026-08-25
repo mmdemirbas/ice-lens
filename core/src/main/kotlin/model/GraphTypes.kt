@@ -40,6 +40,49 @@ class DeferredRead<T : Any> private constructor(private val load: (() -> T?)?) {
 }
 
 /**
+ * A snapshot node of any format, in the terms a comparison needs.
+ *
+ * Two snapshots are compared as a set difference between their live file sets ([snapshotDiff]),
+ * and that question is format-agnostic even though the two answers are reached by completely
+ * different rules — Iceberg filters and deduplicates entries, Paimon replays a delta over a base.
+ * This interface is the seam: the panel reads these six things and never asks which format it is
+ * looking at, while each node type answers them its own way.
+ *
+ * It deliberately does not expose the format's own snapshot object. A comparison that reached for
+ * `data.summary` would be an Iceberg comparison wearing a shared name.
+ */
+interface ComparableSnapshot {
+    /** Node id, for keying the panel's memoisation. */
+    val nodeId: String
+
+    /** The number the reader sees on the card — "Snapshot 3". */
+    val displayNumber: Int
+
+    /** The format's own identifier for this commit. */
+    val commitId: Long?
+
+    /** The commit this one follows, where the format records one. Null on a root, and for Paimon. */
+    val parentCommitId: Long?
+
+    /**
+     * The commit order the format assigns, used to put the older side first.
+     *
+     * A sequence number, not a clock: two commits from a fast writer can share a millisecond, and
+     * a panel whose "from" and "to" swap between recompositions is worse than one that is wrong
+     * in a stated way.
+     */
+    val commitOrder: Long?
+
+    val commitTimeMs: Long?
+
+    /** Every file the table holds at this snapshot, read on first ask. Null when nothing attached. */
+    val liveFiles: List<LiveFile>?
+
+    /** Whether this snapshot can be compared at all, answerable without walking it. */
+    val canDiff: Boolean
+}
+
+/**
  * A point in graph coordinate space.
  *
  * Core carries its own point type rather than a UI toolkit's, so that the engine can be used
@@ -346,19 +389,24 @@ sealed class GraphNode(
         // Measured with a path far longer than Iceberg's own naming produces and with more refs
         // than the chip row can hold, which is what makes 64 and 83 upper bounds rather than the
         // tallest thing eight checked-in tables happen to contain.
-    ) : GraphNode(id, initialX, initialY, 210.0, if (refs.isEmpty()) 68.0 else 88.0) {
+    ) : GraphNode(id, initialX, initialY, 210.0, if (refs.isEmpty()) 68.0 else 88.0), ComparableSnapshot {
+
+        override val nodeId: String get() = id
+        override val displayNumber: Int get() = simpleId
+        override val commitId: Long? get() = data.snapshotId
+        override val parentCommitId: Long? get() = data.parentSnapshotId
+        override val commitOrder: Long? get() = data.sequenceNumber
+        override val commitTimeMs: Long? get() = data.timestampMs
 
         /**
          * Every file the table holds at this snapshot, deduplicated, live entries only.
          *
-         * Null when the builder attached nothing — a snapshot node made by hand in a test, or a
-         * format whose builder does not offer it yet. That is a different answer from an empty
-         * list, which would be a snapshot holding no files.
+         * Null when the builder attached nothing — a snapshot node made by hand in a test. That is
+         * a different answer from an empty list, which would be a snapshot holding no files.
          */
-        val liveFiles: List<LiveFile>? get() = liveFilesLoader.value
+        override val liveFiles: List<LiveFile>? get() = liveFilesLoader.value
 
-        /** Whether this snapshot can be compared against another, answerable without walking it. */
-        val canDiff: Boolean get() = liveFilesLoader.isPresent
+        override val canDiff: Boolean get() = liveFilesLoader.isPresent
     }
 
     data class ManifestNode(
@@ -500,9 +548,33 @@ sealed class GraphNode(
         val simpleId: Int,
         val commitKind: String? = null,
         val localPath: String? = null,
+        /**
+         * Every file the table holds at this snapshot, read on first ask — see [liveFiles].
+         *
+         * Reached by [replayPaimonSnapshot], which is a replay rather than a filter: Paimon's
+         * delta manifest list applies over its base, so an entry's meaning depends on the entries
+         * before it. Deferred for the same reason the Iceberg one is — only two snapshots in a
+         * table are ever compared.
+         */
+        private val liveFilesLoader: DeferredRead<List<LiveFile>> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 210.0, 84.0)
+    ) : GraphNode(id, initialX, initialY, 210.0, 84.0), ComparableSnapshot {
+
+        override val nodeId: String get() = id
+        override val displayNumber: Int get() = simpleId
+        override val commitId: Long? get() = data.id
+        /**
+         * Paimon records no parent on a snapshot — the previous one is `id - 1` by convention and
+         * nothing states it — so the comparison says nothing about lineage rather than inferring
+         * it from an arithmetic that a rolled-back table breaks.
+         */
+        override val parentCommitId: Long? get() = null
+        override val commitOrder: Long? get() = data.id
+        override val commitTimeMs: Long? get() = data.timeMillis
+        override val liveFiles: List<LiveFile>? get() = liveFilesLoader.value
+        override val canDiff: Boolean get() = liveFilesLoader.isPresent
+    }
 
     /** Paimon schema node. */
     data class PaimonSchemaNode(

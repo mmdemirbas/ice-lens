@@ -119,9 +119,14 @@ What is left:
   file-level claim on the **table's** history derivation, not on the manifest panel, and a
   fixture with two manifests listing one file inside a single snapshot would be needed before the
   manifest-panel version explains anything at all.
-- **Paimon has no drill-down.** `PaimonGraphBuilder` builds its contributions with its own
-  accumulation, which the shared per-entry ledger does not cover — a delta manifest list applies
-  over a base, so its entries subtract as well as add.
+- **Paimon has no per-entry drill-down, and cannot have the shared one.** The accumulation now
+  lives in `model/PaimonReplay.kt` and emits its per-manifest contributions and its live file set
+  from one walk, so the comparison and the figures cannot disagree. What is still missing is the
+  level below: the Iceberg panel lists what each *entry* contributed and which rule dropped it
+  (`manifestLedger`), and Paimon has no equivalent because its entries are not independently
+  decidable — a `_KIND=1` entry's effect depends on what the base already put in the map. The
+  honest Paimon version is a per-entry **replay trace** (what the map held before, what this entry
+  did to it), which is a different shape from the Iceberg ledger and should not pretend otherwise.
 
 ---
 
@@ -196,8 +201,10 @@ What is left:
   it. Two things are unfinished. Selection is the only route — there is no way to pin one snapshot
   and step the other through history, which is what comparing a branch against successive points
   on `main` wants. And the comparison is Iceberg-only: `PaimonSnapshotNode` has no
-  `liveFilesLoader`, because Paimon's delta manifest list applies over its base and the shared
-  per-entry ledger does not cover that — the same gap as the Paimon drill-down below.
+  a second snapshot to compare against: `example/paimon/db.db/test` has exactly **one commit**, so
+  the two-snapshot path is exercised only against an empty other side and the real pair is
+  untested. Writing a second commit needs Flink in docker — the same blocker as the Paimon card
+  heights and the third-branch fixture.
 
 - **Different layout algorithms** — top-to-bottom, force-directed, or compact tree as alternatives to the current left-to-right layered layout.
 

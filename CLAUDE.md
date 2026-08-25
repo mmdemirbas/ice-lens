@@ -50,6 +50,7 @@ core/src/main/kotlin/
 │   ├── PuffinSchema.kt        # Puffin footer JSON + DeletionVector (positions, and the two figures it is checked against)
 │   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
 │   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
+│   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures AND the file set, one walk
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
 │   ├── ManifestLedger.kt      # Per-entry: what it added to a manifest's figures, or which rule dropped it
@@ -191,6 +192,19 @@ desktop/src/main/kotlin/
   a timestamp is a clock and two commits from a fast writer can share one. `MAX_DIFF_ROWS` caps the
   file list at 500 and says so on screen when it bites; files on both sides are counted and not
   listed, because on any real table they are almost all of it
+- **The comparison is format-agnostic; the two ways of answering it are not.** `ComparableSnapshot`
+  in `GraphTypes.kt` is the seam — six questions the panel asks and neither node type's own
+  vocabulary — so `SnapshotComparison` never asks which format it is drawing. Underneath, Iceberg
+  *filters* (`manifestLedger`: a `DELETED` entry contributes nothing, a repeated path is a
+  duplicate, so entries fold in any order) and Paimon *replays* (`replayPaimonSnapshot`: the delta
+  manifest list applies over the base, so a `_KIND=1` entry removes a file the base still lists and
+  an entry's meaning depends on the entries before it). That is why the shared per-entry ledger
+  cannot cover Paimon and why a Paimon contribution may be negative. **The replay emits both the
+  per-manifest figures and the file set it ends on, from one walk**, because two walks would be two
+  implementations of one rule — `PaimonSnapshotDiffTest` asserts the two halves describe the same
+  walk rather than trusting the source. Paimon's node reports **no parent**: `id - 1` is a
+  convention nothing states and a rolled-back table breaks it, so the panel says the format records
+  none rather than inferring lineage
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on

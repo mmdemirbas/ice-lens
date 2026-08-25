@@ -39,6 +39,7 @@ import kotlinx.coroutines.withContext
 import service.PositionalDeleteTally
 import service.SampleRowReader
 import model.DataFile
+import model.ComparableSnapshot
 import model.DiffSide
 import model.snapshotDiff
 import model.EntryFate
@@ -770,7 +771,7 @@ fun NodeDetailsContent(
                                 DetailRow(nodeTitle(n), multiSelectKey(n))
                             }
                         }
-                        if (multiGraph.nodeById.values.count { it.id in selectedNodeIds && it is GraphNode.SnapshotNode } > 2) {
+                        if (multiGraph.nodeById.values.count { it.id in selectedNodeIds && it is ComparableSnapshot } > 2) {
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 "Select exactly two snapshots to compare what they hold.",
@@ -2205,17 +2206,20 @@ private fun diffSchemas(oldSchema: TableSchema, newSchema: TableSchema): List<Sc
 private fun comparableSnapshots(
     graph: GraphModel,
     selectedNodeIds: Set<String>,
-): Pair<GraphNode.SnapshotNode, GraphNode.SnapshotNode>? {
+): Pair<ComparableSnapshot, ComparableSnapshot>? {
     val selected = selectedNodeIds.mapNotNull { graph.nodeById[it] }
     if (selected.size != 2) return null
-    val snapshots = selected.filterIsInstance<GraphNode.SnapshotNode>()
+    // ComparableSnapshot, not SnapshotNode: a Paimon snapshot answers the same six questions by
+    // its own rules, and the panel below never asks which format it is looking at. Two nodes of
+    // *different* formats cannot appear in one graph, so no check for that is needed here.
+    val snapshots = selected.filterIsInstance<ComparableSnapshot>()
     if (snapshots.size != 2 || snapshots.any { !it.canDiff }) return null
 
     val ordered = snapshots.sortedWith(
         compareBy(
-            { it.data.sequenceNumber ?: Long.MAX_VALUE },
-            { it.data.timestampMs ?: Long.MAX_VALUE },
-            { it.data.snapshotId ?: Long.MAX_VALUE },
+            { it.commitOrder ?: Long.MAX_VALUE },
+            { it.commitTimeMs ?: Long.MAX_VALUE },
+            { it.commitId ?: Long.MAX_VALUE },
         ),
     )
     return ordered[0] to ordered[1]
@@ -2235,12 +2239,12 @@ private fun comparableSnapshots(
  * twenty commits never walks twenty closures to answer a question about two.
  */
 @Composable
-private fun SnapshotComparison(from: GraphNode.SnapshotNode, to: GraphNode.SnapshotNode) {
+private fun SnapshotComparison(from: ComparableSnapshot, to: ComparableSnapshot) {
     val colors = MaterialTheme.colorScheme
-    val diff = remember(from.id, to.id) {
+    val diff = remember(from.nodeId, to.nodeId) {
         snapshotDiff(
-            from.data.snapshotId, from.liveFiles.orEmpty(),
-            to.data.snapshotId, to.liveFiles.orEmpty(),
+            from.commitId, from.liveFiles.orEmpty(),
+            to.commitId, to.liveFiles.orEmpty(),
         )
     }
 
@@ -2254,14 +2258,20 @@ private fun SnapshotComparison(from: GraphNode.SnapshotNode, to: GraphNode.Snaps
 
     DetailTable {
         DetailRow("Property", "Value", isHeader = true)
-        DetailRow("From (older)", "Snapshot ${from.simpleId} — ${from.data.snapshotId ?: "N/A"}")
-        DetailRow("To (newer)", "Snapshot ${to.simpleId} — ${to.data.snapshotId ?: "N/A"}")
+        DetailRow("From (older)", "Snapshot ${from.displayNumber} — ${from.commitId ?: "N/A"}")
+        DetailRow("To (newer)", "Snapshot ${to.displayNumber} — ${to.commitId ?: "N/A"}")
         DetailRow(
             "Relationship",
             when {
-                to.data.parentSnapshotId == from.data.snapshotId -> "Parent and child"
-                from.data.parentSnapshotId == to.data.snapshotId ->
-                    "Parent and child, and the newer one is the parent — the sequence numbers say so"
+                to.parentCommitId == from.commitId && from.commitId != null -> "Parent and child"
+                from.parentCommitId == to.commitId && to.commitId != null ->
+                    "Parent and child, and the newer one is the parent — the commit order says so"
+                // Null on both sides is not "unrelated", it is "this format records no parent" —
+                // which Paimon does not. Saying they are not parent and child would be a claim
+                // nothing here established.
+                to.parentCommitId == null && from.parentCommitId == null ->
+                    "This format records no parent on a snapshot, so nothing here says whether " +
+                        "these two are adjacent. The comparison does not need to know."
                 else -> "Not parent and child. This is a set difference, not a replay of the commits between them."
             },
         )

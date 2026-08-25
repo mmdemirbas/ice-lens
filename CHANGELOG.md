@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The comparison works for Paimon too, through one seam and two unrelated answers.**
+  `ComparableSnapshot` is what the panel reads, so it never asks which format it is drawing; each
+  node type answers its own way. Getting there meant extracting Paimon's replay out of the graph
+  builder into `model/PaimonReplay.kt`: it already computed the live file set on its way to the
+  figures and threw it away, so both now come out of the same walk rather than a second one being
+  written beside it. The figures are unchanged — that is the safety property of the extraction and
+  the whole existing Paimon suite is what checks it. Paimon's node reports no parent snapshot
+  rather than inferring `id - 1`, which is a convention nothing records and which a rolled-back
+  table breaks.
 - **Any two snapshots can now be compared, not just a commit against its parent.** Selecting
   exactly two snapshots on the canvas replaces the multi-select summary with a comparison: what
   each side holds that the other does not, the net change in files, records and bytes, and the
