@@ -61,8 +61,21 @@ compose.desktop {
             packageName = "IcebergLens"
             packageVersion = project.version.toString()
             modules("java.sql")
+
+            // Generated and committed by `java tools/icon/GenerateIcon.java`. Committed rather
+            // than generated at build time, because a packaging step that draws its own icon is a
+            // step that can fail on a machine nobody has tested it on — and the three platforms
+            // want three container formats, not three sizes of the same one.
+            val icons = project.file("src/main/resources/icon")
             macOS {
                 bundleID = "com.iceberglens.desktop"
+                iconFile.set(icons.resolve("icon.icns"))
+            }
+            windows {
+                iconFile.set(icons.resolve("icon.ico"))
+            }
+            linux {
+                iconFile.set(icons.resolve("icon.png"))
             }
         }
     }

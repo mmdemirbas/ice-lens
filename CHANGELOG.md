@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   header are now distinct from body text rather than a little heavier than it.
 
 ### Added
+- **The app has an icon.** A lens set down on a stack of records: the bars are the metadata rows
+  the app reads, and under the ring they turn accent-coloured. Two shapes, which is about what
+  survives being drawn at 32 pixels. `tools/icon/GenerateIcon.java` draws it and writes every size
+  the three installers want, including the `.icns` and `.ico` containers — both written directly
+  rather than shelled out to `iconutil`, which exists only on macOS and would have made the
+  Windows icon regenerable on a Mac and nowhere else. Deliberately not an iceberg and not Apache
+  Iceberg's mark: the app reads Paimon too, and the name is already an open trademark question.
 - **The workspace answers to the keyboard**, with one rule the other two lists do not need:
   moving the cursor does not open a table. On the canvas and in the tree the selection *is* the
   cursor, because selecting costs nothing; here, opening a table reads its whole metadata tree off

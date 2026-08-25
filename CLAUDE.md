@@ -508,6 +508,20 @@ The `sealed` keyword ensures the compiler flags every `when` that needs a new ca
 
 Steps 1-7 are clean single-point changes. Steps 8-12 require adding `when` cases (compiler-enforced via sealed types).
 
+## The app icon
+
+`tools/icon/GenerateIcon.java` draws the mark and writes `desktop/src/main/resources/icon/`:
+seven PNG sizes, plus `icon.icns` and `icon.ico`. Run it from the repo root
+(`java tools/icon/GenerateIcon.java desktop/src/main/resources/icon`) after changing the drawing;
+**the outputs are committed**, because a packaging step that draws its own icon is a step that can
+fail on a machine nobody has tested it on. Both containers are written by hand rather than by
+`iconutil` or an image library — each is a header plus one typed chunk per size, and `iconutil`
+exists only on macOS, which would leave the Windows icon regenerable on a Mac and nowhere else.
+`build.gradle.kts` points each platform at its own container; `Main.kt` sets the *running* window's
+icon separately, because jpackage stamps the bundle and a `Window` with no icon falls back to the
+toolkit's default duke. Every dimension in the drawing is a fraction of the canvas, so 16px and
+1024px are the same drawing rather than two that resemble each other.
+
 ## Related documentation
 
 - `docs/ARCHITECTURE.md` — layer diagram, data flow, threading model, extension points

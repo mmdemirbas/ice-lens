@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
@@ -161,6 +162,9 @@ fun main() = application {
             exitApplication()
         },
         title = "Iceberg Lens",
+        // The running window, as distinct from the installed bundle: jpackage stamps the
+        // installer's icon, and a Window with none falls back to the toolkit's default duke.
+        icon = painterResource("icon/icon-256.png"),
         state = windowState
     ) {
         awtWindow = window

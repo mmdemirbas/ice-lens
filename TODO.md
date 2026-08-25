@@ -129,8 +129,6 @@ What is left:
 
 ## UI / UX
 
-- **App icon** — no custom icon; installers use the default Java icon. Need `.icns`/`.ico`/`.png` assets and `nativeDistributions { iconFile.set(...) }` in build.gradle.kts.
-
 - **Node heights are declared with more room than the cards use.** `TypeScale` and
   `CardHeightTest` landed together, and the probe's numbers show the reserve is generous: at the
   instances the test measures, `PaimonManifestListNode` wants 38dp of a declared 80, the Paimon
