@@ -206,4 +206,51 @@ class FormatV3FixtureTest {
             assertNull(delete.contentOffset)
         }
     }
+
+    /**
+     * The payoff of decoding a vector: a sampled row of the data file the vector covers is marked
+     * as deleted, and a row of a file no vector covers is not.
+     *
+     * Both halves matter. A check that only asserts the deleted ones would pass on an
+     * implementation that marks every row, which is the mistake the fixture is shaped to catch —
+     * `v3` has five data files and two vectors, so most of its files are untouched.
+     *
+     * The position comes from DuckDB's `file_row_number`, not from the order the rows arrived in;
+     * that is what makes "row 0 is deleted" a statement about the file rather than about the scan.
+     */
+    @Test
+    fun `a row a deletion vector removes is marked, and its neighbours are not`() {
+        val dir = File(repoRoot, "example/iceberg/default/v3")
+        val graph = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(dir.absolutePath)), showRows = true,
+        )
+
+        val covered = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+            .filter { it.isDeletionVector }
+            .mapNotNull { it.data.referencedDataFile?.let(::normalizeFilePath) }
+            .toSet()
+        assertEquals(2, covered.size, "the fixture should carry two vectors over two data files")
+
+        val dataFiles = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+            .filter { (it.data.content ?: DataFileContent.DATA) == DataFileContent.DATA }
+        val uncovered = dataFiles.filterNot { normalizeFilePath(it.data.filePath.orEmpty()) in covered }
+        assertTrue(uncovered.isNotEmpty(), "and data files no vector covers, or this proves nothing")
+
+        fun rowsOf(file: GraphNode.FileNode) = graph.nodes.filterIsInstance<GraphNode.RowNode>()
+            .filter { it.id.startsWith("row_${file.id}_") && it.resolvedData.size > 2 }
+
+        val markedFiles = dataFiles.filter { normalizeFilePath(it.data.filePath.orEmpty()) in covered }
+        assertTrue(markedFiles.isNotEmpty(), "the covered data files should be drawn")
+        markedFiles.forEach { file ->
+            val rows = rowsOf(file)
+            assertTrue(rows.isNotEmpty(), "${file.id} has no sampled rows to judge")
+            val atZero = rows.first { it.filePosition == 0L }
+            assertTrue(atZero.isDeletedByVector, "${atZero.id} sits at the position the vector removes")
+        }
+        uncovered.forEach { file ->
+            rowsOf(file).forEach { row ->
+                assertFalse(row.isDeletedByVector, "${row.id} is in a file no vector covers")
+            }
+        }
+    }
 }

@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   this does. The reader is written against the Puffin and Roaring specs rather than against the
   checked-in fixture, which holds one array container with one position in it; the array/bitset
   boundary at 4,096 and the run container are pinned by containers built from the spec text.
+- **A row a deletion vector removes is drawn as deleted.** The sampled rows of the data file a
+  vector covers now carry the word, a strike through their values, and the same fade a pruned node
+  gets. The position each row is judged against is asked of DuckDB (`file_row_number`) rather than
+  taken from the order the rows arrived in — a scan may return them in any order and nothing in
+  the result would say that it had — and it is kept off the row as a column, because it is
+  DuckDB's answer about the file rather than something the table declares.
 
 ### Fixed
 - **A deletion vector is named as one.** It declares `content = 1` exactly as a v2 positional

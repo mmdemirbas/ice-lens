@@ -372,11 +372,37 @@ sealed class GraphNode(
         val initialY: Double = 0.0,
         /** Placeholder row nodes have empty data; actual data is loaded lazily via this supplier. */
         private val dataLoader: (() -> Map<String, Any>)? = null,
+        /**
+         * The positions a v3 deletion vector removes from this row's file, if one covers it.
+         *
+         * Supplied by the builder because the answer lives in another node — the vector is a file
+         * node under some manifest, and which data file it applies to is its
+         * `referenced_data_file`. A sampled row is 50 rows deep at most and the decoder emits
+         * positions in ascending order, so its cap cannot hide a position this set needs.
+         */
+        private val deletedPositions: Set<Long> = emptySet(),
     ) : GraphNode(id, initialX, initialY, 200.0, 80.0) {
         val isDelete: Boolean get() = content > 0
         val resolvedData: Map<String, Any> by lazy {
             val loaded = dataLoader?.invoke()
             if (loaded.isNullOrEmpty()) data else loaded
+        }
+
+        /** This row's physical position in its file, once the row has been read. */
+        val filePosition: Long? get() = (resolvedData[ROW_POSITION_KEY] as? Number)?.toLong()
+
+        /**
+         * Whether a deletion vector removes this row.
+         *
+         * False is two different things and is reported as one: no vector covers the file, or one
+         * does and this row survives it. The difference is on the file node, which is where a
+         * reader asking "is anything deleted here" is looking.
+         */
+        val isDeletedByVector: Boolean get() = filePosition?.let { it in deletedPositions } == true
+
+        companion object {
+            /** Where [filePosition] is carried in [resolvedData]. Filtered out of the card. */
+            const val ROW_POSITION_KEY = "row_pos"
         }
     }
 

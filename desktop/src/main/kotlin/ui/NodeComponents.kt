@@ -15,6 +15,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.layout.onSizeChanged
@@ -68,7 +69,12 @@ private fun rowStatusShortLabel(content: Int): String = when (content) {
 }
 
 private fun rowCardDetailEntries(node: GraphNode.RowNode): List<Map.Entry<String, Any>> {
-    val metaKeys = setOf("file_no", "row_idx", "target_file", "target_file_no", "local_file_path")
+    val metaKeys = setOf(
+        "file_no", "row_idx", "target_file", "target_file_no", "local_file_path",
+        // The physical position is drawn as part of the row's identity line, not as one of its
+        // columns — the table does not declare a column by that name.
+        GraphNode.RowNode.ROW_POSITION_KEY,
+    )
     val filtered = node.resolvedData.entries.filter { (key, _) ->
         key !in metaKeys &&
             !(node.content == 1 && (key == "file_path" || key == "pos" || key == "position"))
@@ -649,15 +655,24 @@ fun RowCard(node: GraphNode.RowNode, isSelected: Boolean = false) {
     val targetFileNo = resolved["target_file_no"]?.toString()
     val targetRowPos = resolved["pos"]?.toString() ?: resolved["position"]?.toString()
     val detailEntries = rowCardDetailEntries(node)
+    // The same fade a pruned node gets, and for the same reason: it says "a query does not read
+    // this" without a word. Left at full strength the card is the green of a live data row, which
+    // is colour arguing against the label printed on it.
+    val fade = if (node.isDeletedByVector) 0.45f else 1f
+    val cardColor = getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface))
     Box(
         modifier = Modifier
         .cardBox(node)
-        .background(getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface)), RoundedCornerShape(4.dp))
-        .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(4.dp))
+        .background(cardColor.copy(alpha = cardColor.alpha * fade), RoundedCornerShape(4.dp))
+        .border(
+            BorderStroke(borderWidth, borderColor.copy(alpha = borderColor.alpha * fade)),
+            RoundedCornerShape(4.dp),
+        )
     ) {
         CardColumn(padding = 6.dp) {
             Text(
-                "ROW $fileNo.$rowIdx: ${rowStatusShortLabel(node.content)}",
+                "ROW $fileNo.$rowIdx: ${rowStatusShortLabel(node.content)}" +
+                    if (node.isDeletedByVector) " — DELETED" else "",
                 fontSize = TypeScale.micro,
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextSecondary()
@@ -678,6 +693,10 @@ fun RowCard(node: GraphNode.RowNode, isSelected: Boolean = false) {
                     text = "$k: $v",
                     fontSize = TypeScale.micro,
                     color = nodeCardTextPrimary(),
+                    // Struck through as well as named: a reader scanning forty row cards is
+                    // looking at shapes, and the word is only found once the shape has stopped
+                    // them. Neither is enough on its own.
+                    textDecoration = if (node.isDeletedByVector) TextDecoration.LineThrough else null,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

@@ -17,6 +17,15 @@ private val ALLOWED_DATA_FILE_EXTENSIONS = setOf("parquet", "orc", "avro")
  */
 object SampleRowReader {
 
+    /**
+     * The column DuckDB adds for a row's physical position in its Parquet file.
+     *
+     * A file of its own carrying a column by this name would collide with it; nothing in Iceberg
+     * writes one, and the alternative — a generated alias — cannot be told apart from a real
+     * column either.
+     */
+    const val FILE_ROW_NUMBER = "file_row_number"
+
     init {
         Class.forName("org.duckdb.DuckDBDriver")
     }
@@ -53,6 +62,11 @@ object SampleRowReader {
     /**
      * Queries sample rows from a data file (Parquet, ORC, or Avro) using DuckDB.
      *
+     * For a Parquet file each row map also carries [FILE_ROW_NUMBER] — DuckDB's own count of the
+     * row's physical position in the file, which is what an Iceberg positional delete and a v3
+     * deletion vector both address. Callers that show the row to a person should lift it out of
+     * the map rather than draw it as a column.
+     *
      * @param filePath path to the data file on the local filesystem
      * @return list of row maps (column name → value), up to [GraphLayoutService.MAX_PARQUET_SAMPLE_ROWS] rows
      * @throws IllegalArgumentException if the file doesn't exist or has an unsupported extension
@@ -79,7 +93,16 @@ object SampleRowReader {
                 getConnection() // retry once
             }
 
-            val sql = "SELECT * FROM read_parquet(?) LIMIT ${GraphLayoutService.MAX_PARQUET_SAMPLE_ROWS}"
+            // Parquet gets `file_row_number`, which is the row's physical position in the file
+            // and so the coordinate a positional delete and a deletion vector both address. It is
+            // asked for rather than inferred from the result order: a scan may return rows in any
+            // order it likes, and the reader would have no way to tell that it had.
+            val sql = if (ext == "parquet") {
+                "SELECT * FROM read_parquet(?, file_row_number = true) " +
+                    "LIMIT ${GraphLayoutService.MAX_PARQUET_SAMPLE_ROWS}"
+            } else {
+                "SELECT * FROM read_parquet(?) LIMIT ${GraphLayoutService.MAX_PARQUET_SAMPLE_ROWS}"
+            }
             conn.prepareStatement(sql).use { pstmt ->
                 pstmt.setString(1, safePath)
                 val rs = pstmt.executeQuery()

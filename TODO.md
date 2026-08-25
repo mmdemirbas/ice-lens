@@ -21,9 +21,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   positions decoded (`service/PuffinReader.kt`), so the inspector answers which rows a vector
   deletes rather than only where the blob sits. What is still unsurfaced: **row lineage**
   (`first-row-id`, `added-rows`, `_row_id`, `_last_updated_sequence_number`) and the **variant /
-  geometry / geography / timestamp_ns** types. One smaller gap in the vector work itself: the
-  sample rows shown for the *referenced* data file are not marked as deleted, which is the one
-  place the decoded positions would be worth the most.
+  geometry / geography / timestamp_ns** types. What the vector work does *not* cover: an Iceberg
+  **positional delete** file (v2) marks no rows, because its targets are one per row and only
+  known after reading the file — the same reason there is no `e_dv_*`-style edge for it.
 
 - **Delete-file targeting is drawn where the format records it, and only there.** A v3 deletion
   vector's `referenced_data_file` is now an edge (`e_dv_*`, withheld from ELK). The two cases

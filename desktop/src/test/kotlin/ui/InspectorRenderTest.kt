@@ -468,9 +468,16 @@ class InspectorRenderTest {
         val snapshot = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().first()
         val manifest = graph.nodes.filterIsInstance<GraphNode.ManifestNode>().first()
         val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().first()
-        val vector = graphFor("v3").nodes.filterIsInstance<GraphNode.FileNode>().first { it.isDeletionVector }
+        val v3 = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/v3").absolutePath)),
+            showRows = true,
+        )
+        val vector = v3.nodes.filterIsInstance<GraphNode.FileNode>().first { it.isDeletionVector }
+        val deletedRow = v3.nodes.filterIsInstance<GraphNode.RowNode>().first { it.isDeletedByVector }
+        val liveRow = v3.nodes.filterIsInstance<GraphNode.RowNode>()
+            .first { !it.isDeletedByVector && it.filePosition != null }
 
-        renderScene("graph-cards", width = 700, height = 2000) {
+        renderScene("graph-cards", width = 700, height = 2400) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 TableCard(table)
                 MetadataCard(metadata)
@@ -493,6 +500,10 @@ class InspectorRenderTest {
                 // card draws and is what the node's 68dp is reserved for.
                 FileCard(vector)
                 FileCard(vector, isPruned = true)
+                RowCard(liveRow)
+                // The same row shape, in the file a deletion vector covers. The strike and the
+                // word only read as a state next to a row that does not carry them.
+                RowCard(deletedRow)
             }
         }
     }

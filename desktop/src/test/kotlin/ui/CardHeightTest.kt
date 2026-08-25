@@ -67,7 +67,7 @@ class CardHeightTest {
         // v3 for the deletion vector: its label is the longest a file card draws, and longer
         // again when the card is pruned, which is the state that has to be measured rather than
         // the one that is easy to reach.
-        val v3 = icebergGraph("v3")
+        val v3 = icebergGraph("v3")   // built with showRows = true, so its row cards are here too
         val cards = buildList {
             parted.nodes.filterIsInstance<GraphNode.TableNode>().firstOrNull()
                 ?.let { add("TableCard" to Card(it) { TableCard(it) }) }
@@ -93,8 +93,12 @@ class CardHeightTest {
                 ?.let { add("FileCard deletion vector" to Card(it) { FileCard(it) }) }
             v3.nodes.filterIsInstance<GraphNode.FileNode>().firstOrNull { it.isDeletionVector }
                 ?.let { add("FileCard deletion vector, pruned" to Card(it) { FileCard(it, isPruned = true) }) }
+            // A data row a deletion vector removes: its title line gains ` — DELETED`, which is
+            // the longest a row card's first line gets.
+            v3.nodes.filterIsInstance<GraphNode.RowNode>().firstOrNull { it.isDeletedByVector }
+                ?.let { add("RowCard deleted by a vector" to Card(it) { RowCard(it) }) }
         }
-        assertTrue(cards.size == 11, "only measured ${cards.map { it.first }}")
+        assertTrue(cards.size == 12, "only measured ${cards.map { it.first }}")
         assertFits(cards)
     }
 

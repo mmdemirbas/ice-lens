@@ -166,6 +166,18 @@ desktop/src/main/kotlin/
   the read path checks them, so the inspector does. It is also the suite's only assertion that
   compares what this code decoded against what Iceberg recorded about the same bytes — a status
   misread or an entry dropped shows up as a disagreement on a checked-in table
+- **A sampled row's position is asked for, not inferred.** DuckDB is given
+  `read_parquet(?, file_row_number = true)`, and `UnifiedRow.position` carries the answer as
+  something separate from the row's cells — it is DuckDB's statement about the file, not a column
+  the table declares. That position is the coordinate an Iceberg positional delete and a v3
+  deletion vector both address, so it is what `RowNode.isDeletedByVector` is decided against;
+  taking the row's ordinal in the result set instead would be a guess about scan order that
+  nothing in the result could contradict. The set of deleted positions reaches the row from
+  another node — the vector is a file node under some manifest, found by its
+  `referenced_data_file` — through an index built on first use, one vector opened per drawn data
+  file rather than every `.puffin` in the table. A deleted row card carries the word, the strike
+  and the fade: green at full strength is the colour of a live row, which would be colour arguing
+  against the label printed on it.
 - **A deletion vector is decoded, and decoded lazily.** `service/PuffinReader.kt` reads the
   Puffin container and the `deletion-vector-v1` blob inside it — a 4-byte big-endian length, the
   magic `D1 D3 39 64`, a 64-bit "portable" Roaring bitmap, and a 4-byte big-endian **CRC-32**
@@ -419,7 +431,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~530 tests across 56 files (403 in :core, 127 in :desktop) covering full pipelines for both formats (Avro fixtures
+~532 tests across 56 files (405 in :core, 127 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

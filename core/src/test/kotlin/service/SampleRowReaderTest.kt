@@ -41,6 +41,33 @@ class SampleRowReaderTest {
         assertEquals("world", rows[1]["name"])
     }
 
+    /**
+     * The physical row position, which is the coordinate a positional delete and a v3 deletion
+     * vector both address.
+     *
+     * Asked of DuckDB rather than taken from the order the rows came back in: a scan is free to
+     * return them in any order, and nothing in the result would say that it had. The check is that
+     * the position tracks the value written at that position, not merely that the column exists —
+     * a column of zeroes would satisfy the weaker assertion.
+     */
+    @Test
+    fun `each row carries its physical position in the file`() {
+        val parquetFile = createParquetFile("positions.parquet", """
+            SELECT 10 AS id UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13
+        """.trimIndent())
+
+        val rows = SampleRowReader.querySampleRows(parquetFile.absolutePath)
+        assertEquals(4, rows.size)
+        rows.forEachIndexed { index, row ->
+            val position = row[SampleRowReader.FILE_ROW_NUMBER]
+            assertNotNull(position, "row $index carries no position")
+            assertEquals(
+                (row["id"] as Number).toLong() - 10L, (position as Number).toLong(),
+                "the row written at position ${'$'}index says it sits somewhere else",
+            )
+        }
+    }
+
     @Test
     fun `querySampleRows handles NULL values`() {
         val parquetFile = createParquetFile("nulls.parquet", """

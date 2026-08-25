@@ -41,6 +41,21 @@ object IcebergGraphBuilder {
         val tableSummary = buildTableSummary(tableModel)
         logicalNodes[tableNodeId] = GraphNode.TableNode(tableNodeId, tableSummary)
 
+        // Deletion vectors by the data file each one covers, built on first use rather than here:
+        // the factories below close over this, and they run after the traversal has finished
+        // filling `logicalNodes`. Building it eagerly would index an empty map. No blob is read --
+        // `referenced_data_file` is in the manifest entry.
+        val vectorIndex = lazy {
+            logicalNodes.values.asSequence()
+                .filterIsInstance<GraphNode.FileNode>()
+                .filter { it.isDeletionVector }
+                .mapNotNull { vector ->
+                    vector.data.referencedDataFile?.let { normalizeFilePath(it) to vector }
+                }
+                .toMap()
+        }
+        val vectorsByReferencedPath: () -> Map<String, GraphNode.FileNode> = { vectorIndex.value }
+
         // Registry to map long Iceberg paths to simple IDs
         var nextFileId = 1
         val filePathToSimpleId = mutableMapOf<String, Int>()
@@ -242,6 +257,7 @@ object IcebergGraphBuilder {
                                     simpleId = simpleId,
                                     identifierFields = snapshotIdentifierFields,
                                     filePathToSimpleId = filePathToSimpleId,
+                                    vectorFor = { path -> vectorsByReferencedPath()[path] },
                                 )
                             }
                         }
@@ -357,23 +373,47 @@ object IcebergGraphBuilder {
         }
     }
 
+    /**
+     * The positions a deletion vector removes from one data file, or an empty set.
+     *
+     * Resolved through [vectorFor] at row-load time rather than at build time, and one vector at a
+     * time: the graph is built for every artifact the metadata names, so reading every `.puffin`
+     * file to answer a question about the four data files on screen is the cost the whole lazy
+     * arrangement exists to avoid.
+     */
+    private fun deletedPositionsFor(
+        dataFilePath: String?,
+        vectorFor: (String) -> GraphNode.FileNode?,
+    ): Set<Long> {
+        val path = dataFilePath?.takeIf { it.isNotEmpty() } ?: return emptySet()
+        val vector = vectorFor(normalizeFilePath(path)) ?: return emptySet()
+        return vector.deletionVector?.positions?.toSet().orEmpty()
+    }
+
     private fun sampleRowFactory(
         fileNodeId: String,
         dataFile: UnifiedDataFile,
         simpleId: Int,
         identifierFields: List<String>,
         filePathToSimpleId: Map<String, Int>,
+        vectorFor: (String) -> GraphNode.FileNode?,
     ): () -> List<GraphNode.RowNode> = {
         if (!Files.isRegularFile(dataFile.path)) {
             emptyList()
         } else {
             val contentType = dataFile.metadata.dataFile?.content ?: 0
+            val deleted = if (contentType == DataFileContent.DATA) {
+                deletedPositionsFor(dataFile.metadata.dataFile?.filePath, vectorFor)
+            } else {
+                emptySet()
+            }
             (0 until MAX_ROWS_PER_FILE).map { rowIndex ->
                 GraphNode.RowNode(
                     id = "row_${fileNodeId}_$rowIndex",
                     data = mapOf("file_no" to simpleId, "row_idx" to rowIndex),
                     content = contentType,
                     identifierFields = identifierFields,
+                    deletedPositions = deleted,
                     dataLoader = {
                         try {
                             val rows = dataFile.rows
@@ -383,6 +423,7 @@ object IcebergGraphBuilder {
                                 enriched["file_no"] = simpleId
                                 enriched["row_idx"] = rowIndex
                                 enriched["local_file_path"] = dataFile.path.toString()
+                                rowData.position?.let { enriched[GraphNode.RowNode.ROW_POSITION_KEY] = it }
                                 if (contentType > 0 && rowData.cells.containsKey("file_path")) {
                                     val targetPath = rowData.cells["file_path"].toString()
                                     val targetId = filePathToSimpleId[targetPath]

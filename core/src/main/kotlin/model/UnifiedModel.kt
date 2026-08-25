@@ -414,12 +414,27 @@ data class UnifiedDataFile(
      *  different depending on whether the table named that path or this tool rebuilt it. */
     val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
     private val rowsLoader: () -> List<UnifiedRow> = {
-        SampleRowReader.querySampleRows(path.toString()).map { UnifiedRow(it) }
+        SampleRowReader.querySampleRows(path.toString()).map(::unifiedRowOf)
     },
 ) {
     val rows: List<UnifiedRow> by lazy { rowsLoader() }
 }
 
+/**
+ * One sampled row.
+ *
+ * [position] is the row's physical position in its file — the coordinate an Iceberg positional
+ * delete and a v3 deletion vector both address — and is deliberately not a cell: it is DuckDB's
+ * answer about the file rather than a column the table declares, and drawing it beside the real
+ * columns would say the table has one it does not.
+ */
 data class UnifiedRow(
     val cells: Map<String, Any>,
+    val position: Long? = null,
+)
+
+/** Splits DuckDB's generated position column off the row's real cells. */
+private fun unifiedRowOf(row: Map<String, Any>): UnifiedRow = UnifiedRow(
+    cells = row - SampleRowReader.FILE_ROW_NUMBER,
+    position = (row[SampleRowReader.FILE_ROW_NUMBER] as? Number)?.toLong(),
 )

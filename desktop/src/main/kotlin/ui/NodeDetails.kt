@@ -379,6 +379,7 @@ private fun RecursiveDataTableSection(
         "file_path",
         "pos",
         "position",
+        GraphNode.RowNode.ROW_POSITION_KEY,
     )
     val allDataColumns = rows
         .flatMap { descendant -> effectiveDataByRowId[descendant.rowNode.id].orEmpty().keys }
@@ -1810,6 +1811,20 @@ fun NodeDetailsContent(
                             DetailRow("Column", "Value ($typeStr)", isHeader = true)
                             DetailRow("file_no", node.data["file_no"]?.toString() ?: "N/A")
                             DetailRow("row_idx", node.data["row_idx"]?.toString() ?: "N/A")
+                            // Physical position, and whether a v3 deletion vector removes it.
+                            // `row_idx` is this tool's counter over the sample; the position is
+                            // the file's own, and it is the one a delete addresses.
+                            node.filePosition?.let { position ->
+                                DetailRow("Position in file", position.toString())
+                                DetailRow(
+                                    "Deleted",
+                                    if (node.isDeletedByVector) {
+                                        "yes — a deletion vector marks this position"
+                                    } else {
+                                        "not by a deletion vector"
+                                    },
+                                )
+                            }
                             node.data.entries
                                 .filterNot { it.key == "file_no" || it.key == "row_idx" }
                                 .sortedBy { it.key }
