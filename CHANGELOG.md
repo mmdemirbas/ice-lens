@@ -52,6 +52,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the result would say that it had — and it is kept off the row as a column, because it is
   DuckDB's answer about the file rather than something the table declares.
 
+### Changed
+- **The table panel's three timestamps moved out of its identity table into a folded
+  `Table Times` section, and say what they are.** Each renders local, UTC and epoch, so three
+  rows were nine lines and about 600dp — roughly half of what stood between "Collapse all" and
+  the list of section names it is supposed to produce, and none of the three is identity. Their
+  labels were also wrong about what they hold: Iceberg records no table creation or update time,
+  and what was shown as "Table Created (Inferred)" is the oldest **retained** metadata, which
+  moves forward every time old metadata expires. They now read "Oldest retained metadata",
+  "Newest retained metadata" and "Current metadata last-updated-ms", with that caveat on screen.
+  The identity table itself still does not fold, which is deliberate — it is what the reader
+  selected the node to see.
+
 ### Fixed
 - **A group card was truncating the word that says what it hides.** At 200dp the count line read
   `6 more metadata versi…` — the number survived and the noun did not, which is the half a reader

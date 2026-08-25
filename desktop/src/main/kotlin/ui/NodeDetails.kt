@@ -860,9 +860,6 @@ fun NodeDetailsContent(
                                 summary.versionHintText?.takeIf { it.isNotBlank() }
                                     ?: "Not present — normal unless the table is HadoopCatalog-managed"
                             )
-                            DetailRow("Table Created (Inferred)", formatTimestamp(summary.tableCreationMs))
-                            DetailRow("Table Last Updated (Inferred)", formatTimestamp(summary.tableLastUpdateMs))
-                            DetailRow("Last Updated (UI)", formatTimestamp(summary.lastUpdatedMs))
                         }
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
@@ -876,6 +873,43 @@ fun NodeDetailsContent(
                         // has. It costs about eighty dp here while no filter is entered.
                         currentGraph?.let { graph ->
                             ScanPruningSection(graph, scanPredicates, onScanPredicatesChange)
+                        }
+
+                        // Folded, and out of the identity table above, because none of the three
+                        // is identity and together they were the largest thing on the panel: each
+                        // renders local, UTC and epoch, so three rows are nine lines and about
+                        // 600dp — roughly half of the ~1,300dp that stood between "Collapse all"
+                        // and the list of section names it produces. The same check on the other
+                        // node kinds says this is not a general rule about timestamps: a
+                        // snapshot's `Timestamp` and a Paimon data file's `Creation Time` are
+                        // recorded, singular, and part of what identifies the artifact, so they
+                        // stay where they are.
+                        Section("Table Times") {
+                            Text(
+                                "None of these is recorded by Iceberg as a table creation or " +
+                                    "update time — there is no such field. The first two are the " +
+                                    "ends of the retained metadata timeline, so expiring old " +
+                                    "metadata moves \"created\" forward and the table can be far " +
+                                    "older than it says.",
+                                fontSize = TypeScale.small,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            )
+                            DetailTable {
+                                DetailRow("Property", "Value", isHeader = true)
+                                DetailRow(
+                                    "Oldest retained metadata",
+                                    formatTimestamp(summary.tableCreationMs),
+                                )
+                                DetailRow(
+                                    "Newest retained metadata",
+                                    formatTimestamp(summary.tableLastUpdateMs),
+                                )
+                                DetailRow(
+                                    "Current metadata last-updated-ms",
+                                    formatTimestamp(summary.lastUpdatedMs),
+                                )
+                            }
                         }
 
                         Section("Metadata Files") {

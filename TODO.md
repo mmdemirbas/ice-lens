@@ -104,9 +104,19 @@ What is left:
   never becomes "and they remove 412 rows from these two files". That needs reading the delete
   files themselves, which is the cost aggregation exists to avoid — it belongs behind an explicit
   action, not on the graph-build path.
-- **Cross-manifest deduplication is invisible from a manifest.** The drill-down scopes it to the
-  manifest on screen and says so, but a reader who wants to know *which* manifest counted a file
-  first has to go back to the table's ledger and match by path.
+- **Cross-manifest deduplication is invisible from a manifest — and measurement says the case is
+  empty where the panel would show it.** The drill-down scopes deduplication to the manifest on
+  screen and says so; naming *which* manifest counted a file first would need the table's claim
+  map plumbed to the manifest node. Counted before building it, across all eight Iceberg
+  fixtures: entry-level duplicates in the **current** reading, which is what the manifest panel
+  shows (`liveEntriesOnly = true`), are **0 on every fixture** — inside one snapshot's closure a
+  data file is listed by exactly one manifest, so there is nothing for the annotation to say. The
+  five that exist are all in `mor`'s **history** reading, from its compaction, where old and new
+  manifests both name a path; that reading is shown on the *table* node, whose ledger already
+  names `firstCountedIn` per manifest but not per file. So the useful version of this is the
+  file-level claim on the **table's** history derivation, not on the manifest panel, and a
+  fixture with two manifests listing one file inside a single snapshot would be needed before the
+  manifest-panel version explains anything at all.
 - **Paimon has no drill-down.** `PaimonGraphBuilder` builds its contributions with its own
   accumulation, which the shared per-entry ledger does not cover — a delta manifest list applies
   over a base, so its entries subtract as well as add.
@@ -153,12 +163,17 @@ What is left:
   Catching that needs the two halves measured separately, which means the card telling the test
   which part is ours.
 
-- **The identity table at the top of a panel cannot be folded.** Every node type opens with an
-  unsectioned `DetailTable` naming the node — path, UUID, format version, timestamps — and
-  `Section` does not wrap it, so "Collapse all" on a table leaves about 1,100dp on screen above a
-  list of eight folded headings. Whether that is a defect is a real question: the identity is what
-  the reader selected the node to see, and a panel that folds to nothing but its own title is not
-  obviously better. Deciding it needs the folded panel in front of a reader, not an argument.
+- **The identity table at the top of a panel still cannot be folded, and now does not need to
+  be — on the table node.** Decided from `table-node-folded-1.png` rather than argued: the
+  identity is what the reader selected the node to see, so folding it was the wrong fix. What was
+  wrong was its contents. Three of the table's eleven rows were timestamps, each rendering local,
+  UTC and epoch, so they were nine lines and about 600dp of the ~1,300dp standing between
+  "Collapse all" and the list it produces — and none of the three is identity. They are now a
+  folded `Table Times` section and the folded panel fits a screen. The other node kinds were
+  checked and are a different case: a snapshot's `Timestamp` and a Paimon data file's
+  `Creation Time` are recorded, singular, and part of what identifies the artifact.
+  `MetadataNode` is the one left long — 22 identity rows, only two of them timestamps, so nothing
+  here applies to it and it needs its own decision about what a metadata file's identity is.
 
 - **Keyboard coverage stops at the four navigable surfaces.** The canvas, the structure tree, the
   workspace and the inspector's section headers all take the keyboard and show focus. What has no

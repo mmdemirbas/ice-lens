@@ -520,7 +520,13 @@ first frame, so a single-frame capture shows a panel the running app never draws
 can capture the panel with every section folded. That capture is what the folding is judged by —
 whether the carets line up, whether the titles read as a list of what the node holds, and whether
 the whole thing fits in a screen. It is also what showed that the identity table at the top of
-every panel is not inside a `Section` and so does not fold, which no assertion was going to say.
+every panel is not inside a `Section` and so does not fold, which no assertion was going to say —
+and then what settled that the fix was not to fold it. The identity is what the reader selected
+the node to see; what was wrong was that three of the table's eleven identity rows were
+timestamps rendering local, UTC and epoch, nine lines and about 600dp of the ~1,300dp above the
+section list, and none of them identity. They are a folded `Table Times` section now. **A
+timestamp is not automatically a candidate**: a snapshot's `Timestamp` and a Paimon data file's
+`Creation Time` are recorded, singular, and part of what identifies the artifact.
 
 **A capture where every row says the same thing checks nothing.** `scan-pruning-table-*.png`
 renders the filter over `parted` with a literal one day past the narrow manifest's range, so one
