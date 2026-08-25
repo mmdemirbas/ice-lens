@@ -49,6 +49,7 @@ core/src/main/kotlin/
 │   ├── SingleValueDecoder.kt  # Appendix D: bytes + type → DecodedValue (bounds, partition values)
 │   ├── PuffinSchema.kt        # Puffin footer JSON + DeletionVector (positions, and the two figures it is checked against)
 │   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
+│   ├── BucketTransform.kt     # Iceberg's bucket[N], via the same Guava murmur3 the writer uses
 │   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures AND the file set, one walk
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
@@ -270,6 +271,18 @@ desktop/src/main/kotlin/
   in one function on purpose**: a scan that ruled a manifest out never opens the entries inside it,
   so a file under it is `NOT_REACHED` and not `SKIPPED`, whatever its own bounds say. Reporting it
   as skipped would credit the wrong term and double-count it against the file stage
+- **`bucket[N]` prunes on equality, and only because the hash is the writer's own.**
+  `BucketTransform` calls `Hashing.murmur3_32_fixed()` — the same Guava function Iceberg's
+  `Bucket` transform calls — so nothing here re-derives a hash, and the only thing left to get
+  wrong is how a value becomes bytes. That part is checked against the writer, not the spec text:
+  `BucketTransformTest` reproduces the `id_bucket` Spark recorded for each data file of `parted`
+  and `respec` from the file's own bounds, at **two different bucket counts**, so a modulus applied
+  at the wrong point cannot pass both. `c = v` implies `bucket(c) = bucket(v)`, so a literal whose
+  bucket falls outside a manifest's recorded bucket range is a proof — **and nothing else crosses**:
+  a range of bucket numbers says nothing about a range of values, so every other operator still
+  reports it did not evaluate. `BucketPruningTest` checks the direction that matters, that no value
+  the table actually holds is pruned away; a wrong sign still skips *something*, so "a manifest was
+  skipped" proves nothing on its own
 - **A manifest is evaluated against its own partition spec, never the table's current one.**
   `evaluatePruning(graph, predicates)` in `model/ScanPruning.kt` reads each
   `ManifestNode.partitionSummaries`, decoded against the spec that manifest records — the same

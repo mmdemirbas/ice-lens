@@ -27,11 +27,15 @@ import java.util.UUID
  *
  * - `identity`, `year`, `month`, `day`, `hour`, `truncate[W]` are monotonic, so `c < v` implies
  *   `T(c) <= T(v)` and a range on the source becomes a range on the partition value.
- * - `bucket[N]` is not. Equality is still prunable in principle — a scan computes `bucket(v)` and
- *   compares — but that means reproducing Iceberg's 32-bit murmur3 over its own serialisation of
- *   the value, and a hash re-implemented from a spec agrees with itself long before it agrees
- *   with the writer. Until there is an oracle for it, a bucket field reports that it did not
- *   evaluate rather than a verdict that might be wrong.
+ * - `bucket[N]` is not monotonic, so no range crosses it — but **equality does**, and that is now
+ *   evaluated: `c = v` implies `bucket(c) = bucket(v)`, and the summary records the range of
+ *   bucket numbers the manifest holds. The reason it was declined before was that computing the
+ *   bucket meant reproducing Iceberg's murmur3, and a hash written from a spec agrees with itself
+ *   long before it agrees with the writer. [BucketTransform] does not reproduce it — it calls the
+ *   same Guava function Iceberg's own `Bucket` transform calls — and `BucketTransformTest` checks
+ *   the result against the bucket numbers Spark recorded, at two different bucket counts. Every
+ *   other operator on a bucket field still reports that it did not evaluate, because a range of
+ *   bucket numbers says nothing whatever about a range of values.
  * - `void` writes null for every row and can never eliminate anything.
  *
  * Every one of those cases is reported, never dropped: a field that could not be evaluated says
@@ -140,6 +144,85 @@ private fun PartitionSummary.matches(column: String): Boolean {
     return field.name.equals(wanted, ignoreCase = true) || sourceName.equals(wanted, ignoreCase = true)
 }
 
+/**
+ * What one predicate does to one manifest, when the partition field is a `bucket[N]`.
+ *
+ * Split out because a bucket is decidable for exactly one operator and undecidable for the rest,
+ * which is a different shape from every other transform. `c = v` implies `bucket(c) = bucket(v)`,
+ * so a literal whose bucket falls outside the range of bucket numbers this manifest records is a
+ * proof the manifest cannot hold a matching row — the same reasoning `EQ` uses on an
+ * order-preserving field, minus the ordering.
+ *
+ * **Nothing else crosses.** `id > 1000` says nothing at all about bucket numbers: bucketing is a
+ * hash, so the rows above 1000 are spread over every bucket and a manifest holding buckets 2–3
+ * may hold any of them. `<>` is worse than useless — a manifest whose whole bucket range is
+ * `bucket(v)` still holds other values that hash there. Both report that they did not evaluate,
+ * which is a different statement from "would be read".
+ */
+private fun evaluateBucketTerm(
+    summary: PartitionSummary,
+    predicate: ScanPredicate,
+    buckets: Int,
+    fieldName: String,
+    transform: String,
+): PredicateOutcome {
+    fun outcome(effect: TermEffect, reason: String) =
+        PredicateOutcome(predicate, fieldName, transform, effect, reason)
+
+    if (predicate.op != PredicateOp.EQ) {
+        return outcome(
+            TermEffect.NOT_EVALUATED,
+            "$transform is a hash, so a range of bucket numbers says nothing about a range of " +
+                "values — only equality crosses it",
+        )
+    }
+
+    val sourceType = summary.sourceType ?: return outcome(
+        TermEffect.NOT_EVALUATED,
+        "the manifest carried no schema, so the type of '${predicate.column}' is unknown and its " +
+            "literal cannot be read",
+    )
+    val literal = parseLiteral(predicate.literal, sourceType) ?: return outcome(
+        TermEffect.NOT_EVALUATED,
+        "'${predicate.literal}' is not a ${sourceType.typeName}, which is what '${predicate.column}' is",
+    )
+    val bucket = BucketTransform.bucketOf(literal, buckets) ?: return outcome(
+        TermEffect.NOT_EVALUATED,
+        "a ${sourceType.typeName} has no bucket transform — the spec excludes boolean and floating point",
+    )
+
+    val lower = summary.lower?.takeIf { !it.isError }?.value
+    val upper = summary.upper?.takeIf { !it.isError }?.value
+    if (lower == null || upper == null) {
+        return outcome(
+            TermEffect.NOT_EVALUATED,
+            "$fieldName has no usable ${if (lower == null) "lower" else "upper"} bound recorded in " +
+                "this manifest, so there is no range of buckets to rule the literal out against",
+        )
+    }
+
+    val typed = predicate.literal.trim().removeSurrounding("'").removeSurrounding("\"")
+    val applied = "$transform($typed) = $bucket"
+    val range = "${summary.humanLower} … ${summary.humanUpper}"
+
+    val below = compareValues(bucket, lower) ?: return outcome(
+        TermEffect.NOT_EVALUATED,
+        "this field's bounds are ${summary.type.typeName}, which cannot be compared with a bucket number",
+    )
+    val above = compareValues(bucket, upper) ?: return outcome(
+        TermEffect.NOT_EVALUATED,
+        "this field's bounds are ${summary.type.typeName}, which cannot be compared with a bucket number",
+    )
+
+    return when {
+        below < 0 -> outcome(TermEffect.SKIPS, "$applied is below $range")
+        above > 0 -> outcome(TermEffect.SKIPS, "$applied is above $range")
+        // Inside the range is not a match: many values hash to one bucket, and the range is a
+        // range of bucket numbers rather than a set of them.
+        else -> outcome(TermEffect.KEEPS, "$applied is inside $range")
+    }
+}
+
 private fun evaluateTerm(summary: PartitionSummary, predicate: ScanPredicate): PredicateOutcome {
     val fieldName = summary.field.name ?: "field ${summary.field.fieldId}"
     val transform = summary.field.transformName.ifEmpty { "identity" }
@@ -165,6 +248,10 @@ private fun evaluateTerm(summary: PartitionSummary, predicate: ScanPredicate): P
         else -> Unit
     }
 
+    bucketCount(transform)?.let { buckets ->
+        return evaluateBucketTerm(summary, predicate, buckets, fieldName, transform)
+    }
+
     val bridge = transformBridge(transform)
     if (bridge == null) {
         return outcome(
@@ -172,11 +259,6 @@ private fun evaluateTerm(summary: PartitionSummary, predicate: ScanPredicate): P
             when {
                 transform == "void" ->
                     "void writes null for every row, so its bounds describe nothing and it can never prune"
-                // Kept short on purpose: this cell shares a 400dp column with whatever the other
-                // terms said, and the sentence that gets truncated is the one nobody reads.
-                bucketCount(transform) != null ->
-                    "$transform is not order-preserving, so no range rules it out, and equality " +
-                        "would need Iceberg's own hash"
                 else -> "'$transform' is not a transform this evaluator can translate a literal through"
             },
         )
@@ -677,8 +759,14 @@ data class PrunableColumn(
     /** True when some data file records bounds for this column. */
     val hasFileBounds: Boolean,
 ) {
-    /** True when some partition field over this column is one a range can be intersected with. */
-    val prunesManifests: Boolean get() = transforms.any { it != "void" && bucketCount(it) == null }
+    /**
+     * True when some partition field over this column can rule a manifest out.
+     *
+     * A bucket counts: it prunes on equality only, but it prunes — which is why this is no longer
+     * "a range can be intersected with". `void` is the only transform that can never eliminate
+     * anything, because it writes null for every row.
+     */
+    val prunesManifests: Boolean get() = transforms.any { it != "void" }
 
     /** True when the column can eliminate a file even though no manifest turns on it. */
     val prunesFiles: Boolean get() = hasFileBounds

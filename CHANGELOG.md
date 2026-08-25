@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A `bucket[N]` partition field now prunes on equality.** It used to report that it did not
+  evaluate, and that was the right answer while it lasted: pruning a bucket means computing
+  `bucket(v)`, and a hash written from a spec agrees with itself long before it agrees with the
+  writer — a wrong bucket number would skip a manifest holding the rows. What changed is the
+  evidence. The bucket is computed with `Hashing.murmur3_32_fixed()`, the same Guava function
+  Iceberg's own `Bucket` transform calls, and the result is checked against the bucket numbers
+  Spark recorded for `parted` and `respec` — the latter bucketing the same ids at both 4 and 8, so
+  a modulus applied at the wrong point cannot pass. Every other operator still declines, because a
+  range of bucket numbers says nothing about a range of values. A bucketed column is now offered
+  in the filter's column list as one that prunes manifests.
 - **The comparison works for Paimon too, through one seam and two unrelated answers.**
   `ComparableSnapshot` is what the panel reads, so it never asks which format it is drawing; each
   node type answers its own way. Getting there meant extracting Paimon's replay out of the graph

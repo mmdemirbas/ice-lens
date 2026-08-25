@@ -308,6 +308,32 @@ class InspectorRenderTest {
     }
 
     /**
+     * Equality on a bucketed column, which is the one shape no other capture reaches.
+     *
+     * `id <= 7` above deliberately shows a bucket **declining** — a hash orders nothing. Equality
+     * is the case that now reaches a verdict, and until this capture existed it appeared in no
+     * render at all: the feature would have been asserted by two test files and looked at by
+     * nobody. The literal is one the table holds, so the manifest carrying it must read as kept
+     * and any manifest whose bucket range excludes it as skipped — a verdict column with one kind
+     * of row in it cannot be judged for whether the exception is findable.
+     *
+     * The literal is chosen so that its bucket is **not** the literal. `id = 3` buckets to 3 under
+     * `bucket[4]`, and the reason then reads `bucket[4](3) = 3` — a picture in which a reader
+     * cannot see that a transform happened at all. A capture has to show the thing its caption
+     * claims.
+     */
+    @Test
+    fun `a bucket field renders a verdict for equality`() {
+        val graph = partedGraph()
+        val table = graph.nodes.filterIsInstance<GraphNode.TableNode>().first()
+        val literal = (1..64).first { model.BucketTransform.bucketOf(it, 4) != it }
+        val predicates = listOf(ScanPredicate("id", PredicateOp.EQ, "$literal"))
+        renderScene("scan-pruning-bucket", width = 1400, height = 3200) {
+            NodeDetailsContent(graph, setOf(table.id), scanPredicates = predicates)
+        }
+    }
+
+    /**
      * The canvas itself. Everything else here renders one component in isolation, which cannot
      * see where a control ends up on the surface it belongs to — the badge sits opposite the
      * mini-map, and "opposite" is a claim about a screen, not about a composable.

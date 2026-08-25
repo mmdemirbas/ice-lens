@@ -21,6 +21,8 @@ dependencies {
 
     implementation(libs.duckdb.jdbc)
     implementation(libs.logback.classic)
+    // Iceberg's Bucket transform hashes with this exact function; see model/BucketTransform.kt.
+    implementation(libs.guava)
 
     testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.junit.jupiter)

@@ -120,13 +120,39 @@ class ScanPruningTest {
         )
     }
 
+    /**
+     * A bucket field decides equality, and declines everything else.
+     *
+     * This test used to assert the opposite for equality too, and it was right to: computing the
+     * bucket meant reproducing Iceberg's murmur3, and a verdict from a hash that agreed only with
+     * itself would prune manifests holding the rows. What changed is not the argument but the
+     * evidence — `BucketTransform` calls the same Guava function Iceberg's own transform calls,
+     * and `BucketTransformTest` checks the result against the buckets Spark recorded at two
+     * different bucket counts. The old assertion is superseded, not relaxed.
+     *
+     * The other operators still decline, and that half has not changed at all: bucketing is a
+     * hash, so a range of bucket numbers says nothing about a range of values.
+     */
     @Test
-    fun `a bucket field reports that it did not evaluate rather than a verdict`() {
-        val outcome = evaluate(wide(), ScanPredicate("id", PredicateOp.EQ, "7"))
+    fun `a bucket field decides equality and declines every other operator`() {
+        val decided = evaluate(wide(), ScanPredicate("id", PredicateOp.EQ, "7"))
             .outcomes.single { it.fieldName == "id_bucket" }
+        assertTrue(
+            decided.effect != TermEffect.NOT_EVALUATED,
+            "equality across a bucket is decidable: ${decided.reason}",
+        )
+        assertTrue(decided.reason.contains("bucket"), decided.reason)
 
-        assertEquals(TermEffect.NOT_EVALUATED, outcome.effect)
-        assertTrue(outcome.reason.contains("bucket"), outcome.reason)
+        listOf(PredicateOp.LT, PredicateOp.LTE, PredicateOp.GT, PredicateOp.GTE, PredicateOp.NOT_EQ)
+            .forEach { op ->
+                val outcome = evaluate(wide(), ScanPredicate("id", op, "7"))
+                    .outcomes.single { it.fieldName == "id_bucket" }
+                assertEquals(
+                    TermEffect.NOT_EVALUATED,
+                    outcome.effect,
+                    "$op across a hash proves nothing: ${outcome.reason}",
+                )
+            }
     }
 
     @Test

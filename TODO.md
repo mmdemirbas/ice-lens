@@ -9,11 +9,11 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 
 - **Pruning is answered for a filter, but the filter is a form and not a clause.** Both stages are
   modelled now — manifests by partition summary, files by their own column bounds — and the panel
-  reports which and why (`model/ScanPruning.kt`). Three gaps remain. `bucket[N]` equality is
-  reported as not-evaluated rather than pruned, which is correct today and stops being the right
-  answer once there is an oracle for Iceberg's murmur3 — the fixture tables give one, since each
-  file's own bucket value is recorded beside it. A `WHERE` clause would be more familiar than the
-  form and is worth having, at the cost of a second place where a literal is read. And **the
+  reports which and why (`model/ScanPruning.kt`). Two gaps remain. `bucket[N]` equality is
+  evaluated now (`model/BucketTransform.kt`, checked against the buckets Spark recorded at two
+  bucket counts), and every other operator on a bucket field still declines, correctly — a range of
+  bucket numbers says nothing about a range of values. A `WHERE` clause would be more familiar than
+  the form and is worth having, at the cost of a second place where a literal is read. And **the
   predicates are a conjunction only**: there is no `OR`, no `NOT` and no grouping, which is fine
   for "why did this read so much" and wrong for reproducing a real query's plan.
 
