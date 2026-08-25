@@ -469,7 +469,7 @@ class InspectorRenderTest {
         val manifest = graph.nodes.filterIsInstance<GraphNode.ManifestNode>().first()
         val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().first()
 
-        renderScene("graph-cards", width = 700, height = 1300) {
+        renderScene("graph-cards", width = 700, height = 1400) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 TableCard(table)
                 MetadataCard(metadata)
@@ -480,6 +480,11 @@ class InspectorRenderTest {
                 // card its last line — and the two only read as distinguishable side by side.
                 ManifestCard(manifest, isPruned = true)
                 FileCard(file)
+                // The same pair for a file, since file-level pruning fades these too. A file card
+                // is half a manifest card's height and carries three lines rather than two, so
+                // "the fade is still legible and the extra word still fits" is a separate
+                // question from the one the manifest pair answers.
+                FileCard(file, isPruned = true)
             }
         }
     }
