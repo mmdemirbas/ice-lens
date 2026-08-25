@@ -39,6 +39,8 @@ import kotlinx.coroutines.withContext
 import service.PositionalDeleteTally
 import service.SampleRowReader
 import model.DataFile
+import model.DiffSide
+import model.snapshotDiff
 import model.EntryFate
 import model.LedgerEntry
 import model.ManifestEntryView
@@ -737,6 +739,24 @@ fun NodeDetailsContent(
             }
             if (selectedNodeIds.size > 1) {
                 val multiGraph = graphModel
+                // Two snapshots selected is a question, not an accident: it is the only way to
+                // ask what is different between two commits that are not parent and child. The
+                // panel is scrollable because the answer is a file list, unlike the summary
+                // table this branch otherwise shows.
+                val pair = multiGraph?.let { comparableSnapshots(it, selectedNodeIds) }
+                if (pair != null) {
+                    Box(Modifier.fillMaxSize()) {
+                        val scroll = rememberScrollState()
+                        Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(8.dp)) {
+                            SnapshotComparison(pair.first, pair.second)
+                        }
+                        VerticalScrollbar(
+                            adapter = rememberScrollbarAdapter(scroll),
+                            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                        )
+                    }
+                    return@CompositionLocalProvider
+                }
                 Column(Modifier.padding(8.dp)) {
                     Text("${selectedNodeIds.size} Nodes Selected", fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
@@ -749,6 +769,14 @@ fun NodeDetailsContent(
                                 val n = multiGraph.nodeById[id] ?: return@forEach
                                 DetailRow(nodeTitle(n), multiSelectKey(n))
                             }
+                        }
+                        if (multiGraph.nodeById.values.count { it.id in selectedNodeIds && it is GraphNode.SnapshotNode } > 2) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Select exactly two snapshots to compare what they hold.",
+                                fontSize = TypeScale.small,
+                                color = colors.onSurfaceVariant,
+                            )
                         }
                     }
                 }
@@ -2165,6 +2193,221 @@ private fun diffSchemas(oldSchema: TableSchema, newSchema: TableSchema): List<Sc
  * vector whose bytes do not match its own CRC is a corrupted table, and a reader looking at this
  * panel is the person who needs to know.
  */
+/**
+ * The two selected snapshots, oldest first, or null when the selection is not exactly two of them.
+ *
+ * Oldest first so that "added" and "removed" mean what a reader expects: the comparison runs
+ * forward in time whichever order the two were clicked in. Sequence number decides it because it
+ * is the commit order Iceberg itself assigns; the timestamp is a clock and two commits a
+ * millisecond apart on a fast writer can carry the same one. Snapshot id breaks the remaining tie
+ * so the panel is at least stable rather than flipping between recompositions.
+ */
+private fun comparableSnapshots(
+    graph: GraphModel,
+    selectedNodeIds: Set<String>,
+): Pair<GraphNode.SnapshotNode, GraphNode.SnapshotNode>? {
+    val selected = selectedNodeIds.mapNotNull { graph.nodeById[it] }
+    if (selected.size != 2) return null
+    val snapshots = selected.filterIsInstance<GraphNode.SnapshotNode>()
+    if (snapshots.size != 2 || snapshots.any { !it.canDiff }) return null
+
+    val ordered = snapshots.sortedWith(
+        compareBy(
+            { it.data.sequenceNumber ?: Long.MAX_VALUE },
+            { it.data.timestampMs ?: Long.MAX_VALUE },
+            { it.data.snapshotId ?: Long.MAX_VALUE },
+        ),
+    )
+    return ordered[0] to ordered[1]
+}
+
+/**
+ * What is different between the contents of two snapshots.
+ *
+ * The panel's answer to a question `What this commit did` cannot reach. That section reads the
+ * manifests one commit wrote and is only defined against that commit's parent; this is a set
+ * difference between two complete live file sets, so the two need no relationship — a branch tip
+ * against `main`, or a snapshot against one ten commits back.
+ *
+ * Computing it is in-memory work over a model that is already fully read, not I/O, so it happens
+ * in a `remember` keyed on the two nodes rather than behind a button like the delete-file read.
+ * What is deferred is the walk itself: `SnapshotNode.liveFiles` is a `DeferredRead`, so a table of
+ * twenty commits never walks twenty closures to answer a question about two.
+ */
+@Composable
+private fun SnapshotComparison(from: GraphNode.SnapshotNode, to: GraphNode.SnapshotNode) {
+    val colors = MaterialTheme.colorScheme
+    val diff = remember(from.id, to.id) {
+        snapshotDiff(
+            from.data.snapshotId, from.liveFiles.orEmpty(),
+            to.data.snapshotId, to.liveFiles.orEmpty(),
+        )
+    }
+
+    Text(
+        "Comparing two snapshots",
+        fontSize = TypeScale.title,
+        fontWeight = FontWeight.Bold,
+        color = colors.onSurface,
+    )
+    Spacer(Modifier.height(8.dp))
+
+    DetailTable {
+        DetailRow("Property", "Value", isHeader = true)
+        DetailRow("From (older)", "Snapshot ${from.simpleId} — ${from.data.snapshotId ?: "N/A"}")
+        DetailRow("To (newer)", "Snapshot ${to.simpleId} — ${to.data.snapshotId ?: "N/A"}")
+        DetailRow(
+            "Relationship",
+            when {
+                to.data.parentSnapshotId == from.data.snapshotId -> "Parent and child"
+                from.data.parentSnapshotId == to.data.snapshotId ->
+                    "Parent and child, and the newer one is the parent — the sequence numbers say so"
+                else -> "Not parent and child. This is a set difference, not a replay of the commits between them."
+            },
+        )
+    }
+
+    Section("What changed") {
+        Text(
+            buildString {
+                if (diff.isEmpty) {
+                    append("These two snapshots hold exactly the same files. ")
+                    append("A commit that only rewrites metadata leaves the contents alone.")
+                } else {
+                    append("Reading forward, from the older snapshot to the newer. ")
+                    append(
+                        "Both sides are the live contents of each snapshot — every file its " +
+                            "manifests still list — rather than the commits in between, which is " +
+                            "what lets two snapshots on different branches be compared at all.",
+                    )
+                }
+                if (diff.contradictory.isNotEmpty()) {
+                    append(
+                        " ${formatCount(diff.contradictory.size)} paths appear on both sides with " +
+                            "different figures, which an immutable data file should make impossible.",
+                    )
+                }
+            },
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            headers = listOf("Figure", "Added", "Removed", "Net"),
+            columnWidths = listOf(180.dp, 120.dp, 120.dp, 120.dp),
+            rows = listOf(
+                listOf(
+                    "Data files",
+                    formatCount(diff.addedStats.dataFileCount),
+                    formatCount(diff.removedStats.dataFileCount),
+                    signed(diff.netDataFileCount.toLong()),
+                ),
+                listOf(
+                    "Delete files",
+                    formatCount(diff.addedStats.deleteFileCount),
+                    formatCount(diff.removedStats.deleteFileCount),
+                    signed((diff.addedStats.deleteFileCount - diff.removedStats.deleteFileCount).toLong()),
+                ),
+                listOf(
+                    "Records",
+                    formatCount(diff.addedStats.recordCount),
+                    formatCount(diff.removedStats.recordCount),
+                    signed(diff.netRecordCount),
+                ),
+                listOf(
+                    "Bytes",
+                    formatBytes(diff.addedStats.totalSizeBytes),
+                    formatBytes(diff.removedStats.totalSizeBytes),
+                    signedBytes(diff.netSizeBytes),
+                ),
+                listOf("Files on both sides", "—", "—", formatCount(diff.unchanged.size)),
+            ),
+        )
+    }
+
+    val moved = diff.removed + diff.added + diff.contradictory
+    if (moved.isNotEmpty()) {
+        Section("Files that differ (${formatCount(moved.size)})") {
+            Text(
+                if (diff.unchanged.isEmpty()) {
+                    "Every file differs — no file is on both sides. Between these two snapshots " +
+                        "the table was rewritten rather than added to."
+                } else {
+                    // Files on both sides are deliberately not listed: on a table of any size they
+                    // are almost all of it, and a list where nearly every row reads the same hides
+                    // the handful that do not. The figures above count them.
+                    "Only the files that are on one side and not the other. " +
+                        "${formatCount(diff.unchanged.size)} more are on both sides and are counted " +
+                        "above rather than listed, because a list where almost every row reads the " +
+                        "same hides the rows that do not."
+                },
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+            val shown = moved.take(MAX_DIFF_ROWS)
+            WideTable(
+                // "Change", the same header the commit table uses, because it holds the same
+                // three words and a reader who has seen one should not have to re-read the other.
+                headers = listOf("Change", "File", "Kind", "Rows", "Size"),
+                columnWidths = listOf(110.dp, 340.dp, 100.dp, 80.dp, 90.dp),
+                rows = shown.map { entry ->
+                    listOf(
+                        when (entry.side) {
+                            DiffSide.ONLY_IN_TO -> "added"
+                            DiffSide.ONLY_IN_FROM -> "REMOVED"
+                            DiffSide.CHANGED -> "CONTRADICTS"
+                            DiffSide.IN_BOTH -> "both"
+                        },
+                        fileNameFromPath(entry.file.path),
+                        when (entry.file.content) {
+                            DataFileContent.POSITION_DELETES -> "pos delete"
+                            DataFileContent.EQUALITY_DELETES -> "eq delete"
+                            else -> "data"
+                        },
+                        formatCount(entry.file.recordCount),
+                        formatBytes(entry.file.sizeBytes),
+                    )
+                },
+                // A removal is the exception on an append-mostly table and is the row a reader
+                // comparing two points in history is looking for; a contradiction is louder still.
+                leadCellColors = shown.map { entry ->
+                    when (entry.side) {
+                        DiffSide.ONLY_IN_FROM -> colors.error
+                        DiffSide.CHANGED -> colors.error
+                        else -> null
+                    }
+                },
+            )
+            if (moved.size > MAX_DIFF_ROWS) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Showing the first ${formatCount(MAX_DIFF_ROWS)} of ${formatCount(moved.size)}. " +
+                        "The figures above cover all of them.",
+                    fontSize = TypeScale.small,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The most file rows a comparison lists.
+ *
+ * Two snapshots either side of a large rewrite differ by every file in the table, and a `Column`
+ * of a hundred thousand rows is a frozen window. The cap is stated on screen when it bites — the
+ * same rule aggregation follows on the graph, for the same reason: a number silently truncated
+ * reads as the whole answer.
+ */
+private const val MAX_DIFF_ROWS = 500
+
+/** A net figure with its sign, because "0" and "-1,204" mean very different things in that column. */
+private fun signed(value: Long): String = if (value > 0) "+${formatCount(value)}" else formatCount(value)
+
+private fun signedBytes(value: Long): String =
+    if (value >= 0) "+${formatBytes(value)}" else "-${formatBytes(-value)}"
+
 /**
  * Which data files a v2 positional delete file removes rows from, and how many out of each.
  *

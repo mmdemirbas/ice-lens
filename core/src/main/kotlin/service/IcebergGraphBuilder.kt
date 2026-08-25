@@ -171,6 +171,9 @@ object IcebergGraphBuilder {
                         pathResolution = snapshot.pathResolution,
                         refs = snap.snapshotId?.let { currentRefs[it] }.orEmpty(),
                         change = snapshotChangeOf(snapshot),
+                        // Deferred, not computed: this walks the snapshot's whole manifest
+                        // closure, and only two snapshots in a table are ever compared.
+                        liveFilesLoader = DeferredRead.of { liveFilesOf(snapshot) },
                     )
                 }
                 snapshot.readErrors.forEach { error ->

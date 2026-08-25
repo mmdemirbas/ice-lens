@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Any two snapshots can now be compared, not just a commit against its parent.** Selecting
+  exactly two snapshots on the canvas replaces the multi-select summary with a comparison: what
+  each side holds that the other does not, the net change in files, records and bytes, and the
+  files themselves. "What this commit did" answers a different question and neither replaces the
+  other — that one reads the manifests one commit wrote and is defined only against that commit's
+  parent, so it cannot say anything about a branch tip against `main`, or about two snapshots ten
+  commits apart. This is a set difference between two complete live file sets, so the two need no
+  relationship at all. Both sides are folded through the same ledger the table's own `current`
+  figures come from, which is what lets the test use those figures as an oracle across all eight
+  fixtures. The walk is deferred, so a table of twenty commits never walks twenty closures to
+  answer a question about two.
 - **A positional delete file now says what it deletes from.** The panel used to point at the
   sample rows and leave the reader to read `(file_path, pos)` pairs fifty at a time; "3 delete
   files" never became "and they remove 412 rows from these two files", because that breakdown is

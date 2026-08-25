@@ -49,6 +49,7 @@ core/src/main/kotlin/
 │   ├── SingleValueDecoder.kt  # Appendix D: bytes + type → DecodedValue (bounds, partition values)
 │   ├── PuffinSchema.kt        # Puffin footer JSON + DeletionVector (positions, and the two figures it is checked against)
 │   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
+│   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
 │   ├── ManifestLedger.kt      # Per-entry: what it added to a manifest's figures, or which rule dropped it
@@ -176,6 +177,20 @@ desktop/src/main/kotlin/
   deletion vector's `content_size_in_bytes`, not its Puffin file's size** — one container holds a
   blob per data file it covers, so charging the container once per vector counts the same bytes
   repeatedly
+- **Two snapshots are compared as sets, never as a replay of the commits between them.**
+  `model/SnapshotDiff.kt` answers "what is different between these two", which is not the question
+  `SnapshotChange` answers and cannot be built out of it: `SnapshotChange` is defined only against
+  a commit's *parent*, so a branch tip against `main` has no path to fold along, and a snapshot on
+  a path that aggregation folded into a group is not in the drawn graph to fold. `liveFilesOf`
+  runs the **same `manifestLedger`** the table's `current` figures are folded from, with one shared
+  `seenFileKeys` across the closure — which is why `SnapshotDiffTest` can use `TableSummary.current`
+  as an oracle on all eight fixtures, two ways of counting one set. The walk is a `DeferredRead` on
+  `SnapshotNode`, so a table of twenty commits never walks twenty closures to answer a question
+  about two. The panel is reached by selecting exactly two snapshots — the multi-select branch of
+  `NodeDetailsContent`, not a picker — and orders them oldest-first by **sequence number**, because
+  a timestamp is a clock and two commits from a fast writer can share one. `MAX_DIFF_ROWS` caps the
+  file list at 500 and says so on screen when it bites; files on both sides are counted and not
+  listed, because on any real table they are almost all of it
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on

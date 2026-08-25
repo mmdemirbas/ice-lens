@@ -359,6 +359,24 @@ class InspectorRenderTest {
     }
 
     /**
+     * Two snapshots compared, which is a panel only a two-node selection reaches.
+     *
+     * Rendered on `mor` rather than `branched`: the interesting shape is a compaction, where files
+     * left and arrived and the net record count barely moved, and a capture where every row says
+     * "added" would check the same nothing a one-verdict pruning table would.
+     */
+    @Test
+    fun `two selected snapshots render as a comparison`() {
+        val graph = graphFor("mor")
+        val snapshots = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>()
+            .sortedBy { it.data.sequenceNumber ?: Long.MAX_VALUE }
+        assertTrue(snapshots.size >= 2, "mor should draw several snapshots")
+        val pair = setOf(snapshots.first().id, snapshots.last().id)
+
+        renderInspector(graph, pair, "snapshot-compare", height = 2600)
+    }
+
+    /**
      * What a positional delete file removes, after the button that reads it has been pressed.
      *
      * The result is a state a click produces, so the composable takes `startRequested` for the
@@ -609,6 +627,12 @@ class InspectorRenderTest {
      */
     private fun renderInspector(graph: GraphModel, nodeId: String, name: String, height: Int) =
         renderScene(name, width = 1400, height = height) { InspectorUnderTest(graph, nodeId) }
+
+    /** The same, for a selection of several nodes — the only way to reach the comparison panel. */
+    private fun renderInspector(graph: GraphModel, nodeIds: Set<String>, name: String, height: Int) =
+        renderScene(name, width = 1400, height = height) {
+            NodeDetailsContent(graphModel = graph, selectedNodeIds = nodeIds)
+        }
 
     private fun renderScene(
         name: String,

@@ -324,6 +324,14 @@ sealed class GraphNode(
          * card, so it costs the layout nothing.
          */
         val change: SnapshotChange? = null,
+        /**
+         * Every file the table holds at this snapshot, read on first ask — see [liveFiles].
+         *
+         * A [DeferredRead] for the same reason a deletion vector's blob is one, at a different
+         * scale: this walks the snapshot's whole manifest closure, and a table of twenty commits
+         * would walk twenty of them at build time to answer a question the reader asks about two.
+         */
+        private val liveFilesLoader: DeferredRead<List<LiveFile>> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         // The card grows for its ref chips rather than clipping them. Node height is what ELK
@@ -338,7 +346,20 @@ sealed class GraphNode(
         // Measured with a path far longer than Iceberg's own naming produces and with more refs
         // than the chip row can hold, which is what makes 64 and 83 upper bounds rather than the
         // tallest thing eight checked-in tables happen to contain.
-    ) : GraphNode(id, initialX, initialY, 210.0, if (refs.isEmpty()) 68.0 else 88.0)
+    ) : GraphNode(id, initialX, initialY, 210.0, if (refs.isEmpty()) 68.0 else 88.0) {
+
+        /**
+         * Every file the table holds at this snapshot, deduplicated, live entries only.
+         *
+         * Null when the builder attached nothing — a snapshot node made by hand in a test, or a
+         * format whose builder does not offer it yet. That is a different answer from an empty
+         * list, which would be a snapshot holding no files.
+         */
+        val liveFiles: List<LiveFile>? get() = liveFilesLoader.value
+
+        /** Whether this snapshot can be compared against another, answerable without walking it. */
+        val canDiff: Boolean get() = liveFilesLoader.isPresent
+    }
 
     data class ManifestNode(
         override val id: String,

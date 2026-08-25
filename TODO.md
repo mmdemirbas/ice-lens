@@ -191,12 +191,13 @@ What is left:
 
 - **Export** — graph as PNG/SVG; node details as JSON/CSV.
 
-- **Snapshot compare is per commit, not between an arbitrary pair.** `SnapshotChange` answers
-  "what did *this* commit do" from the manifests that commit wrote, which is the question a reader
-  arrives at a snapshot with. What it does not answer is "what is different between these two",
-  where the two are not parent and child — a branch against `main`, or a snapshot against one ten
-  commits back. That needs the live file set of each side and a set difference, which is a
-  different computation from this one and wants a way to pick the second snapshot.
+- **Snapshot compare exists, and its way in is selection.** `model/SnapshotDiff.kt` answers "what
+  is different between these two" for any pair, and selecting two snapshots on the canvas opens
+  it. Two things are unfinished. Selection is the only route — there is no way to pin one snapshot
+  and step the other through history, which is what comparing a branch against successive points
+  on `main` wants. And the comparison is Iceberg-only: `PaimonSnapshotNode` has no
+  `liveFilesLoader`, because Paimon's delta manifest list applies over its base and the shared
+  per-entry ledger does not cover that — the same gap as the Paimon drill-down below.
 
 - **Different layout algorithms** — top-to-bottom, force-directed, or compact tree as alternatives to the current left-to-right layered layout.
 
