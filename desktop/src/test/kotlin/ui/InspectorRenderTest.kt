@@ -684,6 +684,47 @@ class InspectorRenderTest {
      * background colour and would otherwise pass. Counting pixels that differ from the corner
      * colour is a coarse proxy for "something was drawn", but it separates those two cases.
      */
+    /**
+     * Every inspector panel, at the width the pane actually opens at.
+     *
+     * **The rest of this file renders at 1400dp and the pane opens at 300dp** (`App.kt`,
+     * `PREF_RIGHT_PANE_WIDTH`, clamped to a 200dp minimum), so every capture here has been checking
+     * a panel 4.7x wider than the one on screen. That is not a small discrepancy: horizontal
+     * overflow is invisible at any width where the content happens to fit, and Compose reports it
+     * by drawing a control past the container edge rather than by failing — the header row had been
+     * doing exactly that, with the title laid out one character per line underneath the buttons.
+     *
+     * So this sweeps the panel kinds at 300dp. It cannot assert what it finds; what it does is put
+     * the narrow drawing on disk next to the wide one, which is the only place this class of defect
+     * is visible at all. The heights are generous because everything wraps two to four times taller
+     * here — a panel cut off at the bottom of the scene would hide the overflow further down it.
+     */
+    @Test
+    fun `every panel renders at the width the pane opens at`() {
+        val branched = graphFor("branched")
+        val mor = graphFor("mor")
+        val v3 = graphFor("v3")
+
+        fun narrow(name: String, g: GraphModel, node: GraphNode?, height: Int = 2400) {
+            assertTrue(node != null, "$name: the fixture should draw this node kind")
+            renderScene("narrow-$name", width = 300, height = height, density = 1f) {
+                InspectorUnderTest(g, node.id)
+            }
+        }
+
+        narrow("table", branched, branched.nodes.filterIsInstance<GraphNode.TableNode>().firstOrNull())
+        narrow("snapshot", branched, branched.nodes.filterIsInstance<GraphNode.SnapshotNode>().lastOrNull())
+        narrow("metadata", branched, branched.nodes.filterIsInstance<GraphNode.MetadataNode>().firstOrNull())
+        narrow("manifest", mor, mor.nodes.filterIsInstance<GraphNode.ManifestNode>().firstOrNull(), height = 3200)
+        narrow("file", mor, mor.nodes.filterIsInstance<GraphNode.FileNode>().firstOrNull(), height = 3200)
+        narrow(
+            "delete-vector",
+            v3,
+            v3.nodes.filterIsInstance<GraphNode.FileNode>()
+                .firstOrNull { it.data.content == model.DataFileContent.POSITION_DELETES },
+        )
+    }
+
     private fun renderInspector(graph: GraphModel, nodeId: String, name: String, height: Int) =
         renderScene(name, width = 1400, height = height) { InspectorUnderTest(graph, nodeId) }
 
