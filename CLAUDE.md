@@ -53,9 +53,11 @@ core/src/main/kotlin/
 │   ├── ManifestLedger.kt      # Per-entry: what it added to a manifest's figures, or which rule dropped it
 │   ├── ScanPruning.kt         # Predicate → which manifests a scan would skip, and which term did it
 │   ├── GraphNavigation.kt     # Arrow keys → the next node, decided from where the nodes are drawn
+│   ├── PuffinSchema.kt        # @Serializable Puffin footer + the decoded DeletionVector
 │   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 ├── service/
 │   ├── AvroReader.kt          # Shared Avro file reader (reified readAvro<T>), used by both Iceberg and Paimon
+│   ├── PuffinReader.kt        # Puffin footer + deletion-vector blob → the row positions it marks
 │   ├── IcebergReader.kt       # Iceberg JSON/Avro reading (delegates Avro to AvroReader)
 │   ├── PaimonReader.kt        # Paimon JSON snapshot/schema + Avro manifest list/manifest reading
 │   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet, ORC, Avro — max 50)
@@ -400,7 +402,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~513 tests across 54 files (391 in :core, 122 in :desktop) covering full pipelines for both formats (Avro fixtures
+~524 tests across 55 files (402 in :core, 122 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
