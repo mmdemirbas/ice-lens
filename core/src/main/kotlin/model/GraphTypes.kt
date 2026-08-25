@@ -277,6 +277,14 @@ sealed class GraphNode(
          * here — worth showing on the snapshot rather than only in the table's raw metadata.
          */
         val refs: List<SnapshotRefLabel> = emptyList(),
+        /**
+         * What this commit did, read out of the manifests it wrote — see [SnapshotChange].
+         *
+         * Computed at build time and carried on the node, the same way [TableNode.summary] is,
+         * because the panel showing it has a node and not the table model. It is not drawn on the
+         * card, so it costs the layout nothing.
+         */
+        val change: SnapshotChange? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         // The card grows for its ref chips rather than clipping them. Node height is what ELK

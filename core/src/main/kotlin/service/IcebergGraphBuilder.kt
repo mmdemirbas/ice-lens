@@ -170,6 +170,7 @@ object IcebergGraphBuilder {
                         localPath = snapshot.path.toString(),
                         pathResolution = snapshot.pathResolution,
                         refs = snap.snapshotId?.let { currentRefs[it] }.orEmpty(),
+                        change = snapshotChangeOf(snapshot),
                     )
                 }
                 snapshot.readErrors.forEach { error ->

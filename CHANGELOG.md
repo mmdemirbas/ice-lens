@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A snapshot now says what its commit did.** The panel reports the files that commit added and
+  removed, and puts every figure beside the same figure from the snapshot's own `summary` — the
+  engine's account of its own work, which sits in `metadata.json` where nothing on the read path
+  checks it. A compaction reads: 1 data file added, 5 removed, 6 records added, 8 removed, 5,851
+  bytes removed, each agreeing with what Spark recorded. Attribution is by
+  `manifest_file.added_snapshot_id`, because an entry's status belongs to the snapshot that
+  created its manifest — counting statuses across a snapshot's whole closure would credit every
+  commit with all of its ancestors' work.
+
 - **A v3 deletion vector's rows are now readable.** Iceberg 1.8.1 writes deletes for a
   format-version-3 table as a Roaring bitmap inside a Puffin blob, and the panel could say where
   that blob sat and nothing about what was in it. The blob is now opened and decoded, so the

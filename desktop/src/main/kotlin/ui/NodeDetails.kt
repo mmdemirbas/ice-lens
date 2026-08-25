@@ -48,6 +48,8 @@ import model.ManifestEntryStatus
 import model.ScanPredicate
 import model.TermEffect
 import model.evaluatePruning
+import model.SnapshotChange
+import model.FileChange
 import model.manifestTallies
 import model.KeyValuePairLong
 import model.MetadataLogEntry
@@ -1268,17 +1270,18 @@ fun NodeDetailsContent(
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 
+                        node.change?.let { CommitSection(it) }
+
                         if (node.data.summary.isNotEmpty()) {
                             Section("Summary") {
-                                // The one place in this app where a number was not computed here.
-                                // Every other figure the inspector shows is folded from something it
-                                // read and can be traced back to it; these are copied out of the
-                                // snapshot as the writer left them, and a writer that got them wrong
-                                // leaves no trace in them.
+                                // Copied out of the snapshot as the writer left them. The section
+                                // above is where the ones describing this commit are checked
+                                // against the manifests it wrote; the rest — engine name, app id,
+                                // the running totals — have nothing here to check them against.
                                 Text(
                                     "Written by whatever engine made the commit, and read back verbatim — " +
-                                        "nothing here recomputed them. Each manifest's Recorded Summary section " +
-                                        "is where figures of this kind can be checked against the entries.",
+                                        "nothing here recomputed them. \"What this commit did\" above checks " +
+                                        "the figures describing this commit against the manifests it wrote.",
                                     fontSize = TypeScale.small,
                                     color = colors.onSurfaceVariant,
                                     modifier = Modifier.padding(bottom = 4.dp)
@@ -2188,6 +2191,121 @@ private fun DeletionVectorSection(node: GraphNode.FileNode) {
                 fontFamily = FontFamily.Monospace,
                 color = colors.onSurface,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            )
+        }
+    }
+}
+
+/**
+ * What one commit did, with the writer's own claim beside the count that checks it.
+ *
+ * A snapshot's `summary` map is the engine's account of its own commit, sitting in `metadata.json`
+ * where nothing on the read path verifies it. The manifests that commit wrote are the account that
+ * cannot be wrong without the table being wrong. Putting the two side by side is the same idea as
+ * a manifest's Recorded Summary, one level up — and it is the only check either figure gets.
+ *
+ * Placed above the raw summary rather than below it: this is the answer to "what changed here",
+ * and the summary is the data it was partly read from.
+ */
+@Composable
+private fun CommitSection(change: SnapshotChange) {
+    val colors = MaterialTheme.colorScheme
+    // Only the figures one side or the other actually speaks about. A plain append states three
+    // of the eight, and the other five would each draw a row reading "0 / not recorded / nothing
+    // to check" — six rows of the unevaluated colour, wrapped to two lines, above the two rows
+    // carrying the answer. A verdict column spends its emphasis on whatever it marks most often.
+    val tallies = change.tallies.filter { it.recorded != null || it.counted != 0L }
+    val disagreeing = change.disagreements.size
+
+    val title = "What this commit did" + if (disagreeing > 0) " — $disagreeing DISAGREE" else ""
+    Section(title) {
+        Text(
+            buildString {
+                append(change.operation?.let { "An Iceberg \"$it\"." } ?: "This commit records no operation.")
+                append(
+                    if (change.isRoot) {
+                        " It is the first commit on this table, so everything here is an addition."
+                    } else {
+                        " Read from the manifests this commit wrote, which is what makes it this " +
+                            "commit's work rather than its ancestors'."
+                    },
+                )
+                if (change.unattributedManifests > 0) {
+                    append(
+                        " ${formatCount(change.unattributedManifests)} of the manifests it lists " +
+                            "record no adding snapshot, so nothing can say which commit wrote them " +
+                            "and they are left out of the counts below.",
+                    )
+                }
+            },
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        Text(
+            "Figures neither the commit nor its manifests say anything about are left out — a " +
+                "plain append states three of the eight.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            // Same column order as the manifest tally table, for the same reason: the reader is
+            // here to find out whether anything disagrees, not to compare eight pairs by eye.
+            headers = listOf("Agrees", "Figure", "In the manifests", "The commit said"),
+            columnWidths = listOf(110.dp, 170.dp, 140.dp, 140.dp),
+            rows = tallies.map { tally ->
+                listOf(
+                    when (tally.agrees) {
+                        true -> "yes"
+                        false -> "NO"
+                        null -> "nothing to check"
+                    },
+                    tally.label,
+                    formatCount(tally.counted),
+                    tally.recorded?.let { formatCount(it) } ?: "not recorded",
+                )
+            },
+            leadCellColors = tallies.map { tally ->
+                when (tally.agrees) {
+                    true -> null
+                    false -> colors.error
+                    null -> verdictUnevaluatedColor()
+                }
+            },
+        )
+
+        if (change.files.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "The files themselves, one row each. A removal is an entry this commit wrote with " +
+                    "status DELETED — the file is out of the table from here on, though an older " +
+                    "snapshot still reads it.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+            WideTable(
+                headers = listOf("Change", "File", "Kind", "Rows", "Size"),
+                columnWidths = listOf(90.dp, 360.dp, 100.dp, 80.dp, 90.dp),
+                rows = change.files.map { file ->
+                    listOf(
+                        if (file.change == FileChange.ADDED) "added" else "REMOVED",
+                        fileNameFromPath(file.path),
+                        when (file.content) {
+                            DataFileContent.POSITION_DELETES -> "pos delete"
+                            DataFileContent.EQUALITY_DELETES -> "eq delete"
+                            else -> "data"
+                        },
+                        formatCount(file.recordCount),
+                        formatBytes(file.sizeBytes),
+                    )
+                },
+                // Removal is the exception on an append-mostly table, and it is the row a reader
+                // scanning a commit history is looking for.
+                leadCellColors = change.files.map { file ->
+                    if (file.change == FileChange.ADDED) null else colors.error
+                },
             )
         }
     }

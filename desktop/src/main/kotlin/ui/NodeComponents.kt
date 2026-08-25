@@ -115,7 +115,8 @@ private fun fileRowCountLabel(node: GraphNode.FileNode): String {
 private fun isPrimaryMetadataFile(fileName: String): Boolean =
     model.metadataVersionFromFileName(fileName) != null
 
-private fun fileNameFromPath(path: String?): String {
+/** The last path segment, for a card or a table cell. Shared with the inspector. */
+internal fun fileNameFromPath(path: String?): String {
     val raw = path?.trim().orEmpty()
     if (raw.isEmpty()) return "N/A"
     val normalized = raw.removeSuffix("/").removeSuffix("\\")

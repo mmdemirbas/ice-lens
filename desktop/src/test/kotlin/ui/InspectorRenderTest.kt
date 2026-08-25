@@ -130,6 +130,15 @@ class InspectorRenderTest {
             }
         }
         renderInspector(graph, withMain.id, "snapshot-node", height = 2600)
+
+        // A commit that takes files out, which the one above does not. "What this commit did"
+        // draws a removal in the error colour against additions in body colour, and a verdict
+        // column with one kind of row in it cannot be judged for whether the exception is
+        // findable — the same rule that put a pruned manifest next to an ordinary one.
+        val compaction = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>()
+            .firstOrNull { it.change?.removed?.isNotEmpty() == true }
+        assertNotNull(compaction, "the merge-on-read fixture should carry a commit that removes files")
+        renderInspector(graph, compaction.id, "snapshot-node-compaction", height = 2600)
     }
 
     /**

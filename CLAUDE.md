@@ -160,6 +160,22 @@ desktop/src/main/kotlin/
   inside one. `ManifestLedgerTest` replays `mor`'s whole traversal through the ledger and requires
   every contribution to come out identical; a drill-down computed separately would pass its own
   unit tests and drift from the number it explains
+- **What a commit did is read from the manifests it wrote, not from its closure.**
+  `model/SnapshotChange.kt` answers "what changed here" at a snapshot, and the rule that makes it
+  correct is `manifest_file.added_snapshot_id`: an entry's `status` is relative to the snapshot
+  that created the *manifest* holding it, and a manifest is carried forward unchanged into every
+  later snapshot that still needs its files — so a manifest written by commit 3 still says `ADDED`
+  when commit 9 lists it. Counting statuses across the closure credits every commit with all of
+  its ancestors' work. The figures are folded from `files`, never stored beside it, and
+  `SnapshotChange.tallies` puts each one against the snapshot `summary` the engine wrote, which
+  is the same idea as `manifestTallies` a level up — `SnapshotChangeTest` checks 81 such pairs
+  across eight checked-in tables and is the suite's strongest oracle, because nothing here
+  produced any of the summaries. Two things the fixtures settled that a reading of the spec did
+  not: **`added-dvs` is a breakdown of `added-delete-files`, not a v3 replacement for it** (one
+  vector records both as 1, so summing them double-counts), and **`added-files-size` counts a
+  deletion vector's `content_size_in_bytes`, not its Puffin file's size** — one container holds a
+  blob per data file it covers, so charging the container once per vector counts the same bytes
+  repeatedly
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
