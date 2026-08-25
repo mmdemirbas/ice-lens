@@ -167,25 +167,6 @@ What is left:
   Catching that needs the two halves measured separately, which means the card telling the test
   which part is ours.
 
-- **`DetailRow`'s label column breaks words in the middle at the width the pane opens at.** The
-  key is `Modifier.weight(0.20f)`, a *fraction*, for a column whose content is a closed vocabulary
-  the application chooses. At 300dp that share is about 62dp and the labels with an eight-plus
-  letter word in them — `Sequence`, `Timestamp`, `Statistics`, `Partition`, `Operation`,
-  `Referenced`, `Identifier`, `Snapshots`, `Watermark` — do not fit it, so Compose falls back to
-  breaking at a character: `Sequenc / e Num.`, `Timesta / mp`. Every other label wraps at a word
-  boundary and reads correctly, which is why this is a width defect rather than a copy one.
-  Visible in `narrow-manifest-1.png`, `narrow-snapshot-1.png` and `narrow-file-1.png`; invisible in
-  all of the 1400dp captures, where the same column is ~290dp of mostly empty space.
-  A pure weight cannot fix it — the share that fits one word at the 200dp minimum is 43%, which is
-  600dp of label at 1400dp. It wants a width derived once per table and clamped, which means
-  measuring, and `DetailTable`'s tooltip caller sizes itself with `IntrinsicSize.Max` — so whether
-  `BoxWithConstraints` can be used there needs checking before the shape is chosen.
-
-- **`DetailRow`'s divider has a gutter on one side only.** There is a `Spacer(8.dp)` after the
-  divider and nothing before it, so a label that fills its column sits flush against the rule —
-  `Resolved|` in `narrow-file-1.png`. Width-independent; it just needs a long enough label to show,
-  which is why the wide captures never did.
-
 - **The identity table at the top of a panel still cannot be folded, and now does not need to
   be — on the table node.** Decided from `table-node-folded-1.png` rather than argued: the
   identity is what the reader selected the node to see, so folding it was the wrong fix. What was

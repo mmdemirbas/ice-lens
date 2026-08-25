@@ -337,6 +337,21 @@ desktop/src/main/kotlin/
   to a parent by **generating** candidates for every `AggregationKind` and page and intersecting
   with the expanded set, never by parsing one: an id is `grp_<parentId>_<kind>_<page>` and a parent
   id contains underscores, so `man_3` and `man_3_manifest` cannot be told apart by splitting
+- **A label column is a width; a value column is a share.** `DetailRow`'s key holds a vocabulary
+  this repository chooses — `Sequence Number`, `Statistics`, `Added Snapshot` — so a label that
+  does not fit is a defect every time, the same rule that makes `GroupCardWidthTest` legitimate
+  where a general width sweep would not be. Its value holds a path or a bound the *table* decides,
+  where ellipsis is the design. So `DetailTable` derives one width for every row from its own
+  width, clamped to 84–190dp, and `DetailRow` takes `Modifier.width(it)` for the key and
+  `weight(1f)` for the value. One number per table is what keeps the values on one x; a fraction
+  cannot work at all, because the share that fits `Statistics` at the 200dp minimum is 600dp of
+  label at 1400dp
+- **`NodeTooltip` states its width and is rendered for every node kind.** It is `DetailTable`'s
+  other caller, and it sized itself with `IntrinsicSize.Max` — which asks a layout for a width
+  without measuring it, something a `BoxWithConstraints` cannot answer and throws on. Nothing had
+  ever rendered the tooltip, so that crash would have shipped to the first hover. Keep it at a
+  stated width: an intrinsic one is also decided by the longest unwrapped value in it, so a
+  tooltip's shape changed with whichever path the table happened to hold
 - **The inspector header is a `FlowRow`, and the render that proves it is the narrow one.** The
   title and the actions shared a `Row` until a third action arrived. A `Row` neither wraps nor
   clips, and it measures unweighted children before weighted ones — so at the 300dp the pane opens
@@ -574,7 +589,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~594 tests across 66 files (455 in :core, 139 in :desktop) covering full pipelines for both formats (Avro fixtures
+~596 tests across 66 files (455 in :core, 141 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

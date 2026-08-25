@@ -114,6 +114,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **A label in the inspector's key column broke in the middle of a word at the width the pane
+  opens at, and the hover tooltip had no capture at all.** `DetailRow`'s key was
+  `Modifier.weight(0.20f)` — a fraction, for a column whose content is a vocabulary this
+  application chooses rather than one the table decides. At 300dp that share is about 62dp, and
+  every label holding an eight-letter word fell back to breaking at a character: `Sequenc / e
+  Num.`, `Timesta / mp`. No share fixes it, because the one that fits `Statistics` at the 200dp
+  minimum is 43%, which is 600dp of label at 1400dp. `DetailTable` now derives one width for all
+  of its rows from its own width, clamped to 84–190dp, so the values stay aligned on one x and the
+  labels always fit. The wide panel gained about 100dp of value column from the same change.
+  The divider also had a gutter after it and none before, so a label filling its column sat flush
+  against the rule; it has one on both sides now.
+  Deriving a width means measuring, and `NodeTooltip` — the one other `DetailTable` caller — sized
+  itself with `Modifier.width(IntrinsicSize.Max)`, which asks a layout how wide it wants to be
+  *without* measuring it. A `BoxWithConstraints` cannot answer that and throws. Nothing in the
+  suite rendered the tooltip, so this would have reached a hover in the running app; it is swept
+  for every node kind now, and the tooltip states its width instead of asking its content for one
+  — which also stops a tooltip's width being decided by the longest data-file path in the table.
 - **The inspector's header put its buttons past the edge of the panel at the width the panel
   actually opens at.** The title and the action buttons shared a `Row`, which neither wraps nor
   clips and which measures its unweighted children — the buttons — before the weighted title. The

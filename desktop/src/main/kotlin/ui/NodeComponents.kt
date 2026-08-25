@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
@@ -220,15 +221,63 @@ fun DetailTable(
 ) {
     val colors = MaterialTheme.colorScheme
     val borderColor = if (isDark) colors.outline else colors.outlineVariant
-    Column(
+    BoxWithConstraints(
         modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(4.dp))
             .border(1.dp, borderColor, RoundedCornerShape(4.dp))
     ) {
-        content()
+        // One label width for every row in this table, decided from the table's own width.
+        //
+        // It has to be a width and not a share. The labels are a vocabulary this application
+        // chooses — `Sequence Number`, `Added Snapshot`, `Statistics` — so a label that does not
+        // fit its column is a defect every time, unlike the value beside it, which is a path or a
+        // bound the table decides and which ellipsising is the design for. At the 0.20 share this
+        // used to carry, the column was ~62dp in the 300dp the inspector pane opens at, and any
+        // label holding an eight-letter word broke at a character: `Sequenc / e Num.`.
+        //
+        // No share can fix that: the one that fits `Statistics` at the 200dp minimum is 43%, which
+        // is 600dp of label at 1400dp. So the width is derived once here and clamped at both ends,
+        // and every row reads it — one number for the table keeps the values aligned on one x,
+        // which is the whole reason the column existed rather than a label per line.
+        val keyWidth = (maxWidth * DETAIL_KEY_SHARE).coerceIn(DETAIL_KEY_MIN, DETAIL_KEY_MAX)
+        CompositionLocalProvider(LocalDetailKeyWidth provides keyWidth) {
+            Column { content() }
+        }
     }
 }
+
+/**
+ * How wide a hover tooltip is, whatever node it is about.
+ *
+ * One width for every tooltip: a card the reader hovers should be the same shape each time, and
+ * the values inside are already `maxLines`-capped and ellipsised, so growing the box to fit a path
+ * was buying width for a string that is truncated either way.
+ */
+private val TOOLTIP_WIDTH = 360.dp
+
+/** Fraction of a `DetailTable`'s width the label column asks for, before clamping. */
+private const val DETAIL_KEY_SHARE = 0.26f
+
+/**
+ * Never narrower than this, because below it the labels break mid-word.
+ *
+ * Sized against the longest single *word* in the label vocabulary — `Statistics`, `Referenced`,
+ * `Identifier`, ten characters — at [TypeScale.small], plus the gutter before the divider. A
+ * multi-word label wraps at its space, which reads correctly; a word broken in half does not.
+ */
+private val DETAIL_KEY_MIN = 84.dp
+
+/** And never wider, because past it the column is empty space the value column wants. */
+private val DETAIL_KEY_MAX = 190.dp
+
+/**
+ * The label width [DetailTable] decided, or `Dp.Unspecified` outside one.
+ *
+ * A [DetailRow] with no table above it keeps the old share — the fallback matters because the row
+ * is public and the width is the table's business, not the row's.
+ */
+private val LocalDetailKeyWidth = compositionLocalOf { Dp.Unspecified }
 
 @Composable
 fun DetailRow(key: String, value: String, isHeader: Boolean = false, isDark: Boolean = false, copyable: Boolean = false) {
@@ -253,18 +302,27 @@ fun DetailRow(key: String, value: String, isHeader: Boolean = false, isDark: Boo
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        val keyWidth = LocalDetailKeyWidth.current
         Text(
             text = key,
-            modifier = Modifier.weight(0.20f),
+            modifier = if (keyWidth == Dp.Unspecified) Modifier.weight(0.20f) else Modifier.width(keyWidth),
             fontSize = TypeScale.small,
             fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Medium,
             color = keyColor
         )
+        // A gutter on both sides of the rule, not only after it. There was 8dp after and none
+        // before, so a label filling its column sat flush against the divider — `Resolved|` — which
+        // reads as a rendering fault rather than as a column.
+        Spacer(Modifier.width(8.dp))
         Box(Modifier.width(1.dp).height(12.dp).background(dividerColor))
         Spacer(Modifier.width(8.dp))
         Text(
             text = value,
-            modifier = Modifier.weight(if (copyable) 0.62f else 0.68f),
+            modifier = if (keyWidth == Dp.Unspecified) {
+                Modifier.weight(if (copyable) 0.62f else 0.68f)
+            } else {
+                Modifier.weight(1f)
+            },
             fontSize = TypeScale.small,
             fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
             fontFamily = if (isHeader) null else FontFamily.Monospace,
@@ -300,8 +358,17 @@ fun NodeTooltip(node: GraphNode) {
             .background(colors.inverseSurface.copy(alpha = 0.92f), RoundedCornerShape(4.dp))
             .border(1.dp, colors.outline, RoundedCornerShape(4.dp))
             .padding(8.dp)
-            .width(IntrinsicSize.Max)
-            .defaultMinSize(minWidth = 250.dp)
+            // A stated width, not an intrinsic one.
+            //
+            // `IntrinsicSize.Max` asked the content how wide it wanted to be, and the answer was
+            // the widest *unwrapped* value in it — a data file's full path — so a tooltip's width
+            // was decided by the longest string the table happened to hold, and changed from node
+            // to node. It also cannot survive `DetailTable` deriving its label column from its own
+            // width: intrinsic measurement asks a layout for a width without measuring it, and a
+            // layout that reads its constraints has no answer, so `BoxWithConstraints` under an
+            // intrinsic query throws — which is what `the tooltip renders for every node kind`
+            // caught before it reached a hover in the running app.
+            .width(TOOLTIP_WIDTH)
     ) {
         val title = when (node) {
             is GraphNode.TableNode -> "Table"

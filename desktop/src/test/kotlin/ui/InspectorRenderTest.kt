@@ -685,6 +685,51 @@ class InspectorRenderTest {
      * colour is a coarse proxy for "something was drawn", but it separates those two cases.
      */
     /**
+     * The hover tooltip, for every node kind, which nothing rendered before this.
+     *
+     * It shares `DetailTable` with the inspector and is the one caller that sizes itself with
+     * `Modifier.width(IntrinsicSize.Max)` — so when `DetailTable` gained a `BoxWithConstraints` to
+     * derive its label width, this became the place that could throw. Intrinsic measurement asks a
+     * layout how wide it wants to be *without* measuring it, and a layout that reads its own
+     * constraints has no answer to give; whether the implementation copes is not a thing to assume.
+     *
+     * Rendering it is also the check that the tooltip is not a second, drifting copy of the panel:
+     * it is the only surface in the app that had no capture at all, so a defect in it was invisible
+     * to everything here.
+     *
+     * Sweeping the kinds off `sealedSubclasses` the way `CardHeightTest` does would be better, but
+     * the tooltip needs a real node of each kind and the fixtures do not draw all of them; what is
+     * covered is what the fixtures hold, and the count is asserted so a kind going missing fails.
+     */
+    @Test
+    fun `the tooltip renders for every node kind the fixtures draw`() {
+        val paimon = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/test").absolutePath)),
+            showRows = false,
+        )
+        val graphs = listOf(graphFor("branched"), graphFor("mor"), graphFor("v3"), paimon)
+        val byKind = graphs
+            .flatMap { it.nodes }
+            .groupBy { it::class }
+            .mapValues { (_, nodes) -> nodes.first() }
+
+        assertTrue(
+            byKind.size >= 8,
+            "the fixtures should draw at least eight node kinds between them; got ${byKind.size}: " +
+                byKind.keys.map { it.simpleName },
+        )
+
+        byKind.values.forEachIndexed { index, node ->
+            val kind = node::class.simpleName ?: "node$index"
+            renderScene("tooltip-$kind", width = 640, height = 460, density = 1f) {
+                Box(Modifier.background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp)) {
+                    NodeTooltip(node)
+                }
+            }
+        }
+    }
+
+    /**
      * Every inspector panel, at the width the pane actually opens at.
      *
      * **The rest of this file renders at 1400dp and the pane opens at 300dp** (`App.kt`,
