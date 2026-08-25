@@ -15,6 +15,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
@@ -66,6 +71,102 @@ fun CompactSearchField(
                 modifier = Modifier.size(14.dp).clickable { onValueChange("") },
                 tint = colors.onSurfaceVariant
             )
+        }
+    }
+}
+
+/**
+ * One visible line of the workspace list, in the order it is drawn.
+ *
+ * Two fields, because the keyboard rules need both and neither implies the other. [opensATable]
+ * separates a warehouse, which expands, from a table, which loads. [depth] separates a root from a
+ * table drawn under one — and a **single table added as a root is both**: it opens a table and it
+ * has nothing above it. Deriving the parent from `opensATable` alone walked such a row out to the
+ * previous root's warehouse, which is not its warehouse and does not contain it.
+ */
+internal data class WorkspaceRow(val path: String, val opensATable: Boolean, val depth: Int)
+
+/**
+ * The lines the workspace is currently drawing: every root, and the tables under an open one.
+ *
+ * Hoisted out of the `LazyColumn` so the keyboard and the drawing read the same list. Computing
+ * it twice is how a cursor ends up on a line nobody can see.
+ */
+internal fun workspaceRows(
+    items: List<WorkspaceItem>,
+    expandedPaths: Set<String>,
+    searchQuery: String,
+    tablesOf: (WorkspaceItem.Warehouse) -> List<String>,
+): List<WorkspaceRow> = items.flatMap { item ->
+    val root = WorkspaceRow(item.path, opensATable = item is WorkspaceItem.SingleTable, depth = 0)
+    // A search opens every warehouse it matched, so the rows follow suit — the reader can see the
+    // tables, so the keyboard has to be able to reach them.
+    val open = item.path in expandedPaths || searchQuery.isNotBlank()
+    if (item !is WorkspaceItem.Warehouse || !open) {
+        listOf(root)
+    } else {
+        listOf(root) + tablesOf(item).map {
+            WorkspaceRow("${item.path}/$it", opensATable = true, depth = 1)
+        }
+    }
+}
+
+/** What a key asks the workspace list to do. */
+internal sealed interface WorkspaceKeyAction {
+    /** Move the cursor. Deliberately not "select": see [workspaceKeyAction]. */
+    data class Focus(val path: String) : WorkspaceKeyAction
+    data class Expand(val path: String) : WorkspaceKeyAction
+    data class Collapse(val path: String) : WorkspaceKeyAction
+    data class Open(val path: String) : WorkspaceKeyAction
+}
+
+/**
+ * The workspace's keyboard rules, over the lines it is currently drawing.
+ *
+ * The same file-browser keymap as the structure tree, with one difference that matters: **moving
+ * the cursor does not open a table.** In the tree and on the canvas the selection is the cursor,
+ * because selecting is free. Here it is not — opening a table reads its whole metadata tree off
+ * disk — so holding Down through a warehouse of forty tables would load forty of them. The cursor
+ * moves, and Enter opens what it is on.
+ *
+ * That is also why a warehouse row can hold the cursor at all: it is not selectable by clicking,
+ * but a keyboard has to be able to stand on it to press Right.
+ */
+internal fun workspaceKeyAction(
+    rows: List<WorkspaceRow>,
+    expandedPaths: Set<String>,
+    searchQuery: String,
+    focusedPath: String?,
+    key: ListKey,
+): WorkspaceKeyAction? {
+    if (rows.isEmpty()) return null
+    val index = rows.indexOfFirst { it.path == focusedPath }
+    if (index < 0) return WorkspaceKeyAction.Focus(rows.first().path)
+
+    val row = rows[index]
+    // A search forces every warehouse open, and a line the reader can see open cannot be reported
+    // as closed — Right would claim to open something already showing its tables.
+    val isOpen = row.path in expandedPaths || searchQuery.isNotBlank()
+    val isWarehouseRow = !row.opensATable
+    return when (key) {
+        ListKey.UP -> rows.getOrNull(index - 1)?.let { WorkspaceKeyAction.Focus(it.path) }
+        ListKey.DOWN -> rows.getOrNull(index + 1)?.let { WorkspaceKeyAction.Focus(it.path) }
+        ListKey.RIGHT -> when {
+            !isWarehouseRow -> null
+            !isOpen -> WorkspaceKeyAction.Expand(row.path)
+            else -> rows.getOrNull(index + 1)?.let { WorkspaceKeyAction.Focus(it.path) }
+        }
+        ListKey.LEFT -> when {
+            isWarehouseRow && isOpen && row.path in expandedPaths -> WorkspaceKeyAction.Collapse(row.path)
+            // Same rule as the tree: the parent is the nearest line above with a smaller depth.
+            // A root has none, which is the answer for a single table added at the top level.
+            else -> rows.take(index).lastOrNull { it.depth < row.depth }
+                ?.let { WorkspaceKeyAction.Focus(it.path) }
+        }
+        ListKey.ACTIVATE -> when {
+            row.opensATable -> WorkspaceKeyAction.Open(row.path)
+            isOpen -> WorkspaceKeyAction.Collapse(row.path)
+            else -> WorkspaceKeyAction.Expand(row.path)
         }
     }
 }
@@ -169,8 +270,61 @@ fun WorkspacePanel(
             }
         }
 
+        // One definition, read by the drawing below and by the keyboard rows beside it. Two would
+        // eventually disagree, and a cursor on a line nobody can see is the result.
+        fun tablesOf(warehouse: WorkspaceItem.Warehouse): List<String> {
+            val statuses = warehouseTableStatuses[warehouse.path].orEmpty()
+            val all = if (statuses.isNotEmpty()) statuses.keys.toList().sorted() else warehouse.tables
+            return if (searchQuery.isBlank()) {
+                all
+            } else {
+                all.filter {
+                    it.contains(searchQuery, ignoreCase = true) ||
+                        warehouse.name.contains(searchQuery, ignoreCase = true)
+                }
+            }
+        }
+
+        val rows = workspaceRows(filteredWorkspaceItems, expandedPaths, searchQuery, ::tablesOf)
+        var focusedPath by remember { mutableStateOf<String?>(null) }
+        val listFocus = remember { FocusRequester() }
+        var listFocused by remember { mutableStateOf(false) }
+
         val listState = rememberLazyListState()
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+
+        // The cursor and the LazyColumn share an index: the rows are emitted root-then-its-tables
+        // in exactly the order `workspaceRows` lists them.
+        LaunchedEffect(focusedPath, rows) {
+            val index = rows.indexOfFirst { it.path == focusedPath }
+            if (index >= 0) listState.animateScrollToItem(index)
+        }
+
+        fun handleKey(event: KeyEvent): Boolean {
+            val key = navKey(event) ?: return false
+            when (val action = workspaceKeyAction(rows, expandedPaths, searchQuery, focusedPath, key)) {
+                is WorkspaceKeyAction.Focus -> focusedPath = action.path
+                is WorkspaceKeyAction.Expand -> onExpandedPathsChange(expandedPaths + action.path)
+                is WorkspaceKeyAction.Collapse -> onExpandedPathsChange(expandedPaths - action.path)
+                is WorkspaceKeyAction.Open -> {
+                    focusedPath = action.path
+                    onTableSelect(action.path)
+                }
+                null -> Unit
+            }
+            return true
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .focusRequester(listFocus)
+                .onFocusChanged { listFocused = it.isFocused }
+                .focusable()
+                // Bubbling: the search field above owns its own arrows.
+                .onKeyEvent { handleKey(it) }
+                .border(width = 1.dp, color = if (listFocused) colors.primary else Color.Transparent)
+        ) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 filteredWorkspaceItems.forEachIndexed { index, item ->
                     item(key = item.path) {
@@ -198,12 +352,27 @@ fun WorkspacePanel(
                                 })
                             },
                             onSelect = {
+                                // Pointing at a row hands the list the keyboard too, so the
+                                // arrows carry on from where the reader just clicked.
+                                listFocus.requestFocus()
+                                focusedPath = item.path
                                 if (item is WorkspaceItem.SingleTable) {
                                     onTableSelect(item.path)
                                 }
                             },
                             onRemove = { pendingRemoveItem = item },
                             modifier = Modifier
+                                // The cursor is drawn only while the list holds the keyboard.
+                                // A ring left behind on a list nobody is typing into reads as a
+                                // second selection.
+                                .border(
+                                    width = 1.dp,
+                                    color = if (listFocused && item.path == focusedPath) {
+                                        colors.primary
+                                    } else {
+                                        Color.Transparent
+                                    },
+                                )
                                 .graphicsLayer {
                                     if (isDragging) {
                                         translationY = dragOffset
@@ -249,14 +418,7 @@ fun WorkspacePanel(
 
                     if (item is WorkspaceItem.Warehouse && (expandedPaths.contains(item.path) || searchQuery.isNotBlank())) {
                         val tableStatuses = warehouseTableStatuses[item.path].orEmpty()
-                        val allTables = if (tableStatuses.isNotEmpty()) tableStatuses.keys.toList().sorted() else item.tables
-                        val filteredTables = if (searchQuery.isBlank()) {
-                            allTables
-                        } else {
-                            allTables.filter { it.contains(searchQuery, ignoreCase = true) || item.name.contains(searchQuery, ignoreCase = true) }
-                        }
-
-                        items(filteredTables) { tableName ->
+                        items(tablesOf(item)) { tableName ->
                             val tableStatus = tableStatuses[tableName] ?: WorkspaceTableStatus.EXISTING
                             val tablePath = "${item.path}/$tableName"
                             val isSelected = tablePath == selectedTablePath
@@ -283,7 +445,19 @@ fun WorkspacePanel(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(bgColor)
-                                    .clickable { onTableSelect(tablePath) }
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (listFocused && tablePath == focusedPath) {
+                                            colors.primary
+                                        } else {
+                                            Color.Transparent
+                                        },
+                                    )
+                                    .clickable {
+                                        listFocus.requestFocus()
+                                        focusedPath = tablePath
+                                        onTableSelect(tablePath)
+                                    }
                                     .padding(vertical = 4.dp, horizontal = 24.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {

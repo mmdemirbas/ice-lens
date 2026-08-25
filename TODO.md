@@ -149,12 +149,11 @@ What is left:
   the reader selected the node to see, and a panel that folds to nothing but its own title is not
   obviously better. Deciding it needs the folded panel in front of a reader, not an argument.
 
-- **Keyboard navigation stops at the canvas.** Arrows walk the graph and a focused inspector
-  section shows a focus ring, but the structure tree and the workspace sidebar are still
-  mouse-only: neither is a focus target, so Tab does not reach them and nothing indicates where
-  focus is when it arrives. The tree is the harder of the two — it is a flattened list with
-  expand and collapse, so it wants Up/Down plus Left/Right for the carets, which is a different
-  keymap from the canvas's and needs deciding rather than copying.
+- **Keyboard coverage stops at the four navigable surfaces.** The canvas, the structure tree, the
+  workspace and the inspector's section headers all take the keyboard and show focus. What has no
+  keyboard path yet: removing a workspace root (mouse-only `×`), reordering roots (drag only), the
+  tool-window bars, and the copy buttons inside the inspector. None is on a reading path, which is
+  why they are last, but "reachable by Tab" is still the bar.
 
 ---
 

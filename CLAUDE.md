@@ -280,6 +280,16 @@ desktop/src/main/kotlin/
   main line out of a branch column drawn at a similar height. Only structural edges are followed
   — an `isSibling` edge joins two nodes at one depth, and an `affectsLayout = false` edge is an
   annotation, so neither answers "what contains this"
+- **`navKey` decides which keystrokes count; each surface decides what they mean.** `ui/KeyNav.kt`
+  holds the one parser — bare arrows plus Enter and Space, modifiers deliberately left alone so
+  Cmd+Left still means "back" and Alt+Arrow still moves by word in a field. The canvas maps the
+  result to a `GraphDirection`; the tree and the workspace each have their own keymap over their
+  own rows. Three copies of the modifier test is how they drift
+- **Moving a cursor must cost what the reader expects it to cost.** The canvas and the structure
+  tree make the *selection* the cursor, because selecting is free there. The workspace does not:
+  opening a table reads its whole metadata tree, so `workspaceKeyAction` moves a separate
+  `focusedPath` and only `Enter` produces `Open`. Holding Down through a forty-table warehouse
+  must not load forty tables
 - **The tree's arrow keys are a different keymap from the canvas's, deliberately.** A canvas is a
   picture and its rules are geometric; a tree is a list, and up on a list means the line above
   whatever its depth. `treeKeyAction` in `ui/NavigationTree.kt` states the file-browser keymap
@@ -379,7 +389,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~496 tests across 52 files (383 in :core, 113 in :desktop) covering full pipelines for both formats (Avro fixtures
+~505 tests across 53 files (383 in :core, 122 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

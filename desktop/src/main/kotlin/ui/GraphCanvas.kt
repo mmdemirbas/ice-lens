@@ -90,25 +90,6 @@ private fun liftEdgeColor(base: Color, target: Color, minimumBrightness: Float):
 }
 
 @OptIn(ExperimentalFoundationApi::class)
-/**
- * The direction a key press means, or null when the key is not an arrow.
- *
- * Bare arrows only. A modifier turns the same key into somebody else's shortcut — Cmd+Left is
- * "back" on macOS and Alt+Arrow moves by word in every text field — and a canvas that swallows
- * those makes the rest of the window feel broken.
- */
-private fun arrowStep(event: KeyEvent): GraphDirection? {
-    if (event.type != KeyEventType.KeyDown) return null
-    if (event.isMetaPressed || event.isCtrlPressed || event.isAltPressed || event.isShiftPressed) return null
-    return when (event.key) {
-        Key.DirectionLeft -> GraphDirection.LEFT
-        Key.DirectionRight -> GraphDirection.RIGHT
-        Key.DirectionUp -> GraphDirection.UP
-        Key.DirectionDown -> GraphDirection.DOWN
-        else -> null
-    }
-}
-
 @Composable
 fun GraphCanvas(
     graph: GraphModel,
@@ -323,7 +304,7 @@ fun GraphCanvas(
                     }
                     true
                 } else {
-                    arrowStep(keyEvent)?.let { direction ->
+                    navKey(keyEvent)?.asGraphDirection()?.let { direction ->
                         // The graph is a picture, so the step is decided against where the nodes
                         // are drawn — `positions` and not `layoutPositions`, because a reader who
                         // has dragged a node is navigating the drawing they made. Selecting is

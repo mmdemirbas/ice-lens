@@ -32,6 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   header are now distinct from body text rather than a little heavier than it.
 
 ### Added
+- **The workspace answers to the keyboard**, with one rule the other two lists do not need:
+  moving the cursor does not open a table. On the canvas and in the tree the selection *is* the
+  cursor, because selecting costs nothing; here, opening a table reads its whole metadata tree off
+  disk, so holding Down through a warehouse of forty tables would load forty of them. The cursor
+  moves, and Enter opens what it is on. Arrows expand and collapse a warehouse as they do
+  everywhere else, and the cursor is drawn only while the list holds the keyboard, so it cannot be
+  mistaken for a second selection.
 - **The structure tree answers to the arrow keys too**, with the keymap every file browser uses:
   up and down move a line whatever its depth, right opens a closed line and otherwise steps into
   it, left closes an open one and otherwise steps out to its parent. The selection is the cursor,

@@ -20,7 +20,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import model.GraphDirection
 import model.GraphModel
 import model.GraphNode
 
@@ -82,12 +81,12 @@ fun NavigationTree(
     var listFocused by remember { mutableStateOf(false) }
 
     fun handleArrow(event: KeyEvent): Boolean {
-        val direction = treeArrow(event) ?: return false
+        val key = navKey(event) ?: return false
         val action = treeKeyAction(
             rows = flattenedTree,
             expandedIds = expandedNodeIds,
             selectedId = selectedNodeIds.singleOrNull(),
-            direction = direction,
+            key = key,
         )
         when (action) {
             is TreeKeyAction.Select -> graph.nodeById[action.nodeId]?.let(onNodeSelect)
@@ -243,24 +242,6 @@ fun NavigationTree(
     }
 }
 
-/**
- * The direction a key press means for a tree, or null when it is not a bare arrow.
- *
- * Modifiers are left alone for the same reason as on the canvas: Cmd+Left is "back" and
- * Alt+Arrow moves by word, and a pane that swallows them makes the window feel broken.
- */
-private fun treeArrow(event: KeyEvent): GraphDirection? {
-    if (event.type != KeyEventType.KeyDown) return null
-    if (event.isMetaPressed || event.isCtrlPressed || event.isAltPressed || event.isShiftPressed) return null
-    return when (event.key) {
-        Key.DirectionLeft -> GraphDirection.LEFT
-        Key.DirectionRight -> GraphDirection.RIGHT
-        Key.DirectionUp -> GraphDirection.UP
-        Key.DirectionDown -> GraphDirection.DOWN
-        else -> null
-    }
-}
-
 /** What an arrow key asks the tree to do. */
 internal sealed interface TreeKeyAction {
     data class Select(val nodeId: String) : TreeKeyAction
@@ -289,7 +270,7 @@ internal fun treeKeyAction(
     rows: List<TreeRow>,
     expandedIds: Set<String>,
     selectedId: String?,
-    direction: GraphDirection,
+    key: ListKey,
 ): TreeKeyAction? {
     if (rows.isEmpty()) return null
     val index = rows.indexOfFirst { it.node.id == selectedId }
@@ -299,21 +280,23 @@ internal fun treeKeyAction(
 
     val row = rows[index]
     val isOpen = row.node.id in expandedIds
-    return when (direction) {
-        GraphDirection.UP -> rows.getOrNull(index - 1)?.let { TreeKeyAction.Select(it.node.id) }
-        GraphDirection.DOWN -> rows.getOrNull(index + 1)?.let { TreeKeyAction.Select(it.node.id) }
-        GraphDirection.RIGHT -> when {
+    return when (key) {
+        ListKey.UP -> rows.getOrNull(index - 1)?.let { TreeKeyAction.Select(it.node.id) }
+        ListKey.DOWN -> rows.getOrNull(index + 1)?.let { TreeKeyAction.Select(it.node.id) }
+        ListKey.RIGHT -> when {
             !row.hasChildren -> null
             !isOpen -> TreeKeyAction.Expand(row.node.id)
             // Open already, so the first child is the line below — by construction, since that is
             // the order `flattenGraph` emits.
             else -> rows.getOrNull(index + 1)?.let { TreeKeyAction.Select(it.node.id) }
         }
-        GraphDirection.LEFT -> when {
+        ListKey.LEFT -> when {
             row.hasChildren && isOpen -> TreeKeyAction.Collapse(row.node.id)
             else -> rows.take(index).lastOrNull { it.depth < row.depth }
                 ?.let { TreeKeyAction.Select(it.node.id) }
         }
+        // The tree selects as it moves, so there is nothing left for Enter to do.
+        ListKey.ACTIVATE -> null
     }
 }
 
