@@ -91,7 +91,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the value line — the shape every other card here already has — and the card reads
   `METADATA VERSIONS` over `6 not drawn`. `GroupCardWidthTest` is the bound: it draws each of the
   ten kinds with width slack and requires the content to fit the 200dp the node declares. The
-  height sweep could never have caught this, because an ellipsis costs a card no height at all. `GroupNode` declared a 58dp
+  height sweep could never have caught this, because an ellipsis costs a card no height at all.
+- **A collapsed group was losing the line that says it is a control.** `GroupNode` declared a 58dp
   base and the plainest group card measures 60.5, so any group standing for exactly its members —
   no hidden subtree, no read errors — drew "NOT DRAWN", its count, and then nothing: the
   "Double-click to open" hint went under the card's own border, where Compose clips nothing and
