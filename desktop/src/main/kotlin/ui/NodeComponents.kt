@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
@@ -451,7 +452,7 @@ private fun CardColumn(
                 // not the text alone. A test drawing the card with slack reads the height the
                 // content actually wanted; without slack this reports the clamped height, which
                 // is the bug rather than a measurement of it.
-                .then(if (probe == null) Modifier else Modifier.onSizeChanged { probe(it.height) })
+                .then(if (probe == null) Modifier else Modifier.onSizeChanged { probe(it) })
                 .padding(padding),
             content = content,
         )
@@ -468,13 +469,28 @@ private fun CardColumn(
  */
 internal val LocalCardHeightSlack = staticCompositionLocalOf { 0.dp }
 
-/** Receives the height in pixels a card's content came to, including its padding. */
-internal val LocalCardContentProbe = staticCompositionLocalOf<((Int) -> Unit)?> { null }
+/**
+ * Extra room, in dp, to draw a card *wider* than its node declares.
+ *
+ * Zero everywhere in the app, and set by a test for the same reason as the height slack, one axis
+ * over: a line too wide for the card is ellipsised or wrapped inside the measurement, so measuring
+ * at the declared width reports the clamp rather than what the content wanted.
+ *
+ * The two slacks are not used together. With width slack a line that was wrapping stops wrapping,
+ * which makes the card shorter — so a height sweep run with both would be measuring a card the app
+ * never draws, and would pass a card that loses a line.
+ */
+internal val LocalCardWidthSlack = staticCompositionLocalOf { 0.dp }
+
+/** Receives the size in pixels a card's content came to, including its padding. */
+internal val LocalCardContentProbe = staticCompositionLocalOf<((IntSize) -> Unit)?> { null }
 
 /** The box a card draws in: what its node declared, plus whatever slack a test asked for. */
 @Composable
-private fun Modifier.cardBox(node: GraphNode): Modifier =
-    size(node.width.dp, node.height.dp + LocalCardHeightSlack.current)
+private fun Modifier.cardBox(node: GraphNode): Modifier = size(
+    node.width.dp + LocalCardWidthSlack.current,
+    node.height.dp + LocalCardHeightSlack.current,
+)
 
 /**
  * The card for a node — the one place that decides which one a kind gets.
@@ -783,14 +799,23 @@ fun GroupCard(node: GraphNode.GroupNode, isSelected: Boolean = false) {
             .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(8.dp))
     ) {
         CardColumn(padding = 8.dp) {
+            // The noun goes in the eyebrow and the count in the value line, which is the shape
+            // every other card here already has (`METADATA 1` over `v1.metadata.json`). It used to
+            // be one sentence — `6 more metadata versions` — and at 200dp of card that truncated
+            // to `6 more metadata versi…`: the count survived and the word saying *what* was not
+            // drawn did not, which is the half the reader needs. Both halves fit comfortably once
+            // they are on separate lines at their own sizes, for all ten kinds and past a
+            // six-figure count. `GroupCardWidthTest` is the bound.
             Text(
-                "NOT DRAWN",
+                node.kind.plural.uppercase(),
                 fontSize = TypeScale.micro,
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextSecondary(),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Text(
-                "${formatCount(node.memberCount)} more ${node.kind.plural}",
+                "${formatCount(node.memberCount)} not drawn",
                 fontSize = TypeScale.body,
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextPrimary(),

@@ -53,7 +53,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   DuckDB's answer about the file rather than something the table declares.
 
 ### Fixed
-- **A collapsed group was losing the line that says it is a control.** `GroupNode` declared a 58dp
+- **A group card was truncating the word that says what it hides.** At 200dp the count line read
+  `6 more metadata versi…` — the number survived and the noun did not, which is the half a reader
+  needs. It was one sentence at body size, and no width fits that sentence for every kind: at a
+  six-figure count five of the ten overflowed. The noun now sits in the eyebrow and the count on
+  the value line — the shape every other card here already has — and the card reads
+  `METADATA VERSIONS` over `6 not drawn`. `GroupCardWidthTest` is the bound: it draws each of the
+  ten kinds with width slack and requires the content to fit the 200dp the node declares. The
+  height sweep could never have caught this, because an ellipsis costs a card no height at all. `GroupNode` declared a 58dp
   base and the plainest group card measures 60.5, so any group standing for exactly its members —
   no hidden subtree, no read errors — drew "NOT DRAWN", its count, and then nothing: the
   "Double-click to open" hint went under the card's own border, where Compose clips nothing and

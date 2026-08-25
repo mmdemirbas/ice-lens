@@ -289,7 +289,7 @@ class CardHeightTest {
                         Column(Modifier.padding(MARGIN), verticalArrangement = Arrangement.spacedBy(SPACING)) {
                             batch.forEach { (name, card) ->
                                 CompositionLocalProvider(
-                                    LocalCardContentProbe provides { px -> measured[name] = px },
+                                    LocalCardContentProbe provides { size -> measured[name] = size.height },
                                 ) { card.draw() }
                             }
                         }

@@ -321,6 +321,19 @@ desktop/src/main/kotlin/
   without a card fails here instead of needing a hand-maintained count, and the card a node gets is
   chosen by `GraphNodeCard` — one composable shared with the canvas, because a `when` written twice
   would let the sweep measure a card the app does not draw
+- **Width is the same failure on the other axis, and only the group card can be swept for it.**
+  A line too wide is ellipsised or wrapped inside the measurement, and ellipsis costs a card no
+  height at all, so `CardHeightTest` cannot see it — `6 more metadata versi…` shipped and passed
+  every check. `LocalCardWidthSlack` is the width twin of the height slack and is used by exactly
+  one test, `GroupCardWidthTest`, because a general width sweep would be wrong: every other card
+  prints something the **table** decides — a path, a file name, a branch — and a long one
+  ellipsising is the design. A `GroupNode` prints a count and a noun from `AggregationKind`, a
+  closed vocabulary this repository chooses, and a string we choose that does not fit the box we
+  chose for it is a defect every time. The two slacks are never used together: with width slack a
+  wrapping line stops wrapping, so a height sweep run with both measures a card the app never
+  draws. The card's shape follows from the fix — **the noun is the eyebrow and the count is the
+  value line**, the same shape as every other card here, because one sentence at 200dp truncated
+  the half that says *what* was not drawn
 - **Text sizes come from `TypeScale` in `ui/Typography.kt`, and nothing else names a number of
   `sp`.** Five steps at a ratio near 1.2 (10/12/14/17/21), replacing eight sizes from 8sp to 16sp
   chosen a call site at a time — consecutive steps 1.09x apart read as one flat size with noise on

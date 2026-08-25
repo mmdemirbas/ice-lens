@@ -145,9 +145,13 @@ What is left:
   because neither is a repeated node — a graph draws one table root and, on a healthy table, no
   errors at all, so the space costs nothing a reader scrolls past.
 
-- **A group card truncates the one word that says what it hides.** At 200dp the count line reads
-  `6 more metadata versi…`, because `AggregationKind.METADATA.plural` is the longest of the ten.
-  Visible in `group-card-1.png`. Every other kind fits.
+- **Only the group card is swept for width, and the reason is a real gap.** `GroupCardWidthTest`
+  covers it because its whole content is app-composed vocabulary; every other card prints a path
+  or a name the table decides, where ellipsis is the design. What is unchecked is the middle
+  ground — a card line that mixes a fixed label with a table value (`Current Snap: <id>`,
+  `Stage: <stage>`), where the label can be squeezed out by the value with nothing failing.
+  Catching that needs the two halves measured separately, which means the card telling the test
+  which part is ours.
 
 - **The identity table at the top of a panel cannot be folded.** Every node type opens with an
   unsectioned `DetailTable` naming the node — path, UUID, format version, timestamps — and
