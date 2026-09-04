@@ -29,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 /**
  * What the canvas is drawing, and what it is not.
@@ -116,89 +115,136 @@ fun GraphStatusBadge(
         }
 
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-            Text(
-                "Siblings drawn per parent",
-                fontSize = TypeScale.small,
-                fontWeight = FontWeight.SemiBold,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            )
-            pageSizeChoices.forEach { choice ->
-                DropdownMenuItem(
-                    text = {
-                        Row(
-                            modifier = Modifier.widthIn(min = 180.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            // The slot is reserved either way, so the numbers do not shift as the
-                            // reader moves down the list.
-                            Box(Modifier.size(16.dp)) {
-                                if (choice == pageSize) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = "current page size",
-                                        tint = colors.primary,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                }
-                            }
-                            Text("$choice", fontSize = TypeScale.small)
-                        }
-                    },
-                    onClick = {
-                        menuOpen = false
-                        onPageSizeChange(choice)
-                    },
-                )
-            }
-            HorizontalDivider()
-            // The count is in the label because it is the whole of what the reader is consenting
-            // to: paging exists because a production table is tens of thousands of nodes, and an
-            // action that switches it off must say how many before it is taken, not after.
-            DropdownMenuItem(
-                text = {
-                    Row(
-                        modifier = Modifier.widthIn(min = 180.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(Modifier.size(16.dp)) {
-                            if (drawEverything) {
-                                Icon(
-                                    Icons.Default.Check,
-                                    contentDescription = "paging is off",
-                                    tint = colors.primary,
-                                    modifier = Modifier.size(16.dp),
-                                )
-                            }
-                        }
-                        Text(
-                            if (drawEverything) {
-                                "Paging off — drawing all ${formatCount(total)}"
-                            } else {
-                                "Draw all ${formatCount(total)} nodes"
-                            },
-                            fontSize = TypeScale.small,
-                        )
-                    }
-                },
-                // Off when there is nothing more to draw: the graph is already whole, and an
-                // action that would change nothing is one the reader has to try to find out.
-                enabled = drawEverything || hiddenByAggregation > 0,
-                onClick = {
-                    menuOpen = false
-                    onDrawEverythingChange(!drawEverything)
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Collapse every group", fontSize = TypeScale.small) },
-                enabled = hasExpandedGroups && !drawEverything,
-                onClick = {
-                    menuOpen = false
-                    onCollapseAllGroups()
-                },
+            GraphOptionsMenuItems(
+                total = total,
+                pageSize = pageSize,
+                pageSizeChoices = pageSizeChoices,
+                hiddenByAggregation = hiddenByAggregation,
+                hasExpandedGroups = hasExpandedGroups,
+                drawEverything = drawEverything,
+                onPageSizeChange = { menuOpen = false; onPageSizeChange(it) },
+                onDrawEverythingChange = { menuOpen = false; onDrawEverythingChange(it) },
+                onCollapseAllGroups = { menuOpen = false; onCollapseAllGroups() },
             )
         }
     }
 }
+
+/**
+ * Everything the badge offers, as items rather than as a menu.
+ *
+ * They are a function of their own so a render can reach them. A `DropdownMenu` is a popup and its
+ * Material entrance animates up from alpha 0, so an offscreen scene — whose clock does not advance
+ * between frames — captures the badge and nothing else; opening the menu from a seeded state was
+ * measured and drew the menu at one scene height and not at another, which is a capture worse than
+ * none. The items are what this file decides — which page size carries the check, what the paging
+ * item says, and which of the two are dead — and they draw the same way wherever they are put. The
+ * popup's shape, shadow and padding around them are Material's.
+ */
+@Composable
+fun GraphOptionsMenuItems(
+    total: Int,
+    pageSize: Int,
+    pageSizeChoices: List<Int>,
+    hiddenByAggregation: Int,
+    hasExpandedGroups: Boolean,
+    drawEverything: Boolean,
+    onPageSizeChange: (Int) -> Unit,
+    onDrawEverythingChange: (Boolean) -> Unit,
+    onCollapseAllGroups: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Text(
+        "Siblings drawn per parent",
+        fontSize = TypeScale.small,
+        fontWeight = FontWeight.SemiBold,
+        color = colors.onSurfaceVariant,
+        // Indented past the check slot, so the heading starts where the choices under it start
+        // rather than where their check marks do.
+        modifier = Modifier.padding(
+            start = MENU_ITEM_PADDING + MENU_CHECK_SIZE + MENU_CHECK_GAP,
+            end = MENU_ITEM_PADDING,
+            top = 6.dp,
+            bottom = 6.dp,
+        ),
+    )
+    pageSizeChoices.forEach { choice ->
+        DropdownMenuItem(
+            text = {
+                MenuItemRow(checked = choice == pageSize, checkDescription = "current page size") {
+                    Text("$choice", fontSize = TypeScale.small)
+                }
+            },
+            onClick = { onPageSizeChange(choice) },
+        )
+    }
+    HorizontalDivider()
+    // The count is in the label because it is the whole of what the reader is consenting to:
+    // paging exists because a production table is tens of thousands of nodes, and an action that
+    // switches it off must say how many before it is taken, not after.
+    DropdownMenuItem(
+        text = {
+            MenuItemRow(checked = drawEverything, checkDescription = "paging is off") {
+                Text(
+                    if (drawEverything) {
+                        "Paging off — drawing all ${formatCount(total)}"
+                    } else {
+                        "Draw all ${formatCount(total)} nodes"
+                    },
+                    fontSize = TypeScale.small,
+                )
+            }
+        },
+        // Off when there is nothing more to draw: the graph is already whole, and an action that
+        // would change nothing is one the reader has to try to find out.
+        enabled = drawEverything || hiddenByAggregation > 0,
+        onClick = { onDrawEverythingChange(!drawEverything) },
+    )
+    DropdownMenuItem(
+        text = {
+            MenuItemRow(checked = false, checkDescription = null) {
+                Text("Collapse every group", fontSize = TypeScale.small)
+            }
+        },
+        enabled = hasExpandedGroups && !drawEverything,
+        onClick = { onCollapseAllGroups() },
+    )
+}
+
+/**
+ * One menu row: a check slot, then the label.
+ *
+ * The slot is reserved whether or not it holds a mark, so the labels sit on one x and the numbers
+ * do not shift as the reader moves down the list.
+ */
+@Composable
+private fun MenuItemRow(
+    checked: Boolean,
+    checkDescription: String?,
+    label: @Composable () -> Unit,
+) {
+    Row(
+        modifier = Modifier.widthIn(min = 180.dp),
+        horizontalArrangement = Arrangement.spacedBy(MENU_CHECK_GAP),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(MENU_CHECK_SIZE)) {
+            if (checked) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = checkDescription,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(MENU_CHECK_SIZE),
+                )
+            }
+        }
+        label()
+    }
+}
+
+private val MENU_CHECK_SIZE = 16.dp
+private val MENU_CHECK_GAP = 8.dp
+
+/** Material's own horizontal padding inside a [DropdownMenuItem]. Named here because the menu's
+ *  heading is laid out against it and has no other way to know it. */
+private val MENU_ITEM_PADDING = 12.dp

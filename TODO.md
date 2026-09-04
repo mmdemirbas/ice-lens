@@ -74,11 +74,11 @@ that leaves open:
   another table re-reads it from disk. Rebuilding those graphs from their retained table models
   would keep the read.
 
-- **The badge's menu is the one control no capture covers.** `DropdownMenu` opens from state a
-  render never reaches — `menuOpen` is a `remember` inside the composable — so the page-size
-  check mark, the "Draw all N nodes" item and its disabled states are asserted by
-  `AppStateAggregationTest` and looked at by nobody. Hoisting `menuOpen` to a parameter would
-  make it capturable, at the cost of a parameter that exists for the test.
+- **The badge's menu is captured as items, not as a menu.** `GraphOptionsMenuItems` is a
+  composable of its own and `badge-menu-1.png` renders three states of it. What is still not
+  covered is the popup itself — its position, and whether it fits on a short window. Seeding
+  `menuOpen` and rendering the real `DropdownMenu` was measured: it drew at one scene height and
+  not at another, so the popup needs a different technique than an `ImageComposeScene`.
 
 
 ---

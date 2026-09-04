@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The badge's menu is drawn for somebody now.** Every choice the canvas badge offers lives in a
+  `DropdownMenu`, and no capture had ever contained one — the page-size check mark, the paging
+  item's two wordings and the two disabled rules were asserted by `AppStateAggregationTest` and
+  looked at by nobody. The items are `GraphOptionsMenuItems` now, a composable of their own that
+  the menu wraps, and `badge-menu-1.png` renders three states side by side: the ordinary one, the
+  one where paging is off, and the inverse of the first, where the graph is whole and a group is
+  open. Opening the real popup was tried first and does not work offscreen — the same menu drew at
+  one scene height and not at another.
+
 - **A parent whose pages were opened can be put back to one page, without touching any other
   parent.** Opening every page of a node removed the last `GroupNode` beside it, and with it the
   only thing on the canvas that knew those siblings were paged — so the only way back was "collapse
@@ -114,6 +123,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **The menu's heading now starts where its choices start.** "Siblings drawn per parent" was
+  padded like a menu item and the items are indented past a check slot, so the heading sat 24dp
+  to the left of every number under it. Found by the first render of the items.
+
 - **A label in the inspector's key column broke in the middle of a word at the width the pane
   opens at, and the hover tooltip had no capture at all.** `DetailRow`'s key was
   `Modifier.weight(0.20f)` — a fraction, for a column whose content is a vocabulary this

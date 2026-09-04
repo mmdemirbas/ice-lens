@@ -7,15 +7,28 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import java.io.ByteArrayInputStream
+import java.io.File
+import java.nio.file.Paths
+import javax.imageio.ImageIO
+import kotlin.test.Test
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import model.GraphModel
 import model.GraphNode
 import model.ManifestEntryStatus
@@ -26,13 +39,6 @@ import model.SnapshotRefLabel
 import model.UnifiedTableModel
 import service.AggregationPolicy
 import service.GraphLayoutService
-import java.io.ByteArrayInputStream
-import java.io.File
-import java.nio.file.Paths
-import javax.imageio.ImageIO
-import kotlin.test.Test
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 /**
  * Renders the inspector panel off-screen and writes a PNG per case.
@@ -264,6 +270,81 @@ class InspectorRenderTest {
                     hasExpandedGroups = false, drawEverything = true,
                     onPageSizeChange = {}, onDrawEverythingChange = {}, onCollapseAllGroups = {},
                 )
+            }
+        }
+    }
+
+    /**
+     * The choices the badge offers, which until now were drawn for nobody.
+     *
+     * The badge itself was captured in five states and its menu in none of them, because the menu
+     * is a popup and a popup is not what an offscreen scene renders reliably — so the items are a
+     * composable of their own and this renders them directly (see `GraphOptionsMenuItems`).
+     *
+     * Three states, because the two disabled rules pull in opposite directions and a capture where
+     * every item is live checks neither. `badge-menu-partial` is the ordinary one: a check on the
+     * current page size, "Draw all" live because there is more to draw, "Collapse every group" dead
+     * because nothing is open. `badge-menu-paging-off` is the state where the paging item's own
+     * wording changes and it carries the check. `badge-menu-collapsible` is the inverse of the
+     * first — the graph is whole so "Draw all" is dead, and a group is open so the collapse is
+     * live. What the picture is for: whether a dead item reads as dead, and whether the check
+     * column keeps the labels on one x.
+     */
+    @Test
+    fun `the badge's menu renders the states its items change with`() {
+        // Side by side rather than stacked: the three differ only in which items are dead and
+        // which carries the check, and that is read across, not down.
+        renderScene("badge-menu", width = 2000, height = 1020) {
+            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                MenuUnderTest("Nothing expanded, more to draw") {
+                    GraphOptionsMenuItems(
+                        total = 6_180, pageSize = 24,
+                        pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
+                        hiddenByAggregation = 5_749,
+                        hasExpandedGroups = false, drawEverything = false,
+                        onPageSizeChange = {}, onDrawEverythingChange = {}, onCollapseAllGroups = {},
+                    )
+                }
+                MenuUnderTest("Paging off") {
+                    GraphOptionsMenuItems(
+                        total = 6_180, pageSize = 8,
+                        pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
+                        hiddenByAggregation = 0,
+                        hasExpandedGroups = true, drawEverything = true,
+                        onPageSizeChange = {}, onDrawEverythingChange = {}, onCollapseAllGroups = {},
+                    )
+                }
+                MenuUnderTest("Whole graph, a group expanded") {
+                    GraphOptionsMenuItems(
+                        total = 6_180, pageSize = 200,
+                        pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
+                        hiddenByAggregation = 0,
+                        hasExpandedGroups = true, drawEverything = false,
+                        onPageSizeChange = {}, onDrawEverythingChange = {}, onCollapseAllGroups = {},
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * The items in something menu-shaped, so the capture is read the way the menu is.
+     *
+     * The surface is the test's, not the app's — a `DropdownMenu` supplies its own — so it is kept
+     * to a container and a caption and claims nothing about Material's shadow or corner radius.
+     */
+    @Composable
+    private fun MenuUnderTest(caption: String, items: @Composable () -> Unit) {
+        // A stated width, because a menu item fills what it is given and a `Row` hands the first
+        // child everything before it measures the next one.
+        Column(Modifier.width(300.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(caption, fontSize = TypeScale.small, fontWeight = FontWeight.SemiBold)
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                tonalElevation = 3.dp,
+                shadowElevation = 3.dp,
+            ) {
+                Column(Modifier.padding(vertical = 8.dp)) { items() }
             }
         }
     }

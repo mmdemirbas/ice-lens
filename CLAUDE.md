@@ -369,6 +369,16 @@ desktop/src/main/kotlin/
   re-applying that to the next table opened applies a consent never given for it. Opening another
   table and choosing a page size both turn it back off, and the menu item carries the count it is
   about to draw, because that figure is the whole of what is being agreed to
+- **A menu's items are a composable; the menu is not capturable.** `GraphOptionsMenuItems` in
+  `ui/GraphStatusBadge.kt` holds everything the badge offers — which page size carries the check,
+  what the paging item says, which of the two are dead — and `DropdownMenu` holds only the popup
+  around them. The split is what puts them in front of somebody: seeding `menuOpen` from a
+  parameter was tried first and a `DropdownMenu` in an `ImageComposeScene` drew its items at one
+  scene height and nothing at all at another, which is a capture worse than none. Rendering the
+  items directly is the same idea as `sectionCollapse` and `startRequested` — a state a click
+  produces is a state a render never reaches — applied to the content rather than the state. The
+  menu's heading is laid out against `MENU_ITEM_PADDING + MENU_CHECK_SIZE + MENU_CHECK_GAP` so it
+  starts where the choices start rather than where their check marks do
 - **The page size is a setting, and two things travel with a change of it.** `AppState.graphPageSize`
   is persisted and feeds `AggregationPolicy`; `GraphStatusBadge` on the canvas both states the
   figures and offers the choices. Changing it clears `expandedGroupIds` — a group id names a page
@@ -589,7 +599,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~596 tests across 66 files (455 in :core, 141 in :desktop) covering full pipelines for both formats (Avro fixtures
+~597 tests across 66 files (455 in :core, 142 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
