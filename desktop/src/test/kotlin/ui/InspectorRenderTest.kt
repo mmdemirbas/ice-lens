@@ -6,11 +6,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -19,6 +23,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -291,6 +298,42 @@ class InspectorRenderTest {
                 )
             }
         }
+    }
+
+    /**
+     * What focus looks like on the chrome, which no capture had ever shown.
+     *
+     * `KeyboardReachTest` settled that Tab *arrives* at the tool-window bar and a pane's close
+     * button. Arriving and being visible are different claims, and only the second one is a
+     * question about pixels: a control that takes focus and draws nothing for it is reachable and
+     * unusable, because the reader cannot tell where they are.
+     *
+     * Two captures, each with one control focused among unfocused peers, because a focus ring with
+     * nothing beside it cannot be judged. There are exactly three focusables here — two bar icons
+     * and the close — so the first Tab lands on the first icon and the third on the close. A fourth
+     * would wrap back to the first, which is how the first version of this test produced two
+     * byte-identical captures and would have read as "focus draws nothing" a second time.
+     */
+    @Test
+    fun `focus is visible on the tool-window chrome`() {
+        @Composable
+        fun chrome() {
+            Row(Modifier.padding(24.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                ToolWindowBar(
+                    anchor = ToolWindowAnchor.LEFT_TOP,
+                    windows = listOf("workspace" to Icons.Default.Folder, "structure" to Icons.Default.AccountTree),
+                    activeWindowId = "workspace",
+                    onWindowClick = {},
+                )
+                Box(Modifier.width(360.dp).height(200.dp)) {
+                    ToolWindowPane(title = "Workspace", onClose = {}) {
+                        Text("the pane's body", fontSize = TypeScale.small)
+                    }
+                }
+            }
+        }
+        renderFocused("focus-bar", width = 1000, height = 520, tabs = 1) { chrome() }
+        renderFocused("focus-pane-close", width = 1000, height = 520, tabs = 3) { chrome() }
     }
 
     /**
@@ -899,6 +942,43 @@ class InspectorRenderTest {
         renderScene(name, width = 1400, height = height) {
             NodeDetailsContent(graphModel = graph, selectedNodeIds = nodeIds)
         }
+
+    /**
+     * A capture with focus somewhere, which is the only way to see what focus looks like.
+     *
+     * An offscreen scene has no pointer and nothing takes focus on its own, so a rendered control
+     * is always the unfocused one. Keys go in before the last frame — the same skiko constructor
+     * `KeyboardReachTest` uses, since the AWT-wrapping one is cast and throws — and the scene holds
+     * several controls on purpose, so the focused one is captured beside its unfocused peers. A
+     * picture of a focus ring with nothing to compare it against says nothing about whether it
+     * reads.
+     */
+    @OptIn(androidx.compose.ui.InternalComposeUiApi::class)
+    private fun renderFocused(
+        name: String,
+        width: Int,
+        height: Int,
+        tabs: Int,
+        density: Float = 2f,
+        content: @Composable () -> Unit,
+    ) {
+        val scene = ImageComposeScene(width = width, height = height, density = Density(density)) {
+            Themed(content)
+        }
+        val png = try {
+            scene.render()
+            repeat(tabs) {
+                scene.sendKeyEvent(KeyEvent(Key.Tab, KeyEventType.KeyDown))
+                scene.sendKeyEvent(KeyEvent(Key.Tab, KeyEventType.KeyUp))
+                scene.render()
+            }
+            scene.render().encodeToData()?.bytes
+        } finally {
+            scene.close()
+        }
+        outputDir.mkdirs()
+        writeBands(assertNotNull(png, "scene produced no image for $name"), name)
+    }
 
     private fun renderScene(
         name: String,

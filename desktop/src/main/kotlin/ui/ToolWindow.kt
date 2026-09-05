@@ -5,7 +5,10 @@ package ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Remove
@@ -63,6 +66,7 @@ fun ToolWindowBar(
                         .size(32.dp)
                         .background(if (isActive) colors.surface else Color.Transparent)
                         .onGloballyPositioned { coords -> iconBounds = coords.boundsInWindow() }
+                        .focusRing()
                         .clickable { onWindowClick(id) },
                     contentAlignment = Alignment.Center
                 ) {
@@ -113,6 +117,7 @@ fun ToolWindowBar(
                         .size(32.dp)
                         .background(if (isActive) colors.surface else Color.Transparent)
                         .onGloballyPositioned { coords -> iconBounds = coords.boundsInWindow() }
+                        .focusRing()
                         .clickable { onWindowClick(id) },
                     contentAlignment = Alignment.Center
                 ) {
@@ -206,12 +211,23 @@ fun ToolWindowPane(
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(onClick = onClose, modifier = Modifier.size(20.dp)) {
-                Icon(
-                    imageVector = Icons.Default.Remove,
-                    contentDescription = "Close",
-                    modifier = Modifier.size(14.dp)
-                )
+            val closeInteractions = remember { MutableInteractionSource() }
+            val closeFocused by closeInteractions.collectIsFocusedAsState()
+            IconButton(
+                onClick = onClose,
+                interactionSource = closeInteractions,
+                modifier = Modifier.size(20.dp),
+            ) {
+                Box(
+                    modifier = Modifier.size(20.dp).focusRing(closeFocused, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Remove,
+                        contentDescription = "Close",
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
             }
         }
         Box(modifier = Modifier.weight(1f)) {

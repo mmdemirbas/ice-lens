@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -184,6 +185,46 @@ val LocalSectionCollapse = staticCompositionLocalOf { SectionCollapseState() }
  * skipped"), so the displayed string changes as the table does. Keying collapse on it would
  * silently re-expand a section whenever its count moved.
  */
+/**
+ * The ring that says where the keyboard is.
+ *
+ * A control that takes focus and draws nothing for it is reachable and unusable: `KeyboardReachTest`
+ * proves Tab arrives at the tool-window bar and a pane's close button, and `focus-bar-1.png` and
+ * `focus-pane-close-1.png` came back **byte-identical** before this existed, which is the cheapest
+ * possible proof that focus was drawing nothing at all. Material's default indication is for press,
+ * not for focus.
+ *
+ * One dp of `primary`, which is what the workspace list already draws around itself. That list
+ * keeps its own copy rather than calling this: its focus state has two more consumers — the row
+ * cursor is drawn only while the list holds the keyboard — so the state has to be hoisted there
+ * anyway, and a modifier that hides it would need it hoisted back out.
+ *
+ * Goes **above** the `clickable` or `focusable` it belongs to, since `onFocusChanged` observes the
+ * focus modifiers below it in the chain.
+ */
+@Composable
+fun Modifier.focusRing(shape: Shape = RoundedCornerShape(4.dp)): Modifier {
+    var focused by remember { mutableStateOf(false) }
+    return this
+        .onFocusChanged { focused = it.isFocused }
+        .focusRing(focused, shape)
+}
+
+/**
+ * The same ring, drawn where the caller says rather than where the chain sits.
+ *
+ * A Material `IconButton` expands its own layout to the 48dp minimum interaction size *after* the
+ * modifier it was handed, so a ring in that chain is measured at 48dp and paints outside a 28dp
+ * header — which is what the first `focus-pane-close-1.png` showed. The button keeps its full
+ * click target and the ring is drawn on a box inside it, fed from the button's own
+ * `interactionSource`.
+ */
+@Composable
+fun Modifier.focusRing(focused: Boolean, shape: Shape = RoundedCornerShape(4.dp)): Modifier =
+    border(FOCUS_RING_WIDTH, if (focused) MaterialTheme.colorScheme.primary else Color.Transparent, shape)
+
+private val FOCUS_RING_WIDTH = 1.dp
+
 fun sectionKey(title: String): String = title.substringBefore(" (").substringBefore(" —").trim()
 
 /**

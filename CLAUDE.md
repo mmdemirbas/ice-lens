@@ -511,6 +511,19 @@ desktop/src/main/kotlin/
   button and reads the Tab order off the order the callbacks fire in. The inspector's copy buttons
   are the same `IconButton`, inferred rather than driven because their action is the system
   clipboard
+- **Focus is drawn by `Modifier.focusRing`, and the capture that proves it needs two controls.**
+  Reaching a control and showing that you have reached it are different claims, and only the second
+  is about pixels: `focus-bar-1.png` and `focus-pane-close-1.png` came back **byte-identical**
+  before the ring existed, which is the whole proof that Material's default indication is for press
+  and not for focus. One dp of `primary`, matching what the workspace list already draws around
+  itself — that list keeps its own copy because its focus state also decides whether the row cursor
+  is drawn, so it has to be hoisted there anyway. The **told-focus** form of `focusRing` exists for
+  `IconButton`, which expands to the 48dp minimum interaction size *after* the modifier it was
+  handed: a ring in that chain is measured at 48dp and paints outside a 28dp header, so the button
+  keeps its click target and the ring is drawn on a box inside it from the button's own
+  `interactionSource`. `renderFocused` sends Tab before the last frame, and the scene holds
+  **several** focusables on purpose — the first version tabbed past the last one and wrapped to the
+  first, producing two identical captures that read exactly like "focus draws nothing"
 - **Moving a cursor must cost what the reader expects it to cost.** The canvas and the structure
   tree make the *selection* the cursor, because selecting is free there. The workspace does not:
   opening a table reads its whole metadata tree, so `workspaceKeyAction` moves a separate
@@ -637,7 +650,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~616 tests across 69 files (455 in :core, 161 in :desktop) covering full pipelines for both formats (Avro fixtures
+~617 tests across 69 files (455 in :core, 162 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

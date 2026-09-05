@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Focus is visible on the tool-window chrome.** Tab reached the bar's buttons and a pane's close
+  and drew nothing on arrival, which the first two captures proved by coming back byte-identical:
+  Material's default indication is for press, not for focus. `Modifier.focusRing` draws one dp of
+  `primary`, the same ring the workspace list already draws around itself. The close button keeps
+  its full click target and draws the ring inside it, because a Material `IconButton` expands to a
+  48dp interaction target and a ring in the outer chain painted outside the 28dp header.
+
 - **A crash now leaves something to send.** There was no uncaught-exception handler at all, so an
   exception took the window with it and left only whatever had already reached the rolling log. One
   is installed before the window is built. The report leads with the deepest cause rather than the
