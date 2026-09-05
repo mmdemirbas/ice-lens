@@ -559,6 +559,20 @@ desktop/src/main/kotlin/
   rather than as a list of what the node holds. Fold state is keyed on `sectionKey(title)` — the
   title minus its ` (count)` and ` — verdict` suffixes — so a section does not re-open when its
   count moves, and it is held by `NodeDetailsContent` for the panel rather than per node
+- **An uncaught exception leaves a report, and the report is the whole artifact.** After a crash
+  the window is gone or frozen, so what the reader pastes into an issue is all anyone will ever
+  have — which is why `crashReport` in `ui/CrashReport.kt` is asserted rather than eyeballed. It
+  leads with the **deepest** cause, because an exception that crosses a layer arrives wrapped and
+  the wrapper's message says least; the stack comes from `printStackTrace` rather than a hand-rolled
+  walk of `cause`, since that is what emits `Caused by:` and `Suppressed:` in the form every JVM
+  reader knows. It is capped at `CRASH_REPORT_STACK_LINES` and says where it cut, because a
+  `StackOverflowError` is both the likeliest source of a huge stack and the crash whose report most
+  needs to survive a clipboard. The handler **does not exit** — a frozen window with a dialog on it
+  can be copied from and a quit one cannot — and shows **one** dialog ever, because a failing
+  composition re-throws every frame. The dialog is Swing: asking a broken Compose runtime to draw
+  the report about its own failure is asking the wrong runtime. That the AWT event thread reaches
+  the default handler at all is asserted in `CrashReportTest`, not assumed, since the JDK has not
+  always routed it there
 - **`WideTable` column order is load-bearing, and so are its widths.** The inspector panel is
   far narrower than the table, and the reader sees the leftmost columns and nothing else until
   they scroll — so the answer goes first and identifiers follow it. Pass `columnWidths`: one
@@ -623,7 +637,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~609 tests across 68 files (455 in :core, 154 in :desktop) covering full pipelines for both formats (Avro fixtures
+~616 tests across 69 files (455 in :core, 161 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

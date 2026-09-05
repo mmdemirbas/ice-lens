@@ -62,13 +62,7 @@ fun AboutDialog(
             val scrollState = rememberScrollState()
             Column(Modifier.verticalScroll(scrollState).widthIn(min = 400.dp)) {
                 if (aboutTab == 0) {
-                    val appVersion = remember {
-                        runCatching {
-                            val props = java.util.Properties()
-                            props.load(Thread.currentThread().contextClassLoader.getResourceAsStream("version.properties"))
-                            props.getProperty("version", "dev")
-                        }.getOrDefault("dev")
-                    }
+                    val appVersion = remember { appVersion() }
                     Text("A visual inspector for Apache Iceberg tables. It visualizes metadata, snapshots, manifests, and row-level delete relationships.")
                     Spacer(Modifier.height(8.dp))
                     Text("Version: $appVersion", fontSize = TypeScale.body, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -76,14 +70,8 @@ fun AboutDialog(
                     Text("Author: Muhammed Demirbaş")
                     Spacer(Modifier.height(8.dp))
                     TextButton(onClick = {
-                        val info = buildString {
-                            appendLine("Iceberg Lens $appVersion")
-                            appendLine("OS: ${System.getProperty("os.name")} ${System.getProperty("os.version")} (${System.getProperty("os.arch")})")
-                            appendLine("Java: ${System.getProperty("java.version")} (${System.getProperty("java.vendor")})")
-                            appendLine("Runtime: ${System.getProperty("java.runtime.name")} ${System.getProperty("java.runtime.version")}")
-                        }
                         val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
-                        clipboard.setContents(java.awt.datatransfer.StringSelection(info), null)
+                        clipboard.setContents(java.awt.datatransfer.StringSelection(diagnosticLines(appVersion)), null)
                     }) {
                         Text("Copy diagnostic info", fontSize = TypeScale.small)
                     }

@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A crash now leaves something to send.** There was no uncaught-exception handler at all, so an
+  exception took the window with it and left only whatever had already reached the rolling log. One
+  is installed before the window is built. The report leads with the deepest cause rather than the
+  wrapper's message, carries the machine, the thread and the log path, and is capped so a
+  `StackOverflowError` still produces something a clipboard can hold. It does not quit — a frozen
+  window with a dialog on it can be copied from — and it shows one dialog however many exceptions
+  arrive, because a failing composition re-throws every frame. The dialog is Swing, since the
+  runtime that crashed is often the one that would have to draw it.
+
 - **The workspace list can be edited from the keyboard.** With the list focused, Delete or
   Backspace asks to remove the root under the cursor — the same dialog the `×` opens — and
   `Alt + Up / Down` moves it one place. A table inside a warehouse answers nothing to either, since

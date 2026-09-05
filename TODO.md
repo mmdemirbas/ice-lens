@@ -202,8 +202,6 @@ What is left:
 
 - **Auto-update** — "Check for updates" button in About dialog that queries GitHub Releases API.
 
-- **Crash reporting** — uncaught exception handler that writes to a log file and shows "Copy error details" dialog.
-
 - **Telemetry (opt-in)** — anonymous usage analytics to inform feature prioritization.
 
 ---

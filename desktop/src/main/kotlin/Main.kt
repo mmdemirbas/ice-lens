@@ -137,8 +137,14 @@ private fun persistWindowState(window: java.awt.Window, isMaximized: Boolean) {
 
 private val logger = LoggerFactory.getLogger("app.Main")
 
-fun main() = application {
-    logger.info("Iceberg Lens starting — log file: {}/.icelens/icelens.log", System.getProperty("user.home"))
+fun main() {
+    // Before the window, because a crash while building it is one of the crashes worth reporting.
+    ui.installCrashHandler()
+    launch()
+}
+
+private fun launch() = application {
+    logger.info("Iceberg Lens starting — log file: {}", ui.logFilePath())
     val launchConfig = resolveLaunchWindowConfig()
     var awtWindow by remember { mutableStateOf<java.awt.Window?>(null) }
     val windowState = rememberWindowState(
