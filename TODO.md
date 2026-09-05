@@ -144,13 +144,13 @@ What is left:
   because neither is a repeated node — a graph draws one table root and, on a healthy table, no
   errors at all, so the space costs nothing a reader scrolls past.
 
-- **Only the group card is swept for width, and the reason is a real gap.** `GroupCardWidthTest`
-  covers it because its whole content is app-composed vocabulary; every other card prints a path
-  or a name the table decides, where ellipsis is the design. What is unchecked is the middle
-  ground — a card line that mixes a fixed label with a table value (`Current Snap: <id>`,
-  `Stage: <stage>`), where the label can be squeezed out by the value with nothing failing.
-  Catching that needs the two halves measured separately, which means the card telling the test
-  which part is ours.
+- **Only the group card is swept for width, and the middle ground was checked rather than
+  swept.** `GroupCardWidthTest` covers it because its whole content is app-composed vocabulary;
+  every other card prints a path or a name the table decides, where ellipsis is the design. The
+  lines that mix a fixed label with a table value (`Current Snap: <id>`, `Stage: <stage>`,
+  `Target: <file>`, `PK: <keys>`) all put the label first in a single `Text`, so ellipsis takes the
+  value's tail and the label survives; the value is either bounded (a `Long`) or `maxLines`-capped.
+  A sweep would measure the label surviving on every card, which is the case already.
 
 - **The identity table at the top of a panel still cannot be folded, and now does not need to
   be — on the table node.** Decided from `table-node-folded-1.png` rather than argued: the
@@ -197,8 +197,6 @@ What is left:
 - **Different layout algorithms** — top-to-bottom, force-directed, or compact tree as alternatives to the current left-to-right layered layout.
 
 - **Remote storage** — read metadata from S3, HDFS, ADLS, GCS (via Hadoop FileSystem API or cloud SDKs).
-
-- **Nested warehouse scanning** — recursive discovery of Iceberg tables in deeper directory structures (currently only one level deep).
 
 - **IntelliJ IDEA plugin** — repackage as a tool window plugin via `ComposePanel`.
 
@@ -267,4 +265,8 @@ What is left:
 
 - **Documentation site** — GitHub Pages with installation guide, user guide with annotated screenshots, and troubleshooting FAQ.
 
-- **Monitor `material-icons-extended-desktop`** — pinned to `1.7.3` (latest available) while rest of Compose is `1.10.x`. Update when a newer version is published.
+- **`material-icons-extended-desktop` stays at `1.7.3`, and there is nothing to update to.** Checked
+  2026-09-05: the JetBrains coordinate on Maven Central stops at `1.7.3`; the androidx coordinate
+  on Google Maven (`androidx.compose.material:material-icons-extended-desktop`) reaches `1.7.8` and
+  stops there too. The icons library is frozen at 1.7.x upstream and coexists with Compose `1.10.x`
+  either way, so the five patch versions on the other coordinate are the whole difference.
