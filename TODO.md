@@ -101,14 +101,18 @@ What is left:
   file-level claim on the **table's** history derivation, not on the manifest panel, and a
   fixture with two manifests listing one file inside a single snapshot would be needed before the
   manifest-panel version explains anything at all.
-- **Paimon has no per-entry drill-down, and cannot have the shared one.** The accumulation now
-  lives in `model/PaimonReplay.kt` and emits its per-manifest contributions and its live file set
-  from one walk, so the comparison and the figures cannot disagree. What is still missing is the
-  level below: the Iceberg panel lists what each *entry* contributed and which rule dropped it
-  (`manifestLedger`), and Paimon has no equivalent because its entries are not independently
-  decidable — a `_KIND=1` entry's effect depends on what the base already put in the map. The
-  honest Paimon version is a per-entry **replay trace** (what the map held before, what this entry
-  did to it), which is a different shape from the Iceberg ledger and should not pretend otherwise.
+- **Paimon's per-entry drill-down — done, as a replay trace.** The Iceberg panel lists what each
+  entry contributed and which rule dropped it; Paimon now lists what each entry *did to the live
+  set* and what state it met, which is the only honest form the question takes when an entry's
+  meaning depends on the entries before it. Four effects — added, replaced, removed, removed
+  (absent) — emitted by `replayPaimonSnapshot` under a `traceFor`, so the trace and the figures
+  come out of one walk and the test asserts the trace sums to the contribution it explains.
+
+  What the checked-in fixture cannot reach: `example/paimon/db.db/test` is one snapshot, one
+  manifest, one ADD entry, so three of the four effects are exercised by constructed snapshots
+  rather than by an engine-written table. That is the right level for a rule this repository owns,
+  but a Paimon fixture with a compaction behind it would make the arithmetic oracle much stronger,
+  and it stays blocked on the Flink container.
 
 ---
 

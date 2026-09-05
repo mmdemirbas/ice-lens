@@ -180,6 +180,14 @@ object PaimonGraphBuilder {
                                 )
                             },
                             localPath = unifiedManifest.path.toString(),
+                            // The snapshot, not the manifest, because the trace is a replay of
+                            // everything ahead of this manifest as well as of it.
+                            replayTrace = DeferredRead.of {
+                                replayPaimonSnapshot(
+                                    unifiedSnapshot,
+                                    traceFor = paimonManifestKey(unifiedManifest),
+                                ).trace
+                            },
                         )
                     }
                     val manifestEntryViews =

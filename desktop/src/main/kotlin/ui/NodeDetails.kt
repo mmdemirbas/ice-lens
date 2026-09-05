@@ -47,6 +47,7 @@ import model.snapshotDiff
 import model.EntryFate
 import model.LedgerEntry
 import model.ManifestEntryView
+import model.PaimonEntryEffect
 import model.manifestLedger
 import model.normalizeFilePath
 import model.total
@@ -686,6 +687,81 @@ private fun ManifestLedgerSection(entries: List<ManifestEntryView>) {
         )
     }
 }
+
+/**
+ * What each of this manifest's entries did to the table's live set.
+ *
+ * This is Paimon's answer to the Iceberg ledger above, and it is deliberately a different shape.
+ * `manifestLedger` gives a *verdict per entry* — counted, records a removal, already counted —
+ * because an Iceberg entry can be decided on its own. A Paimon entry cannot: `_KIND=1` means
+ * "remove what is there", so what it did depends on what the entries before it left behind. So each
+ * row states the state the entry met and the effect the two produced together, which is the only
+ * honest form the question takes here.
+ *
+ * The effects the reader is looking for are the ones that are not plain additions: a **replacement**
+ * is a file rewritten in place, where the record delta is the difference rather than the new file's
+ * whole count, and **removed nothing** is a delta carrying a removal for a file its base never
+ * listed — a no-op that is invisible in every aggregate above.
+ *
+ * The trace is a `DeferredRead` because producing it means replaying the whole snapshot, not
+ * opening a file. It is read here, once, for the manifest on screen.
+ */
+@Composable
+private fun PaimonReplayTraceSection(node: GraphNode.PaimonManifestNode) {
+    val colors = MaterialTheme.colorScheme
+    val trace = remember(node.id) { node.replayTrace.value }
+    if (trace.isNullOrEmpty()) return
+
+    val notPlain = trace.count { it.effect != PaimonEntryEffect.ADDED }
+
+    CountedSection("How this manifest changed the live set", trace.size, "entries") {
+        Text(
+            "A Paimon manifest is replayed, not filtered: an entry's effect depends on what the " +
+                "entries before it left in the table. The delta columns are what each entry moved " +
+                "the running totals by — a rewrite moves them by the difference, and a removal for " +
+                "a file that was not live moves nothing at all. " +
+                if (notPlain == 0) "Every entry here was a plain addition."
+                else "${formatCount(notPlain)} of these were not plain additions.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            // The effect first: it is the answer, and the panel is far narrower than the table.
+            headers = listOf("Effect", "File", "Was live", "Records", "Bytes", "Files"),
+            columnWidths = listOf(140.dp, 300.dp, 90.dp, 110.dp, 110.dp, 70.dp),
+            rows = trace.map { row ->
+                listOf(
+                    row.effect.label,
+                    (row.fileName ?: row.fileKey).substringAfterLast('/'),
+                    if (row.wasLive) {
+                        "${formatCount(row.previousRecordCount ?: 0L)} rows"
+                    } else "no",
+                    withSign(row.recordDelta),
+                    withSign(row.byteDelta),
+                    withSign(row.liveFileDelta.toLong()),
+                )
+            },
+            // Colour marks the exception, not every row — the scan-pruning verdict column's rule.
+            // Adding and removing are both ordinary here: a compaction commit removes files, and a
+            // column emphasised on every row has spent its emphasis before the row worth finding
+            // arrives. The two that are worth finding are a **rewrite in place**, where the record
+            // delta is a difference and not a file's own count, and a removal that **found nothing
+            // to remove**, which is a no-op invisible in every figure above.
+            leadCellColors = trace.map { row ->
+                when (row.effect) {
+                    PaimonEntryEffect.ADDED, PaimonEntryEffect.REMOVED -> null
+                    PaimonEntryEffect.REPLACED -> verdictUnevaluatedColor()
+                    PaimonEntryEffect.REMOVED_ABSENT -> colors.error
+                }
+            },
+        )
+    }
+}
+
+/** A delta reads as a delta: the sign is always shown, including the plus. */
+private fun withSign(value: Long): String =
+    if (value > 0) "+${formatCount(value)}" else formatCount(value)
 
 private fun renderSnapshotLogRows(items: List<SnapshotLogEntry>): List<List<String>> =
     items.sortedBy { it.timestampMs ?: Long.MAX_VALUE }.map { entry ->
@@ -2024,6 +2100,7 @@ fun NodeDetailsContent(
                             DetailRow("Deleted Files", "${node.data.numDeletedFiles ?: "N/A"}")
                             DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
                         }
+                        PaimonReplayTraceSection(node)
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
                     }
                     is GraphNode.PaimonDataFileNode -> {

@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A Paimon manifest now says what each of its entries did to the table.** The Iceberg panel has
+  listed per-entry contributions for a while and Paimon had nothing below the per-manifest figures.
+  It cannot have the same thing: an Iceberg entry is decidable on its own, while a Paimon
+  `_KIND=1` means "remove what is there" and depends on every entry before it. So each row states
+  the state the entry met and the effect the two produced — added, replaced, removed, or removed
+  (absent), the last being a removal for a file that was never live, which is a no-op invisible in
+  every figure above it. The trace comes out of the same walk as the figures, and the test asserts
+  it sums to the contribution it explains.
 - **Find a node on the graph — `Ctrl/Cmd+F`.** A find bar on the canvas with a match counter,
   Enter and Shift+Enter to step, and an amber halo on everything it matched. Each node kind gets a
   search vocabulary of its own rather than the one-line label the structure tree prints, so a

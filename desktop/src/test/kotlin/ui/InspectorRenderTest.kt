@@ -452,6 +452,74 @@ class InspectorRenderTest {
     }
 
     /**
+     * The Paimon manifest panel, and the replay trace that is new in it.
+     *
+     * The checked-in Paimon table is one snapshot with one manifest holding one ADD entry, so
+     * rendering it produces a trace where every row says the same thing — which checks nothing, the
+     * same reason the scan-pruning capture uses a literal that skips one manifest and reads
+     * another. The node here carries a trace with all four effects so the colour, the signs and the
+     * column order can be judged against each other: only the three that are *not* plain additions
+     * are coloured, and a rewrite has to read as a difference rather than as the new file's whole
+     * record count.
+     *
+     * Constructed rather than replayed, because what is being looked at is the panel. That the
+     * trace is arithmetically right is `PaimonReplayTraceTest`'s job, against the real table and
+     * against a delta over a base.
+     */
+    @Test
+    fun `the paimon manifest panel renders its replay trace`() {
+        fun row(effect: model.PaimonEntryEffect, name: String, wasLive: Boolean, prevRows: Long?, rows: Long, bytes: Long, files: Int) =
+            model.PaimonEntryTrace(
+                fileKey = name,
+                fileName = name,
+                kind = if (effect == model.PaimonEntryEffect.REMOVED || effect == model.PaimonEntryEffect.REMOVED_ABSENT) 1 else 0,
+                wasLive = wasLive,
+                previousRecordCount = prevRows,
+                previousSizeBytes = prevRows?.let { it * 10 },
+                effect = effect,
+                liveFileDelta = files,
+                recordDelta = rows,
+                byteDelta = bytes,
+            )
+
+        val node = GraphNode.PaimonManifestNode(
+            id = "pman_1",
+            data = model.PaimonManifestFileMeta(
+                fileName = "manifest-6f2c1a90-4c1f-4d0e-9a3b-7e5d2c8f0011-0",
+                fileSize = 4_216,
+                numAddedFiles = 2,
+                numDeletedFiles = 2,
+                schemaId = 0,
+            ),
+            simpleId = 1,
+            localPath = "/wh/db.db/orders/manifest/manifest-6f2c1a90-4c1f-4d0e-9a3b-7e5d2c8f0011-0",
+            replayTrace = model.DeferredRead.of {
+                listOf(
+                    row(model.PaimonEntryEffect.REMOVED, "data-88d1c0f7-0-0.parquet", true, 12_800, -12_800, -1_048_576, -1),
+                    row(model.PaimonEntryEffect.REPLACED, "data-2b7e4a51-0-0.parquet", true, 9_600, 3_200, 262_144, 0),
+                    row(model.PaimonEntryEffect.ADDED, "data-5c9f3d22-0-0.parquet", false, null, 20_480, 1_703_936, 1),
+                    row(model.PaimonEntryEffect.REMOVED_ABSENT, "data-a04e71bb-0-0.parquet", false, null, 0, 0, 0),
+                )
+            },
+        )
+        val graph = GraphModel(
+            nodes = listOf(node),
+            edges = emptyList(),
+            width = 200.0,
+            height = 80.0,
+            layoutPositions = mapOf(node.id to model.Point(0f, 0f)),
+        )
+        renderScene("paimon-manifest-node", width = 1400, height = 1400) {
+            NodeDetailsContent(graph, setOf(node.id))
+        }
+        // And the same panel at the width the pane opens at, where the six columns have to
+        // survive: the effect is the leading column precisely because it is the answer.
+        renderScene("paimon-manifest-node-narrow", width = 620, height = 1400) {
+            NodeDetailsContent(graph, setOf(node.id))
+        }
+    }
+
+    /**
      * Focus on a copy button, which lives in a panel several screens tall.
      *
      * `KeyboardReachTest` settles that Tab arrives; the chrome capture above settles that a ring is

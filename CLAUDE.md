@@ -51,7 +51,7 @@ core/src/main/kotlin/
 │   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
 │   ├── BucketTransform.kt     # Iceberg's bucket[N], via the same Guava murmur3 the writer uses
 │   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
-│   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures AND the file set, one walk
+│   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
 │   ├── ManifestLedger.kt      # Per-entry: what it added to a manifest's figures, or which rule dropped it
@@ -209,6 +209,23 @@ desktop/src/main/kotlin/
   walk rather than trusting the source. Paimon's node reports **no parent**: `id - 1` is a
   convention nothing states and a rolled-back table breaks it, so the panel says the format records
   none rather than inferring lineage
+- **Paimon's per-entry drill-down is a replay trace, and it is a different shape from Iceberg's
+  ledger on purpose.** `manifestLedger` gives a *verdict per entry* — counted, records a removal,
+  already counted — because an Iceberg entry can be decided on its own, which is also what lets the
+  drill-down be re-run scoped to one manifest. A Paimon entry has no such reading: `_KIND=1` means
+  "remove what is there", so what it did depends on what the entries before it left. So
+  `PaimonEntryTrace` records **the state the entry met** and the effect the two produced together —
+  `ADDED`, `REPLACED`, `REMOVED`, `REMOVED_ABSENT` — and it is emitted by `replayPaimonSnapshot`
+  itself, under a `traceFor` naming one manifest. One manifest, because recording every entry of
+  every manifest would hold the whole table's entry list in memory for a panel that shows one; and
+  it still costs the **whole replay**, because the manifest's own entries are not enough to decide
+  them. `PaimonManifestNode.replayTrace` is therefore a `DeferredRead` — deferred not to avoid a
+  file open but to avoid a replay per manifest at build time. **The oracle is that the trace sums
+  to the contribution it explains**, on files, records and bytes at once, which is the same
+  "two readings of one walk" rule `PaimonSnapshotDiffTest` holds the figures and the file set to.
+  The colour marks `REPLACED` and `REMOVED_ABSENT` only: adding and removing are both ordinary in a
+  compaction, while a rewrite whose record delta is a *difference* and a removal that **found
+  nothing to remove** are the two rows invisible in every figure above them
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
@@ -733,7 +750,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~637 tests across 71 files (468 in :core, 169 in :desktop) covering full pipelines for both formats (Avro fixtures
+~646 tests across 72 files (476 in :core, 170 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

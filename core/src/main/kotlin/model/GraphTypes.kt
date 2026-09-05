@@ -604,6 +604,18 @@ sealed class GraphNode(
         /** Every entry in this manifest — see [ManifestNode.entries] for why all of them. */
         val entries: List<PaimonManifestEntryView> = emptyList(),
         val localPath: String? = null,
+        /**
+         * What each of this manifest's entries did to the live set, when asked.
+         *
+         * Deferred, and deferred for a reason that is not the usual one: this costs no file open at
+         * all, it costs replaying the whole snapshot. A Paimon entry means "remove what is there"
+         * or "put this there", so its effect is decided by the entries before it — the trace for a
+         * manifest cannot be computed from that manifest. Doing it for every manifest at build time
+         * would be a replay per manifest for a panel that shows one at a time, so the builder hands
+         * over the replay rather than its result. [DeferredRead] is also what keeps it out of the
+         * node's `equals`, the same rule `FileNode.deletionVectorLoader` follows.
+         */
+        val replayTrace: DeferredRead<List<PaimonEntryTrace>> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 200.0, 80.0)
