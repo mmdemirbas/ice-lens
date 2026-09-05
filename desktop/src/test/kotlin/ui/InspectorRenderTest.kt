@@ -81,6 +81,9 @@ class InspectorRenderTest {
          */
         const val RING_INK_MINIMUM = 60
 
+        /** Frames run after each Tab of a focus capture, at 16ms each. See [renderFocused]. */
+        const val FOCUS_SETTLE_FRAMES = 40
+
         /** How far from `primary` a pixel may sit and still be counted as the ring. See [primaryInk]. */
         const val RING_INK_TOLERANCE = 40
     }
@@ -1119,9 +1122,19 @@ class InspectorRenderTest {
             repeat(tabs) {
                 scene.sendKeyEvent(KeyEvent(Key.Tab, KeyEventType.KeyDown))
                 scene.sendKeyEvent(KeyEvent(Key.Tab, KeyEventType.KeyUp))
-                clock.frame()
+                // Settled after *each* Tab, not once at the end. In a scrolling panel every Tab
+                // starts a bring-into-view animation, and a Tab arriving mid-flight interrupts it
+                // with whatever velocity it had; letting each one come to rest makes the next Tab
+                // start from a known place, which is what took a twelve-deep capture from
+                // differing every run to identical every run.
+                //
+                // A thirty-deep one still lands on one of two positions a pixel or so apart, so
+                // the scroll's resting place is not fully deterministic under a driven clock. That
+                // is left as it is: nothing here compares these files byte for byte — they are
+                // opened and looked at — and the claim the test makes is the ring's ink being
+                // present, which does not move with a pixel of scroll.
+                clock.settle(FOCUS_SETTLE_FRAMES)
             }
-            clock.settle()
             clock.image().encodeToData()?.bytes
         } finally {
             scene.close()
@@ -1199,17 +1212,18 @@ class InspectorRenderTest {
         val scene = ImageComposeScene(width = width, height = height, density = Density(density)) {
             Themed(content)
         }
+        val clock = FrameClock(scene)
         val png = try {
             val deadline = System.nanoTime() + timeoutMs * 1_000_000
             while (!ready() && System.nanoTime() < deadline) {
-                scene.render()
+                clock.frame()
                 Thread.sleep(10)
             }
             assertTrue(ready(), "$name never settled within ${timeoutMs}ms")
             // Two more after it settled, for the same reason every capture renders twice: the
             // frame that delivers the value is not the frame that has laid it out.
-            scene.render()
-            scene.render().encodeToData()?.bytes
+            clock.frame()
+            clock.image().encodeToData()?.bytes
         } finally {
             scene.close()
         }
@@ -1229,13 +1243,19 @@ class InspectorRenderTest {
         val scene = ImageComposeScene(width = width, height = height, density = Density(density)) {
             Themed(content)
         }
+        val clock = FrameClock(scene)
         val png = try {
             // Twice. Anything whose visibility is decided by state that layout writes — a
             // scrollbar that appears only once the content is known to overflow — is absent from
             // the first frame, because the recomposition that reads it has not run yet. A
             // single-frame capture would show a panel the running app never draws.
-            repeat(frames - 1) { scene.render() }
-            scene.render().encodeToData()?.bytes
+            //
+            // Through the clock rather than a bare `render()`, which would draw every frame at
+            // time zero. No capture here was found to change when the clock started running, so
+            // this is not a fix for anything visible — it is so that the next composable to
+            // arrive with a fade or an entrance is not photographed before it has begun.
+            repeat(frames - 1) { clock.frame() }
+            clock.image().encodeToData()?.bytes
         } finally {
             scene.close()
         }

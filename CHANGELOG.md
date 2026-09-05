@@ -203,7 +203,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   part missing, which looks like nothing is wrong. It had produced a wrong conclusion recorded as a
   project convention: two byte-identical focus captures were read as proof that Material draws
   nothing for focus, when what they showed was a state-layer fade given no time to run. The focus
-  captures now pass an advancing clock, and the convention has been corrected.
+  captures now pass an advancing clock, and the convention has been corrected. Every other capture
+  helper was put on the same clock and all 104 written PNGs were compared against their
+  frozen-clock originals: 103 came back byte-identical, so nothing else in the suite had been
+  photographing a state the app does not draw. The one that moved is a focus capture whose panel
+  scrolls, and it moved by a pixel.
 - **The menu's heading now starts where its choices start.** "Siblings drawn per parent" was
   padded like a menu item and the items are indented past a check slot, so the heading sat 24dp
   to the left of every number under it. Found by the first render of the items.
