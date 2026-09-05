@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.Schema
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
@@ -52,6 +53,8 @@ fun Toolbar(
     onShowAbout: () -> Unit,
     snapshotFilterMenuExpanded: Boolean,
     onSnapshotFilterMenuChange: (Boolean) -> Unit,
+    isSearchOpen: Boolean,
+    onSearchOpenChange: (Boolean) -> Unit,
 ) {
     Row(
         Modifier
@@ -132,6 +135,16 @@ fun Toolbar(
                 icon = Icons.Default.Schema,
                 tooltip = "Re-apply Layout (Ctrl/Cmd + L)",
                 onClick = { state.reapplyCurrentLayout() },
+                modifier = Modifier.size(32.dp)
+            )
+            Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
+            // The bar itself is drawn on the canvas; this is its visible way in. A find bar that
+            // only exists once you know the chord is a feature only its author has.
+            ToolbarIconButton(
+                icon = Icons.Default.Search,
+                tooltip = "Find on the graph (Ctrl/Cmd + F)",
+                onClick = { onSearchOpenChange(!isSearchOpen) },
+                isSelected = isSearchOpen,
                 modifier = Modifier.size(32.dp)
             )
         }

@@ -43,6 +43,20 @@ fun verdictSkippedColor(): Color =
 fun verdictUnevaluatedColor(): Color =
     if (isDarkSurface(MaterialTheme.colorScheme.surface)) Color(0xFFE0A64A) else Color(0xFFA8600C)
 
+/**
+ * The halo around a node the find bar matched.
+ *
+ * Amber rather than the accent, because the accent is already what selection means on this canvas
+ * and the two are shown at once — the reader steps to a match and it becomes both. A match that
+ * looked like a selection would make "which one am I on" unanswerable at a glance.
+ */
+val MatchHighlightLight = Color(0xFFB25E00)
+val MatchHighlightDark = Color(0xFFE0A64A)
+
+@Composable
+fun matchHighlightColor(): Color =
+    if (isDarkSurface(MaterialTheme.colorScheme.surface)) MatchHighlightDark else MatchHighlightLight
+
 @Composable
 fun selectionHighlightColor(): Color {
     val surface = MaterialTheme.colorScheme.surface

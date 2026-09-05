@@ -40,6 +40,7 @@ import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import model.GraphModel
+import model.GraphSearch
 import model.GraphNode
 import model.ManifestEntryStatus
 import model.PaimonUnifiedTableModel
@@ -354,6 +355,103 @@ class InspectorRenderTest {
     }
 
     /**
+     * The find bar over the canvas, and the halo on what it found.
+     *
+     * Two captures rather than one, because a halo with nothing beside it cannot be judged: the
+     * matching query has to be readable *against* the same graph with nothing matched. The
+     * assertion is the halo's own ink, which is amber and appears nowhere else on this surface —
+     * the accent already means selection here, and a match drawn in it would make "which one am I
+     * standing on" unanswerable.
+     *
+     * `parted` and a partition value, because that is the query this feature exists for: a string
+     * the reader can see in the inspector and cannot find by any label the tree prints.
+     */
+    @Test
+    fun `the find bar draws on the canvas and haloes what it matched`() {
+        val graph = partedGraph()
+        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+            .first { it.partition?.isUnpartitioned == false }
+        val term = file.partition!!.values.first().let { "${it.field.name}=${it.human}" }
+
+        val found = GraphSearch.search(graph, term)
+        assertTrue(found.matches.isNotEmpty(), "the fixture should match \"$term\", or this checks nothing")
+
+        fun capture(name: String, query: String, result: model.GraphSearchResult): ByteArray {
+            val png = renderPng(name, width = 1800, height = 1000, density = 1f) {
+                GraphCanvas(
+                    graph = graph,
+                    positions = NodePositions(graph),
+                    selectedNodeIds = result.matches.take(1).toSet(),
+                    isSelectMode = false,
+                    zoom = 0.6f,
+                    onZoomChange = {},
+                    onSelectionChange = {},
+                    matchedNodeIds = result.matches.toSet(),
+                    searchOverlay = {
+                        GraphSearchBar(
+                            query = query,
+                            result = result,
+                            currentNodeId = result.matches.firstOrNull(),
+                            onQueryChange = {},
+                            onStep = {},
+                            onClose = {},
+                        )
+                    },
+                )
+            }
+            outputDir.mkdirs()
+            writeBands(png, name)
+            return png
+        }
+
+        val halo = MatchHighlightLight.toArgb()
+        val matched = inkNear(capture("graph-search-found", term, found), halo)
+        val nothing = inkNear(
+            capture("graph-search-empty", "zzzz-no-such-thing", model.GraphSearchResult(emptyList(), 0)),
+            halo,
+        )
+
+        assertTrue(
+            matched > nothing + RING_INK_MINIMUM,
+            "the ${found.matches.size} matched nodes should be haloed: $matched pixels of the match " +
+                "colour against $nothing when nothing matched",
+        )
+
+        // The caveat line, which only exists when aggregation folded something away and which no
+        // capture would otherwise reach. "No matches" is a claim about the whole table that is
+        // only true of the part of it drawn, so this is the sentence that keeps it honest.
+        val paged = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/mor").absolutePath)),
+            showRows = false,
+            policy = AggregationPolicy(pageSize = 2),
+        )
+        val pagedResult = GraphSearch.search(paged, "parquet")
+        assertTrue(pagedResult.notDrawn > 0, "mor at two siblings a parent must fold something")
+        renderScene("graph-search-not-drawn", width = 1800, height = 700, density = 1f) {
+            GraphCanvas(
+                graph = paged,
+                positions = NodePositions(paged),
+                selectedNodeIds = emptySet(),
+                isSelectMode = false,
+                zoom = 0.6f,
+                onZoomChange = {},
+                onSelectionChange = {},
+                matchedNodeIds = pagedResult.matches.toSet(),
+                searchOverlay = {
+                    GraphSearchBar(
+                        query = "parquet",
+                        result = pagedResult,
+                        currentNodeId = pagedResult.matches.firstOrNull(),
+                        onQueryChange = {},
+                        onStep = {},
+                        onClose = {},
+                    )
+                },
+            )
+        }
+    }
+
+    /**
      * Focus on a copy button, which lives in a panel several screens tall.
      *
      * `KeyboardReachTest` settles that Tab arrives; the chrome capture above settles that a ring is
@@ -409,9 +507,10 @@ class InspectorRenderTest {
      * is far narrower than the distance to the only other blue in these rows, the label's
      * `onSurfaceVariant` slate, which sits about 106 away.
      */
-    private fun primaryInk(png: ByteArray): Int {
+    private fun primaryInk(png: ByteArray): Int = inkNear(png, IceLensLightColorScheme.primary.toArgb())
+
+    private fun inkNear(png: ByteArray, ring: Int): Int {
         val image = ImageIO.read(ByteArrayInputStream(png))
-        val ring = IceLensLightColorScheme.primary.toArgb()
         val (rr, rg, rb) = Triple((ring shr 16) and 0xFF, (ring shr 8) and 0xFF, ring and 0xFF)
         var count = 0
         for (y in 0 until image.height) {

@@ -67,6 +67,12 @@ internal val MINI_MAP_MARGIN = 16.dp
 private val MINI_MAP_INSET = 4.dp
 private val MINI_MAP_SHAPE = RoundedCornerShape(8.dp)
 
+/** Thick enough to read at a zoomed-out graph, where a match may be a few pixels of card. */
+private val SEARCH_HALO_WIDTH = 2.dp
+
+/** How far the halo stands off the card, so a selected match keeps both signals. */
+private val SEARCH_HALO_INSET = 3.dp
+
 /**
  * The gap between a branch label and the topmost snapshot card of the column it names.
  *
@@ -130,6 +136,14 @@ fun GraphCanvas(
      * show is the query's footprint, and the reason belongs in the panel that has room for it.
      */
     prunedNodeIds: Set<String> = emptySet(),
+    /**
+     * Every node the find bar matched. Drawn with a halo so the answer is on the drawing rather
+     * than only under the cursor — a search that can only be read one match at a time is a jump
+     * key, not a search, and the shape of where the matches *are* is half of what a reader learns.
+     */
+    matchedNodeIds: Set<String> = emptySet(),
+    /** The find bar, when it is open. Top-centre, where a find bar is. */
+    searchOverlay: @Composable () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     val isDarkSurface = isDarkSurface(colors.surface)
@@ -715,6 +729,21 @@ fun GraphCanvas(
                     // avoids the 1px sub-pixel drift truncation toward zero would leave.
                     IntOffset(p.x.dp.roundToPx(), p.y.dp.roundToPx())
                 }) {
+                    // A ring *around* the card, as a sibling drawn before it rather than a border
+                    // on the card's own box. At the card's exact size the selection border paints
+                    // over it, so the node the reader steps to — matched and selected at once —
+                    // is the one that loses its halo, which is precisely backwards.
+                    if (node.id in matchedNodeIds) {
+                        Box(
+                            Modifier
+                                .offset(-SEARCH_HALO_INSET, -SEARCH_HALO_INSET)
+                                .size(
+                                    node.width.dp + SEARCH_HALO_INSET * 2,
+                                    node.height.dp + SEARCH_HALO_INSET * 2,
+                                )
+                                .border(SEARCH_HALO_WIDTH, matchHighlightColor(), RoundedCornerShape(8.dp))
+                        )
+                    }
                     var pickSelectionArmed by remember(node.id) { mutableStateOf(false) }
                     Box(
                         modifier = Modifier
@@ -850,6 +879,10 @@ fun GraphCanvas(
 
         Box(modifier = Modifier.align(Alignment.BottomStart).padding(16.dp)) {
             statusOverlay()
+        }
+
+        Box(modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp)) {
+            searchOverlay()
         }
 
         Box(

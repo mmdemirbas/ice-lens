@@ -198,7 +198,17 @@ What is left:
 
 ## New features
 
-- **Search & filter on graph** — filter visible nodes by content type (data/delete), file format, partition values, file name pattern, or snapshot operation.
+- **Search on the graph — done; filtering deliberately not.** `Ctrl/Cmd+F` opens a find bar on the
+  canvas. Content type, file format, partition values, file name and snapshot operation are all
+  queries that work, because `GraphSearch.searchableText` gives each node kind a vocabulary rather
+  than reusing the one-line label the tree prints.
+
+  The *filter* half of this item was not built, and the reason is worth keeping. Hiding
+  non-matching nodes fights the rule the group cards exist to enforce — nothing leaves the graph
+  silently — and would need a second "why is this missing" story alongside aggregation and the
+  snapshot filter. Highlight-and-step answers the question a reader actually arrives with ("where
+  is this file?") without removing anything. If filtering is wanted later it should be a third
+  named reason in the status badge's arithmetic, not a fourth way for a node to vanish.
 
 - **Export** — graph as PNG/SVG; node details as JSON/CSV.
 

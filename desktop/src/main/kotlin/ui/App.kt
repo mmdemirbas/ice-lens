@@ -55,6 +55,10 @@ fun App() {
     var zoom by remember { mutableStateOf(prefs.getFloat(PREF_ZOOM, 1f)) }
     var showAboutDialog by remember { mutableStateOf(false) }
     var snapshotFilterMenuExpanded by remember { mutableStateOf(false) }
+    // Not persisted: an open find bar is about the question being asked right now, and restoring
+    // one over a table opened tomorrow restores a question nobody asked.
+    var isSearchOpen by remember { mutableStateOf(false) }
+    var searchBarEpoch by remember { mutableStateOf(0) }
     var fitGraphRequest by remember { mutableIntStateOf(0) }
 
     var leftPaneWidth by remember { mutableStateOf(prefs.getFloat(PREF_LEFT_PANE_WIDTH, 250f).dp) }
@@ -247,6 +251,14 @@ fun App() {
                                 state.reapplyCurrentLayout()
                                 true
                             }
+                            // Opening an already-open bar re-focuses its field rather than
+                            // closing it, which is what every other find bar does — the reader
+                            // pressing the chord twice wants to retype, not to give up.
+                            ctrl && !keyEvent.isShiftPressed && keyEvent.key == Key.F -> {
+                                isSearchOpen = true
+                                searchBarEpoch++
+                                true
+                            }
                             else -> false
                         }
                     }
@@ -276,6 +288,11 @@ fun App() {
                 onShowAbout = { showAboutDialog = true },
                 snapshotFilterMenuExpanded = snapshotFilterMenuExpanded,
                 onSnapshotFilterMenuChange = { snapshotFilterMenuExpanded = it },
+                isSearchOpen = isSearchOpen,
+                onSearchOpenChange = { open ->
+                    isSearchOpen = open
+                    if (!open) state.updateGraphSearch("")
+                },
             )
             HorizontalDivider()
 
@@ -398,6 +415,27 @@ fun App() {
                                     prefs.putFloat(PREF_ZOOM, it)
                                 },
                                 onSelectionChange = { state.selectedNodeIds = it },
+                                matchedNodeIds = state.graphSearchResult.matches.toSet(),
+                                searchOverlay = {
+                                    if (isSearchOpen) {
+                                        // Keyed on the epoch so the chord pressed again rebuilds
+                                        // the bar, which is what re-runs its focus request.
+                                        key(searchBarEpoch) {
+                                            GraphSearchBar(
+                                                query = state.graphSearchQuery,
+                                                result = state.graphSearchResult,
+                                                currentNodeId = state.selectedNodeIds.singleOrNull(),
+                                                onQueryChange = { state.updateGraphSearch(it) },
+                                                onStep = { forward -> state.stepGraphSearch(forward) },
+                                                onClose = {
+                                                    isSearchOpen = false
+                                                    state.updateGraphSearch("")
+                                                    appFocusRequester.requestFocus()
+                                                },
+                                            )
+                                        }
+                                    }
+                                },
                                 onEmptyAreaDoubleClick = { toggleAllPanelsVisibility() },
                                 // Double-clicking a group opens it. Everything else keeps the
                                 // gesture it already had — a group node is the only card where

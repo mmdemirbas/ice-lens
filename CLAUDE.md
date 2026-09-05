@@ -57,6 +57,7 @@ core/src/main/kotlin/
 │   ├── ManifestLedger.kt      # Per-entry: what it added to a manifest's figures, or which rule dropped it
 │   ├── ScanPruning.kt         # Predicate → which manifests a scan would skip, and which term did it
 │   ├── GraphNavigation.kt     # Arrow keys → the next node, decided from where the nodes are drawn
+│   ├── GraphSearch.kt         # What each node kind can be found by, and the matches in drawn order
 │   ├── PuffinSchema.kt        # @Serializable Puffin footer + the decoded DeletionVector
 │   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 ├── service/
@@ -497,6 +498,33 @@ desktop/src/main/kotlin/
   main line out of a branch column drawn at a similar height. Only structural edges are followed
   — an `isSibling` edge joins two nodes at one depth, and an `affectsLayout = false` edge is an
   annotation, so neither answers "what contains this"
+- **Search is a second vocabulary per node kind, not the label the tree prints.** `GraphSearch` in
+  `model/GraphSearch.kt` defines `searchableText` — every field a reader might plausibly have in
+  hand for each kind: a path, a format, a content word (`data` / `position deletes`), a partition
+  tuple, a commit `operation`, a branch name, an error message. The tree's `getNodeLabel` is one
+  line chosen to fit a row, so a manifest reads `Manifest (12 adds)` and cannot be found by its
+  path at all — right for a tree, where the label is what the reader is looking at; wrong for a
+  search, where they are looking for something they cannot see. It is core because it is knowledge
+  about the artifacts, not about a screen. **A `GroupNode` contributes nothing**, asserted as the
+  property rather than by searching for the words it prints: those words match nothing in any
+  fixture, so the obvious test passes before the rule exists. Matches come back **in drawn order**
+  — column, then down the column, through a `positionOf` lambda so a reader who dragged a node
+  steps through the drawing they made. **`GraphSearchResult.notDrawn` is why it is a type and not a
+  `List<String>`**: aggregation folded those nodes out of the graph, so "no matches" is a claim
+  about the whole table that is only true of the part drawn, and the bar says so on a second line
+- **The find bar is drawn on the canvas, and stepping is just selecting.** `GraphSearchBar` is a
+  `searchOverlay` slot on `GraphCanvas`, top-centre, for the same reason `GraphStatusBadge` sits
+  bottom-left: a question about what this drawing contains belongs on the drawing. It is *not* in
+  the toolbar, which is a fixed-height `Row` of icon groups — a 260dp field there would push the
+  rightmost group past the edge at a narrow window, unreachable, with nothing looking wrong.
+  `Ctrl/Cmd+F` opens it and a magnifier in the toolbar is its visible reveal, because a bar that
+  exists only once you know the chord is a feature only its author has. **Stepping sets the
+  selection and stops there**: the canvas already scrolls a single selected node into view, and on
+  this surface the selection is the cursor, so a match reached by Enter lands in the inspector
+  exactly as one reached by clicking would. The halo is **amber, and a sibling box drawn outside
+  the card** — the accent already means selection here and the two are shown at once, and at the
+  card's exact size the selection border paints over the halo, so the node the reader steps to is
+  precisely the one that would lose it
 - **`navKey` decides which keystrokes count; each surface decides what they mean.** `ui/KeyNav.kt`
   holds the one parser — bare arrows plus Enter and Space, modifiers deliberately left alone so
   Cmd+Left still means "back" and Alt+Arrow still moves by word in a field. The canvas maps the
@@ -705,7 +733,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~623 tests across 70 files (455 in :core, 168 in :desktop) covering full pipelines for both formats (Avro fixtures
+~637 tests across 71 files (468 in :core, 169 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

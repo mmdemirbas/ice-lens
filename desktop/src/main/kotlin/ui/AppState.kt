@@ -484,6 +484,54 @@ class AppState(
         syncSnapshotFilterFromSnapshotIds()
         constrainSnapshotFilter()
         constrainNodeSelection()
+        // The matches named ids in the graph that just went. Re-run rather than clear: the reader
+        // did not retract the question by expanding a group, and a page size that reveals more
+        // nodes should reveal more matches.
+        rerunGraphSearch()
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  Finding a node on the canvas
+    // ═══════════════════════════════════════════════════════════════
+
+    /** What the reader typed into the find bar. Empty means the bar has nothing to look for. */
+    var graphSearchQuery by mutableStateOf("")
+        private set
+
+    /** The current matches, in the order they are drawn. See `model/GraphSearch.kt`. */
+    var graphSearchResult by mutableStateOf(GraphSearchResult(emptyList(), notDrawn = 0))
+        private set
+
+    fun updateGraphSearch(query: String) {
+        graphSearchQuery = query
+        rerunGraphSearch()
+    }
+
+    private fun rerunGraphSearch() {
+        val graph = visibleGraphModel
+        graphSearchResult = if (graph == null || graphSearchQuery.isBlank()) {
+            GraphSearchResult(emptyList(), notDrawn = 0)
+        } else {
+            // Through the drags, not the layout — the reader steps through the drawing they made,
+            // the same rule `GraphNavigation` and `snapshotColumns` follow.
+            GraphSearch.search(graph, graphSearchQuery) { id ->
+                nodePositions?.of(id)?.let { Point(it.x, it.y) } ?: graph.layoutPositions[id]
+            }
+        }
+    }
+
+    /**
+     * Moves to the next match, or the previous one.
+     *
+     * Selecting *is* the step: the canvas already scrolls a single selected node into view, and on
+     * this surface the selection is the cursor because selecting costs nothing. So "find next"
+     * needs no scrolling of its own, and a match reached by the keyboard lands in the inspector
+     * exactly as one reached by clicking it would.
+     */
+    fun stepGraphSearch(forward: Boolean) {
+        val current = selectedNodeIds.singleOrNull()
+        val next = if (forward) graphSearchResult.next(current) else graphSearchResult.previous(current)
+        if (next != null) selectedNodeIds = setOf(next)
     }
 
     /** Save current selection into session cache before switching tables. */

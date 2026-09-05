@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Find a node on the graph — `Ctrl/Cmd+F`.** A find bar on the canvas with a match counter,
+  Enter and Shift+Enter to step, and an amber halo on everything it matched. Each node kind gets a
+  search vocabulary of its own rather than the one-line label the structure tree prints, so a
+  manifest is findable by its path, a data file by its format or partition value, and a commit by
+  the operation that made it — none of which the tree's search can reach. When aggregation has
+  folded nodes away the bar says how many were not searched, because "no matches" is otherwise a
+  claim about the whole table that is only true of the part of it drawn.
 - **Every transitive dependency version is locked.** The version catalog pins what the build asks
   for; it said nothing about what those asks pull in, which is most of the classpath — 272 modules
   on desktop and 78 on core, versions chosen by conflict resolution afresh on every build. They are
