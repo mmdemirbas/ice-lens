@@ -40,6 +40,15 @@ data class TableSession(
      * another.
      */
     val expandedGroupIds: Set<String> = emptySet(),
+    /**
+     * The paging the graph was drawn under.
+     *
+     * Same rule as [expandedGroupIds]: a cached graph means nothing apart from the size it was
+     * paged at. Restoring one under another size would put a drawing on screen that disagrees
+     * with the badge above it, so a hit whose policy differs is redrawn from [tableModel] rather
+     * than restored — which keeps the read, the expensive half, and repeats only the layout.
+     */
+    val policy: AggregationPolicy = AggregationPolicy.DEFAULT,
 )
 
 class AppState(
@@ -531,6 +540,16 @@ class AppState(
         prefs.put(PREF_SELECTED_TABLE_PATH, normalizedTablePath)
 
         val cachedSession = if (!forceRelayout && !forceReloadFromFs) sessionCache[cacheKey] else null
+        if (cachedSession != null && cachedSession.policy != aggregationPolicy && cachedSession.tableModel != null) {
+            // Drawn under another page size, or drawn whole. The model is still here, so this is
+            // one layout and no read. Expansion is dropped with the old size — a group id names a
+            // page at a size — and the previous table's drags are not merged in, because node ids
+            // (`table_root`, `snap_<id>`) repeat across tables.
+            logger.debug("Cache hit under another page size, redrawing: {}", normalizedTablePath)
+            expandedGroupIds = emptySet()
+            rebuildDrawnGraph(keepDrags = false, selection = cachedSession.selectedNodeIds)
+            return
+        }
         if (cachedSession != null) {
             logger.debug("Cache hit for table: {}", normalizedTablePath)
             // Bump request id so any in-flight load/reapply detects staleness and bails out.
@@ -580,6 +599,7 @@ class AppState(
                         selectedNodeIds = previousSession?.selectedNodeIds.orEmpty(),
                         fingerprint = fingerprint,
                         expandedGroupIds = expanded,
+                        policy = aggregationPolicy,
                     )
                 }
 
@@ -682,7 +702,8 @@ class AppState(
                         tableModel = model,
                         graph = relaid,
                         selectedNodeIds = selectedNodeIds,
-                        fingerprint = fingerprint
+                        fingerprint = fingerprint,
+                        policy = aggregationPolicy,
                     )
                     errorMsg = null
                 } catch (e: Exception) {
@@ -723,7 +744,9 @@ class AppState(
                 }
 
                 if (requestId != loadRequestId.get()) return@launch
-                val session = TableSession(tableModel = model, graph = newGraph, fingerprint = fingerprint)
+                val session = TableSession(
+                    tableModel = model, graph = newGraph, fingerprint = fingerprint, policy = aggregationPolicy,
+                )
                 sessionCache[cacheKey] = session
                 setGraphModelAndBump(newGraph)
                 selectedNodeIds = emptySet()
@@ -818,12 +841,11 @@ class AppState(
     /**
      * Changes how many siblings a page holds, and redraws under the new size.
      *
-     * Two things have to go with it. A group id names *a page at a size*, so an expansion
-     * recorded under the old one would name a different set of siblings under the new one —
-     * expansion is cleared rather than reinterpreted. And every other cached graph was drawn
-     * under the old size, so those sessions are dropped; restoring one would put a graph on
-     * screen that disagrees with the number in the badge above it. The table on screen keeps its
-     * session, because that one is rebuilt right here from the model already in memory.
+     * A group id names *a page at a size*, so an expansion recorded under the old one would name
+     * a different set of siblings under the new one — expansion is cleared rather than
+     * reinterpreted. Every other cached graph was drawn under the old size too, and stays cached:
+     * each session carries the policy it was drawn under, and [loadTable] redraws a stale one from
+     * its retained model on the next visit, which is a layout and not a read.
      */
     fun updateGraphPageSize(pageSize: Int) {
         val clamped = pageSize.coerceIn(MIN_GRAPH_PAGE_SIZE, MAX_GRAPH_PAGE_SIZE)
@@ -834,11 +856,6 @@ class AppState(
         graphPageSize = clamped
         prefs.putInt(PREF_GRAPH_PAGE_SIZE, clamped)
         expandedGroupIds = emptySet()
-
-        val currentKey = selectedTablePath?.let { "$it-rows_$showRows" }
-        synchronized(sessionCache) {
-            sessionCache.keys.filter { it != currentKey }.forEach { sessionCache.remove(it) }
-        }
         rebuildDrawnGraph()
     }
 
@@ -849,7 +866,12 @@ class AppState(
      * a production table's metadata is the expensive half; deciding how much of it to draw is
      * not.
      */
-    private fun rebuildDrawnGraph() {
+    private fun rebuildDrawnGraph(
+        /** Whether the drags on screen belong to this table. False on a cross-table cache hit. */
+        keepDrags: Boolean = true,
+        /** The selection to carry through, of which whatever is still drawn survives. */
+        selection: Set<String> = selectedNodeIds,
+    ) {
         val tablePath = selectedTablePath ?: return
         val cacheKey = "$tablePath-rows_$showRows"
         val session = sessionCache[cacheKey] ?: return
@@ -871,16 +893,19 @@ class AppState(
                 // appeared go where layout put them. Reading the drag state is main-thread work,
                 // which is where this runs.
                 val merged = rebuilt.layoutPositions.toMutableMap()
-                nodePositions?.draggedSnapshot()?.forEach { (id, xy) ->
-                    if (merged.containsKey(id)) merged[id] = Point(xy.first.toFloat(), xy.second.toFloat())
+                if (keepDrags) {
+                    nodePositions?.draggedSnapshot()?.forEach { (id, xy) ->
+                        if (merged.containsKey(id)) merged[id] = Point(xy.first.toFloat(), xy.second.toFloat())
+                    }
                 }
                 val graph = rebuilt.copy(layoutPositions = merged)
-                val survivingSelection = selectedNodeIds.filterTo(mutableSetOf()) { graph.nodeById.containsKey(it) }
+                val survivingSelection = selection.filterTo(mutableSetOf()) { graph.nodeById.containsKey(it) }
 
                 sessionCache[cacheKey] = session.copy(
                     graph = graph,
                     selectedNodeIds = survivingSelection,
                     expandedGroupIds = expanded,
+                    policy = aggregationPolicy,
                 )
                 setGraphModelAndBump(graph)
                 selectedNodeIds = survivingSelection

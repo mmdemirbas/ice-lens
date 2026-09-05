@@ -63,11 +63,6 @@ that leaves open:
   way to type a number. `updateGraphPageSize` accepts anything between 2 and 2,000, so the
   restriction is the menu's alone.
 
-- **Changing the page size drops every cached session but the one on screen.** Correct — a graph
-  drawn at the old size disagrees with the badge above it — but it means the next visit to
-  another table re-reads it from disk. Rebuilding those graphs from their retained table models
-  would keep the read.
-
 - **The badge's menu is captured as items, not as a menu.** `GraphOptionsMenuItems` is a
   composable of its own and `badge-menu-1.png` renders three states of it. What is still not
   covered is the popup itself — its position, and whether it fits on a short window. Seeding

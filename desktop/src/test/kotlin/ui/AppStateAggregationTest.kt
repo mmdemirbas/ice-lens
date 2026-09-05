@@ -186,9 +186,13 @@ class AppStateAggregationTest {
      * The cache holds graphs, and a graph carries the page size it was drawn under. Restoring one
      * built at 24 while the app is set to 48 puts a drawing on screen that disagrees with the
      * badge above it.
+     *
+     * It is redrawn, not re-read: the table's directory is deleted before the second visit, so a
+     * path back through the filesystem would fail and a path through the retained model is the
+     * only one that can produce forty versions.
      */
     @Test
-    fun `a table cached at the old page size is not restored at the new one`() {
+    fun `a table cached at the old page size is redrawn from its model at the new one`() {
         val state = newState()
         val paged = tableWithMetadataVersions(40)
         state.loadTable(paged)
@@ -198,9 +202,38 @@ class AppStateAggregationTest {
         try {
             state.loadTable(other.canonicalPath)
             state.updateGraphPageSize(48)
+            File(paged).deleteRecursively()
 
             state.loadTable(paged)
-            assertEquals(40, metadataCount(state), "re-read under the size in force now")
+            assertEquals(40, metadataCount(state), "redrawn under the size in force now")
+            assertEquals(null, state.errorMsg)
+        } finally {
+            other.deleteRecursively()
+        }
+    }
+
+    /**
+     * The same rule for "draw all of it", which is switched off by opening another table.
+     *
+     * The whole graph was cached when paging was switched off for it. Coming back restores a
+     * table paged at 24 in the badge and, without this, six thousand nodes on the canvas —
+     * exactly the consent-to-a-figure-not-seen that switching it off on the way out exists to
+     * withdraw.
+     */
+    @Test
+    fun `a table drawn whole is paged again when reopened`() {
+        val state = newState()
+        val big = tableWithMetadataVersions(200)
+        state.loadTable(big)
+        state.drawWholeTable(true)
+        assertEquals(200, metadataCount(state))
+
+        val other = File(tmpDir.parentFile, "other-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            state.loadTable(other.canonicalPath)
+            state.loadTable(big)
+            assertTrue(!state.drawEverything)
+            assertEquals(24, metadataCount(state), "paged again, from the model already read")
         } finally {
             other.deleteRecursively()
         }

@@ -120,6 +120,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   DuckDB's answer about the file rather than something the table declares.
 
 ### Changed
+- **Changing the page size no longer forgets every other table.** Each cached session records
+  the paging its graph was drawn under, and a later visit whose policy differs redraws from the
+  table model already in memory — one layout, no read of the metadata tree. The same check pages
+  a table again on return after it was drawn whole; before, a cache hit restored the whole graph
+  under a badge saying it was paged at 24. `AppStateAggregationTest` proves the redraw takes no
+  read by deleting the table's directory before the second visit.
+- **The recorded-first path rule is written once.** Metadata files and data files agreed on when
+  a recorded path wins and differed only in the fallback, so `resolveRecordedOr` takes the
+  fallback as a parameter and both callers go through it.
+
 - **The table panel's three timestamps moved out of its identity table into a folded
   `Table Times` section, and say what they are.** Each renders local, UTC and epoch, so three
   rows were nine lines and about 600dp — roughly half of what stood between "Collapse all" and
