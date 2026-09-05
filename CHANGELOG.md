@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A wide table's leading column is asserted to fit its panel.** The reader sees the leftmost
+  columns and nothing else until they scroll, so a leading column wider than the panel means
+  scrolling before reading anything, and the widths are hand-chosen at twenty-seven call sites in
+  one file. The narrow sweep now measures what each table laid out and requires every first column
+  to fit, across the 28 tables the six panels draw. The panel width is measured rather than
+  budgeted, so the assertion is against the layout and not against the test's own arithmetic.
+
 - **Focus is visible on the tool-window chrome.** Tab reached the bar's buttons and a pane's close
   and drew nothing on arrival, which the first two captures proved by coming back byte-identical:
   Material's default indication is for press, not for focus. `Modifier.focusRing` draws one dp of

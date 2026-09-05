@@ -934,6 +934,67 @@ class InspectorRenderTest {
         )
     }
 
+    /**
+     * Every table's leading column fits the panel it is drawn in, at the width the pane opens at.
+     *
+     * This is the half of "the rendered inspector is checked by eye" that a number can state. The
+     * reader sees the leftmost columns and nothing else until they scroll, which is why the answer
+     * goes first and why `columnWidths` is hand-chosen at each of the twenty-seven call sites — and
+     * hand-chosen numbers spread over one file drift. A leading column wider than the panel means
+     * the reader scrolls before reading anything at all.
+     *
+     * The panel's own width is measured rather than assumed: the inspector's padding is decided in
+     * several places, so a hard-coded budget would assert against this test's arithmetic instead of
+     * against the layout.
+     *
+     * The other half — that the scrollbar appears exactly when the table overflows — is not
+     * asserted here, because `WideTable` shows it on `horizontalState.maxValue > 0` and that is
+     * Compose's `horizontalScroll` contract rather than anything this repository decides.
+     */
+    @Test
+    fun `every wide table's leading column fits the pane it opens in`() {
+        val branched = graphFor("branched")
+        val mor = graphFor("mor")
+        val v3 = graphFor("v3")
+
+        val seen = mutableListOf<Pair<String, WideTableMetrics>>()
+        fun sweep(name: String, g: GraphModel, node: GraphNode?, height: Int = 2400) {
+            assertNotNull(node, "$name: the fixture should draw this node kind")
+            renderPng("fit-$name", width = 300, height = height, density = 1f) {
+                CompositionLocalProvider(
+                    LocalWideTableProbe provides { m -> synchronized(seen) { seen += name to m } },
+                ) {
+                    InspectorUnderTest(g, node.id)
+                }
+            }
+        }
+
+        sweep("table", branched, branched.nodes.filterIsInstance<GraphNode.TableNode>().firstOrNull())
+        sweep("snapshot", branched, branched.nodes.filterIsInstance<GraphNode.SnapshotNode>().lastOrNull())
+        sweep("metadata", branched, branched.nodes.filterIsInstance<GraphNode.MetadataNode>().firstOrNull())
+        sweep("manifest", mor, mor.nodes.filterIsInstance<GraphNode.ManifestNode>().firstOrNull(), height = 3200)
+        sweep("file", mor, mor.nodes.filterIsInstance<GraphNode.FileNode>().firstOrNull(), height = 3200)
+        sweep(
+            "delete-vector",
+            v3,
+            v3.nodes.filterIsInstance<GraphNode.FileNode>()
+                .firstOrNull { it.data.content == model.DataFileContent.POSITION_DELETES },
+        )
+
+        // 28 at the time of writing — more than the call sites, because several draw once per
+        // schema, spec or sort order. The floor is a guard against the sweep silently probing
+        // nothing, which is how an assertion over an empty list passes.
+        assertTrue(seen.size >= 20, "the six panels should between them draw a good many wide tables, not ${seen.size}")
+        val tooWide = seen.filter { (_, m) -> m.columnWidths.first() > m.availableWidth }
+        assertTrue(
+            tooWide.isEmpty(),
+            "a leading column wider than its panel means the reader scrolls before reading anything:\n" +
+                tooWide.joinToString("\n") { (panel, m) ->
+                    "  $panel: \"${m.headers.firstOrNull()}\" is ${m.columnWidths.first()} in ${m.availableWidth}"
+                },
+        )
+    }
+
     private fun renderInspector(graph: GraphModel, nodeId: String, name: String, height: Int) =
         renderScene(name, width = 1400, height = height) { InspectorUnderTest(graph, nodeId) }
 

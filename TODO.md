@@ -238,11 +238,12 @@ What is left:
   by `avro4k` rather than by an engine, so it proves the resolver and not the shape a real
   `write.data.path` table has.
 
-- **The rendered inspector is checked by eye, not asserted.** `InspectorRenderTest` proves the
-  panel composes without throwing and writes PNGs to look at, but its only assertion about the
-  drawing is that the image is not blank. Layout invariants worth pinning numerically: the
-  scrollbar exists exactly when the table is wider than the panel, and the leading columns fit
-  within the panel width. Neither is expressible without measuring the composition.
+- **The rendered inspector is mostly checked by eye; one invariant is now a number.** Every
+  `WideTable`'s leading column is asserted to fit the panel it is drawn in, over the 28 tables the
+  six narrow panels draw (`LocalWideTableProbe`). The other invariant that item named — that the
+  scrollbar appears exactly when the table overflows — was looked at and left: `WideTable` shows it
+  on `horizontalState.maxValue > 0`, so asserting it would be asserting Compose's `horizontalScroll`
+  contract. What stays eye-only is everything a number cannot state.
 
   Card clipping is no longer in this bucket: `CardHeightTest` draws each card inside
   `LocalCardHeightSlack` and asserts the content fitted the height its node declares. What remains

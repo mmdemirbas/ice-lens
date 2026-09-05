@@ -591,7 +591,13 @@ desktop/src/main/kotlin/
   they scroll — so the answer goes first and identifiers follow it. Pass `columnWidths`: one
   width for every column spends the panel on the narrow ones and truncates the wide ones. The
   scrollbar appears only when the content overflows, and it is the only signal that more columns
-  exist — do not remove it
+  exist — do not remove it. **The leading column is asserted to fit**: `LocalWideTableProbe`
+  reports what each table laid out, and the narrow sweep requires every first column to fit the
+  panel it was given, across the 28 tables the six panels draw. The panel's width is *measured*
+  rather than budgeted, because the inspector's padding is decided in several places and a
+  hard-coded allowance asserts against the test's own arithmetic. The scrollbar's own invariant is
+  deliberately not asserted — `WideTable` shows it on `horizontalState.maxValue > 0`, which is
+  Compose's `horizontalScroll` contract rather than anything this repository decides
 
 ## Known quirks
 
@@ -650,7 +656,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~617 tests across 69 files (455 in :core, 162 in :desktop) covering full pipelines for both formats (Avro fixtures
+~618 tests across 69 files (455 in :core, 163 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

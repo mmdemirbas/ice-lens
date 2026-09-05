@@ -22,6 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontFamily
@@ -283,6 +285,29 @@ fun Section(title: String, content: @Composable () -> Unit) {
 }
 
 /**
+ * What one [WideTable] laid out, reported to whoever asked.
+ *
+ * [availableWidth] is what the panel actually gave the table, measured rather than assumed: the
+ * inspector's padding is decided in several places and a test that hard-codes a budget is asserting
+ * against its own arithmetic instead of against the layout.
+ */
+data class WideTableMetrics(
+    val headers: List<String>,
+    val columnWidths: List<Dp>,
+    val tableWidth: Dp,
+    val availableWidth: Dp,
+)
+
+/**
+ * Set by a test that wants to know what the tables in a panel came out as. Null in the application.
+ *
+ * The same shape as `LocalCardContentProbe`, and for the same reason: the interesting property is
+ * one the composition decides, so it has to be read from inside a real composition rather than
+ * recomputed beside it.
+ */
+val LocalWideTableProbe = staticCompositionLocalOf<((WideTableMetrics) -> Unit)?> { null }
+
+/**
  * A table wider than the panel it sits in, scrolled horizontally.
  *
  * [columnWidths] sizes columns individually; anything past its end falls back to [columnWidth].
@@ -312,7 +337,15 @@ fun WideTable(
     val widths = List(headers.size) { index -> columnWidths.getOrNull(index) ?: columnWidth }
     val tableWidth = widths.fold(0.dp) { total, width -> total + width } +
         ((headers.size - 1).coerceAtLeast(0) * 9).dp + 16.dp
-    Column(Modifier.fillMaxWidth()) {
+    val probe = LocalWideTableProbe.current
+    val density = LocalDensity.current
+    Column(
+        Modifier.fillMaxWidth().then(
+            if (probe == null) Modifier else Modifier.onSizeChanged { size ->
+                probe(WideTableMetrics(headers, widths, tableWidth, with(density) { size.width.toDp() }))
+            }
+        )
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
