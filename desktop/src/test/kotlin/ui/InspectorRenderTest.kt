@@ -106,6 +106,25 @@ class InspectorRenderTest {
         }
     }
 
+    /**
+     * The metadata file's panel, which had no capture at reading width at all.
+     *
+     * The latest version of `branched`, because it is the only fixture whose refs, snapshot log
+     * and metadata log are all non-empty — a metadata.json's panel is mostly lists, and a capture
+     * taken where the lists are empty checks the identity table and nothing else.
+     */
+    @Test
+    fun `the metadata inspector renders`() {
+        val graph = graphFor("branched")
+        val metadata = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().maxByOrNull { it.simpleId }
+        assertNotNull(metadata, "the branched fixture should carry metadata versions")
+        renderInspector(graph, metadata.id, "metadata-node", height = 6800)
+        val folded = SectionCollapseState().apply { setAll(true) }
+        renderScene("metadata-node-folded", width = 1400, height = 2000) {
+            NodeDetailsContent(graph, setOf(metadata.id), sectionCollapse = folded)
+        }
+    }
+
     @Test
     fun `the file inspector renders its column statistics and partition sections`() {
         val graph = partedGraph()

@@ -176,8 +176,12 @@ What is left:
   folded `Table Times` section and the folded panel fits a screen. The other node kinds were
   checked and are a different case: a snapshot's `Timestamp` and a Paimon data file's
   `Creation Time` are recorded, singular, and part of what identifies the artifact.
-  `MetadataNode` is the one left long — 22 identity rows, only two of them timestamps, so nothing
-  here applies to it and it needs its own decision about what a metadata file's identity is.
+  `MetadataNode` was the one left long and is now decided, on the same evidence: nine of its
+  twenty-one rows were the sizes of sections drawn right below them, so the count moved onto the
+  section (`CountedSection`) and the rows went. Twelve remain — four that name the file, one
+  timestamp, three allocation counters and four pointers into the sections — none duplicated
+  anywhere else. What is still unasked is whether the counters and pointers are identity or
+  content; they were kept because each is a single fact a reader opens a metadata version for.
 
 - **Keyboard coverage stops at the four navigable surfaces.** The canvas, the structure tree, the
   workspace and the inspector's section headers all take the keyboard and show focus. What has no

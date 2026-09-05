@@ -1100,212 +1100,183 @@ fun NodeDetailsContent(
                             DetailRow("Last Partition ID", "${node.data.lastPartitionId ?: "N/A"}")
                             DetailRow("Default Sort Order ID", "${node.data.defaultSortOrderId ?: "N/A"}")
                             DetailRow("Current Snapshot ID", currentSnapshotLabel(node.data.currentSnapshotId))
-                            DetailRow("Total Snapshots", "${node.data.snapshots.size}")
-                            DetailRow("Total Schemas", "${node.data.schemas.size}")
-                            DetailRow("Total Partition Specs", "${node.data.partitionSpecs.size}")
-                            DetailRow("Total Sort Orders", "${node.data.sortOrders.size}")
-                            DetailRow("Total Refs", "${node.data.refs.size}")
-                            DetailRow("Statistics Entries", "${node.data.statistics.size}")
-                            DetailRow("Partition Statistics Entries", "${node.data.partitionStatistics.size}")
-                            DetailRow("Snapshot Log Entries", "${node.data.snapshotLog.size}")
-                            DetailRow("Metadata Log Entries", "${node.data.metadataLog.size}")
                         }
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 
-                        if (node.data.properties.isNotEmpty()) {
-                            Section("Properties") {
-                                DetailTable {
-                                    DetailRow("Key", "Value", isHeader = true)
-                                    node.data.properties.toSortedMap().forEach { (k, v) ->
-                                        DetailRow(k, v)
-                                    }
+                        CountedSection("Properties", node.data.properties.size, "properties") {
+                            DetailTable {
+                                DetailRow("Key", "Value", isHeader = true)
+                                node.data.properties.toSortedMap().forEach { (k, v) ->
+                                    DetailRow(k, v)
                                 }
                             }
                         }
 
-                        if (node.data.schemas.isNotEmpty()) {
-                            Section("Schemas") {
-                                node.data.schemas
-                                    .sortedBy { it.schemaId ?: Int.MAX_VALUE }
-                                    .forEach { schema ->
-                                        Text(
-                                            "Schema ${schema.schemaId ?: "Unknown"}",
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = TypeScale.body
-                                        )
-                                        Spacer(Modifier.height(4.dp))
-                                        WideTable(
-                                            headers = listOf(
-                                                "Field ID",
-                                                "Field Name",
-                                                "Required",
-                                                "Type",
-                                                "Is Identifier Field"
-                                            ),
-                                            rows = schema.fields
-                                                .sortedBy { it.id ?: Int.MAX_VALUE }
-                                                .map { field ->
-                                                    val isIdentifier = field.id != null && field.id in schema.identifierFieldIds
-                                                    listOf(
-                                                        "${field.id ?: "N/A"}",
-                                                        field.name ?: "N/A",
-                                                        "${field.required ?: false}",
-                                                        normalizeText(field.type?.toString()?.trim('"')),
-                                                        if (isIdentifier) "Yes" else "No"
-                                                    )
-                                                }
-                                        )
-                                        Spacer(Modifier.height(12.dp))
-                                    }
-                            }
-                        }
-
-                        if (node.data.partitionSpecs.isNotEmpty()) {
-                            Section("Partition Specs") {
-                                node.data.partitionSpecs
-                                    .sortedBy { it.specId ?: Int.MAX_VALUE }
-                                    .forEach { spec ->
-                                        Text(
-                                            "Spec ${spec.specId ?: "Unknown"}",
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = TypeScale.body
-                                        )
-                                        Spacer(Modifier.height(4.dp))
-                                        WideTable(
-                                            headers = listOf("Source ID", "Field ID", "Name", "Transform"),
-                                            rows = if (spec.fields.isEmpty()) listOf(listOf("N/A", "N/A", "N/A", "N/A")) else spec.fields.map { field ->
+                        CountedSection("Schemas", node.data.schemas.size, "schemas") {
+                            node.data.schemas
+                                .sortedBy { it.schemaId ?: Int.MAX_VALUE }
+                                .forEach { schema ->
+                                    Text(
+                                        "Schema ${schema.schemaId ?: "Unknown"}",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = TypeScale.body
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    WideTable(
+                                        headers = listOf(
+                                            "Field ID",
+                                            "Field Name",
+                                            "Required",
+                                            "Type",
+                                            "Is Identifier Field"
+                                        ),
+                                        rows = schema.fields
+                                            .sortedBy { it.id ?: Int.MAX_VALUE }
+                                            .map { field ->
+                                                val isIdentifier = field.id != null && field.id in schema.identifierFieldIds
                                                 listOf(
-                                                    "${field.sourceId ?: "N/A"}",
-                                                    "${field.fieldId ?: "N/A"}",
+                                                    "${field.id ?: "N/A"}",
                                                     field.name ?: "N/A",
-                                                    normalizeText(field.transform?.toString())
+                                                    "${field.required ?: false}",
+                                                    normalizeText(field.type?.toString()?.trim('"')),
+                                                    if (isIdentifier) "Yes" else "No"
                                                 )
                                             }
-                                        )
-                                        Spacer(Modifier.height(12.dp))
-                                    }
-                            }
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                }
                         }
 
-                        if (node.data.sortOrders.isNotEmpty()) {
-                            Section("Sort Orders") {
-                                node.data.sortOrders
-                                    .sortedBy { it.orderId ?: Int.MAX_VALUE }
-                                    .forEach { order ->
-                                        Text(
-                                            "Order ${order.orderId ?: "Unknown"}",
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = TypeScale.body
-                                        )
-                                        Spacer(Modifier.height(4.dp))
-                                        WideTable(
-                                            headers = listOf("Source ID", "Transform", "Direction", "Null Order"),
-                                            rows = if (order.fields.isEmpty()) listOf(listOf("N/A", "N/A", "N/A", "N/A")) else order.fields.map { field ->
-                                                listOf(
-                                                    "${field.sourceId ?: "N/A"}",
-                                                    normalizeText(field.transform?.toString()),
-                                                    field.direction ?: "N/A",
-                                                    field.nullOrder ?: "N/A"
-                                                )
-                                            }
-                                        )
-                                        Spacer(Modifier.height(12.dp))
-                                    }
-                            }
+                        CountedSection("Partition Specs", node.data.partitionSpecs.size, "partition specs") {
+                            node.data.partitionSpecs
+                                .sortedBy { it.specId ?: Int.MAX_VALUE }
+                                .forEach { spec ->
+                                    Text(
+                                        "Spec ${spec.specId ?: "Unknown"}",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = TypeScale.body
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    WideTable(
+                                        headers = listOf("Source ID", "Field ID", "Name", "Transform"),
+                                        rows = if (spec.fields.isEmpty()) listOf(listOf("N/A", "N/A", "N/A", "N/A")) else spec.fields.map { field ->
+                                            listOf(
+                                                "${field.sourceId ?: "N/A"}",
+                                                "${field.fieldId ?: "N/A"}",
+                                                field.name ?: "N/A",
+                                                normalizeText(field.transform?.toString())
+                                            )
+                                        }
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                }
                         }
 
-                        if (node.data.refs.isNotEmpty()) {
-                            Section("Refs") {
-                                WideTable(
-                                    headers = listOf("Name", "Type", "Snapshot ID", "Max Ref Age MS", "Max Snapshot Age MS", "Min Snapshots To Keep"),
-                                    rows = node.data.refs.toSortedMap().map { (name, ref) ->
-                                        listOf(
-                                            name,
-                                            ref.type ?: "N/A",
-                                            "${ref.snapshotId ?: "N/A"}",
-                                            "${ref.maxRefAgeMs ?: "N/A"}",
-                                            "${ref.maxSnapshotAgeMs ?: "N/A"}",
-                                            "${ref.minSnapshotsToKeep ?: "N/A"}"
-                                        )
-                                    }
-                                )
-                            }
+                        CountedSection("Sort Orders", node.data.sortOrders.size, "sort orders") {
+                            node.data.sortOrders
+                                .sortedBy { it.orderId ?: Int.MAX_VALUE }
+                                .forEach { order ->
+                                    Text(
+                                        "Order ${order.orderId ?: "Unknown"}",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = TypeScale.body
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    WideTable(
+                                        headers = listOf("Source ID", "Transform", "Direction", "Null Order"),
+                                        rows = if (order.fields.isEmpty()) listOf(listOf("N/A", "N/A", "N/A", "N/A")) else order.fields.map { field ->
+                                            listOf(
+                                                "${field.sourceId ?: "N/A"}",
+                                                normalizeText(field.transform?.toString()),
+                                                field.direction ?: "N/A",
+                                                field.nullOrder ?: "N/A"
+                                            )
+                                        }
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                }
                         }
 
-                        if (node.data.snapshots.isNotEmpty()) {
-                            Section("Snapshots") {
-                                val snapshots = node.data.snapshots.sortedBy { it.timestampMs ?: Long.MAX_VALUE }
-                                WideTable(
-                                    headers = listOf(
-                                        "Snapshot ID",
-                                        "Parent Snapshot ID",
-                                        "Sequence Number",
-                                        "Schema ID",
-                                        "Timestamp",
-                                        "Manifest List",
-                                        "Operation",
-                                        "Summary"
-                                    ),
-                                    rows = snapshots.map { snapshot ->
-                                        listOf(
-                                            "${snapshot.snapshotId ?: "N/A"}",
-                                            "${snapshot.parentSnapshotId ?: "None"}",
-                                            "${snapshot.sequenceNumber ?: "N/A"}",
-                                            "${snapshot.schemaId ?: "N/A"}",
-                                            formatTimestampShort(snapshot.timestampMs),
-                                            normalizeText(snapshot.manifestList),
-                                            snapshot.summary["operation"] ?: "N/A",
-                                            if (snapshot.summary.isEmpty()) "N/A"
-                                            else snapshot.summary.toSortedMap().entries.joinToString(", ") { "${it.key}=${it.value}" }
-                                        )
-                                    }
-                                )
-                            }
+                        CountedSection("Refs", node.data.refs.size, "refs") {
+                            WideTable(
+                                headers = listOf("Name", "Type", "Snapshot ID", "Max Ref Age MS", "Max Snapshot Age MS", "Min Snapshots To Keep"),
+                                rows = node.data.refs.toSortedMap().map { (name, ref) ->
+                                    listOf(
+                                        name,
+                                        ref.type ?: "N/A",
+                                        "${ref.snapshotId ?: "N/A"}",
+                                        "${ref.maxRefAgeMs ?: "N/A"}",
+                                        "${ref.maxSnapshotAgeMs ?: "N/A"}",
+                                        "${ref.minSnapshotsToKeep ?: "N/A"}"
+                                    )
+                                }
+                            )
                         }
 
-                        if (node.data.snapshotLog.isNotEmpty()) {
-                            Section("Snapshot Log") {
-                                DetailTable {
-                                    DetailRow("Timestamp", "Snapshot ID", isHeader = true)
-                                    renderSnapshotLogRows(node.data.snapshotLog).forEach { row ->
-                                        DetailRow(row.getOrElse(0) { "N/A" }, row.getOrElse(1) { "N/A" })
-                                    }
+                        CountedSection("Snapshots", node.data.snapshots.size, "snapshots") {
+                            val snapshots = node.data.snapshots.sortedBy { it.timestampMs ?: Long.MAX_VALUE }
+                            WideTable(
+                                headers = listOf(
+                                    "Snapshot ID",
+                                    "Parent Snapshot ID",
+                                    "Sequence Number",
+                                    "Schema ID",
+                                    "Timestamp",
+                                    "Manifest List",
+                                    "Operation",
+                                    "Summary"
+                                ),
+                                rows = snapshots.map { snapshot ->
+                                    listOf(
+                                        "${snapshot.snapshotId ?: "N/A"}",
+                                        "${snapshot.parentSnapshotId ?: "None"}",
+                                        "${snapshot.sequenceNumber ?: "N/A"}",
+                                        "${snapshot.schemaId ?: "N/A"}",
+                                        formatTimestampShort(snapshot.timestampMs),
+                                        normalizeText(snapshot.manifestList),
+                                        snapshot.summary["operation"] ?: "N/A",
+                                        if (snapshot.summary.isEmpty()) "N/A"
+                                        else snapshot.summary.toSortedMap().entries.joinToString(", ") { "${it.key}=${it.value}" }
+                                    )
+                                }
+                            )
+                        }
+
+                        CountedSection("Snapshot Log", node.data.snapshotLog.size, "snapshot log entries") {
+                            DetailTable {
+                                DetailRow("Timestamp", "Snapshot ID", isHeader = true)
+                                renderSnapshotLogRows(node.data.snapshotLog).forEach { row ->
+                                    DetailRow(row.getOrElse(0) { "N/A" }, row.getOrElse(1) { "N/A" })
                                 }
                             }
                         }
 
-                        if (node.data.metadataLog.isNotEmpty()) {
-                            Section("Metadata Log") {
-                                DetailTable {
-                                    DetailRow("Timestamp", "Metadata File", isHeader = true)
-                                    renderMetadataLogRows(node.data.metadataLog).forEach { row ->
-                                        DetailRow(row.getOrElse(0) { "N/A" }, row.getOrElse(1) { "N/A" })
-                                    }
+                        CountedSection("Metadata Log", node.data.metadataLog.size, "metadata log entries") {
+                            DetailTable {
+                                DetailRow("Timestamp", "Metadata File", isHeader = true)
+                                renderMetadataLogRows(node.data.metadataLog).forEach { row ->
+                                    DetailRow(row.getOrElse(0) { "N/A" }, row.getOrElse(1) { "N/A" })
                                 }
                             }
                         }
 
-                        if (node.data.statistics.isNotEmpty()) {
-                            Section("Statistics") {
-                                WideTable(
-                                    headers = listOf("Index", "Value"),
-                                    rows = node.data.statistics.mapIndexed { index, stat ->
-                                        listOf("${index + 1}", normalizeText(stat.toString()))
-                                    }
-                                )
-                            }
+                        CountedSection("Statistics", node.data.statistics.size, "statistics files") {
+                            WideTable(
+                                headers = listOf("Index", "Value"),
+                                rows = node.data.statistics.mapIndexed { index, stat ->
+                                    listOf("${index + 1}", normalizeText(stat.toString()))
+                                }
+                            )
                         }
 
-                        if (node.data.partitionStatistics.isNotEmpty()) {
-                            Section("Partition Statistics") {
-                                WideTable(
-                                    headers = listOf("Index", "Value"),
-                                    rows = node.data.partitionStatistics.mapIndexed { index, stat ->
-                                        listOf("${index + 1}", normalizeText(stat.toString()))
-                                    }
-                                )
-                            }
+                        CountedSection("Partition Statistics", node.data.partitionStatistics.size, "partition statistics files") {
+                            WideTable(
+                                headers = listOf("Index", "Value"),
+                                rows = node.data.partitionStatistics.mapIndexed { index, stat ->
+                                    listOf("${index + 1}", normalizeText(stat.toString()))
+                                }
+                            )
                         }
 
                         Section("Raw metadata.json") {
@@ -2826,6 +2797,33 @@ internal fun foldRuns(positions: List<Long>): String {
     }
     close()
     return parts.joinToString(", ")
+}
+
+/**
+ * A section that states how many things it holds, and draws when it holds none.
+ *
+ * The counts used to live in a second table above the sections — nine rows saying `Total Schemas`,
+ * `Total Refs`, `Snapshot Log Entries`, each restating a size the section right below it never
+ * printed. A count belongs to the thing it counts; two places holding one number is two places to
+ * read and one of them is redundant.
+ *
+ * Drawing an empty section rather than skipping it is the other half. A metadata file's panel is
+ * a list of what the format defines, and "no statistics files" is an answer a reader comes for —
+ * a section that is simply absent cannot be told from one this panel does not know how to draw.
+ */
+@Composable
+private fun CountedSection(title: String, count: Int, nothing: String, content: @Composable () -> Unit) {
+    Section("$title (${formatCount(count)})") {
+        if (count == 0) {
+            Text(
+                "No $nothing.",
+                fontSize = TypeScale.small,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            content()
+        }
+    }
 }
 
 @Composable

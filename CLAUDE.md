@@ -523,6 +523,14 @@ desktop/src/main/kotlin/
 - **`manifest_file.partitions` pairs with the partition spec positionally** — the summaries
   carry no field ids. A spec of a different length decodes to nothing rather than mislabelling
   fields, because a bound attributed to the wrong partition field reads as an answer
+- **A count belongs to the section it counts, and an empty section is still drawn.**
+  `CountedSection` in `ui/NodeDetails.kt` puts the size in the title — `Refs (5)`, `Statistics (0)`
+  — which is what let the metadata panel's identity table lose nine rows that each restated a size
+  the section right below them never printed. `sectionKey` already strips a ` (count)` suffix, so
+  fold state survives the number moving. The empty case is drawn rather than skipped for the same
+  reason the group cards state what is not drawn: a metadata file's panel is a list of what the
+  format defines, "no statistics files" is an answer a reader comes for, and a section that is
+  simply absent cannot be told from one this panel does not know how to render
 - **A titled inspector section is a `Section`, and it owns the gap above itself.** `Section` in
   `ui/CommonComponents.kt` draws the caret, folds the body, and emits `content()` straight into
   the caller's layout rather than into a `Column` of its own — a wrapper would change what
@@ -599,7 +607,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~597 tests across 66 files (455 in :core, 142 in :desktop) covering full pipelines for both formats (Avro fixtures
+~598 tests across 66 files (455 in :core, 143 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

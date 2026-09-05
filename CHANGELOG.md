@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The metadata file's panel had never been rendered at reading width, and it was a table of
+  contents printed twice.** Nine of its twenty-one identity rows were counts — `Total Snapshots`,
+  `Total Refs`, `Snapshot Log Entries` — of sections drawn immediately below, and none of those
+  sections said its own size. The counts are in the section titles now (`Refs (5)`,
+  `Metadata Log (9)`), the identity table is twelve rows, and the folded panel fits a screen. An
+  empty collection is drawn rather than skipped, so `Statistics (0)` answers a question the reader
+  came with instead of leaving a gap that could equally mean this panel does not render them.
+  `metadata-node-*.png` and `metadata-node-folded-*.png` are the captures; there were none before.
+
 - **The badge's menu is drawn for somebody now.** Every choice the canvas badge offers lives in a
   `DropdownMenu`, and no capture had ever contained one — the page-size check mark, the paging
   item's two wordings and the two disabled rules were asserted by `AppStateAggregationTest` and
