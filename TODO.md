@@ -44,12 +44,6 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 - **Statistics and partition-statistics files are untyped.** Held as `List<JsonElement>` and
   rendered as raw JSON; the Puffin blobs they point at (NDV sketches, etc.) are never opened.
 
-- **Data-file paths now resolve recorded-first, like the manifests.** What is left is that the
-  two rules are written twice — `resolveRecordedOrRelative` for metadata, an inline branch in
-  `UnifiedManifest` for data files, because the fallbacks genuinely differ (file name against the
-  metadata dir; sub-path rebuilt under the table root). A shared function taking the fallback as
-  a parameter would keep the recorded-first half in one place.
-
 ---
 
 ## Bugs

@@ -166,7 +166,18 @@ enum class PathResolution {
  * exactly as before. Only absolute paths are considered, because a relative one would resolve
  * against the process's working directory and could match an unrelated file by coincidence.
  */
-fun resolveRecordedOrRelative(start: Path, recorded: String?): Pair<Path, PathResolution> {
+fun resolveRecordedOrRelative(start: Path, recorded: String?): Pair<Path, PathResolution> =
+    resolveRecordedOr(recorded) { resolveForceRelative(start, recorded) }
+
+/**
+ * The recorded-first half of the rule, with the fallback left to the caller.
+ *
+ * Metadata files and data files agree on when the recorded path wins and disagree on what to do
+ * when it does not — a manifest's file name is resolved against the local metadata dir, a data
+ * file's sub-path is rebuilt under the table root. Two callers, one rule about the recorded path,
+ * and the fallback is the only thing that differs, so the fallback is the parameter.
+ */
+fun resolveRecordedOr(recorded: String?, fallback: () -> Path): Pair<Path, PathResolution> {
     val asRecorded = recorded
         ?.takeIf { it.isNotBlank() }
         ?.let(::normalizeFilePath)
@@ -175,7 +186,7 @@ fun resolveRecordedOrRelative(start: Path, recorded: String?): Pair<Path, PathRe
     return if (asRecorded != null) {
         asRecorded to PathResolution.RECORDED
     } else {
-        resolveForceRelative(start, recorded) to PathResolution.FORCED_RELATIVE
+        fallback() to PathResolution.FORCED_RELATIVE
     }
 }
 
@@ -300,15 +311,7 @@ fun UnifiedManifest(
             // actually there. A table whose data sits outside its own directory — a
             // `write.data.path` layout, or one registered against data written elsewhere — is
             // otherwise rebuilt under the table root and reported missing.
-            val asRecorded = dataFilePathInFile
-                .takeIf { it.isNotBlank() }
-                ?.let(::normalizeFilePath)
-                ?.let { runCatching { Path.of(it) }.getOrNull() }
-                ?.takeIf { it.isAbsolute && runCatching { Files.isRegularFile(it) }.getOrDefault(false) }
-
-            val (dataFilePathResolved, resolution) = if (asRecorded != null) {
-                asRecorded to PathResolution.RECORDED
-            } else {
+            val (dataFilePathResolved, resolution) = resolveRecordedOr(dataFilePathInFile) {
                 val metadataDirPrefix = manifest.manifestPath.orEmpty().substringBeforeLast('/')
                 val tableDirPrefix = metadataDirPrefix.substringBeforeLast('/')
                 val dataFilePathRelative =
@@ -327,7 +330,7 @@ fun UnifiedManifest(
                         message = "Data file path resolves outside the table directory: $normalizedResolved",
                     )
                 }
-                rebuilt to PathResolution.FORCED_RELATIVE
+                rebuilt
             }
 
             UnifiedDataFile(
