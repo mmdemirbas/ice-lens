@@ -361,84 +361,58 @@ class AppState(
         }
     }
 
-    fun refreshWarehouseTables() {
+    /**
+     * Rescans every workspace root and applies what it found. Main thread, filesystem and all.
+     *
+     * The polling loop does not use this — it calls [scanWorkspace] on an IO dispatcher and hands
+     * the result to [applyWorkspaceScan], because the walk costs 90ms at a thousand tables and
+     * runs every three seconds. This stays for the callers that want one call and do not care:
+     * a test, and any future caller for which a frame is not at stake.
+     */
+    fun refreshWarehouseTables() = applyWorkspaceScan(scanWorkspace(workspaceItems))
+
+    /**
+     * Folds a sweep's findings into the workspace. Main thread only — it writes Compose state.
+     *
+     * The sweep is mapped over **today's** roots rather than the ones it was started from, so a
+     * root the reader removed while it was running is not resurrected, and one they added is left
+     * alone until the next poll rather than being reported as deleted. That is the whole reason
+     * [WorkspaceScan] is keyed by path instead of being a list of finished items.
+     */
+    fun applyWorkspaceScan(scan: WorkspaceScan) {
         var hasWorkspaceUpdate = false
-        var hasStatusUpdate = false
 
         val refreshedItems = workspaceItems.map { item ->
-            if (item is WorkspaceItem.SingleTable) {
-                val tableDir = File(item.path)
-                val existsNow = tableDir.exists() && tableDir.isDirectory && isTableDirectory(tableDir)
-                val previousStatus = singleTableStatuses[item.path] ?: WorkspaceTableStatus.EXISTING
-                val newStatus = when {
-                    !existsNow -> WorkspaceTableStatus.DELETED
-                    previousStatus == WorkspaceTableStatus.DELETED -> WorkspaceTableStatus.NEW
-                    else -> previousStatus
-                }
-                if (newStatus != previousStatus) hasStatusUpdate = true
-                return@map item
-            }
             if (item !is WorkspaceItem.Warehouse) return@map item
-
-            val scannedTables = scanForTables(File(item.path))
-            if (scannedTables != item.tables) {
-                hasWorkspaceUpdate = true
-            }
-
-            val existingStatuses = warehouseTableStatuses[item.path].orEmpty()
-            val knownTableNames = (existingStatuses.keys + scannedTables).toSortedSet()
-            val scannedSet = scannedTables.toSet()
-            val updatedStatuses = knownTableNames.associateWith { tableName ->
-                when {
-                    tableName in scannedSet && tableName !in existingStatuses -> WorkspaceTableStatus.NEW
-                    tableName in scannedSet && existingStatuses[tableName] == WorkspaceTableStatus.DELETED -> WorkspaceTableStatus.NEW
-                    tableName in scannedSet -> existingStatuses[tableName] ?: WorkspaceTableStatus.EXISTING
-                    else -> WorkspaceTableStatus.DELETED
-                }
-            }
-            if (updatedStatuses != existingStatuses) {
-                hasStatusUpdate = true
-            }
-
-            item.copy(tables = scannedTables)
+            val scanned = scan.warehouseTables[item.path] ?: return@map item
+            if (scanned != item.tables) hasWorkspaceUpdate = true
+            item.copy(tables = scanned)
         }
+
+        val nextSingleStatuses = refreshedItems
+            .filterIsInstance<WorkspaceItem.SingleTable>()
+            .associate { table ->
+                val previous = singleTableStatuses[table.path] ?: WorkspaceTableStatus.EXISTING
+                table.path to nextTableStatus(previous, scan.singleTableExists[table.path])
+            }
+        val nextWarehouseStatuses = refreshedItems
+            .filterIsInstance<WorkspaceItem.Warehouse>()
+            .associate { warehouse ->
+                warehouse.path to nextWarehouseStatuses(
+                    previous = warehouseTableStatuses[warehouse.path].orEmpty(),
+                    scanned = warehouse.tables,
+                )
+            }
 
         if (hasWorkspaceUpdate) {
             workspaceItems = deduplicateWorkspaceItems(refreshedItems)
             prefs.put(PREF_WORKSPACE_ITEMS, workspaceItems.joinToString(";") { it.serialize() })
         }
-
-        if (hasStatusUpdate || hasWorkspaceUpdate) {
-            singleTableStatuses = refreshedItems
-                .filterIsInstance<WorkspaceItem.SingleTable>()
-                .associate { table ->
-                    val tableDir = File(table.path)
-                    val existsNow = tableDir.exists() && tableDir.isDirectory && isTableDirectory(tableDir)
-                    val previousStatus = singleTableStatuses[table.path] ?: WorkspaceTableStatus.EXISTING
-                    val status = when {
-                        !existsNow -> WorkspaceTableStatus.DELETED
-                        previousStatus == WorkspaceTableStatus.DELETED -> WorkspaceTableStatus.NEW
-                        else -> previousStatus
-                    }
-                    table.path to status
-                }
-            warehouseTableStatuses = refreshedItems
-                .filterIsInstance<WorkspaceItem.Warehouse>()
-                .associate { warehouse ->
-                    val scannedSet = warehouse.tables.toSet()
-                    val previousStatuses = warehouseTableStatuses[warehouse.path].orEmpty()
-                    val knownTableNames = (previousStatuses.keys + warehouse.tables).toSortedSet()
-                    val statuses = knownTableNames.associateWith { tableName ->
-                        when {
-                            tableName in scannedSet && tableName !in previousStatuses -> WorkspaceTableStatus.NEW
-                            tableName in scannedSet && previousStatuses[tableName] == WorkspaceTableStatus.DELETED -> WorkspaceTableStatus.NEW
-                            tableName in scannedSet -> previousStatuses[tableName] ?: WorkspaceTableStatus.EXISTING
-                            else -> WorkspaceTableStatus.DELETED
-                        }
-                    }
-                    warehouse.path to statuses
-                }
-        }
+        // Assigned unconditionally where they differ: a `mutableStateOf` holding an equal map
+        // notifies nobody, so the comparison the old code did by hand was the same comparison
+        // Compose does, run twice.
+        if (nextSingleStatuses != singleTableStatuses) singleTableStatuses = nextSingleStatuses
+        if (nextWarehouseStatuses != warehouseTableStatuses) warehouseTableStatuses = nextWarehouseStatuses
     }
 
     fun updateLastBrowseDirectory(dir: String) {

@@ -131,5 +131,10 @@ A fresh review pass after the seven group commits surfaced four issues:
 ## Deferred items (with rationale)
 
 - **L-5 / L-9** — micro-optimizations whose return on investment requires actual profiling data we don't have.
-- **L-16** — moving `scanForTables` off the main thread requires the UI to handle "not yet scanned" state across all workspace consumers; out of scope for a polish pass.
+- **L-16** — **partly closed since.** The *periodic* scan is off the main thread now: it was
+  measured at 90ms for a thousand tables and 226ms at the 10,000-directory cap, on a three-second
+  timer, which is several dropped frames every three seconds rather than a startup cost. That half
+  needed no "not yet scanned" state, because a refresh has a previous answer to show. The two
+  one-off scans — `loadPersistedState` at startup and `addWorkspaceRoot` — are still on the main
+  thread, and those are the ones the original rationale applies to.
 - **L-17** — `Locale.US` pinning is consistent and matches power-user expectations.

@@ -197,6 +197,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **The workspace poll no longer freezes the window every three seconds.** `refreshWarehouseTables`
+  walked every warehouse directory tree on the main thread, on a three-second timer. Measured on a
+  warm cache and a local disk: 19ms at 200 tables, 90ms at 1,000, and 226ms at the 10,000-directory
+  cap the scan stops at — several dropped frames, repeating for as long as the window is open. The
+  walk now runs on an IO dispatcher and only the state update happens on the main thread. Two
+  hazards the asynchrony introduces are closed and pinned by tests: a root removed while a sweep is
+  running is not resurrected, and a root added while one is running is not reported as empty.
 - **Every offscreen capture was drawing its animations at time zero.**
   `ImageComposeScene.render()` defaults its `nanoTime` argument to the constant `0`, so repeated
   no-argument renders are repeated copies of the first instant — a valid frame with the animated

@@ -546,6 +546,21 @@ desktop/src/main/kotlin/
   moves with the scroll being measured. The count is by **distance** from `primary`, not equality:
   a one-dp stroke is blended along both its edges, and an exact match came to zero on a capture
   that plainly showed the ring
+- **The workspace poll reads the filesystem off the main thread, and folds the result in on it.**
+  `scanWorkspace(items)` in `ui/WorkspaceUtils.kt` is a pure directory walk returning a
+  `WorkspaceScan` keyed by path; `AppState.applyWorkspaceScan` writes the state. The split is not
+  tidiness — the walk costs **90ms at a thousand tables and 226ms at the 10,000-directory cap**
+  `scanForTables` stops at (warm cache, local disk), and `App.kt` runs it every
+  `FILESYSTEM_POLL_INTERVAL_MS` (3s), so on the main thread that is several dropped frames every
+  three seconds for as long as the window is open. Two rules make the asynchrony safe, each with a
+  test: the roots are read on the main thread and **passed in** rather than read from the
+  dispatcher, and the result is **folded over the list as it is when it lands**, not over the one
+  the sweep started from — otherwise a root removed mid-sweep comes back. A path *missing* from the
+  scan is a root the sweep never saw, which is not the same as a warehouse with no tables, so it is
+  left untouched rather than emptied. `refreshWarehouseTables()` is the two composed, kept for
+  callers where a frame is not at stake. The two remaining main-thread scans are deliberate:
+  `loadPersistedState` at startup and `addWorkspaceRoot` are one-off and user-initiated, and moving
+  them needs a "not yet scanned" state the workspace list does not have
 - **Moving a cursor must cost what the reader expects it to cost.** The canvas and the structure
   tree make the *selection* the cursor, because selecting is free there. The workspace does not:
   opening a table reads its whole metadata tree, so `workspaceKeyAction` moves a separate
@@ -678,7 +693,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~621 tests across 70 files (455 in :core, 166 in :desktop) covering full pipelines for both formats (Avro fixtures
+~623 tests across 70 files (455 in :core, 168 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

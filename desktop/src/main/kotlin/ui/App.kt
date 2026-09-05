@@ -846,8 +846,18 @@ fun App() {
         }
         // Single periodic refresh for workspace table status.
         // Also covers changes from addWorkspaceRoot/removeWorkspaceRoot within one polling interval.
+        //
+        // The walk goes to an IO dispatcher and only the folding-in happens here. It is a
+        // recursive directory scan per warehouse — 90ms for a thousand tables, 226ms at the
+        // 10,000-directory cap, warm cache on a local disk — and on this timer, run here, that is
+        // several dropped frames every three seconds for as long as the window is open. The roots
+        // are read on this thread and passed in, because Compose state must not be read from the
+        // dispatcher; the result is keyed by path so it folds into whatever the list holds by the
+        // time it lands.
         while (isActive) {
-            state.refreshWarehouseTables()
+            val roots = state.workspaceItems
+            val scan = withContext(Dispatchers.IO) { scanWorkspace(roots) }
+            state.applyWorkspaceScan(scan)
             delay(FILESYSTEM_POLL_INTERVAL_MS)
         }
     }

@@ -342,6 +342,69 @@ class AppStateTest {
         }
     }
 
+    /**
+     * A root removed while a sweep was running does not come back.
+     *
+     * The sweep is a filesystem walk on another thread now, so between starting it and folding it
+     * in the reader can edit the list. A result carrying finished *items* would put back whatever
+     * the list held when it started; [WorkspaceScan] is keyed by path and folded over the list as
+     * it is at that moment, which is what makes the removal stick.
+     */
+    @Test
+    fun `a scan started before a root was removed does not bring it back`() {
+        val kept = kotlin.io.path.createTempDirectory("ws-kept").toFile()
+        val removed = kotlin.io.path.createTempDirectory("ws-removed").toFile()
+        try {
+            listOf(kept, removed).forEach { root ->
+                File(root, "table1/metadata").mkdirs()
+                File(root, "table1/metadata/v1.metadata.json").writeText("{}")
+                state.addWorkspaceRoot(root.absolutePath)
+            }
+            assertEquals(2, state.workspaceItems.size)
+
+            val inFlight = scanWorkspace(state.workspaceItems)
+            state.removeWorkspaceRoot(state.workspaceItems.first { it.path.contains("ws-removed") })
+            state.applyWorkspaceScan(inFlight)
+
+            assertEquals(1, state.workspaceItems.size, "the removed root should stay removed")
+            assertTrue(state.workspaceItems.single().path.contains("ws-kept"))
+        } finally {
+            kept.deleteRecursively()
+            removed.deleteRecursively()
+        }
+    }
+
+    /**
+     * A root added while a sweep was running is left alone, not reported empty.
+     *
+     * The sweep never looked at it, and "no tables found" and "not looked at" are the same absence
+     * in a map — so the fold has to tell them apart by the key being missing rather than by the
+     * value being empty, or a warehouse full of tables blinks empty for one polling interval.
+     */
+    @Test
+    fun `a root added after a scan started keeps its tables`() {
+        val first = kotlin.io.path.createTempDirectory("ws-first").toFile()
+        val late = kotlin.io.path.createTempDirectory("ws-late").toFile()
+        try {
+            File(first, "table1/metadata").mkdirs()
+            File(first, "table1/metadata/v1.metadata.json").writeText("{}")
+            state.addWorkspaceRoot(first.absolutePath)
+
+            val inFlight = scanWorkspace(state.workspaceItems)
+
+            File(late, "table2/metadata").mkdirs()
+            File(late, "table2/metadata/v1.metadata.json").writeText("{}")
+            state.addWorkspaceRoot(late.absolutePath)
+            state.applyWorkspaceScan(inFlight)
+
+            val lateItem = state.workspaceItems.first { it.path.contains("ws-late") } as WorkspaceItem.Warehouse
+            assertEquals(listOf("table2"), lateItem.tables, "the sweep never saw this root, so it must not empty it")
+        } finally {
+            first.deleteRecursively()
+            late.deleteRecursively()
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  Table Fingerprinting
     // ═══════════════════════════════════════════════════════════════
