@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A page size can be typed.** The badge's menu offered six sizes and `updateGraphPageSize`
+  accepted anything from 2 to 2,000, so the restriction was the menu's alone. `Other…` opens a
+  dialog with one field; the bounds are printed under it before anything is typed, the field turns
+  red outside them, and `Apply` is dead until the number is one. When the size in force is not one
+  of the six, `Other (37)` carries the check. `page-size-field-1.png` renders the field accepted and
+  refused.
+
 - **The metadata file's panel had never been rendered at reading width, and it was a table of
   contents printed twice.** Nine of its twenty-one identity rows were counts — `Total Snapshots`,
   `Total Refs`, `Snapshot Log Entries` — of sections drawn immediately below, and none of those

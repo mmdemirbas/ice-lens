@@ -306,14 +306,15 @@ class InspectorRenderTest {
      * because nothing is open. `badge-menu-paging-off` is the state where the paging item's own
      * wording changes and it carries the check. `badge-menu-collapsible` is the inverse of the
      * first — the graph is whole so "Draw all" is dead, and a group is open so the collapse is
-     * live. What the picture is for: whether a dead item reads as dead, and whether the check
-     * column keeps the labels on one x.
+     * live — and its page size is one the list does not offer, so the check sits on `Other`. What
+     * the picture is for: whether a dead item reads as dead, and whether the check column keeps
+     * the labels on one x.
      */
     @Test
     fun `the badge's menu renders the states its items change with`() {
         // Side by side rather than stacked: the three differ only in which items are dead and
         // which carries the check, and that is read across, not down.
-        renderScene("badge-menu", width = 2000, height = 1020) {
+        renderScene("badge-menu", width = 2000, height = 1120) {
             Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 MenuUnderTest("Nothing expanded, more to draw") {
                     GraphOptionsMenuItems(
@@ -321,7 +322,8 @@ class InspectorRenderTest {
                         pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
                         hiddenByAggregation = 5_749,
                         hasExpandedGroups = false, drawEverything = false,
-                        onPageSizeChange = {}, onDrawEverythingChange = {}, onCollapseAllGroups = {},
+                        onPageSizeChange = {}, onCustomPageSize = {},
+                        onDrawEverythingChange = {}, onCollapseAllGroups = {},
                     )
                 }
                 MenuUnderTest("Paging off") {
@@ -330,18 +332,37 @@ class InspectorRenderTest {
                         pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
                         hiddenByAggregation = 0,
                         hasExpandedGroups = true, drawEverything = true,
-                        onPageSizeChange = {}, onDrawEverythingChange = {}, onCollapseAllGroups = {},
+                        onPageSizeChange = {}, onCustomPageSize = {},
+                        onDrawEverythingChange = {}, onCollapseAllGroups = {},
                     )
                 }
-                MenuUnderTest("Whole graph, a group expanded") {
+                MenuUnderTest("Whole graph, a group expanded, a typed size") {
                     GraphOptionsMenuItems(
-                        total = 6_180, pageSize = 200,
+                        total = 6_180, pageSize = 37,
                         pageSizeChoices = AppState.GRAPH_PAGE_SIZE_CHOICES,
                         hiddenByAggregation = 0,
                         hasExpandedGroups = true, drawEverything = false,
-                        onPageSizeChange = {}, onDrawEverythingChange = {}, onCollapseAllGroups = {},
+                        onPageSizeChange = {}, onCustomPageSize = {},
+                        onDrawEverythingChange = {}, onCollapseAllGroups = {},
                     )
                 }
+            }
+        }
+    }
+
+    /**
+     * The typed page size's field, accepted and refused, side by side.
+     *
+     * A dialog is a window and a capture cannot open one, so the field is what is rendered. The
+     * refused state is what the picture is for: whether the bounds line reads as the answer to
+     * "then what is allowed", and whether the error colour reaches the label as well as the box.
+     */
+    @Test
+    fun `the page size field renders accepted and refused`() {
+        renderScene("page-size-field", width = 1200, height = 260) {
+            Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                PageSizeField("37", {}, 2..2_000)
+                PageSizeField("5000", {}, 2..2_000)
             }
         }
     }

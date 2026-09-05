@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -18,7 +21,10 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -28,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 
 /**
@@ -57,9 +64,12 @@ fun GraphStatusBadge(
     onPageSizeChange: (Int) -> Unit,
     onDrawEverythingChange: (Boolean) -> Unit,
     onCollapseAllGroups: () -> Unit,
+    /** What a typed page size is accepted between. The app's own bounds, by default. */
+    pageSizeRange: IntRange = AppState.MIN_GRAPH_PAGE_SIZE..AppState.MAX_GRAPH_PAGE_SIZE,
 ) {
     val colors = MaterialTheme.colorScheme
     var menuOpen by remember { mutableStateOf(false) }
+    var customOpen by remember { mutableStateOf(false) }
     val total = drawnNodeCount + hiddenByAggregation + hiddenByFilter
     val isPartial = hiddenByAggregation > 0 || hiddenByFilter > 0
 
@@ -123,8 +133,17 @@ fun GraphStatusBadge(
                 hasExpandedGroups = hasExpandedGroups,
                 drawEverything = drawEverything,
                 onPageSizeChange = { menuOpen = false; onPageSizeChange(it) },
+                onCustomPageSize = { menuOpen = false; customOpen = true },
                 onDrawEverythingChange = { menuOpen = false; onDrawEverythingChange(it) },
                 onCollapseAllGroups = { menuOpen = false; onCollapseAllGroups() },
+            )
+        }
+        if (customOpen) {
+            PageSizeDialog(
+                current = pageSize,
+                range = pageSizeRange,
+                onDismiss = { customOpen = false },
+                onApply = { customOpen = false; onPageSizeChange(it) },
             )
         }
     }
@@ -150,6 +169,7 @@ fun GraphOptionsMenuItems(
     hasExpandedGroups: Boolean,
     drawEverything: Boolean,
     onPageSizeChange: (Int) -> Unit,
+    onCustomPageSize: () -> Unit,
     onDrawEverythingChange: (Boolean) -> Unit,
     onCollapseAllGroups: () -> Unit,
 ) {
@@ -178,6 +198,18 @@ fun GraphOptionsMenuItems(
             onClick = { onPageSizeChange(choice) },
         )
     }
+    // A size the list does not offer is still a size: `updateGraphPageSize` takes anything in
+    // range, and a reader with a table that pages awkwardly at every listed number wants the one
+    // that fits it. When the size in force is one of these, this row carries the check.
+    val custom = pageSize !in pageSizeChoices
+    DropdownMenuItem(
+        text = {
+            MenuItemRow(checked = custom, checkDescription = "current page size") {
+                Text(if (custom) "Other (${formatCount(pageSize)})" else "Other…", fontSize = TypeScale.small)
+            }
+        },
+        onClick = onCustomPageSize,
+    )
     HorizontalDivider()
     // The count is in the label because it is the whole of what the reader is consenting to:
     // paging exists because a production table is tens of thousands of nodes, and an action that
@@ -248,3 +280,64 @@ private val MENU_CHECK_GAP = 8.dp
 /** Material's own horizontal padding inside a [DropdownMenuItem]. Named here because the menu's
  *  heading is laid out against it and has no other way to know it. */
 private val MENU_ITEM_PADDING = 12.dp
+
+/**
+ * A page size typed rather than chosen.
+ *
+ * The field is [PageSizeField], a composable of its own for the same reason the menu's items
+ * are: a dialog is a window and a capture cannot open one, so the part this file decides — the
+ * field, its bounds line, its error state — is what gets rendered.
+ */
+@Composable
+private fun PageSizeDialog(current: Int, range: IntRange, onDismiss: () -> Unit, onApply: (Int) -> Unit) {
+    var text by remember { mutableStateOf(current.toString()) }
+    val parsed = parsePageSize(text, range)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Siblings drawn per parent", fontSize = TypeScale.body) },
+        text = { PageSizeField(text, { text = it }, range, onSubmit = { parsed?.let(onApply) }) },
+        confirmButton = {
+            TextButton(onClick = { parsed?.let(onApply) }, enabled = parsed != null) { Text("Apply") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** The typed page size, with the bounds it must fall within stated under it. */
+@Composable
+fun PageSizeField(
+    text: String,
+    onTextChange: (String) -> Unit,
+    range: IntRange,
+    onSubmit: () -> Unit = {},
+) {
+    val parsed = parsePageSize(text, range)
+    OutlinedTextField(
+        value = text,
+        onValueChange = onTextChange,
+        singleLine = true,
+        isError = parsed == null,
+        label = { Text("Page size") },
+        // The bounds are always on screen, not only once the reader has strayed outside them:
+        // the field is for a number the list did not offer, so what is on offer is the question.
+        supportingText = {
+            Text("A whole number from ${formatCount(range.first)} to ${formatCount(range.last)}")
+        },
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { onSubmit() }),
+        modifier = Modifier.width(PAGE_SIZE_FIELD_WIDTH),
+    )
+}
+
+/**
+ * What the reader typed, as a page size, or null when it is not one.
+ *
+ * Thousands separators are allowed because the bounds line prints one — a reader who copies
+ * `2,000` back should not be told it is not a number.
+ */
+fun parsePageSize(text: String, range: IntRange): Int? =
+    text.trim().replace(",", "").replace("_", "").replace(" ", "")
+        .toIntOrNull()
+        ?.takeIf { it in range }
+
+private val PAGE_SIZE_FIELD_WIDTH = 240.dp

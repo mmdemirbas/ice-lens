@@ -381,7 +381,10 @@ desktop/src/main/kotlin/
   starts where the choices start rather than where their check marks do
 - **The page size is a setting, and two things travel with a change of it.** `AppState.graphPageSize`
   is persisted and feeds `AggregationPolicy`; `GraphStatusBadge` on the canvas both states the
-  figures and offers the choices. Changing it clears `expandedGroupIds` — a group id names a page
+  figures and offers the choices — six listed sizes and `Other…`, which opens a dialog for a typed
+  one. `parsePageSize` is the one place a typed size is read, and it accepts the thousands
+  separator the bounds line prints. The dialog's field is `PageSizeField`, a composable of its own
+  for the same reason the menu's items are: a dialog is a window and a capture cannot open one. Changing it clears `expandedGroupIds` — a group id names a page
   *at a size*, so the same id means a different set of siblings at a different one. Every cached
   session stays: `TableSession.policy` records what the graph was drawn under, and a cache hit
   whose policy differs from the one in force is **redrawn from its retained table model** rather
@@ -609,7 +612,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~599 tests across 66 files (455 in :core, 144 in :desktop) covering full pipelines for both formats (Avro fixtures
+~603 tests across 67 files (455 in :core, 148 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

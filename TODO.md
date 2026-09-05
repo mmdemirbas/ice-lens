@@ -59,10 +59,6 @@ The graph draws a page of siblings per parent and folds the rest into an expanda
 canvas states what it is not drawing, and rows go through the same pass as everything else. What
 that leaves open:
 
-- **The page size is offered as six fixed choices** (`AppState.GRAPH_PAGE_SIZE_CHOICES`), with no
-  way to type a number. `updateGraphPageSize` accepts anything between 2 and 2,000, so the
-  restriction is the menu's alone.
-
 - **The badge's menu is captured as items, not as a menu.** `GraphOptionsMenuItems` is a
   composable of its own and `badge-menu-1.png` renders three states of it. What is still not
   covered is the popup itself — its position, and whether it fits on a short window. Seeding
