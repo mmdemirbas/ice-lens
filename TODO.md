@@ -267,10 +267,26 @@ What is left:
   eye-only is everything a number cannot state — whether the lines that fit are the right lines,
   in the right order, at weights a reader can rank.
 
-- **Iceberg pipeline fixtures on disk** — Iceberg pipeline tests currently write Avro
-  fixtures at runtime via `avro4k`. Snapshotting representative fixtures into
-  `src/test/resources/iceberg-fixtures/` (alongside the existing Paimon fixtures) would
-  speed up tests and pin Avro schema details against drift.
+- **Iceberg pipeline fixtures on disk — checked 2026-09-05, and neither half of the case holds.**
+  The idea was to snapshot the runtime-written `avro4k` fixtures into
+  `src/test/resources/iceberg-fixtures/` to speed the tests up and pin Avro schema details against
+  drift.
+
+  *Speed:* measured empty. The core suite is **29.6s, of which 24.6s is `ElkScalingBench`**; every
+  class that writes Avro at runtime is under 0.2s and most under 0.08s. There is no time here to
+  recover.
+
+  *Drift:* already covered, and better. The classes these fixtures exercise — `ManifestEntry`,
+  `DataFile`, `ManifestFile` — are read from **eight engine-written tables** in `example/` on every
+  run. Freezing our own writer's bytes would pin today's schema against tomorrow's; the real tables
+  pin the reader against what Iceberg actually writes, which is the stronger claim and is already
+  being made.
+
+  And most of what these tests construct is *deliberately malformed* — a truncated file, an empty
+  one, zero-record Avro, a corrupt manifest, a version-hint that exists but cannot be read. There
+  the construction **is** the specification of the case, and a checked-in blob would hide what
+  "truncated" means from the next reader. Writing them at runtime is the right call rather than a
+  compromise. Closed.
 
 ---
 
@@ -278,7 +294,10 @@ What is left:
 
 - **macOS code signing** — without signing, macOS shows "unidentified developer" warning. Requires Apple Developer Program ($99/year).
 
-- **Reproducible builds** — pin transitive dependency versions via Gradle lockfiles.
+- **Reproducible builds — done.** `dependencyLocking` is on for every configuration and the
+  lockfiles are committed: 272 modules on desktop, 78 on core, versions that were previously
+  decided by conflict resolution at each build. `./gradlew resolveAndLockAll --write-locks`
+  regenerates after a dependency change, and the build fails until it is run.
 
 - **Documentation site** — GitHub Pages with installation guide, user guide with annotated screenshots, and troubleshooting FAQ.
 

@@ -105,6 +105,8 @@ desktop/src/main/kotlin/
 ./gradlew :desktop:packageDmg   # macOS installer
 ./gradlew :desktop:packageMsi   # Windows installer
 ./gradlew :desktop:packageDeb   # Linux installer
+
+./gradlew resolveAndLockAll --write-locks   # after ANY dependency change
 ```
 
 ## Key conventions
@@ -646,7 +648,17 @@ desktop/src/main/kotlin/
 - `SampleRowReader` uses a `synchronized` lock for DuckDB connection safety across threads
 - `sessionCache` is a 5-entry LRU (`Collections.synchronizedMap` over a `LinkedHashMap`
   with `removeEldestEntry`) — bounds memory across many table switches
-- Dependencies are managed via Gradle version catalog (`gradle/libs.versions.toml`)
+- Dependencies are managed via Gradle version catalog (`gradle/libs.versions.toml`), and **every
+  transitive version is locked** — `gradle.lockfile` per project, committed. The catalog pins what
+  the build *asks* for; the lock pins what those asks drag in, which is most of the classpath:
+  **272 modules on desktop and 78 on core**, versions decided by conflict resolution rather than by
+  anything written down. Change a dependency and the build fails until the lock is regenerated with
+  `./gradlew resolveAndLockAll --write-locks`; that task exists because Gradle only records a lock
+  for a configuration it actually resolves, so locking from `build` writes a partial file and the
+  next build fails on the first configuration it missed. Both halves of the enforcement were
+  exercised rather than assumed: a *changed* version is pulled back by the `{strictly}` constraint
+  the lock injects, and a *new* module fails with `Resolved '<module>' which is not part of the
+  dependency lock state`
 - ProGuard is enabled for release builds with keep rules in `proguard-rules.pro`
 - Tests use JUnit 5 via `kotlin-test-junit5`; run with `./gradlew test`
 

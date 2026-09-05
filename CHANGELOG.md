@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Every transitive dependency version is locked.** The version catalog pins what the build asks
+  for; it said nothing about what those asks pull in, which is most of the classpath — 272 modules
+  on desktop and 78 on core, versions chosen by conflict resolution afresh on every build. They are
+  now written down and committed. `./gradlew resolveAndLockAll --write-locks` regenerates after a
+  dependency change; the task exists because Gradle only locks configurations it actually resolves,
+  so locking from an ordinary build writes a partial file.
 - **The inspector's copy buttons draw focus, and the panel scrolls to keep the ring on screen.**
   The tool-window chrome and the workspace list already drew a one-dp `primary` ring where the
   keyboard was; the panel's copy buttons were left with Material's own indication, which on an icon
