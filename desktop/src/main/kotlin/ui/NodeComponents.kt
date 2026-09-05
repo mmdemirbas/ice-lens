@@ -3,10 +3,15 @@ package ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.CompositionLocalProvider
@@ -331,19 +336,39 @@ fun DetailRow(key: String, value: String, isHeader: Boolean = false, isDark: Boo
             overflow = TextOverflow.Ellipsis
         )
         if (copyable && value.isNotBlank() && value != "N/A") {
+            // Focus says `primary` here, as it does everywhere else in the window.
+            //
+            // Material draws its own focus indication on an `IconButton` — a state layer in the
+            // *content* colour, which for this button is the muted `keyColor` a label is printed
+            // in, so focus arrives as a grey disc indistinguishable from hover. The rest of the
+            // app's controls draw a ring in `primary`, and a reader tabbing from the tool-window
+            // bar into a panel should not have the indicator change vocabulary on the way.
+            //
+            // The ring is drawn on a box *inside* the button rather than on the button, because
+            // an `IconButton` expands to the 48dp minimum interaction size after the modifier it
+            // is handed: a border in that chain is measured at 48dp and paints across the rows
+            // above and below this one. The click target keeps its 48dp; the ring keeps the 20dp.
+            val copyInteractions = remember { MutableInteractionSource() }
+            val copyFocused by copyInteractions.collectIsFocusedAsState()
             IconButton(
                 onClick = {
                     Toolkit.getDefaultToolkit().systemClipboard
                         .setContents(StringSelection(value), null)
                 },
+                interactionSource = copyInteractions,
                 modifier = Modifier.size(20.dp)
             ) {
-                Icon(
-                    Icons.Default.ContentCopy,
-                    contentDescription = "Copy $key",
-                    modifier = Modifier.size(12.dp),
-                    tint = keyColor
-                )
+                Box(
+                    modifier = Modifier.size(20.dp).focusRing(copyFocused, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Default.ContentCopy,
+                        contentDescription = "Copy $key",
+                        modifier = Modifier.size(12.dp),
+                        tint = keyColor
+                    )
+                }
             }
         }
     }

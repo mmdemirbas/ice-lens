@@ -510,20 +510,42 @@ desktop/src/main/kotlin/
   wrapper, which the scene casts and throws on — through the tool-window bar and a pane's close
   button and reads the Tab order off the order the callbacks fire in. The inspector's copy buttons
   are the same `IconButton`, inferred rather than driven because their action is the system
-  clipboard
-- **Focus is drawn by `Modifier.focusRing`, and the capture that proves it needs two controls.**
-  Reaching a control and showing that you have reached it are different claims, and only the second
-  is about pixels: `focus-bar-1.png` and `focus-pane-close-1.png` came back **byte-identical**
-  before the ring existed, which is the whole proof that Material's default indication is for press
-  and not for focus. One dp of `primary`, matching what the workspace list already draws around
-  itself — that list keeps its own copy because its focus state also decides whether the row cursor
+  clipboard — what is asserted about them instead is that the ring they draw is *on screen*
+- **Focus is drawn by `Modifier.focusRing`, one dp of `primary`, on every control in the window.**
+  Material does draw a focus indication of its own, but it is a state layer in the *content*
+  colour: on a `TextButton` that is the accent and reads well, and on an icon button tinted with a
+  muted label colour it is a grey disc no different from hover. One vocabulary per window is worth
+  more than either, so the ring goes on the icon-only controls — the tool-window bar, a pane's
+  close, the inspector's copy buttons — and the Material text buttons keep their own. The workspace
+  list keeps a private copy of the ring because its focus state also decides whether the row cursor
   is drawn, so it has to be hoisted there anyway. The **told-focus** form of `focusRing` exists for
   `IconButton`, which expands to the 48dp minimum interaction size *after* the modifier it was
-  handed: a ring in that chain is measured at 48dp and paints outside a 28dp header, so the button
-  keeps its click target and the ring is drawn on a box inside it from the button's own
-  `interactionSource`. `renderFocused` sends Tab before the last frame, and the scene holds
-  **several** focusables on purpose — the first version tabbed past the last one and wrapped to the
-  first, producing two identical captures that read exactly like "focus draws nothing"
+  handed: a ring in that chain is measured at 48dp and paints outside the 28dp header or across the
+  rows above and below, so the button keeps its click target and the ring is drawn on a box inside
+  it from the button's own `interactionSource`.
+- **`ImageComposeScene.render()` draws every animation at time zero, so a capture of anything
+  animated has to pass a clock.** Its `nanoTime` parameter *defaults to the constant `0`* — a
+  hundred no-argument renders are a hundred copies of the first instant, and nothing about the
+  result looks wrong: the frame is valid, the layout is settled, and only the animated part is
+  missing. What it cost here was a wrong conclusion recorded as a convention. `focus-bar-1.png` and
+  `focus-pane-close-1.png` came back **byte-identical** and were read as proof that Material's
+  default indication is for press and not for focus; what they actually showed was a state-layer
+  fade that had not been given one millisecond to run. `FrameClock` in `InspectorRenderTest` is the
+  fix — `frame()` advances 16ms and `settle()` runs the sixty frames a fade or a bring-into-view
+  scroll needs — and `renderFocused` uses it. The scene also holds **several** focusables on
+  purpose: an earlier version tabbed past the last one and wrapped to the first, producing two
+  identical captures that read exactly like "focus draws nothing" a second time.
+- **A ring below the fold is a ring nobody sees, and that is a third claim.** Tab arriving
+  (`KeyboardReachTest`) and a ring being drawn (the chrome capture) leave open whether a panel
+  several screens tall keeps the focused control in the viewport. It does — `Modifier.focusable`
+  asks its scroll parent to bring it into view and `verticalScroll` honours it — and
+  `a copy button draws focus, and the panel scrolls to keep it in view` says so by counting the
+  ring's own ink at three tab depths, the last one well past what the viewport holds. It measures a
+  column of the panel's own `DetailRow`s rather than the assembled panel, because the measure is a
+  colour and `primary` is also the colour of the panel's header actions and links, whose count
+  moves with the scroll being measured. The count is by **distance** from `primary`, not equality:
+  a one-dp stroke is blended along both its edges, and an exact match came to zero on a capture
+  that plainly showed the ring
 - **Moving a cursor must cost what the reader expects it to cost.** The canvas and the structure
   tree make the *selection* the cursor, because selecting is free there. The workspace does not:
   opening a table reads its whole metadata tree, so `workspaceKeyAction` moves a separate
@@ -656,7 +678,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~620 tests across 70 files (455 in :core, 165 in :desktop) covering full pipelines for both formats (Avro fixtures
+~621 tests across 70 files (455 in :core, 166 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -3,6 +3,8 @@
 package ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -69,6 +72,17 @@ class InspectorRenderTest {
     private companion object {
         /** Device pixels per written strip. See [writeBands]. */
         const val BAND_HEIGHT = 1300
+
+        /**
+         * Pixels of `primary` a focus ring is worth, above whatever the panel already draws.
+         *
+         * One dp of stroke at density 2 around a 20dp control is roughly 250 device pixels of it,
+         * so this is well under a whole ring and well over the odd antialiased edge.
+         */
+        const val RING_INK_MINIMUM = 60
+
+        /** How far from `primary` a pixel may sit and still be counted as the ring. See [primaryInk]. */
+        const val RING_INK_TOLERANCE = 40
     }
 
     private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }
@@ -334,6 +348,79 @@ class InspectorRenderTest {
         }
         renderFocused("focus-bar", width = 1000, height = 520, tabs = 1) { chrome() }
         renderFocused("focus-pane-close", width = 1000, height = 520, tabs = 3) { chrome() }
+    }
+
+    /**
+     * Focus on a copy button, which lives in a panel several screens tall.
+     *
+     * `KeyboardReachTest` settles that Tab arrives; the chrome capture above settles that a ring is
+     * drawn. Neither says the ring is drawn anywhere the reader can *see*, and in a scrolling panel
+     * that is a third question: a reader holding Tab walks focus off the bottom of the pane within
+     * a dozen presses, and a ring painted below the fold is indistinguishable from one that is
+     * never painted. It does stay in view — `Modifier.focusable` asks its scroll parent to bring it
+     * into view and `verticalScroll` honours that — and this counts the ring's own ink in the
+     * captured viewport at three depths rather than trusting the contract.
+     *
+     * Rows of the panel's own [DetailRow] rather than the whole panel, because the measure is a
+     * colour: `primary` is also the colour of the panel's header actions and its links, and their
+     * count changes as the content scrolls, so on the assembled panel the baseline would move with
+     * the thing being measured. Here the ring is the only `primary` in the scene, which the at-rest
+     * capture asserts before any of the rest is believed.
+     */
+    @Test
+    fun `a copy button draws focus, and the panel scrolls to keep it in view`() {
+        fun capture(tabs: Int) = renderFocused("focus-copy-$tabs", width = 640, height = 400, tabs = tabs) {
+            val scroll = rememberScrollState()
+            Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
+                repeat(60) { i ->
+                    DetailRow("Path", "/wh/default/parted/data/00000-$i-a1b2c3.parquet", copyable = true)
+                }
+            }
+        }
+
+        val atRest = primaryInk(capture(0))
+        assertTrue(
+            atRest == 0,
+            "nothing in an unfocused column of copy rows should be drawn in `primary`, and " +
+                "$atRest pixels are — the ring is not the only thing this counts",
+        )
+        // Well past the roughly nine rows the 200dp of viewport holds, so the last depth is only
+        // reachable by the panel having scrolled.
+        listOf(1, 12, 30).forEach { tabs ->
+            val ink = primaryInk(capture(tabs))
+            assertTrue(
+                ink > RING_INK_MINIMUM,
+                "after $tabs tabs the focus ring should be inside the pane, and the capture holds " +
+                    "$ink pixels of `primary` — a ring that scrolled out of view and one that is " +
+                    "never drawn look identical from here",
+            )
+        }
+    }
+
+    /**
+     * How many pixels of the focus ring's own colour a capture holds.
+     *
+     * Near it, not equal to it: the ring is one dp of stroke and every pixel along its edge is a
+     * blend with whatever it sits on, so an exact match counts a stroke's core and nothing else —
+     * which on the first run came to zero on a capture that plainly shows the ring. The tolerance
+     * is far narrower than the distance to the only other blue in these rows, the label's
+     * `onSurfaceVariant` slate, which sits about 106 away.
+     */
+    private fun primaryInk(png: ByteArray): Int {
+        val image = ImageIO.read(ByteArrayInputStream(png))
+        val ring = IceLensLightColorScheme.primary.toArgb()
+        val (rr, rg, rb) = Triple((ring shr 16) and 0xFF, (ring shr 8) and 0xFF, ring and 0xFF)
+        var count = 0
+        for (y in 0 until image.height) {
+            for (x in 0 until image.width) {
+                val pixel = image.getRGB(x, y)
+                val dr = ((pixel shr 16) and 0xFF) - rr
+                val dg = ((pixel shr 8) and 0xFF) - rg
+                val db = (pixel and 0xFF) - rb
+                if (dr * dr + dg * dg + db * db <= RING_INK_TOLERANCE * RING_INK_TOLERANCE) count++
+            }
+        }
+        return count
     }
 
     /**
@@ -1022,23 +1109,54 @@ class InspectorRenderTest {
         tabs: Int,
         density: Float = 2f,
         content: @Composable () -> Unit,
-    ) {
+    ): ByteArray {
         val scene = ImageComposeScene(width = width, height = height, density = Density(density)) {
             Themed(content)
         }
+        val clock = FrameClock(scene)
         val png = try {
-            scene.render()
+            clock.frame()
             repeat(tabs) {
                 scene.sendKeyEvent(KeyEvent(Key.Tab, KeyEventType.KeyDown))
                 scene.sendKeyEvent(KeyEvent(Key.Tab, KeyEventType.KeyUp))
-                scene.render()
+                clock.frame()
             }
-            scene.render().encodeToData()?.bytes
+            clock.settle()
+            clock.image().encodeToData()?.bytes
         } finally {
             scene.close()
         }
         outputDir.mkdirs()
-        writeBands(assertNotNull(png, "scene produced no image for $name"), name)
+        val bytes = assertNotNull(png, "scene produced no image for $name")
+        writeBands(bytes, name)
+        return bytes
+    }
+
+    /**
+     * A clock for a scene, because `ImageComposeScene.render()` renders every animation at zero.
+     *
+     * Its `nanoTime` parameter **defaults to the constant `0`**, so a hundred no-argument renders
+     * are a hundred copies of the first instant. Nothing about that looks wrong: the frame is
+     * valid, the layout is settled, and only the animated part of it is missing. What it cost here
+     * was a wrong conclusion — two byte-identical captures were read as "Material draws nothing for
+     * focus", when what they showed was a state-layer fade that had not been given a single
+     * millisecond to run.
+     *
+     * So a capture that involves focus, an entrance, or a scroll passes an advancing time, and
+     * [settle] runs the frames the animation needs to finish before the image is taken.
+     */
+    private class FrameClock(private val scene: ImageComposeScene, private val stepNanos: Long = 16_000_000L) {
+        private var now = 0L
+
+        fun frame() {
+            now += stepNanos
+            scene.render(now)
+        }
+
+        /** Long enough for Material's state-layer fades and a bring-into-view scroll to land. */
+        fun settle(frames: Int = 60) = repeat(frames) { frame() }
+
+        fun image() = scene.render(now)
     }
 
     private fun renderScene(

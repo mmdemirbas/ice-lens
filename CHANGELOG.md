@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The inspector's copy buttons draw focus, and the panel scrolls to keep the ring on screen.**
+  The tool-window chrome and the workspace list already drew a one-dp `primary` ring where the
+  keyboard was; the panel's copy buttons were left with Material's own indication, which on an icon
+  tinted in a muted label colour is a grey disc indistinguishable from hover. A new capture counts
+  the ring's ink at three tab depths, the last well past what the viewport holds, so it asserts
+  both that the ring is drawn and that the panel brought it into view.
+
 - **Canvas drawing is benchmarked, and it is linear in the node count.** ELK's layout had been
   measured to 4,000 nodes and the drawing never had. About 6µs a node in steady state, so roughly
   2,600 visible nodes inside a 16ms frame, with the first frame about forty times more expensive
@@ -190,6 +197,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **Every offscreen capture was drawing its animations at time zero.**
+  `ImageComposeScene.render()` defaults its `nanoTime` argument to the constant `0`, so repeated
+  no-argument renders are repeated copies of the first instant — a valid frame with the animated
+  part missing, which looks like nothing is wrong. It had produced a wrong conclusion recorded as a
+  project convention: two byte-identical focus captures were read as proof that Material draws
+  nothing for focus, when what they showed was a state-layer fade given no time to run. The focus
+  captures now pass an advancing clock, and the convention has been corrected.
 - **The menu's heading now starts where its choices start.** "Siblings drawn per parent" was
   padded like a menu item and the items are indented past a check slot, so the heading sat 24dp
   to the left of every number under it. Found by the first render of the items.

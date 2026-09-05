@@ -178,14 +178,21 @@ What is left:
   anywhere else. What is still unasked is whether the counters and pointers are identity or
   content; they were kept because each is a single fact a reader opens a metadata version for.
 
-- **The keyboard list is closed; the inspector's own buttons are what is left.** Delete /
-  Backspace and `Alt + Up / Down` edit the workspace list, `KeyboardReachTest` drives Tab through
-  the tool-window bar and a pane's close, and `focusRing` draws where the keyboard is — measured,
-  because before it the focused and unfocused captures were byte-identical. What is still
-  undrawn is focus on the inspector's copy buttons and the filter form's controls. Those are
-  ordinary Material components inside a scrolling panel, so the ring is the same one-line change;
-  what is missing is a capture of the panel with focus somewhere in it, which needs the scroll
-  position to follow focus first or the ring lands off screen.
+- **The keyboard list is closed.** Delete / Backspace and `Alt + Up / Down` edit the workspace
+  list, `KeyboardReachTest` drives Tab through the tool-window bar and a pane's close, and
+  `focusRing` now draws on the inspector's copy buttons too. The filter form's controls were left
+  with Material's own indication: a `TextButton`'s state layer is drawn in the accent and reads as
+  focus, while an icon button's is drawn in the icon's muted tint and does not, which is where the
+  ring is worth having.
+
+  Two things this settled that were wrong before. **Focus does follow the scroll** — a panel
+  several screens tall brings the focused control into view on its own, so the ring cannot land off
+  screen, and `a copy button draws focus, and the panel scrolls to keep it in view` counts the
+  ring's ink at three tab depths to say so. And **the byte-identical captures that justified the
+  ring in the first place were an artifact of the test harness**: `ImageComposeScene.render()`
+  defaults `nanoTime` to the constant `0`, so every animation in every capture was drawn at time
+  zero and Material's focus fade never ran. The ring is kept, for the reason above rather than the
+  one recorded at the time; the harness now passes a clock.
 
 ---
 
