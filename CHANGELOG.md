@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Canvas drawing is benchmarked, and it is linear in the node count.** ELK's layout had been
+  measured to 4,000 nodes and the drawing never had. About 6µs a node in steady state, so roughly
+  2,600 visible nodes inside a 16ms frame, with the first frame about forty times more expensive
+  because it pays composition and layout for every node. The app draws far fewer than that, since
+  aggregation caps siblings per parent. The test asserts the cost-per-node ratio rather than a
+  duration, because a wall-clock bound measures the machine and a superlinear ratio is the
+  regression worth catching.
+
 - **A wide table's leading column is asserted to fit its panel.** The reader sees the leftmost
   columns and nothing else until they scroll, so a leading column wider than the panel means
   scrolling before reading anything, and the widths are hand-chosen at twenty-seven call sites in

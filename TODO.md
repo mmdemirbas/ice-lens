@@ -124,7 +124,17 @@ What is left:
 
 ## Performance
 
-- **Profile Compose rendering for large graphs** — ELK layout is fast (benchmarked up to 4000 nodes at ~1.3s). Viewport culling is in place but Compose rendering at scale (thousands of visible nodes simultaneously) has not been measured. Consider level-of-detail rendering or node virtualization if it becomes a bottleneck.
+- **Compose rendering was measured, and it is not the bottleneck.** `CanvasRenderPerformanceTest`
+  draws N cards with every one of them inside the viewport. Steady-state cost is **linear** at about
+  6µs a node above 500, so a 16ms frame holds roughly **2,600 visible nodes**; 4,000 draws at about
+  24ms a frame, which is degraded but not a stall. The first frame is the expensive one at about
+  0.23ms a node — 4,000 nodes ≈ 1s, the same order as ELK's layout at that size — so opening a
+  large table costs roughly twice what the layout alone suggested, and panning it costs almost
+  nothing. What the app actually draws is far below this: aggregation caps siblings per parent, and
+  600 nodes is 5ms a frame. **Level-of-detail rendering and node virtualisation are not justified**
+  on these numbers. What would change the answer: a page size in the thousands, or a card that
+  starts costing materially more to draw. Not measured here: on-screen frame time, which adds vsync,
+  present and GPU compositing on top of the CPU work these numbers cover.
 
 ---
 

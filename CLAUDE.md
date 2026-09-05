@@ -656,7 +656,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~618 tests across 69 files (455 in :core, 163 in :desktop) covering full pipelines for both formats (Avro fixtures
+~620 tests across 70 files (455 in :core, 165 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -708,6 +708,20 @@ scene of twice the pixels at twice the density and requires the ink to land at e
 coordinate, which is the check that would have caught the px/dp mismatch.
 `LayoutOverlapTest` covers the half of that which is the layout's own: no two nodes of one layer
 occupy the same rectangle, at five page sizes across five fixtures.
+
+**Drawing the canvas is linear in the node count, and that is what is asserted.**
+`CanvasRenderPerformanceTest` puts N file-node cards in the viewport — verified in the viewport,
+since `GraphCanvas` culls and a benchmark whose nodes are off-screen measures drawing nothing — and
+reports the first frame separately from the steady one, because the first pays composition and
+layout for every node and later ones pay draw alone. Measured on this machine: about **6µs a node**
+in steady state above 500 nodes, so roughly **2,600 nodes inside a 16ms frame**, while the first
+frame costs about **0.23ms a node** (4,000 nodes ≈ 1s, the same order as ELK's layout at that size).
+The assertion is the **ratio** — cost per node at 4,000 against 1,000 — not a duration: a wall-clock
+bound says as much about how busy the machine is as about the code, and has to be set so loose it
+catches nothing, while a superlinear ratio is exactly the regression that would matter. The 100-node
+row costs 3x more per node than the 4,000-node row because the scene's fixed furniture (mini-map,
+badge, background) is amortised across fewer cards; that is the confounder, and it is visible in the
+table rather than hidden in the average.
 
 **The runtime-written Avro fixtures are not an oracle.** They are written with
 `Avro.schema<T>()` — the schema derived from the very class under test — so writer and reader
