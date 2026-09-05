@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The workspace list can be edited from the keyboard.** With the list focused, Delete or
+  Backspace asks to remove the root under the cursor — the same dialog the `×` opens — and
+  `Alt + Up / Down` moves it one place. A table inside a warehouse answers nothing to either, since
+  it is the warehouse's and not a workspace item, and a move under a search does nothing, because
+  the neighbour on screen is not the neighbour in the list. The cheat sheet has a Workspace
+  section.
+- **Tab-reachability of the tool-window chrome is asserted.** `KeyboardReachTest` sends Tab and
+  Enter into an offscreen scene holding the tool-window bar and a pane, and reads the Tab order off
+  the order the callbacks fire in.
+
 - **A page size can be typed.** The badge's menu offered six sizes and `updateGraphPageSize`
   accepted anything from 2 to 2,000, so the restriction was the menu's alone. `Other…` opens a
   dialog with one field; the bounds are printed under it before anything is typed, the field turns

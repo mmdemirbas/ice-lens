@@ -168,11 +168,13 @@ What is left:
   anywhere else. What is still unasked is whether the counters and pointers are identity or
   content; they were kept because each is a single fact a reader opens a metadata version for.
 
-- **Keyboard coverage stops at the four navigable surfaces.** The canvas, the structure tree, the
-  workspace and the inspector's section headers all take the keyboard and show focus. What has no
-  keyboard path yet: removing a workspace root (mouse-only `×`), reordering roots (drag only), the
-  tool-window bars, and the copy buttons inside the inspector. None is on a reading path, which is
-  why they are last, but "reachable by Tab" is still the bar.
+- **Nothing on the keyboard list is mouse-only now; focus *visibility* is what is unchecked.**
+  Delete / Backspace and `Alt + Up / Down` edit the workspace list (`workspaceEditKey` in
+  `ui/Sidebar.kt`), and `KeyboardReachTest` drives Tab and Enter through the tool-window bar and a
+  pane's close button. The copy buttons are the same `IconButton` as that close and were not
+  pressed, because their action is the system clipboard. What no capture has looked at is whether
+  the bar's boxes and the buttons *show* focus the way the four navigable surfaces do — Material's
+  indication draws something, but nobody has seen how much.
 
 ---
 

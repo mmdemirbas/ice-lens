@@ -499,7 +499,18 @@ desktop/src/main/kotlin/
   holds the one parser — bare arrows plus Enter and Space, modifiers deliberately left alone so
   Cmd+Left still means "back" and Alt+Arrow still moves by word in a field. The canvas maps the
   result to a `GraphDirection`; the tree and the workspace each have their own keymap over their
-  own rows. Three copies of the modifier test is how they drift
+  own rows. Three copies of the modifier test is how they drift. The workspace has a second parser
+  for *editing* the list, `workspaceEditKey`: Delete / Backspace bare asks to remove the root under
+  the cursor (through the same dialog as the `×`), and `Alt + Up / Down` moves it — a chord,
+  because the bare arrows are the cursor, and Alt is the one modifier a list may take since there
+  is no text field inside it. A nested table row answers nothing to either, and a move under a
+  search answers nothing, because the neighbour the reader sees is not the neighbour the list has
+- **Tab-reachability of the chrome is asserted, not assumed.** `KeyboardReachTest` drives
+  `ImageComposeScene.sendKeyEvent` — the skiko `KeyEvent(key, type)` constructor, not the AWT
+  wrapper, which the scene casts and throws on — through the tool-window bar and a pane's close
+  button and reads the Tab order off the order the callbacks fire in. The inspector's copy buttons
+  are the same `IconButton`, inferred rather than driven because their action is the system
+  clipboard
 - **Moving a cursor must cost what the reader expects it to cost.** The canvas and the structure
   tree make the *selection* the cursor, because selecting is free there. The workspace does not:
   opening a table reads its whole metadata tree, so `workspaceKeyAction` moves a separate
@@ -612,7 +623,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~603 tests across 67 files (455 in :core, 148 in :desktop) covering full pipelines for both formats (Avro fixtures
+~609 tests across 68 files (455 in :core, 154 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

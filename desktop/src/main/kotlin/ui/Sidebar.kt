@@ -20,6 +20,14 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
@@ -118,6 +126,58 @@ internal sealed interface WorkspaceKeyAction {
     data class Expand(val path: String) : WorkspaceKeyAction
     data class Collapse(val path: String) : WorkspaceKeyAction
     data class Open(val path: String) : WorkspaceKeyAction
+
+    /** Ask to remove the root under the cursor. Ask — the dialog the `×` opens is the confirmation. */
+    data class Remove(val path: String) : WorkspaceKeyAction
+
+    /** Move the root under the cursor by one place, in the direction of [delta]. */
+    data class Move(val path: String, val delta: Int) : WorkspaceKeyAction
+}
+
+/** A keystroke that edits the workspace list rather than moves through it. */
+internal enum class WorkspaceEditKey { REMOVE, MOVE_UP, MOVE_DOWN }
+
+/**
+ * The editing key an event carries, or null when it is not one.
+ *
+ * Delete and Backspace bare. The move is a chord, `Alt + Up / Down`, because the bare arrows are
+ * the cursor — and Alt is the one modifier a list may take: [navKey] leaves it alone so Alt+Arrow
+ * still moves by word in a text field, and there is no text field inside the list.
+ */
+internal fun workspaceEditKey(event: KeyEvent): WorkspaceEditKey? {
+    if (event.type != KeyEventType.KeyDown) return null
+    val chorded = event.isMetaPressed || event.isCtrlPressed || event.isShiftPressed
+    if (chorded) return null
+    return when {
+        !event.isAltPressed && (event.key == Key.Delete || event.key == Key.Backspace) -> WorkspaceEditKey.REMOVE
+        event.isAltPressed && event.key == Key.DirectionUp -> WorkspaceEditKey.MOVE_UP
+        event.isAltPressed && event.key == Key.DirectionDown -> WorkspaceEditKey.MOVE_DOWN
+        else -> null
+    }
+}
+
+/**
+ * What an editing key does to the row under the cursor.
+ *
+ * Only a root is a workspace item. A table inside a warehouse is the warehouse's, and removing or
+ * moving the warehouse because the cursor was on one of its tables would act on something the
+ * reader did not point at — so a nested row answers nothing. A move under a search answers nothing
+ * too: the neighbour the reader sees is not the neighbour the list has, and moving "one down" past
+ * a root the filter hid would land somewhere the reader cannot see.
+ */
+internal fun workspaceEditAction(
+    rows: List<WorkspaceRow>,
+    searchQuery: String,
+    focusedPath: String?,
+    key: WorkspaceEditKey,
+): WorkspaceKeyAction? {
+    val row = rows.firstOrNull { it.path == focusedPath } ?: return null
+    if (row.depth != 0) return null
+    return when (key) {
+        WorkspaceEditKey.REMOVE -> WorkspaceKeyAction.Remove(row.path)
+        WorkspaceEditKey.MOVE_UP -> if (searchQuery.isBlank()) WorkspaceKeyAction.Move(row.path, -1) else null
+        WorkspaceEditKey.MOVE_DOWN -> if (searchQuery.isBlank()) WorkspaceKeyAction.Move(row.path, +1) else null
+    }
 }
 
 /**
@@ -300,6 +360,15 @@ fun WorkspacePanel(
         }
 
         fun handleKey(event: KeyEvent): Boolean {
+            workspaceEditKey(event)?.let { edit ->
+                val root = { path: String -> currentWorkspaceItems.firstOrNull { it.path == path } }
+                when (val action = workspaceEditAction(rows, searchQuery, focusedPath, edit)) {
+                    is WorkspaceKeyAction.Remove -> pendingRemoveItem = root(action.path)
+                    is WorkspaceKeyAction.Move -> root(action.path)?.let { currentOnMoveRoot(it, action.delta) }
+                    else -> Unit
+                }
+                return true
+            }
             val key = navKey(event) ?: return false
             when (val action = workspaceKeyAction(rows, expandedPaths, searchQuery, focusedPath, key)) {
                 is WorkspaceKeyAction.Focus -> focusedPath = action.path
@@ -309,7 +378,9 @@ fun WorkspacePanel(
                     focusedPath = action.path
                     onTableSelect(action.path)
                 }
-                null -> Unit
+                // The editing actions come from the other parser above; the cursor's keys never
+                // produce them.
+                is WorkspaceKeyAction.Remove, is WorkspaceKeyAction.Move, null -> Unit
             }
             return true
         }

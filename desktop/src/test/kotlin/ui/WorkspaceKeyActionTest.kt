@@ -1,5 +1,9 @@
 package ui
 
+import androidx.compose.ui.InternalComposeUiApi
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
 import model.WorkspaceItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -127,5 +131,56 @@ class WorkspaceKeyActionTest {
         ListKey.entries.forEach { key ->
             assertNull(workspaceKeyAction(emptyList(), emptySet(), "", null, key))
         }
+    }
+
+    private fun edit(focused: String?, key: WorkspaceEditKey, search: String = "") =
+        workspaceEditAction(rows(setOf("/wh"), search), search, focused, key)
+
+    /**
+     * Only a root is a workspace item. Delete on a table inside a warehouse must not remove the
+     * warehouse: that is acting on something the reader did not point at.
+     */
+    @Test
+    fun `delete asks to remove the root under the cursor, and nothing under one of its tables`() {
+        assertEquals(WorkspaceKeyAction.Remove("/wh"), edit("/wh", WorkspaceEditKey.REMOVE))
+        assertEquals(WorkspaceKeyAction.Remove("/tables/audit"), edit("/tables/audit", WorkspaceEditKey.REMOVE))
+        assertNull(edit("/wh/sales", WorkspaceEditKey.REMOVE))
+        assertNull(edit(null, WorkspaceEditKey.REMOVE))
+    }
+
+    @Test
+    fun `alt-arrows move the root under the cursor by one place`() {
+        assertEquals(WorkspaceKeyAction.Move("/tables/audit", -1), edit("/tables/audit", WorkspaceEditKey.MOVE_UP))
+        assertEquals(WorkspaceKeyAction.Move("/wh", +1), edit("/wh", WorkspaceEditKey.MOVE_DOWN))
+        assertNull(edit("/wh/orders", WorkspaceEditKey.MOVE_DOWN))
+    }
+
+    /** The neighbour the reader sees under a search is not the neighbour the list has. */
+    @Test
+    fun `a move under a search does nothing`() {
+        assertNull(edit("/wh", WorkspaceEditKey.MOVE_DOWN, search = "w"))
+        assertEquals(WorkspaceKeyAction.Remove("/wh"), edit("/wh", WorkspaceEditKey.REMOVE, search = "w"))
+    }
+
+    @OptIn(InternalComposeUiApi::class)
+    private fun press(key: Key, alt: Boolean = false, meta: Boolean = false, shift: Boolean = false) =
+        workspaceEditKey(KeyEvent(key, KeyEventType.KeyDown, isAltPressed = alt, isMetaPressed = meta, isShiftPressed = shift))
+
+    /**
+     * Which keystrokes edit the list. Alt is the one modifier a list may take — nothing above the
+     * list means Alt+Arrow, since there is no text field inside it — and any other chord is
+     * somebody else's shortcut.
+     */
+    @OptIn(InternalComposeUiApi::class)
+    @Test
+    fun `delete and backspace bare remove, alt-arrows move, other chords are not ours`() {
+        assertEquals(WorkspaceEditKey.REMOVE, press(Key.Delete))
+        assertEquals(WorkspaceEditKey.REMOVE, press(Key.Backspace))
+        assertEquals(WorkspaceEditKey.MOVE_UP, press(Key.DirectionUp, alt = true))
+        assertEquals(WorkspaceEditKey.MOVE_DOWN, press(Key.DirectionDown, alt = true))
+        assertNull(press(Key.DirectionUp), "a bare arrow is the cursor's")
+        assertNull(press(Key.Delete, meta = true))
+        assertNull(press(Key.DirectionUp, alt = true, shift = true))
+        assertNull(workspaceEditKey(KeyEvent(Key.Delete, KeyEventType.KeyUp)), "a release is not a press")
     }
 }

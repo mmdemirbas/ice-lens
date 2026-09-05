@@ -123,6 +123,16 @@ fun AboutDialog(
                     HorizontalDivider(Modifier.padding(vertical = 2.dp))
 
                     Spacer(Modifier.height(12.dp))
+                    Text("Workspace", fontWeight = FontWeight.Bold, fontSize = TypeScale.body)
+                    Spacer(Modifier.height(4.dp))
+                    shortcutRow("Move the cursor", "Up / Down arrow")
+                    shortcutRow("Open / close a warehouse", "Right / Left arrow")
+                    shortcutRow("Open the table under the cursor", "Enter")
+                    shortcutRow("Move the root under the cursor", "Alt + Up / Down")
+                    shortcutRow("Remove the root under the cursor", "Delete / Backspace")
+                    HorizontalDivider(Modifier.padding(vertical = 2.dp))
+
+                    Spacer(Modifier.height(12.dp))
                     Text("Graph Canvas", fontWeight = FontWeight.Bold, fontSize = TypeScale.body)
                     Spacer(Modifier.height(4.dp))
                     shortcutRow("Pan / scroll", "Scroll wheel or trackpad")
