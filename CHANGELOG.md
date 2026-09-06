@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an endpoint override for MinIO, Ceph, OBS and anything else speaking the S3 API.
 - `docs/fixtures/minio-lab.sh` — a loopback-only MinIO holding the checked-in fixtures, so the
   remote read path is tested against the same table the local one is tested against.
+- **An IntelliJ IDEA plugin.** Right-click an Iceberg or Paimon table directory in the Project view
+  and choose "Open in Iceberg Lens": a tool window shows the table's structure as a tree and what
+  each artifact records. Built on `:core` and the IDE's own components rather than the desktop
+  shell's Compose cards, because IntelliJ ships its own Skiko and a plugin cannot override it.
+  `./gradlew :intellij:buildPlugin` produces the installable zip.
 - **Add object storage…** in the workspace panel, with a form for the location and its credentials.
   The secret is held for the session only and never written to preferences, which the form says
   where the reader will read it; the default is the credential chain already on the machine.

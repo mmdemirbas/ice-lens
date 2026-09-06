@@ -21,6 +21,10 @@ kotlin-test = "2.3.10"
 
 [libraries]
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit5" }
+# JUnit 4 is never used to write a test here. The IntelliJ Platform jars on the test runtime
+# classpath register a listener that references org.junit.rules.TestRule, and its absence stops
+# the test executor before any test runs.
+junit4 = { module = "junit:junit", version = "4.13.2" }
 kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5", version.ref = "kotlin-test" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlin-test" }
 material3-desktop = { module = "org.jetbrains.compose.material3:material3-desktop", version.ref = "material3" }
@@ -44,3 +48,4 @@ compose = { id = "org.jetbrains.compose", version.ref = "compose" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 kover = { id = "org.jetbrains.kotlinx.kover", version = "0.9.1" }
+intellij-platform = { id = "org.jetbrains.intellij.platform", version = "2.18.1" }

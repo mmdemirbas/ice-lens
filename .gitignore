@@ -29,3 +29,6 @@ docs/reports/index.html
 .project
 .settings/
 bin/
+
+# IntelliJ Platform Gradle Plugin cache (downloaded IDEs)
+.intellijPlatform/

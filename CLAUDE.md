@@ -24,7 +24,19 @@ core's compile classpath, because a convention that is only written down erodes.
 core/     — headless engine. Readers, decoders, model, analysis, ELK layout. No UI.
 desktop/  — shell #1. Compose Desktop over core, in-process: direct java.nio and DuckDB JDBC,
             no server, no network. Adding `server/` and `cli/` means siblings here.
+intellij/ — shell #2. An IDE tool window over core, drawn with the IDE's own Swing components.
 ```
+
+**Shell #2 does not reuse shell #1's cards, and that is forced rather than chosen.** Compose
+Desktop 1.10.1 binds to Skiko **0.9.37.4**; IntelliJ 2026.2 ships Skiko **0.144.5** with its own
+native library, and a plugin cannot override a platform class. Bundling Compose produced
+`UnsatisfiedLinkError: org.jetbrains.skia.paragraph.ParagraphStyleKt._nSetFontRastrSettings` on the
+first text layout — the Kotlin bindings of one version calling into the native library of another.
+The IDE also ships no Material3 at all; Jewel replaces it. So `intellij/` depends on **`:core` only**
+and draws with `Tree` and `JBTable`, which is the better tool window anyway: it matches the editor
+beside it, follows the IDE theme and font size for free, and a docked panel is tall and narrow —
+the shape a node-and-edge drawing reads worst in and a tree reads best in. What *is* shared is
+everything worth sharing: the readers, the model, the analysis, and `GraphNode.displayLabel()`.
 
 Where the boundary sits, and why:
 
@@ -107,6 +119,13 @@ desktop/src/main/kotlin/
     └── ToolWindow.kt          # Draggable tool window bars and panes
 ```
 
+intellij/src/main/kotlin/plugin/
+├── IceLensToolWindowFactory.kt # Attaches the panel to the tool window
+├── IceLensPanel.kt             # Tree + details, with the read on a Task.Backgroundable
+├── GraphTree.kt                # GraphModel → tree rows, and what each node lists
+├── IceLensService.kt           # Which table is open, per project
+└── OpenInIceLensAction.kt      # "Open in Iceberg Lens" on a directory in the Project view
+
 ## Build & run
 
 ```bash
@@ -117,6 +136,11 @@ desktop/src/main/kotlin/
 ./gradlew :desktop:packageDeb   # Linux installer
 
 ./gradlew resolveAndLockAll --write-locks   # after ANY dependency change
+
+./gradlew :intellij:buildPlugin   # the installable zip, in intellij/build/distributions/
+./gradlew :intellij:runIde        # a sandbox IDE with the plugin loaded
+# Both download an IDE on first use. To build against one already installed:
+#   -PintellijLocalPath="$HOME/Applications/IntelliJ IDEA.app"
 ```
 
 ## Key conventions
@@ -472,6 +496,23 @@ desktop/src/main/kotlin/
   key into a log line. `useCredentialChain` exists because on a developer's machine or an instance
   with a role the key is already in the environment, and asking for a paste is asking a reader to
   copy a secret into one more place
+- **The IDE plugin shares the engine and nothing above it.** `intellij/` depends on `:core`, never
+  on `:desktop` — see the architecture note for the Skiko clash that decides it. The one piece of
+  *drawing* knowledge that is shared is `GraphNode.displayLabel()`, which lives in core because
+  what an artifact is **called** is a fact about the artifact: two shells with their own vocabulary
+  for one set of things drift the first time a node type is added. It is deliberately not what
+  `GraphSearch.searchableText` answers — a label is one line chosen to fit a row, so a manifest
+  reads by its add count and cannot be found by its path, which is right for a label and wrong for
+  a search. `GraphTree.details` is *not* shared: the desktop inspector is a panel per node kind
+  with tallies and drill-downs, and the tool window is a docked strip answering "what am I looking
+  at", so a shorter list is the design rather than a subset
+- **The tree follows structural edges only.** An `affectsLayout = false` edge is an annotation —
+  snapshot lineage, or a deletion vector pointing at the data file it covers — and both run between
+  nodes at one depth, so following one would make every commit a child of the commit before it and
+  hang the whole history under itself once per metadata version. `GraphTreeTest` checks the *depth*
+  for exactly that: containment is at most six levels, and a lineage-following walk grows with the
+  commit count instead. A node reached from several parents is expanded under each, which is not a
+  bug — one manifest genuinely is a child of every snapshot carrying its files forward
 - **The secret is the one thing about a remote location that is not persisted.** Everything else —
   URL, key id, region, endpoint, TLS, URL style — goes into `java.util.prefs`, which is a plist in
   the user's Library on macOS and an XML file under `~/.java` on Linux: plain text, world-readable,
@@ -871,7 +912,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~708 tests across 79 files (518 in :core, 190 in :desktop) covering full pipelines for both formats (Avro fixtures
+~713 tests across 80 files (518 in :core, 190 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

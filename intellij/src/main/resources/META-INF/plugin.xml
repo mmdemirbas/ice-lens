@@ -1,0 +1,32 @@
+<idea-plugin>
+    <vendor url="https://github.com/mmdemirbas/iceberg-lens">mmdemirbas</vendor>
+
+    <description><![CDATA[
+      Inspect Apache Iceberg and Apache Paimon table metadata without leaving the IDE.
+      <p>Right-click a table directory in the Project view and choose <b>Open in Iceberg Lens</b>,
+      or open the tool window and pick one. The graph walks table &rarr; metadata &rarr; snapshots
+      &rarr; manifests &rarr; data files, and the inspector shows what each artifact records
+      against what its contents actually add up to.</p>
+      <p>Read-only. Nothing is written to the table.</p>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow
+            id="Iceberg Lens"
+            anchor="right"
+            icon="AllIcons.Toolwindows.ToolWindowStructure"
+            factoryClass="plugin.IceLensToolWindowFactory"/>
+    </extensions>
+
+    <actions>
+        <action
+            id="IceLens.OpenTable"
+            class="plugin.OpenInIceLensAction"
+            text="Open in Iceberg Lens"
+            description="Inspect this Iceberg or Paimon table's metadata">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

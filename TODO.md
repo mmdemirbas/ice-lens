@@ -2,6 +2,26 @@
 
 ---
 
+## The IDE plugin's zip is 106 MB, and 80 MB of that is DuckDB
+
+`intellij/build/distributions/iceberg-lens-*.zip` bundles all of `:core`, and `duckdb_jdbc` alone
+is 80 MB of native libraries for every platform. The tool window does not currently use DuckDB —
+it reads no sample rows and opens no remote table, both of which are reached only from the desktop
+shell — so excluding it would take the plugin to roughly 25 MB.
+
+It is **not** excluded, deliberately. `SampleRowReader` and `ObjectStorage` are on `:core`'s public
+surface, so an exclusion turns "a feature the plugin does not use yet" into a `NoClassDefFoundError`
+the first time somebody wires one up, and that failure would land on a user rather than on a build.
+The honest fixes are one of:
+
+- split `:core` so the DuckDB-backed readers are a module the plugin can leave out, which also
+  makes the `core` boundary say what it means; or
+- ship a platform-specific DuckDB (`duckdb_jdbc` has per-OS classifiers) once the plugin needs it.
+
+Neither is worth doing before the plugin has a reason to read a data file.
+
+---
+
 ## Format coverage gaps
 
 These are the differences between "renders the metadata tree" and "answers the questions a

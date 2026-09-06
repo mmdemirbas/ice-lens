@@ -18,6 +18,20 @@ sealed interface FormatTableModel {
 }
 
 /**
+ * The table at [path], read as whichever format is there.
+ *
+ * Core rather than shell because it is knowledge about the artifacts, not about a screen — and
+ * because there are two shells now. `GraphLayoutService.layoutGraph` already dispatches on the
+ * model's type, so this is the other half of that single dispatch point: a format added to
+ * `TableFormat` fails to compile here until it is read, instead of silently falling through to
+ * Iceberg in whichever shell forgot to be updated.
+ */
+fun readTableModel(path: Path): FormatTableModel = when (service.TableFormatDetector.detect(path)) {
+    TableFormat.PAIMON -> PaimonUnifiedTableModel(path)
+    TableFormat.ICEBERG, TableFormat.UNKNOWN -> UnifiedTableModel(path)
+}
+
+/**
  * Result of building graph nodes and edges from any table model.
  * Shared by all format-specific graph builders.
  */

@@ -772,3 +772,30 @@ data class EdgeSection(
     val endX: Double,
     val endY: Double,
 )
+
+/**
+ * One line naming what a node is, for a list.
+ *
+ * Core, and shared by every shell, because what an artifact is *called* is knowledge about the
+ * artifact rather than about a screen — the desktop tree and the IDE tool window would otherwise
+ * be two vocabularies for one set of things, and they would drift the first time a node type was
+ * added. It is deliberately **not** what `GraphSearch.searchableText` answers: this is one line
+ * chosen to fit a row, so a manifest reads by its add count and cannot be found by its path, which
+ * is right for a label and wrong for a search.
+ */
+fun GraphNode.displayLabel(): String = when (this) {
+    is GraphNode.TableNode -> "Table: ${summary.tableName}"
+    is GraphNode.MetadataNode -> "Meta $simpleId: $fileName"
+    is GraphNode.SnapshotNode -> "Snap: ${data.snapshotId}"
+    is GraphNode.ManifestNode -> "Manifest (${data.addedFilesCount} adds)"
+    is GraphNode.FileNode -> "File $simpleId: ${data.filePath?.substringAfterLast("/")}"
+    is GraphNode.RowNode -> "Row: ${resolvedData.values.firstOrNull() ?: "..."}"
+    is GraphNode.ErrorNode -> "Error: $title"
+    is GraphNode.PaimonSnapshotNode -> "PSnap $simpleId: ${data.commitKind ?: ""}"
+    is GraphNode.PaimonSchemaNode -> "PSchema $simpleId"
+    is GraphNode.PaimonManifestListNode -> "PManifestList: $kind"
+    is GraphNode.PaimonManifestNode -> "PManifest $simpleId"
+    is GraphNode.PaimonDataFileNode ->
+        "PFile $simpleId: ${entry.file?.fileName?.substringAfterLast("/") ?: ""}"
+    is GraphNode.GroupNode -> "Not drawn: ${"%,d".format(memberCount)} more ${kind.plural}"
+}

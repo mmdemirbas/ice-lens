@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import model.displayLabel
 import model.GraphModel
 import model.GraphNode
 
@@ -376,22 +377,4 @@ private fun findPathToNode(graph: GraphModel, targetId: String): List<String> {
     return path
 }
 
-private fun getNodeLabel(node: GraphNode): String {
-    return when (node) {
-        is GraphNode.TableNode -> "Table: ${node.summary.tableName}"
-        is GraphNode.MetadataNode -> "Meta ${node.simpleId}: ${node.fileName}"
-        is GraphNode.SnapshotNode -> "Snap: ${node.data.snapshotId}"
-        is GraphNode.ManifestNode -> "Manifest (${node.data.addedFilesCount} adds)"
-        is GraphNode.FileNode     -> "File ${node.simpleId}: ${
-            node.data.filePath?.substringAfterLast("/")
-        }"
-        is GraphNode.RowNode      -> "Row: ${node.resolvedData.values.firstOrNull() ?: "..."}"
-        is GraphNode.ErrorNode    -> "Error: ${node.title}"
-        is GraphNode.PaimonSnapshotNode -> "PSnap ${node.simpleId}: ${node.data.commitKind ?: ""}"
-        is GraphNode.PaimonSchemaNode -> "PSchema ${node.simpleId}"
-        is GraphNode.PaimonManifestListNode -> "PManifestList: ${node.kind}"
-        is GraphNode.PaimonManifestNode -> "PManifest ${node.simpleId}"
-        is GraphNode.PaimonDataFileNode -> "PFile ${node.simpleId}: ${node.entry.file?.fileName?.substringAfterLast("/") ?: ""}"
-        is GraphNode.GroupNode -> "Not drawn: ${formatCount(node.memberCount)} more ${node.kind.plural}"
-    }
-}
+private fun getNodeLabel(node: GraphNode): String = node.displayLabel()

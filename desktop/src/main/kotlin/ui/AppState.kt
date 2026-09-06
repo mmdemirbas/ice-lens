@@ -539,13 +539,8 @@ class AppState(
     // ═══════════════════════════════════════════════════════════════
 
     /** Creates the appropriate format-specific table model for a table path. */
-    private fun loadTableModel(tablePath: String): FormatTableModel {
-        val path = StorageLocation.pathOf(tablePath)
-        return when (TableFormatDetector.detect(path)) {
-            TableFormat.PAIMON -> PaimonUnifiedTableModel(path)
-            else -> UnifiedTableModel(path)
-        }
-    }
+    private fun loadTableModel(tablePath: String): FormatTableModel =
+        readTableModel(StorageLocation.pathOf(tablePath))
 
     fun computeTableFingerprint(tablePath: String): String {
         if (StorageLocation.isRemote(tablePath)) return remoteTableFingerprint(tablePath)
