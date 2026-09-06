@@ -33,9 +33,12 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   evaluated now (`model/BucketTransform.kt`, checked against the buckets Spark recorded at two
   bucket counts), and every other operator on a bucket field still declines, correctly — a range of
   bucket numbers says nothing about a range of values. A `WHERE` clause would be more familiar than
-  the form and is worth having, at the cost of a second place where a literal is read. And **the
-  predicates are a conjunction only**: there is no `OR`, no `NOT` and no grouping, which is fine
-  for "why did this read so much" and wrong for reproducing a real query's plan.
+  the form and is worth having, at the cost of a second place where a literal is read. **The
+  evaluator handles `OR`, `NOT` and grouping now** (`model/ScanFilter.kt`) — an `And` is proved by
+  one branch, an `Or` by every branch, and `NOT` is rewritten into the leaves before anything is
+  evaluated. What is missing is a **way in**: the form still builds a conjunction, so the only
+  caller that can express a disjunction is a test. A `WHERE`-clause parser is the next step, and
+  it is the whole of what stands between the engine and the feature.
 
 - **Iceberg v3 is half-modelled.** A deletion vector's Puffin blob is now opened and its
   positions decoded (`service/PuffinReader.kt`), so the inspector answers which rows a vector
@@ -266,9 +269,15 @@ What is left:
   doing if the downward layout gets used, and `GraphLayoutAlgorithm.refinesLayers` is where it
   attaches.
 
-- **Remote storage** — read metadata from S3, HDFS, ADLS, GCS (via Hadoop FileSystem API or cloud SDKs).
+- **Remote storage — done for object storage, open for HDFS and ADLS.** `s3://`, `gs://`, `gcs://`
+  and `r2://` are read through a `java.nio` `FileSystemProvider` over DuckDB
+  (`service/ObjectFileSystem.kt`). `hdfs://` and `abfs://` are not: neither is a DuckDB scheme, so
+  each needs its own provider, and HDFS in particular drags in the Hadoop client.
 
-- **IntelliJ IDEA plugin** — repackage as a tool window plugin via `ComposePanel`.
+- **IntelliJ IDEA plugin — done, and *not* through `ComposePanel`.** That was the plan and it does
+  not work: IntelliJ ships its own Skiko, a plugin cannot override a platform class, and bundling
+  Compose produces `UnsatisfiedLinkError` on the first text layout. The plugin draws with the IDE's
+  own `Tree` and `JBTable` over `:core` — see the architecture note in CLAUDE.md.
 
 - **Auto-update** — "Check for updates" button in About dialog that queries GitHub Releases API.
 

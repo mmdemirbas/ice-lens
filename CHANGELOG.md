@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Scan pruning evaluates a boolean filter, not just a list of ANDed terms.** `OR`, `NOT` and
+  grouping are handled: an `AND` is ruled out by one branch, an `OR` only when every branch is, and
+  `NOT` is rewritten into the leaves before evaluation because negating a one-sided proof yields no
+  proof at all. The filter form still builds a conjunction, so this is the engine and not yet the
+  feature — a `WHERE`-clause input is what will reach it.
 - `example/iceberg/default/branched3` and `docs/fixtures/branched3.sql` — three branches forked at
   three different points, with commits on other lines in between, plus a tag on the trunk's tip.
 - **A statistics file is opened, and its footer shown against what the table records about it.**

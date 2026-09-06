@@ -226,6 +226,63 @@ class ScanPruningTest {
     }
 
     /**
+     * An `OR` on a real table, where each half alone would rule the manifest out.
+     *
+     * This is the case a list of terms cannot express and gets wrong by construction. `d` is
+     * `2024-03-05` on the one-row manifest, so either literal below prunes it on its own — and
+     * ORed they must not, because a manifest matching neither half of the disjunction still has to
+     * match *some* half before it can be dropped. An evaluator that took the first proof would skip
+     * a manifest a real query reads, which is the one class of pruning bug that loses rows.
+     */
+    @Test
+    fun `an OR of two terms that each prune does not prune together until both do`() {
+        val outside2020 = ScanFilter.Term(ScanPredicate("d", PredicateOp.EQ, "2020-01-01"))
+        val outside2021 = ScanFilter.Term(ScanPredicate("d", PredicateOp.EQ, "2021-01-01"))
+        val inside = ScanFilter.Term(ScanPredicate("d", PredicateOp.EQ, "2024-03-05"))
+        val manifest = oneRow()
+
+        assertTrue(
+            evaluatePruning(manifest.partitionSummaries, ScanFilter.And(listOf(outside2020))).isSkipped,
+            "each half has to prune on its own, or the OR case below proves nothing",
+        )
+        assertTrue(evaluatePruning(manifest.partitionSummaries, ScanFilter.And(listOf(outside2021))).isSkipped)
+
+        assertTrue(
+            evaluatePruning(
+                manifest.partitionSummaries, ScanFilter.Or(listOf(outside2020, outside2021)),
+            ).isSkipped,
+            "both halves ruled out, so the disjunction is ruled out",
+        )
+        assertTrue(
+            !evaluatePruning(
+                manifest.partitionSummaries, ScanFilter.Or(listOf(outside2020, inside)),
+            ).isSkipped,
+            "one half might match, so the manifest must be read whatever the other half says",
+        )
+    }
+
+    /**
+     * `NOT` prunes through the leaf rewrite, on the fixture's own recorded range.
+     *
+     * The one-row manifest holds `d = 2024-03-05`, so `NOT (d <> 2020-01-01)` is `d = 2020-01-01`
+     * and prunes, while `NOT (d = 2024-03-05)` becomes `d <> 2024-03-05` and — under an identity
+     * transform on a single-valued range — also prunes. Both go through `pushNegation`; a `NOT`
+     * left in the tree would have pruned neither.
+     */
+    @Test
+    fun `NOT prunes by negating the operator it wraps`() {
+        val manifest = oneRow()
+        val pruned = ScanFilter.Not(ScanFilter.Term(ScanPredicate("d", PredicateOp.NOT_EQ, "2020-01-01")))
+        assertTrue(evaluatePruning(manifest.partitionSummaries, pruned).isSkipped)
+
+        val kept = ScanFilter.Not(ScanFilter.Term(ScanPredicate("d", PredicateOp.NOT_EQ, "2024-03-05")))
+        assertTrue(
+            !evaluatePruning(manifest.partitionSummaries, kept).isSkipped,
+            "the manifest's only value is exactly this one, so nothing rules it out",
+        )
+    }
+
+    /**
      * The property that catches an inverted comparison anywhere in the evaluator: a file's own
      * partition value must never rule out the manifest that lists the file.
      *

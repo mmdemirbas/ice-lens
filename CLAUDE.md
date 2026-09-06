@@ -349,6 +349,21 @@ intellij/src/main/kotlin/plugin/
   in one function on purpose**: a scan that ruled a manifest out never opens the entries inside it,
   so a file under it is `NOT_REACHED` and not `SKIPPED`, whatever its own bounds say. Reporting it
   as skipped would credit the wrong term and double-count it against the file stage
+- **A filter is a boolean expression, and `NOT` is removed before anything is evaluated.**
+  `model/ScanFilter.kt` holds `Term`/`And`/`Or`/`Not`; `evaluateScan`, `evaluatePruning` and
+  `evaluateFilePruning` each take one, and the list form every existing caller passes is wrapped
+  as a conjunction so behaviour is unchanged. The rules follow from pruning being a **one-sided
+  proof** — bounds can show an artifact *cannot* hold a matching row and can never show it does.
+  So an `And` is proved by one branch, an `Or` only by every branch, and **`Not` is rewritten
+  away**: negating a one-sided proof yields no proof, so a `Not` left in the tree would silently
+  stop the pruning underneath it. `pushNegation` does De Morgan through the connectives and
+  `PredicateOp.negated` at each leaf, which is what Iceberg's own `Expressions.not` does and is
+  sound with nulls for the same reason SQL's is. **The predicates are evaluated once and the
+  verdict folded over the tree afterwards**, not during: folding as it evaluates would skip the
+  branches an `And` short-circuits, and the panel could then not say why the other half was never
+  looked at. A `Not` that somehow reaches the fold answers "might match" rather than being guessed
+  at — the absence of a proof is the only safe answer, and a wrong skip is the one pruning bug
+  that loses rows
 - **`bucket[N]` prunes on equality, and only because the hash is the writer's own.**
   `BucketTransform` calls `Hashing.murmur3_32_fixed()` — the same Guava function Iceberg's
   `Bucket` transform calls — so nothing here re-derives a hash, and the only thing left to get
@@ -978,7 +993,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~743 tests across 81 files (532 in :core, 206 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~755 tests across 82 files (544 in :core, 206 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

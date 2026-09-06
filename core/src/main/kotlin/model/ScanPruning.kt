@@ -60,6 +60,26 @@ enum class PredicateOp(val symbol: String, val takesLiteral: Boolean = true) {
     IS_NOT_NULL("is not null", takesLiteral = false),
     ;
 
+    /**
+     * The operator that accepts exactly the rows this one rejects.
+     *
+     * Total on purpose: every operator here has an exact opposite, which is what lets
+     * [ScanFilter.pushNegation] remove every `NOT` rather than leave one to disable the pruning
+     * underneath it. Sound with nulls for the same reason SQL's rewrite is — a null column
+     * satisfies neither `= 5` nor `<> 5`, and pruning asks only whether a row *could* match.
+     */
+    val negated: PredicateOp
+        get() = when (this) {
+            EQ -> NOT_EQ
+            NOT_EQ -> EQ
+            LT -> GTE
+            LTE -> GT
+            GT -> LTE
+            GTE -> LT
+            IS_NULL -> IS_NOT_NULL
+            IS_NOT_NULL -> IS_NULL
+        }
+
     override fun toString(): String = symbol
 }
 
@@ -96,12 +116,28 @@ data class PredicateOutcome(
     val reason: String,
 )
 
-/** Every predicate's outcome against one manifest, and the verdict that follows from them. */
-data class ManifestPruneResult(val outcomes: List<PredicateOutcome>) {
-    /** The first outcome that proved the manifest cannot match, or null when none did. */
+/**
+ * Every predicate's outcome against one manifest, and the verdict that follows from them.
+ *
+ * [outcomes] is flat — one entry per predicate per partition field it matched — because that is
+ * the explanation, and a reader checking a verdict wants every figure that was looked at. The
+ * *verdict* is not a fold over that list: under an `OR` a single `SKIPS` proves nothing on its
+ * own, so it comes from folding the filter's own tree ([ScanFilter.verdict]) and is passed in.
+ */
+data class ManifestPruneResult(
+    val outcomes: List<PredicateOutcome>,
+    val verdict: ScanVerdict = ScanVerdict.MIGHT_MATCH,
+) {
+    /**
+     * One outcome that contributed to the proof, or null when there was none.
+     *
+     * Under a conjunction this is *the* term that ruled the manifest out. Under a disjunction the
+     * proof is that every branch was ruled out, so this names one of several and the panel says
+     * so rather than crediting it alone.
+     */
     val skippedBy: PredicateOutcome? get() = outcomes.firstOrNull { it.effect == TermEffect.SKIPS }
 
-    val isSkipped: Boolean get() = skippedBy != null
+    val isSkipped: Boolean get() = verdict == ScanVerdict.CANNOT_MATCH
 
     /** True when nothing could be evaluated, so "would be read" carries no information. */
     val isUnevaluated: Boolean
@@ -119,8 +155,22 @@ data class ManifestPruneResult(val outcomes: List<PredicateOutcome>) {
 fun evaluatePruning(
     summaries: List<PartitionSummary>,
     predicates: List<ScanPredicate>,
+): ManifestPruneResult = evaluatePruning(summaries, ScanFilter.of(predicates))
+
+/**
+ * The same, over a filter that may hold `OR`, `NOT` and grouping.
+ *
+ * Two passes on purpose. Every predicate is evaluated once, whatever the tree looks like, so the
+ * explanation is complete and each figure is read once; the *verdict* is then folded over the tree
+ * against those outcomes. Evaluating during the fold would skip the branches an `And` short-circuits
+ * and leave the panel unable to say why the other half was never looked at.
+ */
+fun evaluatePruning(
+    summaries: List<PartitionSummary>,
+    filter: ScanFilter,
 ): ManifestPruneResult {
-    val outcomes = predicates.flatMap { predicate ->
+    val normalized = filter.pushNegation()
+    val outcomes = normalized.predicates().flatMap { predicate ->
         val matched = summaries.filter { it.matches(predicate.column) }
         if (matched.isEmpty()) {
             listOf(
@@ -135,7 +185,13 @@ fun evaluatePruning(
             matched.map { evaluateTerm(it, predicate) }
         }
     }
-    return ManifestPruneResult(outcomes)
+    // A term is proved when *any* partition field over its column proves it: a table partitioned
+    // by year, month and hour of one timestamp gets three chances from one term.
+    val bySkip = outcomes.groupBy({ it.predicate }, { it.effect == TermEffect.SKIPS })
+    val verdict = normalized.verdict { predicate ->
+        if (bySkip[predicate]?.any { it } == true) ScanVerdict.CANNOT_MATCH else ScanVerdict.MIGHT_MATCH
+    }
+    return ManifestPruneResult(outcomes, verdict)
 }
 
 private fun PartitionSummary.matches(column: String): Boolean {
@@ -541,8 +597,13 @@ data class FilePruneResult(val outcomes: List<PredicateOutcome>, val fate: FileF
  * The returned fate is never [FileFate.NOT_REACHED]: that is a fact about the manifest above the
  * file, which this function is not given. [evaluateScan] composes the two.
  */
-fun evaluateFilePruning(stats: List<ColumnStats>, predicates: List<ScanPredicate>): FilePruneResult {
-    val outcomes = predicates.map { predicate ->
+fun evaluateFilePruning(stats: List<ColumnStats>, predicates: List<ScanPredicate>): FilePruneResult =
+    evaluateFilePruning(stats, ScanFilter.of(predicates))
+
+/** The same, over a filter that may hold `OR`, `NOT` and grouping. See the manifest twin. */
+fun evaluateFilePruning(stats: List<ColumnStats>, filter: ScanFilter): FilePruneResult {
+    val normalized = filter.pushNegation()
+    val outcomes = normalized.predicates().map { predicate ->
         val matched = stats.firstOrNull { it.matches(predicate.column) }
         if (matched == null) {
             PredicateOutcome(
@@ -555,8 +616,12 @@ fun evaluateFilePruning(stats: List<ColumnStats>, predicates: List<ScanPredicate
             evaluateColumnTerm(matched, predicate)
         }
     }
+    val skipped = outcomes.filter { it.effect == TermEffect.SKIPS }.map { it.predicate }.toSet()
+    val proved = normalized.verdict { predicate ->
+        if (predicate in skipped) ScanVerdict.CANNOT_MATCH else ScanVerdict.MIGHT_MATCH
+    }
     val fate = when {
-        outcomes.any { it.effect == TermEffect.SKIPS } -> FileFate.SKIPPED
+        proved == ScanVerdict.CANNOT_MATCH -> FileFate.SKIPPED
         outcomes.isNotEmpty() && outcomes.all { it.effect == TermEffect.NOT_EVALUATED } -> FileFate.UNEVALUATED
         else -> FileFate.WOULD_BE_READ
     }
@@ -715,12 +780,16 @@ data class ScanPlan(
  * its older artifacts by what was in force when they were written, and using the current one
  * mis-decodes silently — the same rule the bounds themselves follow.
  */
-fun evaluateScan(graph: GraphModel, predicates: List<ScanPredicate>): ScanPlan {
-    if (predicates.isEmpty()) return ScanPlan(emptyMap(), emptyMap())
+fun evaluateScan(graph: GraphModel, predicates: List<ScanPredicate>): ScanPlan =
+    evaluateScan(graph, ScanFilter.of(predicates))
+
+/** The same, over a filter that may hold `OR`, `NOT` and grouping. */
+fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
+    if (filter.isEmpty()) return ScanPlan(emptyMap(), emptyMap())
 
     val manifests = graph.nodes.asSequence()
         .filterIsInstance<GraphNode.ManifestNode>()
-        .associate { it.id to evaluatePruning(it.partitionSummaries, predicates) }
+        .associate { it.id to evaluatePruning(it.partitionSummaries, filter) }
 
     // Which manifest holds which file, from the edges rather than from the id: a file id encodes
     // its manifest today and that is a naming convention, not a contract.
@@ -733,7 +802,7 @@ fun evaluateScan(graph: GraphModel, predicates: List<ScanPredicate>): ScanPlan {
         .filterIsInstance<GraphNode.FileNode>()
         .associate { file ->
             val manifestSkipped = manifestOf[file.id]?.let { manifests[it]?.isSkipped } == true
-            val own = evaluateFilePruning(file.columnStats, predicates)
+            val own = evaluateFilePruning(file.columnStats, filter)
             file.id to if (manifestSkipped) own.copy(fate = FileFate.NOT_REACHED) else own
         }
 
