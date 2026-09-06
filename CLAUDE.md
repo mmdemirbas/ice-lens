@@ -402,6 +402,16 @@ intellij/src/main/kotlin/plugin/
   with the writer. **`SKIPPED` is a proof; "would be read" is only the absence of one** — so a
   manifest nothing could be evaluated against is counted and coloured separately, never folded
   in with the ones that were checked and kept
+- **The reason a row gives has to explain the verdict beside it, not the best any single term
+  managed.** Once a filter could hold an `OR`, "some term ruled this out" stopped meaning "this is
+  ruled out" — one proved branch of `a = 1 OR b = 2` proves nothing — so `summarise` takes the
+  verdict as a parameter rather than reading a proof off the outcomes. Without it a row printed
+  `would be read` beside the reason a skip would have had, contradicting itself in two adjacent
+  cells with nothing failing. When the verdict *is* a skip, **every** proving term is listed rather
+  than the first: under a conjunction there is usually one, under a disjunction there is one per
+  branch and all of them were needed, and listing them is true of both. `ManifestPruneResult.skippedBy`
+  is deliberately not what the panel reads — it answers "did any term rule its own condition out",
+  which can be true while `isSkipped` is false
 - **A verdict column marks the exception, not every row.** `WideTable` takes `leadCellColors`,
   one entry per row for the leading cell, and bolds that cell **only where a colour was supplied**
   — so a verdict table passes `null` for the ordinary outcome and it stays at body colour and body
@@ -1008,7 +1018,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~768 tests across 83 files (556 in :core, 207 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~773 tests across 84 files (556 in :core, 212 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

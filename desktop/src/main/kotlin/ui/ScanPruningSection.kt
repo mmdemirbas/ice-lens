@@ -408,14 +408,24 @@ private fun FormLabel(text: String, width: Dp) {
 private fun FilePruneResult?.summarise(): String {
     if (this == null) return "no filter"
     if (fate == FileFate.NOT_REACHED) return "its manifest was ruled out, so a scan never opens it"
-    return outcomes.summarise()
+    return outcomes.summarise(proved = fate == FileFate.SKIPPED)
 }
 
 private fun ManifestPruneResult?.summarise(): String =
-    if (this == null) "no filter" else outcomes.summarise()
+    if (this == null) "no filter" else outcomes.summarise(proved = isSkipped)
 
 /**
- * A proof if there is one, otherwise every term that did not produce one.
+ * Why the artifact got the verdict it got — which is not the same as "was any term proved".
+ *
+ * [proved] is the verdict, and it has to be passed in rather than read off the outcomes. A term
+ * that rules the artifact out no longer means the artifact is ruled out: under `a = 1 OR b = 2`
+ * one proved branch proves nothing, and this used to return that branch's proof as the
+ * explanation — so the row read `SKIPPED`'s reason beside a verdict of "would be read",
+ * contradicting itself in two adjacent cells.
+ *
+ * When it *was* proved, **every** proving term is listed rather than the first. Under a
+ * conjunction there is usually one; under a disjunction there is one per branch and all of them
+ * were needed. Listing them is true of both, where naming one is only true of the first.
  *
  * A term that **could not be evaluated** is kept beside the ones that were, rather than dropped
  * as soon as some other term reports a range it checked. It is the more interesting of the two:
@@ -424,9 +434,12 @@ private fun ManifestPruneResult?.summarise(): String =
  * `parted` this is the whole difference between the two tables — `id` is bucketed, so the
  * manifest stage cannot use it and the file stage can.
  */
-private fun List<PredicateOutcome>.summarise(): String {
+internal fun List<PredicateOutcome>.summarise(proved: Boolean): String {
     fun PredicateOutcome.line() = "${fieldName ?: predicate.column} — $reason"
-    firstOrNull { it.effect == TermEffect.SKIPS }?.let { return it.line() }
+    if (proved) {
+        val proofs = filter { it.effect == TermEffect.SKIPS }
+        if (proofs.isNotEmpty()) return proofs.joinToString("; ") { it.line() }
+    }
     return joinToString("; ") { it.line() }
 }
 

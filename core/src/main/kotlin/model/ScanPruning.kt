@@ -129,11 +129,12 @@ data class ManifestPruneResult(
     val verdict: ScanVerdict = ScanVerdict.MIGHT_MATCH,
 ) {
     /**
-     * One outcome that contributed to the proof, or null when there was none.
+     * One outcome that ruled *its own term* out, or null when none did.
      *
-     * Under a conjunction this is *the* term that ruled the manifest out. Under a disjunction the
-     * proof is that every branch was ruled out, so this names one of several and the panel says
-     * so rather than crediting it alone.
+     * Not a claim about the manifest: under a disjunction one proved branch proves nothing, so
+     * this can be non-null while [isSkipped] is false. Read [verdict] for the verdict. The panel
+     * lists every proving outcome when the verdict is a skip rather than using this, and asserting
+     * on it is what the tests do.
      */
     val skippedBy: PredicateOutcome? get() = outcomes.firstOrNull { it.effect == TermEffect.SKIPS }
 

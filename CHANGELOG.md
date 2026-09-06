@@ -283,6 +283,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **A pruning row no longer contradicts itself.** With `OR` in the filter, a term that ruled out
+  its own condition stopped meaning the artifact was ruled out — so a manifest could show
+  "would be read" beside the reason a skip would have carried. The reason now explains the verdict
+  it sits next to, and a skip lists every term that proved it rather than the first.
 - **The main line no longer loses its column to a branch.** At a fork, the column the parent was
   drawn in went to whichever child was *written* first — so a branch that received a commit before
   the trunk's next commit took the trunk's lane, the main line stepped sideways halfway down the
