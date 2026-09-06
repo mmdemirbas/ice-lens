@@ -373,6 +373,15 @@ class AppState(
                     if (this[table.path] == null) this[table.path] = WorkspaceTableStatus.EXISTING
                 }
             }
+
+        // Everything keyed by a root goes when the root does — the same pruning the two status
+        // maps above get. A left-behind entry is not merely stale: nothing polls a root that is
+        // not in the workspace, so re-adding the same location would draw the message the *last*
+        // sweep produced, and an add only succeeds when the store answered.
+        unreachableRoots = unreachableRoots.filterKeys { it in validPaths }
+        remoteTableFormats = remoteTableFormats.filterKeys { table ->
+            validPaths.any { root -> table == root || table.startsWith("$root/") }
+        }
     }
 
     fun addWorkspaceRoot(path: String) {

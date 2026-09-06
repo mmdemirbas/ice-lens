@@ -516,6 +516,40 @@ class AppStateTest {
         }
     }
 
+    /**
+     * Removing a root takes its message and its badges with it.
+     *
+     * Not housekeeping: nothing sweeps a root that is not in the workspace, so a left-behind
+     * "Access denied" would be drawn again the moment the same location was re-added — and an add
+     * only succeeds when the store answered, so the message would be contradicted by the very act
+     * that produced it.
+     */
+    @Test
+    fun `removing a root drops the message and badges it left`() {
+        val local = kotlin.io.path.createTempDirectory("ws-pruned").toFile()
+        try {
+            state.addWorkspaceRoot(local.absolutePath)
+            val path = state.workspaceItems.single().path
+            state.applyWorkspaceScan(
+                WorkspaceScan(
+                    warehouseTables = emptyMap(),
+                    singleTableExists = emptyMap(),
+                    unreachable = mapOf(path to "Access denied"),
+                    tableFormats = mapOf("$path/orders" to "ICE"),
+                )
+            )
+            assertTrue(path in state.unreachableRoots)
+            assertTrue("$path/orders" in state.remoteTableFormats)
+
+            state.removeWorkspaceRoot(state.workspaceItems.single())
+
+            assertTrue(path !in state.unreachableRoots, "the root is gone, so its message is not about anything")
+            assertTrue("$path/orders" !in state.remoteTableFormats, "nor are the badges under it")
+        } finally {
+            local.deleteRecursively()
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  Table Fingerprinting
     // ═══════════════════════════════════════════════════════════════
