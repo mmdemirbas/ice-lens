@@ -887,13 +887,15 @@ class InspectorRenderTest {
     }
 
     /**
-     * The clause editor, in the two states that matter: a filter the rows cannot express, and one
-     * that does not parse.
+     * The clause editor, in the three states that matter: a filter the rows cannot express, one
+     * that does not parse, and the sugar.
      *
      * The form above it can only build a conjunction, so a disjunction is the whole reason this
      * input exists — and the error line is the half worth looking at, because it is what a reader
-     * sees while they are still typing. Both are states a click or a keystroke produces, so the
-     * text is passed in rather than driven, the same way `sectionCollapse` is.
+     * sees while they are still typing. All three are states a keystroke produces, so the text is
+     * passed in rather than driven, the same way `sectionCollapse` is. The `IN` capture is a width
+     * question rather than a parsing one: the field is single-line and the help line under it now
+     * names five keywords, so what it shows is whether either still fits.
      */
     @Test
     fun `the clause editor renders a disjunction and a parse error`() {
@@ -901,6 +903,7 @@ class InspectorRenderTest {
         listOf(
             "clause-valid" to "d >= 2024-03-05 AND (name = 'alpha' OR name = 'bravo')",
             "clause-error" to "d >= 2024-03-05 AND name = ",
+            "clause-in" to "name IN ('alpha', 'bravo') AND d BETWEEN 2024-03-05 AND 2024-03-07",
         ).forEach { (name, text) ->
             renderScene("scan-pruning-$name", width = 900, height = 340) {
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {

@@ -137,6 +137,113 @@ class ScanFilterParserTest {
         assertTrue(failed("a = AND").message.contains("expected a value"))
     }
 
+    /**
+     * `IN` is the disjunction it is defined to be, not a leaf of its own.
+     *
+     * Which is the whole reason it needed no evaluator change: a manifest is ruled out by `IN` only
+     * when every value is ruled out, and that rule is already [ScanFilter.Or]'s.
+     */
+    @Test
+    fun `IN is a disjunction of equalities`() {
+        assertEquals(
+            ScanFilter.Or(
+                listOf(
+                    term("region", PredicateOp.EQ, "eu"),
+                    term("region", PredicateOp.EQ, "us"),
+                    term("region", PredicateOp.EQ, "apac"),
+                )
+            ),
+            parsed("region IN ('eu', 'us', 'apac')"),
+        )
+    }
+
+    /** One value is one condition — an `Or` of one would print a disjunction that is not there. */
+    @Test
+    fun `a one-value IN is a plain equality`() {
+        assertEquals(term("region", PredicateOp.EQ, "eu"), parsed("region IN ('eu')"))
+    }
+
+    /**
+     * `BETWEEN` is the pair of bounds, and its `AND` is not a connective.
+     *
+     * Reading that `AND` as a connective is the quiet failure here: `a BETWEEN 1 AND 2` would parse
+     * as two filters and the upper bound would be dropped, which prunes *less* and looks correct.
+     */
+    @Test
+    fun `BETWEEN is a pair of bounds`() {
+        assertEquals(
+            ScanFilter.And(listOf(term("d", PredicateOp.GTE, "1"), term("d", PredicateOp.LTE, "9"))),
+            parsed("d BETWEEN 1 AND 9"),
+        )
+    }
+
+    @Test
+    fun `a BETWEEN does not swallow the AND after it`() {
+        assertEquals(
+            ScanFilter.And(
+                listOf(
+                    term("d", PredicateOp.GTE, "1"),
+                    term("d", PredicateOp.LTE, "9"),
+                    term("b", PredicateOp.EQ, "2"),
+                )
+            ),
+            parsed("d BETWEEN 1 AND 9 AND b = 2"),
+        )
+    }
+
+    /**
+     * The negated forms are wrapped rather than negated by hand, so De Morgan has one implementation.
+     *
+     * What is asserted is the result of that one implementation: `NOT IN` is every `<>`, and
+     * `NOT BETWEEN` is either side of the range.
+     */
+    @Test
+    fun `NOT IN and NOT BETWEEN are rewritten by pushNegation, not by the parser`() {
+        assertEquals(
+            ScanFilter.And(
+                listOf(term("r", PredicateOp.NOT_EQ, "eu"), term("r", PredicateOp.NOT_EQ, "us"))
+            ),
+            parsed("r NOT IN ('eu', 'us')").pushNegation(),
+        )
+        assertEquals(
+            ScanFilter.Or(listOf(term("d", PredicateOp.LT, "1"), term("d", PredicateOp.GT, "9"))),
+            parsed("d NOT BETWEEN 1 AND 9").pushNegation(),
+        )
+    }
+
+    /**
+     * A branch of the same connective is spliced in, which is what keeps the row form reachable.
+     *
+     * `BETWEEN` desugars to an `And`, so without the splice a filter mixing it with a plain term
+     * would be a nested `And` — [asConjunction] would return null and the panel would keep the
+     * reader in the editor for a filter the rows can show perfectly well.
+     */
+    @Test
+    fun `nested connectives of one kind are flattened`() {
+        assertEquals(
+            listOf(
+                ScanPredicate("a", PredicateOp.EQ, "1"),
+                ScanPredicate("d", PredicateOp.GTE, "2"),
+                ScanPredicate("d", PredicateOp.LTE, "3"),
+            ),
+            parsed("a = 1 AND d BETWEEN 2 AND 3").asConjunction(),
+        )
+        assertEquals(parsed("a = 1 OR b = 2 OR c = 3"), parsed("(a = 1 OR b = 2) OR c = 3"))
+    }
+
+    /** Each of these is a way to lose part of a list without noticing. */
+    @Test
+    fun `a malformed IN or BETWEEN is reported`() {
+        assertTrue(failed("a IN").message.contains("no list"))
+        assertTrue(failed("a IN 1").message.contains("'('"))
+        assertTrue(failed("a IN ()").message.contains("expected a value"))
+        assertTrue(failed("a IN (1").message.contains("never closed"))
+        assertTrue(failed("a IN (1 2)").message.contains("',' or ')'"))
+        assertTrue(failed("a BETWEEN 1").message.contains("expected AND"))
+        assertTrue(failed("a BETWEEN 1 OR 2").message.contains("expected AND"))
+        assertTrue(failed("a BETWEEN").message.contains("no value"))
+    }
+
     /** What is rendered can be read back, which is what lets the form and the clause be one state. */
     @Test
     fun `render and parse round-trip`() {
@@ -147,6 +254,9 @@ class ScanFilterParserTest {
             "a = 1 AND (b = 2 OR c = 3)",
             "a is null",
             "a is not null",
+            // Neither has a node of its own, so what comes back is the shape being evaluated.
+            "a IN (1, 2)",
+            "a BETWEEN 1 AND 9",
         ).forEach { text ->
             val once = parsed(text)
             assertEquals(once, parsed(once.render()), "'$text' rendered as '${once.render()}'")

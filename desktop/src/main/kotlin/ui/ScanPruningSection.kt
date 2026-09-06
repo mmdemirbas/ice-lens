@@ -337,7 +337,7 @@ internal fun ClauseEditor(
                         is ScanFilterParse.Failed ->
                             "${parse.message} — at \"${text.caretAt(parse.at)}\""
                         is ScanFilterParse.Parsed ->
-                            "AND, OR, NOT and parentheses. Quote a value that holds a space."
+                            "AND, OR, NOT, IN, BETWEEN and parentheses. Quote a value that holds a space."
                     },
                     fontSize = TypeScale.micro,
                     color = if (parse is ScanFilterParse.Failed) colors.error else colors.onSurfaceVariant,

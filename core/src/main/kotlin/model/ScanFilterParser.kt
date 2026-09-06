@@ -86,7 +86,7 @@ private fun tokenize(text: String): List<Token>? {
     return tokens
 }
 
-private val KEYWORDS = setOf("and", "or", "not", "is", "null")
+private val KEYWORDS = setOf("and", "or", "not", "is", "null", "in", "between")
 
 private val OPERATORS = mapOf(
     "=" to PredicateOp.EQ,
@@ -133,23 +133,39 @@ private class FilterParser(private val tokens: List<Token>, private val text: St
     }
 
     private fun parseOr(): ScanFilter? {
-        val first = parseAnd() ?: return null
-        val terms = mutableListOf(first)
+        val terms = mutableListOf<ScanFilter>()
+        terms.addOred(parseAnd() ?: return null)
         while (keywordAt() == "or") {
             pos++
-            terms += parseAnd() ?: return null
+            terms.addOred(parseAnd() ?: return null)
         }
-        return if (terms.size == 1) first else ScanFilter.Or(terms)
+        return terms.singleOrNull() ?: ScanFilter.Or(terms)
     }
 
     private fun parseAnd(): ScanFilter? {
-        val first = parseUnary() ?: return null
-        val terms = mutableListOf(first)
+        val terms = mutableListOf<ScanFilter>()
+        terms.addAnded(parseUnary() ?: return null)
         while (keywordAt() == "and") {
             pos++
-            terms += parseUnary() ?: return null
+            terms.addAnded(parseUnary() ?: return null)
         }
-        return if (terms.size == 1) first else ScanFilter.And(terms)
+        return terms.singleOrNull() ?: ScanFilter.And(terms)
+    }
+
+    /**
+     * Splices a branch of the same connective into this one — `And(a, And(b, c))` is `And(a, b, c)`.
+     *
+     * Associativity, so the verdict is the same either way. What it is here for is
+     * [asConjunction], which only recognises a flat list of terms: `BETWEEN` desugars to an `And`,
+     * so without this `a = 1 AND b BETWEEN 2 AND 3` would be a nested `And` and the panel would
+     * decide that a filter the row form can perfectly well show has to stay in the editor.
+     */
+    private fun MutableList<ScanFilter>.addAnded(term: ScanFilter) {
+        if (term is ScanFilter.And) this += term.terms else this += term
+    }
+
+    private fun MutableList<ScanFilter>.addOred(term: ScanFilter) {
+        if (term is ScanFilter.Or) this += term.terms else this += term
     }
 
     private fun parseUnary(): ScanFilter? {
@@ -194,6 +210,19 @@ private class FilterParser(private val tokens: List<Token>, private val text: St
             return ScanFilter.Term(ScanPredicate(column.text, op))
         }
 
+        // `NOT` is infix here — `x NOT IN (…)`, `x NOT BETWEEN … AND …` — unlike the prefix `NOT`
+        // [parseUnary] reads. Both are wrapped in a `Not` rather than negated by hand, so
+        // `pushNegation` stays the one place a negation is worked out: `NOT IN` is a conjunction of
+        // `<>` and `NOT BETWEEN` a disjunction of `<` and `>`, and writing either out here would be
+        // a second implementation of De Morgan.
+        val negated = keywordAt() == "not" && keywordAt(1) in setOf("in", "between")
+        if (negated) pos++
+        fun negate(filter: ScanFilter?) = filter?.let { if (negated) ScanFilter.Not(it) else it }
+        when (keywordAt()) {
+            "in" -> return negate(parseIn(column.text))
+            "between" -> return negate(parseBetween(column.text))
+        }
+
         val operator = peek()
             ?: return fail("'${column.text}' has no condition after it", endOffset())
         if (operator.kind != TokenKind.OP || operator.text !in OPERATORS) {
@@ -201,17 +230,80 @@ private class FilterParser(private val tokens: List<Token>, private val text: St
         }
         pos++
 
-        val literal = peek()
-            ?: return fail("'${column.text} ${operator.text}' has no value after it", endOffset())
-        if (literal.kind != TokenKind.WORD && literal.kind != TokenKind.STRING) {
-            return fail("expected a value after '${operator.text}'", literal.at)
+        val literal = literal("${column.text} ${operator.text}") ?: return null
+        return ScanFilter.Term(ScanPredicate(column.text, OPERATORS.getValue(operator.text), literal))
+    }
+
+    /**
+     * `c IN (a, b)` as the disjunction it is defined to be, so the evaluator needs no leaf for it.
+     *
+     * A leaf would be a second implementation of the same one-sided proof — `IN` is exactly
+     * `= a OR = b`, and a manifest is ruled out by it only when every value is ruled out, which is
+     * what [ScanFilter.Or] already says. The cost is that [ScanFilter.render] writes it back as the
+     * `OR`, which is what is actually being evaluated.
+     */
+    private fun parseIn(column: String): ScanFilter? {
+        pos++
+        val open = peek() ?: return fail("'$column IN' has no list after it", endOffset())
+        if (open.kind != TokenKind.LPAREN) return fail("expected '(' after IN", open.at)
+        pos++
+        val values = mutableListOf<String>()
+        while (true) {
+            values += literal("$column IN (") ?: return null
+            val next = peek() ?: return fail("this IN list is never closed", open.at)
+            when {
+                next.kind == TokenKind.RPAREN -> { pos++; break }
+                next.kind == TokenKind.OP && next.text == "," -> pos++
+                else -> return fail("expected ',' or ')' in the IN list", next.at)
+            }
         }
-        if (literal.kind == TokenKind.WORD && literal.text.lowercase() in KEYWORDS) {
-            return fail("expected a value, not '${literal.text}'", literal.at)
+        val terms = values.map { ScanFilter.Term(ScanPredicate(column, PredicateOp.EQ, it)) }
+        return terms.singleOrNull() ?: ScanFilter.Or(terms)
+    }
+
+    /**
+     * `c BETWEEN lo AND hi` as `c >= lo AND c <= hi`, which is SQL's own definition of it.
+     *
+     * The `AND` belongs to the `BETWEEN` and is consumed here rather than by [parseAnd] — reading
+     * it as a connective would make `a BETWEEN 1 AND 2` two filters and lose the upper bound.
+     */
+    private fun parseBetween(column: String): ScanFilter? {
+        pos++
+        val low = literal("$column BETWEEN") ?: return null
+        if (keywordAt() != "and") {
+            return fail("expected AND after the first BETWEEN value", peek()?.at ?: endOffset())
         }
         pos++
-        return ScanFilter.Term(
-            ScanPredicate(column.text, OPERATORS.getValue(operator.text), literal.text),
+        val high = literal("$column BETWEEN $low AND") ?: return null
+        return ScanFilter.And(
+            listOf(
+                ScanFilter.Term(ScanPredicate(column, PredicateOp.GTE, low)),
+                ScanFilter.Term(ScanPredicate(column, PredicateOp.LTE, high)),
+            )
         )
+    }
+
+    /**
+     * The next token as a literal, consumed. Null records the failure and stops the parse.
+     *
+     * [after] is what the reader has already written, so the message points at their own text
+     * rather than at a token kind. A keyword is rejected rather than taken as a value: `a = AND`
+     * is a half-typed filter, and reading `AND` as the literal is how one silently evaluates.
+     */
+    private fun literal(after: String): String? {
+        val token = peek() ?: run {
+            fail("'$after' has no value after it", endOffset())
+            return null
+        }
+        if (token.kind != TokenKind.WORD && token.kind != TokenKind.STRING) {
+            fail("expected a value after '$after'", token.at)
+            return null
+        }
+        if (token.kind == TokenKind.WORD && token.text.lowercase() in KEYWORDS) {
+            fail("expected a value, not '${token.text}'", token.at)
+            return null
+        }
+        pos++
+        return token.text
     }
 }

@@ -36,8 +36,11 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   the form. **`OR`, `NOT` and grouping are done** — `model/ScanFilter.kt` evaluates the tree and
   `model/ScanFilterParser.kt` reads a `WHERE` clause, offered beside the rows in the panel. The
   literal is still read in one place (`parseLiteral`, against the column's own type), because the
-  parser keeps literals as text. What is left is smaller: `IN`, `BETWEEN` and `LIKE`, none of which
-  the evaluator has a leaf for yet.
+  parser keeps literals as text. `IN` and `BETWEEN` are done as **parser sugar** — the disjunction
+  and the pair of bounds SQL defines them as — so neither needed an evaluator leaf. What is left is
+  `LIKE`, which does need one: only a prefix pattern says anything a bound can prove
+  (`c LIKE 'abc%'` implies `c >= 'abc'` and `c < 'abd'`), every other pattern proves nothing, and
+  the increment is over the column's own string type rather than over the literal.
 
 - **Iceberg v3 is half-modelled.** A deletion vector's Puffin blob is now opened and its
   positions decoded (`service/PuffinReader.kt`), so the inspector answers which rows a vector

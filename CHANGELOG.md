@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`IN` and `BETWEEN` in the filter clause**, including `NOT IN` and `NOT BETWEEN`. Both are read
+  as what SQL defines them to be — a disjunction of equalities, and a pair of bounds — so the
+  pruning engine gained nothing to get wrong. Written back, they show as the shape being evaluated
+  rather than as the sugar they were typed in.
 - **A scan filter can be written as a `WHERE` clause.** `AND`, `OR`, `NOT` and parentheses, with
   SQL's precedence, beside the row-per-condition form rather than instead of it — the rows carry
   the table's prunable columns in a menu, which is where a reader who does not know what it is

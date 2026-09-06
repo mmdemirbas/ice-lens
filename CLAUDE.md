@@ -379,6 +379,19 @@ intellij/src/main/kotlin/plugin/
   word of its own. **Literals stay text in the parser**: `2024-03-05` is a date to one column and a
   string to another, and only the artifact being evaluated knows which, so `parseLiteral` stays the
   one place a literal becomes a value
+- **`IN` and `BETWEEN` are parser sugar, and a leaf for either would have been a second
+  implementation of a rule already written.** `IN (a, b)` is `= a OR = b` and `BETWEEN lo AND hi` is
+  `>= lo AND <= hi` — SQL's own definitions — so `ScanFilter` gained no node and the evaluator no
+  case: a manifest is ruled out by an `IN` exactly when every value is ruled out, which is what
+  `Or` already says. The negated forms go the same way, `x NOT IN (…)` parsing to a `Not` around the
+  disjunction so `pushNegation` works out De Morgan rather than the parser writing it a second time.
+  Three things follow. The `AND` inside a `BETWEEN` is consumed by it and never by the connective
+  parser — read as a connective it drops the upper bound, which prunes *less* and looks correct.
+  `render()` writes both back as the shape being evaluated (`a = 1 OR a = 2`), because there is no
+  node to render as `IN`. And the parser **splices a branch of the same connective into its
+  parent**: `BETWEEN` desugars to an `And`, so without that `a = 1 AND d BETWEEN 2 AND 3` is a
+  nested `And`, `asConjunction` answers null, and the panel keeps the reader in the editor for a
+  filter the rows can show perfectly well
 - **`bucket[N]` prunes on equality, and only because the hash is the writer's own.**
   `BucketTransform` calls `Hashing.murmur3_32_fixed()` — the same Guava function Iceberg's
   `Bucket` transform calls — so nothing here re-derives a hash, and the only thing left to get
@@ -1018,7 +1031,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~773 tests across 84 files (556 in :core, 212 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~780 tests across 84 files (563 in :core, 212 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
