@@ -164,4 +164,95 @@ class SnapshotTracksTest {
     private fun assertEquals(expected: Double, actual: Double, tolerance: Double, message: String) {
         assertTrue(abs(expected - actual) <= tolerance, "$message (expected $expected, was $actual)")
     }
+
+    /**
+     * Three branches open at once, which is where the column assignment's rules start to bite.
+     *
+     * `branched` has a single fork, and with one fork every rule here is satisfied by "put the
+     * second line somewhere else". `branched3` forks three times at three different points and
+     * commits to other lines in between, so a column reserved for a branch has to survive commits
+     * that are not on it — the case the reservation exists for. The shape is in
+     * `docs/fixtures/branched3.sql`; the tips are found by their refs rather than by position, so
+     * this says nothing about where the layout put them.
+     */
+    @Test
+    fun `three branches each get a column of their own`() {
+        val graph = graphOf("branched3")
+        val snapshots = graph.snapshots()
+        assertEquals(9, snapshots.size, "the fixture is nine commits")
+
+        val tracks = snapshotTracks(snapshots)
+        assertEquals(
+            4, tracks.values.distinct().size,
+            "main and three branches, so four columns: $tracks",
+        )
+
+        fun tipOf(branch: String) = snapshots.single { node -> node.refs.any { it.name == branch } }
+        val tipTracks = listOf("main", "audit", "wip", "staging").associateWith { tracks[tipOf(it).id] }
+        assertEquals(
+            4, tipTracks.values.distinct().size,
+            "no two branch tips may share a column: $tipTracks",
+        )
+        assertEquals(0, tipTracks["main"], "the first line keeps the column it always had")
+    }
+
+    /**
+     * A column reserved for a branch is still that branch's when the walk finally reaches it.
+     *
+     * `audit` forks at the second commit and its first commit is the fourth; two other branches
+     * fork in between. If the reservation were dropped and the column simply taken by whoever
+     * asked next, `audit` would land in a column `wip` or `staging` had already claimed — which
+     * looks like a valid drawing and is a lie about the history.
+     */
+    @Test
+    fun `a column reserved at a fork is still free when its branch commits`() {
+        val graph = graphOf("branched3")
+        val snapshots = graph.snapshots()
+        val tracks = snapshotTracks(snapshots)
+        val bySequence = snapshots.sortedBy { it.data.sequenceNumber ?: 0L }
+
+        val auditTip = snapshots.single { node -> node.refs.any { it.name == "audit" } }
+        val auditFirst = bySequence.single { it.data.snapshotId == auditTip.data.parentSnapshotId }
+        assertEquals(
+            tracks[auditFirst.id], tracks[auditTip.id],
+            "audit's two commits are one line and belong in one column",
+        )
+
+        val others = listOf("wip", "staging").map { branch ->
+            tracks[snapshots.single { node -> node.refs.any { it.name == branch } }.id]
+        }
+        assertTrue(
+            tracks[auditFirst.id] !in others,
+            "audit's column was reserved before wip and staging forked, so neither may hold it",
+        )
+    }
+
+    /**
+     * Every column is named, and the tag on main's tip names nothing.
+     *
+     * With one fork there were two columns and the tag case was a single coincidence. Here four
+     * columns are named at once, which is the layout the header row was written for, and `release`
+     * sits on the same commit as `main` — so a rule that took the tip's refs without filtering to
+     * branches would print two names over one column.
+     */
+    @Test
+    fun `four columns are each named by their branch, and a tag names none`() {
+        val graph = graphOf("branched3")
+        val snapshots = graph.snapshots()
+        val columns = snapshotColumns(snapshots) { id -> graph.layoutPositions.getValue(id) }
+
+        assertEquals(4, columns.size, "four lines, four columns")
+        assertEquals(
+            setOf("main", "audit", "wip", "staging"),
+            columns.flatMap { column -> column.labels.map { it.name } }.toSet(),
+        )
+        assertTrue(
+            columns.none { column -> column.labels.any { it.name == "release" } },
+            "a tag never names a column, even sitting on the tip beside the branch that does",
+        )
+        assertEquals(
+            columns.size, columns.map { it.x }.distinct().size,
+            "and each column is at its own x",
+        )
+    }
 }

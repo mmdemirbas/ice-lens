@@ -997,6 +997,23 @@ class InspectorRenderTest {
     }
 
     /**
+     * Four lines at once, which is the drawing the column assignment was actually written for.
+     *
+     * One fork is satisfied by putting the second line anywhere else; three forks at three
+     * different points, with commits on other lines in between, is where the reservations and the
+     * header row have to hold. What to look for: four columns, each with its branch name above it,
+     * the lineage edges running diagonally back to the commit each line forked from, and no name
+     * printed over a column it does not belong to.
+     */
+    @Test
+    fun `the canvas draws three branches as four columns`() {
+        val graph = graphFor("branched3")
+        val columns = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().map { it.x }.distinct()
+        assertTrue(columns.size == 4, "main and three branches should occupy four columns, got $columns")
+        renderCanvas("graph-canvas-branched3", graph, AggregationPolicy.DEFAULT_PAGE_SIZE, zoom = 0.28f)
+    }
+
+    /**
      * Two snapshots compared, which is a panel only a two-node selection reaches.
      *
      * Rendered on `mor` rather than `branched`: the interesting shape is a compaction, where files
@@ -1150,14 +1167,19 @@ class InspectorRenderTest {
         return Ink(left, top, right, bottom)
     }
 
-    private fun renderCanvas(name: String, graph: GraphModel, pageSize: Int) {
+    /**
+     * [zoom] is a parameter because a scene is a fixed number of pixels: a graph with more columns
+     * needs a smaller one to fit, and a capture that cuts off the columns it was taken to show is
+     * worse than none.
+     */
+    private fun renderCanvas(name: String, graph: GraphModel, pageSize: Int, zoom: Float = 0.6f) {
         renderScene(name, width = 2000, height = 1200, density = 1f) {
             GraphCanvas(
                 graph = graph,
                 positions = NodePositions(graph),
                 selectedNodeIds = emptySet(),
                 isSelectMode = false,
-                zoom = 0.6f,
+                zoom = zoom,
                 onZoomChange = {},
                 onSelectionChange = {},
                 statusOverlay = {

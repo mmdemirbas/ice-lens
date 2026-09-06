@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `example/iceberg/default/branched3` and `docs/fixtures/branched3.sql` — three branches forked at
+  three different points, with commits on other lines in between, plus a tag on the trunk's tip.
 - **A statistics file is opened, and its footer shown against what the table records about it.**
   `metadata.json` carries a copy of the blob metadata so a query planner never has to open the
   Puffin file — which is exactly what lets the two drift, since a statistics file removed by an
@@ -269,6 +271,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **The main line no longer loses its column to a branch.** At a fork, the column the parent was
+  drawn in went to whichever child was *written* first — so a branch that received a commit before
+  the trunk's next commit took the trunk's lane, the main line stepped sideways halfway down the
+  graph, and the column header above the root commit read as the branch's name rather than
+  `main`. The trunk's commits are now preferred at every fork. Visible only with two branches
+  forking at different points, which is why it survived: the single-fork fixture cannot produce it.
 - **A table in object storage now carries its format badge.** The ICE / PMN chip was computed
   through `java.io.File`, which is null for every `s3://` path, so remote tables drew without one.
   The badge comes from the sweep rather than from the row: which of the two globs matched a table

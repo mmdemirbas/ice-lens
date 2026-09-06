@@ -52,14 +52,14 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   an equality delete has no target at all. Drawing the first would mean reading every delete row
   at graph-build time, which is the cost aggregation exists to avoid.
 
-- **The branch columns have never been seen with three branches open at once.** Branches take
-  separate columns (`service/SnapshotTracks.kt`), lineage edges are dashed, and each column now
-  carries its branch name above it (`snapshotColumns`), so a divergence reads as one and the
-  column can be read without following the dashes back.
-  `example/iceberg/default/branched` covers a single fork, which is where the fixture stops and
-  where the column assignment stops being exercised — the reuse rule, the held reservation and
-  the header layout all have their interesting cases at three. A second branched fixture needs
-  docker, same as the row-lineage and statistics-file gaps below.
+- **The branch columns are exercised at three branches now, and it found a defect.**
+  `example/iceberg/default/branched3` forks three times at three different points, and building it
+  showed the main line changing column halfway down with the trunk's column labelled `staging` —
+  `lineageChildren` gave the parent's column to whichever child was written first, which on any
+  long-lived branch is not the trunk. Fixed by preferring the `main` tip's ancestors in the sibling
+  order. What is still not covered is a branch forked from another *branch*: `CREATE BRANCH` takes
+  the table's current snapshot and the `AS OF VERSION` form needs a snapshot id that is not known
+  until the script has run, so it needs a second pass over the fixture.
 
 - **A statistics blob's sketch is never decoded.** The `.stats` container is opened now and its
   footer shown against what `metadata.json` records (`model/TableStatistics.kt`), so a stale record

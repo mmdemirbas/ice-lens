@@ -133,7 +133,16 @@ internal fun lineageChildren(
     snapshots: List<GraphNode.SnapshotNode>,
 ): Map<Long?, List<GraphNode.SnapshotNode>> {
     val byCommit = snapshots.mapNotNull { node -> node.data.snapshotId?.let { it to node } }.toMap()
+    val trunk = trunkCommits(snapshots, byCommit)
     val siblingOrder = compareBy<GraphNode.SnapshotNode>(
+        // The trunk first, ahead of time. Everything below orders siblings by when they were
+        // written, and on that alone a branch that commits before the trunk's next commit is the
+        // "first child" — so it takes the column its parent was drawn in and the trunk is pushed
+        // into a new one. The result is a drawing where the root commit sits under a feature
+        // branch's name and the main line changes column halfway down, which is not a rendering
+        // detail: it is the graph saying the wrong thing about which line is which. Measured on
+        // `branched3`, where `main` landed in column 3 and column 0 was labelled `staging`.
+        { if (it.data.snapshotId in trunk) 0 else 1 },
         { it.data.timestampMs ?: Long.MAX_VALUE },
         { it.data.sequenceNumber ?: Long.MAX_VALUE },
         { it.data.snapshotId ?: Long.MAX_VALUE },
@@ -142,4 +151,28 @@ internal fun lineageChildren(
         .filter { it.data.parentSnapshotId != null && byCommit.containsKey(it.data.parentSnapshotId) }
         .groupBy { it.data.parentSnapshotId }
         .mapValues { (_, children) -> children.sortedWith(siblingOrder) }
+}
+
+/**
+ * The commits on the table's main line: the `main` tip and everything it descends from.
+ *
+ * `main` is not a convention borrowed from git here — Iceberg's spec requires the branch and ties
+ * `current-snapshot-id` to it, so it is the table's own statement about which line an unqualified
+ * read resolves to. That is the only thing that distinguishes two children of one commit when both
+ * are the tip of their own line, which is exactly the case `branched3`'s last fork produces.
+ *
+ * Empty when no branch called `main` is drawn — a graph filtered to one branch, or a format that
+ * does not have the concept — and then every sibling order is what it always was.
+ */
+private fun trunkCommits(
+    snapshots: List<GraphNode.SnapshotNode>,
+    byCommit: Map<Long, GraphNode.SnapshotNode>,
+): Set<Long> {
+    val tip = snapshots.firstOrNull { node -> node.refs.any { it.isBranch && it.name == "main" } }
+        ?: return emptySet()
+    return buildSet {
+        var commit = tip.data.snapshotId
+        // `add` returning false ends the walk, so a parent chain that somehow loops terminates.
+        while (commit != null && add(commit)) commit = byCommit[commit]?.data?.parentSnapshotId
+    }
 }

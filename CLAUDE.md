@@ -675,7 +675,16 @@ intellij/src/main/kotlin/plugin/
   `git log --graph` does — a commit takes the column its parent reserved for it, the first child
   continues in the parent's, every later child opens one and *holds* it until the walk arrives —
   and `spreadSnapshotBranches` runs last in `layoutNodes`, moving x only, pushing the layers to
-  the right of the snapshots over by what the branch took. It returns before touching a node when
+  the right of the snapshots over by what the branch took. **The trunk is preferred at every
+  fork, and that is not cosmetic**: `lineageChildren` ordered siblings by when they were written,
+  so a branch that commits before the trunk's next commit was the "first child" and took the
+  column its parent was drawn in — leaving the main line to change column halfway down and the
+  root commit sitting under a feature branch's name. `branched3` is where that shows: `main`
+  landed in column 3 and column 0 was labelled `staging`. `trunkCommits` puts the `main` tip and
+  its ancestors first in the sibling order, which is the only thing that separates two children
+  of one commit when both are the tip of their own line. `main` is not a borrowed git convention
+  here — Iceberg's spec requires the branch and ties `current-snapshot-id` to it — and a graph
+  with no `main` drawn falls back to exactly the order it always had. It returns before touching a node when
   the highest column is 0, so a linear history draws exactly where it drew before. It also stands
   down entirely if the snapshots are not all at one x, since the shift is defined relative to
   that. `lineageChildren` is shared with `snapshotLineageOrder` because the two have to agree on
@@ -969,7 +978,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~739 tests across 81 files (529 in :core, 205 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~743 tests across 81 files (532 in :core, 206 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1055,6 +1064,7 @@ container invocation and the traps in it:
 | `default/respec` | `PartitionSpecEvolutionTest` | two partition specs — dropped, rebucketed, `days`→`months` |
 | `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
+| `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
 | `paimon/db.db/test` | `RealTableFixtureTest` | a real Flink/Paimon table |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
