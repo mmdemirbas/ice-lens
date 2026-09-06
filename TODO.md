@@ -229,7 +229,15 @@ What is left:
   untested. Writing a second commit needs Flink in docker — the same blocker as the Paimon card
   heights and the third-branch fixture.
 
-- **Different layout algorithms** — top-to-bottom, force-directed, or compact tree as alternatives to the current left-to-right layered layout.
+- **Different layout algorithms — done, with one limit stated.** Layered left-to-right (default),
+  layered top-to-bottom, tree and force-directed, from a toolbar menu, persisted.
+
+  The limit: the layered post-processing — chronological ordering, parent alignment, overlap
+  prevention, the branch column — runs only under the left-to-right layout, because every pass is
+  defined against that axis. The other three are ELK's own output. Transposing the passes for the
+  downward layout is a real piece of work and would mainly buy the branch column back; it is worth
+  doing if the downward layout gets used, and `GraphLayoutAlgorithm.refinesLayers` is where it
+  attaches.
 
 - **Remote storage** — read metadata from S3, HDFS, ADLS, GCS (via Hadoop FileSystem API or cloud SDKs).
 

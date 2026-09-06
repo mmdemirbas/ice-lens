@@ -17,6 +17,11 @@ dependencies {
 
     implementation(libs.elk.core)
     implementation(libs.elk.layered)
+    // The alternative layouts the reader can pick. Each algorithm is its own artifact and
+    // registers itself through ELK's metadata service, so an absent one is a runtime failure
+    // rather than a compile one — `GraphLayoutAlgorithmTest` runs every entry to catch that.
+    implementation(libs.elk.mrtree)
+    implementation(libs.elk.force)
     implementation(libs.xtext.xbase.lib)
 
     implementation(libs.duckdb.jdbc)

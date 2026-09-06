@@ -74,6 +74,7 @@ core/src/main/kotlin/
 │   ├── GraphAggregation.kt    # Format-agnostic: long sibling runs → one expandable GroupNode
 │   ├── SiblingOrder.kt        # One order per kind — read by layout AND by aggregation
 │   ├── SnapshotTracks.kt      # Which column each snapshot draws in, and which branch names it
+│   ├── GraphLayoutAlgorithm.kt # The four shapes on offer, and which one gets the refinements
 │   ├── GraphLayoutService.kt  # Format-agnostic ELK layout + post-processing (ordering, alignment, overlap prevention)
 │   └── TableFormatDetector.kt # Directory-based table format detection (Iceberg / Paimon / Unknown)
 
@@ -646,6 +647,20 @@ desktop/src/main/kotlin/
   ELK sections. They are the one kind whose two ends can sit side by side, so drawn solid they
   are indistinguishable from the parent-child edges crossing the same gap — which is why a
   deletion vector's edge and a fork's only read as annotations once they are dashed
+- **Four layouts, and only one of them gets the refinements.** `GraphLayoutAlgorithm` offers
+  layered left-to-right (the default, and the right shape for a containment hierarchy drawn as
+  depth), layered top-to-bottom for a tall window, `mrtree` for following one branch down to its
+  files, and `force` for "what is clustered with what". **`refinesLayers` is true for exactly one
+  entry**, and that is the load-bearing part: every post-processing pass is defined against the
+  left-to-right shape — ordering runs *down a column*, alignment centres a parent *vertically*,
+  `spreadSnapshotBranches` claims a *column*. Under a downward layout each is about the wrong axis;
+  under a tree or a force layout there are no layers for them to be about. The other three are
+  ELK's own output, which is an honest drawing where half-transposed passes would be a worse one.
+  Transposing them properly is a later change and the flag is where it attaches. Each algorithm is
+  **a separate ELK artifact registered through a metadata service and resolved by id at layout
+  time**, so a missing provider compiles cleanly and fails in front of the reader —
+  `GraphLayoutAlgorithmTest` lays a real table out under every entry for exactly that reason, and
+  checks the direction took by asserting which axis a *layer* collapses onto
 - **Layout post-processing runs ordering, then alignment, then ordering again.** Alignment moves
   a parent to its children's centre, which overrides the order the first pass set — so the
   vertical order of snapshots was decided by ELK's manifest placement until the second pass
@@ -768,7 +783,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~664 tests across 74 files (487 in :core, 177 in :desktop) covering full pipelines for both formats (Avro fixtures
+~671 tests across 75 files (493 in :core, 178 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

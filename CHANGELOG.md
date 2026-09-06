@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Four graph layouts, chosen from the toolbar.** Layered left-to-right stays the default and is
+  unchanged; layered top-to-bottom suits a tall window, a tree follows one branch down to its files,
+  and force-directed answers "what is clustered with what" rather than "what contains what". The
+  choice is persisted. The layered refinements — chronological ordering, the branch column — run
+  only under the default, because each is defined against that axis; the others are ELK's own
+  output rather than a half-transposed version of ours.
 - **Export the graph — PNG, SVG, JSON or CSV.** A menu in the toolbar, saving through the platform's
   own save dialog. SVG and PNG are the drawing, with the reader's own node drags in them; JSON is
   the graph as structure for another tool to read; CSV is one row per data or delete file, with

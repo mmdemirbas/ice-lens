@@ -31,6 +31,8 @@ avro = { module = "org.apache.avro:avro", version.ref = "avro" }
 zstd-jni = { module = "com.github.luben:zstd-jni", version = "1.5.6-9" }
 elk-core = { module = "org.eclipse.elk:org.eclipse.elk.core", version.ref = "elk" }
 elk-layered = { module = "org.eclipse.elk:org.eclipse.elk.alg.layered", version.ref = "elk" }
+elk-mrtree = { module = "org.eclipse.elk:org.eclipse.elk.alg.mrtree", version.ref = "elk" }
+elk-force = { module = "org.eclipse.elk:org.eclipse.elk.alg.force", version.ref = "elk" }
 xtext-xbase-lib = { module = "org.eclipse.xtext:org.eclipse.xtext.xbase.lib", version.ref = "xtext" }
 duckdb-jdbc = { module = "org.duckdb:duckdb_jdbc", version.ref = "duckdb" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }

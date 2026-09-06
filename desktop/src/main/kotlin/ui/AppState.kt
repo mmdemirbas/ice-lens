@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 import model.*
 import service.AggregationPolicy
 import service.GraphAggregation
+import service.GraphLayoutAlgorithm
 import service.GraphLayoutService
 import service.TableFormat
 import service.TableFormatDetector
@@ -64,6 +65,7 @@ class AppState(
         internal const val PREF_SHOW_ROWS = "show_data_rows"
         internal const val PREF_LAST_BROWSE_DIRECTORY = "last_browse_directory"
         internal const val PREF_GRAPH_PAGE_SIZE = "graph_page_size"
+        internal const val PREF_GRAPH_LAYOUT = "graph_layout_algorithm"
 
         /**
          * The page sizes the badge offers. A reader on a 27-inch monitor and one on a laptop
@@ -134,6 +136,13 @@ class AppState(
      * than about one table.
      */
     var graphPageSize by mutableStateOf(AggregationPolicy.DEFAULT_PAGE_SIZE)
+        private set
+
+    /**
+     * Which shape the graph is drawn in. Persisted, because it describes this reader's screen and
+     * their habit rather than anything about one table — the same reasoning as the page size.
+     */
+    var graphLayout by mutableStateOf(GraphLayoutAlgorithm.DEFAULT)
         private set
 
     /**
@@ -275,6 +284,9 @@ class AppState(
         showRows = prefs.getBoolean(PREF_SHOW_ROWS, true)
         graphPageSize = prefs.getInt(PREF_GRAPH_PAGE_SIZE, AggregationPolicy.DEFAULT_PAGE_SIZE)
             .coerceIn(MIN_GRAPH_PAGE_SIZE, MAX_GRAPH_PAGE_SIZE)
+        // By name, and tolerant of one that no longer exists: an enum entry removed in a later
+        // version would otherwise make the app fail to start for whoever had it selected.
+        graphLayout = GraphLayoutAlgorithm.byNameOrDefault(prefs.get(PREF_GRAPH_LAYOUT, null))
         selectedSnapshotFilterSnapshotIds = parseLongSet(prefs.get(PREF_SELECTED_SNAPSHOT_IDS, ""))
         lastBrowseDirectory = prefs.get(PREF_LAST_BROWSE_DIRECTORY, "").ifBlank { null }
     }
@@ -502,6 +514,21 @@ class AppState(
     var graphSearchResult by mutableStateOf(GraphSearchResult(emptyList(), notDrawn = 0))
         private set
 
+    /**
+     * Picks a layout and redraws with it.
+     *
+     * A relayout, not a reload: the table model is already in hand, so this is ELK and the
+     * post-processing again over the same nodes. Drags are dropped on purpose — a position the
+     * reader chose was chosen against the drawing the old algorithm made, and carrying it into a
+     * different one puts a card somewhere nobody asked for.
+     */
+    fun updateGraphLayout(algorithm: GraphLayoutAlgorithm) {
+        if (algorithm == graphLayout) return
+        graphLayout = algorithm
+        prefs.put(PREF_GRAPH_LAYOUT, algorithm.name)
+        rebuildDrawnGraph(keepDrags = false)
+    }
+
     fun updateGraphSearch(query: String) {
         graphSearchQuery = query
         rerunGraphSearch()
@@ -606,7 +633,7 @@ class AppState(
                     val tableModel = loadTableModel(normalizedTablePath)
                     coroutineContext.ensureActive()
                     val expanded = previousSession?.expandedGroupIds.orEmpty()
-                    var newGraph = GraphLayoutService.layoutGraph(tableModel, withRows, expanded, aggregationPolicy)
+                    var newGraph = GraphLayoutService.layoutGraph(tableModel, withRows, expanded, aggregationPolicy, graphLayout)
                     if (preservePositions && previousSession != null) {
                         val oldInitial = previousSession.graph.layoutPositions
                         val mergedPositions = newGraph.layoutPositions.toMutableMap()
@@ -692,7 +719,7 @@ class AppState(
                     coroutineContext.ensureActive()
                     val fullyLaidOut = withContext(backgroundDispatcher) {
                         coroutineContext.ensureActive()
-                        GraphLayoutService.layoutGraph(model, showRows, expandedGroupIds, aggregationPolicy)
+                        GraphLayoutService.layoutGraph(model, showRows, expandedGroupIds, aggregationPolicy, graphLayout)
                     }
                     if (requestId != loadRequestId.get()) return@launch
                     // T-1: re-read graphModel on the main thread after the staleness check —
@@ -762,7 +789,7 @@ class AppState(
                 coroutineContext.ensureActive()
                 val newGraph = withContext(backgroundDispatcher) {
                     coroutineContext.ensureActive()
-                    GraphLayoutService.layoutGraph(model, showRows, expandedGroupIds, aggregationPolicy)
+                    GraphLayoutService.layoutGraph(model, showRows, expandedGroupIds, aggregationPolicy, graphLayout)
                 }
 
                 if (requestId != loadRequestId.get()) return@launch
@@ -907,7 +934,7 @@ class AppState(
             try {
                 val rebuilt = withContext(backgroundDispatcher) {
                     coroutineContext.ensureActive()
-                    GraphLayoutService.layoutGraph(model, showRows, expanded, aggregationPolicy)
+                    GraphLayoutService.layoutGraph(model, showRows, expanded, aggregationPolicy, graphLayout)
                 }
                 if (requestId != loadRequestId.get()) return@launch
 

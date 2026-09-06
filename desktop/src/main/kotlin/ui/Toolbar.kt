@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import service.GraphLayoutAlgorithm
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AdsClick
@@ -15,6 +16,8 @@ import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.Schema
+import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -143,6 +146,8 @@ fun Toolbar(
                 onClick = { state.reapplyCurrentLayout() },
                 modifier = Modifier.size(32.dp)
             )
+            Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
+            LayoutMenuButton(state)
             Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
             // The bar itself is drawn on the canvas; this is its visible way in. A find bar that
             // only exists once you know the chord is a feature only its author has.
@@ -390,6 +395,60 @@ fun ExportMenuItems(onPick: (GraphExportFormat) -> Unit) {
                 }
             },
             onClick = { onPick(format) },
+        )
+    }
+}
+
+/**
+ * Which shape to draw the graph in.
+ *
+ * A menu rather than a cycle button, because the four are alternatives a reader picks between and
+ * the one in force has to be visible without pressing anything — a cycle button shows only the
+ * next state, which is the wrong half. Each item carries what the layout is *for*: "Force-directed"
+ * names the algorithm and says nothing about when a reader would want it.
+ */
+@Composable
+private fun LayoutMenuButton(state: AppState) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        ToolbarIconButton(
+            icon = Icons.Default.AccountTree,
+            tooltip = "Layout: ${state.graphLayout.label}",
+            onClick = { expanded = true },
+            modifier = Modifier.size(32.dp),
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            LayoutMenuItems(state.graphLayout) { algorithm ->
+                expanded = false
+                state.updateGraphLayout(algorithm)
+            }
+        }
+    }
+}
+
+/** The items alone, so a capture can reach them — see `GraphOptionsMenuItems` for why. */
+@Composable
+fun LayoutMenuItems(current: GraphLayoutAlgorithm, onPick: (GraphLayoutAlgorithm) -> Unit) {
+    GraphLayoutAlgorithm.entries.forEach { algorithm ->
+        DropdownMenuItem(
+            leadingIcon = {
+                if (algorithm == current) {
+                    Icon(Icons.Default.Check, contentDescription = "in use", modifier = Modifier.size(16.dp))
+                } else {
+                    Box(Modifier.size(16.dp))
+                }
+            },
+            text = {
+                Column {
+                    Text(algorithm.label, fontSize = TypeScale.small)
+                    Text(
+                        algorithm.description,
+                        fontSize = TypeScale.micro,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            onClick = { onPick(algorithm) },
         )
     }
 }

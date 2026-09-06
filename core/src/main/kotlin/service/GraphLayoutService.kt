@@ -26,9 +26,17 @@ private val logger = LoggerFactory.getLogger(GraphLayoutService::class.java)
 object GraphLayoutService {
 
     init {
+        // Every algorithm the reader can pick has to be registered, and ELK resolves them by id at
+        // layout time — an unregistered one is a runtime failure with an ELK-worded message, not a
+        // compile error. `GraphLayoutAlgorithmTest` lays a real table out under every entry so a
+        // missing provider fails here rather than in front of somebody.
         LayoutMetaDataService
             .getInstance()
-            .registerLayoutMetaDataProviders(LayeredMetaDataProvider())
+            .registerLayoutMetaDataProviders(
+                LayeredMetaDataProvider(),
+                org.eclipse.elk.alg.mrtree.options.MrTreeMetaDataProvider(),
+                org.eclipse.elk.alg.force.options.ForceMetaDataProvider(),
+            )
     }
 
     /** Max sample rows read from Parquet via DuckDB. */
@@ -62,6 +70,7 @@ object GraphLayoutService {
         showRows: Boolean,
         expandedGroupIds: Set<String> = emptySet(),
         policy: AggregationPolicy = AggregationPolicy.DEFAULT,
+        algorithm: GraphLayoutAlgorithm = GraphLayoutAlgorithm.DEFAULT,
     ): GraphModel {
         logger.debug("Building {} graph for: {}", tableModel.format, tableModel.name)
         val buildResult = when (tableModel) {
@@ -83,7 +92,7 @@ object GraphLayoutService {
             "{} graph built: {} nodes drawn of {}, {} edges",
             tableModel.format, withRows.nodes.size, buildResult.nodes.size, withRows.edges.size,
         )
-        return layoutNodes(withRows.nodes, withRows.edges)
+        return layoutNodes(withRows.nodes, withRows.edges, algorithm)
     }
 
     /** Reads sample rows for the data-file nodes the graph is actually drawing. */
@@ -111,16 +120,19 @@ object GraphLayoutService {
     fun layoutNodes(
         nodes: List<GraphNode>,
         edges: List<GraphEdge>,
+        algorithm: GraphLayoutAlgorithm = GraphLayoutAlgorithm.DEFAULT,
     ): GraphModel {
         val root = ElkGraphUtil.createGraph()
-        root.setProperty(CoreOptions.ALGORITHM, "org.eclipse.elk.layered")
-        root.setProperty(CoreOptions.DIRECTION, Direction.RIGHT)
+        root.setProperty(CoreOptions.ALGORITHM, algorithm.elkId)
+        algorithm.direction?.let { root.setProperty(CoreOptions.DIRECTION, it) }
         root.setProperty(CoreOptions.EDGE_ROUTING, EdgeRouting.SPLINES)
         root.setProperty(CoreOptions.SPACING_NODE_NODE, 120.0)
-        root.setProperty(
-            org.eclipse.elk.alg.layered.options.LayeredOptions.SPACING_NODE_NODE_BETWEEN_LAYERS,
-            300.0
-        )
+        if (algorithm.elkId == "org.eclipse.elk.layered") {
+            root.setProperty(
+                org.eclipse.elk.alg.layered.options.LayeredOptions.SPACING_NODE_NODE_BETWEEN_LAYERS,
+                300.0
+            )
+        }
 
         // Create ELK nodes from logical nodes
         val elkNodes = mutableMapOf<String, ElkNode>()
@@ -166,16 +178,24 @@ object GraphLayoutService {
         // The two passes are not equals: ordering is a constraint and alignment is a preference,
         // so the constraint is applied last. Alignment still does its work — the second pass only
         // permutes nodes within the y slots alignment left them in.
-        enforceChronologicalVerticalOrder(nodesById, edges)
-        alignParentsWithChildren(nodesById, edges)
-        enforceChronologicalVerticalOrder(nodesById, edges)
-        preventOverlaps(nodesById)
-        // Last, and it moves x only. Everything above decides the vertical order and then holds
-        // it; giving a branch its own column is a statement about the horizontal axis alone, so
-        // it cannot disturb any of it. It also runs after overlap prevention rather than before,
-        // because that pass compares y and ignores x — two commits in different columns would
-        // otherwise be pushed apart vertically for an overlap that is not there.
-        val branchSpread = spreadSnapshotBranches(nodesById)
+        // Only under the layered left-to-right layout. Every pass below is defined against that
+        // shape — ordering runs down a column, alignment centres a parent vertically, the branch
+        // spread claims a column — so under a downward layout each is about the wrong axis, and
+        // under a tree or a force layout there are no layers for them to be about. See
+        // `GraphLayoutAlgorithm.refinesLayers`: the other layouts are ELK's own output, which is
+        // an honest drawing, where half-transposed passes would be a worse one.
+        val branchSpread = if (!algorithm.refinesLayers) 0.0 else {
+            enforceChronologicalVerticalOrder(nodesById, edges)
+            alignParentsWithChildren(nodesById, edges)
+            enforceChronologicalVerticalOrder(nodesById, edges)
+            preventOverlaps(nodesById)
+            // Last, and it moves x only. Everything above decides the vertical order and then
+            // holds it; giving a branch its own column is a statement about the horizontal axis
+            // alone, so it cannot disturb any of it. It also runs after overlap prevention rather
+            // than before, because that pass compares y and ignores x — two commits in different
+            // columns would otherwise be pushed apart vertically for an overlap that is not there.
+            spreadSnapshotBranches(nodesById)
+        }
 
         val posMap = finalNodes.associate { it.id to Point(it.x.toFloat(), it.y.toFloat()) }
         return GraphModel(finalNodes, edges, root.width + branchSpread, root.height, layoutPositions = posMap)

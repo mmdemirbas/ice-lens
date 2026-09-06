@@ -452,6 +452,47 @@ class InspectorRenderTest {
     }
 
     /**
+     * The graph under each layout the reader can pick, and the two menus that pick and export.
+     *
+     * Four captures rather than an assertion about pixels, because what these are for is the
+     * judgement a number cannot make: whether a layout is *readable* on a real table. The
+     * assertions that each algorithm runs and turns the drawing are `GraphLayoutAlgorithmTest`'s.
+     * The menus are rendered as items rather than opened, the same reason `GraphOptionsMenuItems`
+     * is a composable of its own — a `DropdownMenu` is a popup and a popup is not what an offscreen
+     * scene draws reliably.
+     */
+    @Test
+    fun `each layout draws the branched table, and the menus that choose them render`() {
+        val model = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/branched").absolutePath))
+        service.GraphLayoutAlgorithm.entries.forEach { algorithm ->
+            val graph = GraphLayoutService.layoutGraph(model, showRows = false, algorithm = algorithm)
+            renderScene("layout-${algorithm.name.lowercase()}", width = 2000, height = 1200, density = 1f) {
+                GraphCanvas(
+                    graph = graph,
+                    positions = NodePositions(graph),
+                    selectedNodeIds = emptySet(),
+                    isSelectMode = false,
+                    // Fitted to the scene so the whole graph is in the capture rather than a
+                    // corner of it — each layout has a different extent, so a fixed zoom would
+                    // show four different fractions of four graphs.
+                    zoom = minOf(2000.0 / graph.width, 1200.0 / graph.height).toFloat() * 0.92f,
+                    onZoomChange = {},
+                    onSelectionChange = {},
+                )
+            }
+        }
+
+        renderScene("menu-layout", width = 640, height = 420) {
+            Column(Modifier.padding(12.dp)) {
+                LayoutMenuItems(service.GraphLayoutAlgorithm.LAYERED_RIGHT) {}
+            }
+        }
+        renderScene("menu-export", width = 640, height = 420) {
+            Column(Modifier.padding(12.dp)) { ExportMenuItems {} }
+        }
+    }
+
+    /**
      * The Paimon manifest panel, and the replay trace that is new in it.
      *
      * The checked-in Paimon table is one snapshot with one manifest holding one ADD entry, so
