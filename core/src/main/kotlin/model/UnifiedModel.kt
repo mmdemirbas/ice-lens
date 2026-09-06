@@ -181,7 +181,7 @@ fun resolveRecordedOr(recorded: String?, fallback: () -> Path): Pair<Path, PathR
     val asRecorded = recorded
         ?.takeIf { it.isNotBlank() }
         ?.let(::normalizeFilePath)
-        ?.let { runCatching { Path.of(it) }.getOrNull() }
+        ?.let { runCatching { service.StorageLocation.pathOf(it) }.getOrNull() }
         ?.takeIf { it.isAbsolute && runCatching { Files.isRegularFile(it) }.getOrDefault(false) }
     return if (asRecorded != null) {
         asRecorded to PathResolution.RECORDED

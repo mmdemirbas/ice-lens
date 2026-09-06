@@ -68,6 +68,10 @@ core/src/main/kotlin/
 │   ├── IcebergReader.kt       # Iceberg JSON/Avro reading (delegates Avro to AvroReader)
 │   ├── PaimonReader.kt        # Paimon JSON snapshot/schema + Avro manifest list/manifest reading
 │   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet, ORC, Avro — max 50)
+│   ├── StorageLocation.kt     # A location string → the Path that opens it. The one place a scheme is resolved
+│   ├── DuckDb.kt              # The shared DuckDB connection, and the object-store credentials configured on it
+│   ├── ObjectStorage.kt       # Listing and reading object storage through DuckDB, with the caches that make it viable
+│   ├── ObjectFileSystem.kt    # A read-only java.nio FileSystem over ObjectStorage (s3/gs/gcs/r2)
 │   ├── PuffinReader.kt        # Puffin footer + `deletion-vector-v1` blob → the row positions a v3 vector marks
 │   ├── IcebergGraphBuilder.kt # Iceberg-specific graph construction: UnifiedTableModel → nodes + edges
 │   ├── PaimonGraphBuilder.kt  # Paimon-specific graph construction: PaimonUnifiedTableModel → nodes + edges
@@ -424,6 +428,48 @@ desktop/src/main/kotlin/
   pass rather than being the one kind exempt from the page size. The second pass can only touch
   rows — every other kind is already at or below the page size, and a `GroupNode` has no
   `aggregationKind()`, so it never becomes a member of anything
+- **A table in object storage is opened by supplying the missing `FileSystemProvider`, not by
+  threading a storage object through the model.** `java.nio.Path` already *is* this app's storage
+  abstraction — the model resolves manifests against their list's directory, walks `metadata/`, asks
+  whether a data file is there, all in `Files` and all correct for any filesystem. So `s3://`,
+  `gs://`, `gcs://` and `r2://` get a provider (`ObjectFileSystem.kt`, registered through
+  `META-INF/services`) and the model layer is untouched. The alternative — a storage interface —
+  would have been a parameter on `UnifiedTableModel`, every `UnifiedSnapshot`, `UnifiedManifest`
+  and `UnifiedDataFile`, and on the `DeferredRead` lambdas that read lazily from inside graph
+  nodes, to say something only the location knows. **Write is a `ReadOnlyFileSystemException`, so
+  "all data access is read-only" is a type here and not only a rule in this file.** `toFile()`
+  throws for the same reason: returning a plausible `java.io.File` is exactly how a remote path
+  silently becomes a read of a local path that is not there
+- **The bytes come from DuckDB, and that was measured against the alternative.** AWS's
+  `aws-java-nio-spi-for-s3` was run against a MinIO container before this was written. Three things
+  decided it: DuckDB is **already a dependency** where the SPI adds 48 jars and 34 MB to `core` for
+  one scheme; DuckDB reads the **sample rows** too, so there is one credential configuration rather
+  than two for `read_parquet`; and **the SPI's errors do not survive the boundary** —
+  `Files.exists()` is specified to answer `false` rather than throw, so a 403 on a bucket came back
+  *identical to a missing table*, the likeliest failure reported as the one thing it is not.
+  `ObjectStorage.describe` tells a 403, a 404 and a refused connection apart and says what to do
+  about each, because one generic message is how a reader re-clicks forever. The SPI also could not
+  be configured per location: its `newFileSystem(URI, Map)` builds a CRT client that ignores the
+  configuration's own region
+- **Two caches stand between the graph build and the network, and without them this is unusable.**
+  A graph is built for every artifact the metadata names and `Files.isRegularFile` runs once per
+  data file — a thousand-file table would be a thousand round trips before anything is drawn. So
+  `ObjectStorage` caches a **directory listing** per prefix and the **bytes** of the objects it
+  reads, and both are cleared when a table is opened. `list` globs the whole subtree and derives
+  one level from it rather than globbing one level, because object storage has no directory
+  entries and a one-level glob silently omits every subdirectory; that costs a subtree listing, so
+  it belongs on `metadata/`, never on a warehouse root. A warehouse is scanned by
+  `globTables` instead — two globs for the two path shapes the formats are detected by, rather
+  than a request per level per table
+- **Credentials are a `CREATE SECRET` statement, which makes them the app's one SQL trust
+  boundary.** `CREATE SECRET` takes no bind parameters, so every value is inlined; quotes are
+  doubled, and the one field that cannot be escaped at all — the secret's *name*, which is an
+  identifier — is rejected rather than escaped unless it matches `[A-Za-z0-9_]{1,64}`.
+  `ObjectStoreCredentials` overrides `toString` to redact, because a data class prints every field
+  and the obvious way to write "DuckDB rejected the credentials named X" would otherwise carry the
+  key into a log line. `useCredentialChain` exists because on a developer's machine or an instance
+  with a role the key is already in the environment, and asking for a paste is asking a reader to
+  copy a secret into one more place
 - **Every read opens through `StorageLocation.pathOf`, and nothing in core names `java.io.File`.**
   A `File` can only ever be a file on this machine's disk, so every reader that built one — the
   Avro reader, both JSON readers, the Puffin reader, the format detector — was a place a table in
@@ -795,7 +841,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~671 tests across 75 files (493 in :core, 178 in :desktop) covering full pipelines for both formats (Avro fixtures
+~696 tests across 78 files (518 in :core, 178 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -881,6 +927,14 @@ container invocation and the traps in it:
 | `default/respec` | `PartitionSpecEvolutionTest` | two partition specs — dropped, rebucketed, `days`→`months` |
 | `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
 | `paimon/db.db/test` | `RealTableFixtureTest` | a real Flink/Paimon table |
+
+**Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
+starts a loopback-only MinIO and uploads `example/iceberg/default/mor` to `s3://warehouse/db/mor`;
+`RemoteTableTest` then opens that table *and* the one on disk and requires the two models and the
+two graphs to agree. That comparison is the whole point — a decoder fed truncated or misordered
+bytes produces a model that is internally consistent and wrong, and every assertion written against
+the remote side alone would pass. The tests skip rather than fail when the container is absent, so
+a checkout without Docker stays green.
 
 Two things about generating these are worth not rediscovering. **Spark writes one row per data
 file** for small inserts under `local[2]`, and a `DELETE` matching every row of a file removes

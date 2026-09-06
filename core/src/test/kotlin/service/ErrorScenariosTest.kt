@@ -111,16 +111,31 @@ class ErrorScenariosTest {
         assertEquals(0, result.errors.size)
     }
 
+    /**
+     * A scheme nothing serves is named; a scheme something serves is attempted.
+     *
+     * This test used to require that `s3://` and `gs://` were *rejected*, which was right while
+     * nothing could read them. What it was actually protecting against is still live and is what
+     * it checks now: a URI must never be quietly treated as a relative local path.
+     * `Path.of("hdfs://nn/x")` does not throw — it yields a relative path whose first segment is
+     * `hdfs:`, and the read then fails against the working directory with a message about a local
+     * file that was never asked for.
+     */
     @Test
-    fun `AvroReader rejects unsupported URI schemes`() {
-        assertFailsWith<IllegalArgumentException> {
-            AvroReader.readAvro<ManifestListEntry>("s3://bucket/path/file.avro")
-        }
-        assertFailsWith<IllegalArgumentException> {
+    fun `an unserved scheme is named, and a served one is actually attempted`() {
+        val unserved = assertFailsWith<service.StorageLocation.UnsupportedLocationException> {
             AvroReader.readAvro<ManifestListEntry>("hdfs://namenode/path/file.avro")
         }
-        assertFailsWith<IllegalArgumentException> {
-            AvroReader.readAvro<ManifestListEntry>("gs://bucket/path/file.avro")
+        assertEquals("hdfs", unserved.scheme)
+
+        // s3 and gs have a provider now, so these get as far as the store and fail there. What
+        // matters is that the failure is about the location that was asked for.
+        listOf("s3://bucket/path/file.avro", "gs://bucket/path/file.avro").forEach { location ->
+            val failure = assertFailsWith<Exception> { AvroReader.readAvro<ManifestListEntry>(location) }
+            assertTrue(
+                location in failure.message.orEmpty(),
+                "reading $location should fail about $location, and said: ${failure.message}",
+            )
         }
     }
 

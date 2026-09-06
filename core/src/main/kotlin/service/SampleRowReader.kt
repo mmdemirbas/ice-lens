@@ -2,8 +2,6 @@ package service
 
 import org.slf4j.LoggerFactory
 import java.io.File
-import java.sql.Connection
-import java.sql.DriverManager
 
 private val logger = LoggerFactory.getLogger(SampleRowReader::class.java)
 
@@ -45,37 +43,40 @@ object SampleRowReader {
      */
     const val FILE_ROW_NUMBER = "file_row_number"
 
-    init {
-        Class.forName("org.duckdb.DuckDBDriver")
-    }
-
-    @Volatile private var connection: Connection? = null
-    private val lock = Any()
+    /**
+     * Closes the shared DuckDB connection if open. Safe to call multiple times.
+     *
+     * The connection itself moved to [DuckDb], because once a table can live in object storage the
+     * *metadata* is read through DuckDB too, and two connections would be two places to configure
+     * one set of credentials.
+     */
+    fun closeConnection() = DuckDb.close()
 
     /**
-     * Returns a live DuckDB connection. Must be called while holding [lock] —
-     * the function reads and writes [connection] without re-acquiring the lock,
-     * so callers must serialize access. [querySampleRows] does this correctly;
-     * future callers should not invoke this directly outside the synchronized block.
+     * The path DuckDB should be given for [filePath], with what can be checked, checked.
+     *
+     * A local file is canonicalised and required to be a regular file — that resolves `..` before
+     * the extension is looked at, so a path that climbs out of the table cannot arrive wearing a
+     * `.parquet` suffix. A remote one cannot be canonicalised and is not stat-ed either: an
+     * existence check would be a round trip to learn what the read is about to report anyway. What
+     * *is* still checked is the extension, because it decides which query is built.
      */
-    private fun getConnection(): Connection {
-        val conn = connection
-        if (conn != null && !conn.isClosed) return conn
-        logger.debug("Creating new DuckDB connection")
-        val newConn = DriverManager.getConnection("jdbc:duckdb:")
-        connection = newConn
-        return newConn
-    }
-
-    /** Closes the DuckDB connection if open. Safe to call multiple times. */
-    fun closeConnection() {
-        synchronized(lock) {
-            connection?.let { conn ->
-                runCatching { conn.close() }
-                    .onFailure { logger.warn("Error closing DuckDB connection: {}", it.message) }
+    internal fun resolveForQuery(filePath: String): Pair<String, String> {
+        if (StorageLocation.isRemote(filePath)) {
+            val name = filePath.substringAfterLast('/')
+            val ext = name.substringAfterLast('.', "").lowercase()
+            require(ext in ALLOWED_DATA_FILE_EXTENSIONS) {
+                "Unsupported file extension '$ext'. Allowed: $ALLOWED_DATA_FILE_EXTENSIONS"
             }
-            connection = null
+            return filePath to ext
         }
+        val canonicalFile = File(filePath).canonicalFile
+        require(canonicalFile.isFile) { "Not a regular file: $canonicalFile" }
+        val ext = canonicalFile.extension.lowercase()
+        require(ext in ALLOWED_DATA_FILE_EXTENSIONS) {
+            "Unsupported file extension '$ext'. Allowed: $ALLOWED_DATA_FILE_EXTENSIONS"
+        }
+        return canonicalFile.path.replace("\\", "/") to ext
     }
 
     /**
@@ -91,27 +92,9 @@ object SampleRowReader {
      * @throws IllegalArgumentException if the file doesn't exist or has an unsupported extension
      */
     fun querySampleRows(filePath: String): List<Map<String, Any>> {
-        val file = File(filePath)
-        val canonicalFile = file.canonicalFile
+        val (safePath, ext) = resolveForQuery(filePath)
 
-        require(canonicalFile.isFile) { "Not a regular file: $canonicalFile" }
-        val ext = canonicalFile.extension.lowercase()
-        require(ext in ALLOWED_DATA_FILE_EXTENSIONS) {
-            "Unsupported file extension '$ext'. Allowed: $ALLOWED_DATA_FILE_EXTENSIONS"
-        }
-
-        val safePath = canonicalFile.path.replace("\\", "/")
-
-        synchronized(lock) {
-            val conn = try {
-                getConnection()
-            } catch (e: Exception) {
-                logger.error("DuckDB connection failed, resetting: {}", e.message)
-                runCatching { connection?.close() }
-                connection = null
-                getConnection() // retry once
-            }
-
+        return DuckDb.withConnection { conn ->
             // Parquet gets `file_row_number`, which is the row's physical position in the file
             // and so the coordinate a positional delete and a deletion vector both address. It is
             // asked for rather than inferred from the result order: a scan may return rows in any
@@ -138,7 +121,7 @@ object SampleRowReader {
                 }
                 rs.close()
                 logger.debug("Sample rows queried: {} rows from {}", rows.size, safePath)
-                return rows
+                rows
             }
         }
     }
@@ -166,16 +149,9 @@ object SampleRowReader {
      * positional delete file, and the SQL error says so more usefully than a silent empty result.
      */
     fun queryPositionalDeleteTargets(filePath: String): List<PositionalDeleteTally> {
-        val canonicalFile = File(filePath).canonicalFile
-        require(canonicalFile.isFile) { "Not a regular file: $canonicalFile" }
-        val ext = canonicalFile.extension.lowercase()
-        require(ext in ALLOWED_DATA_FILE_EXTENSIONS) {
-            "Unsupported file extension '$ext'. Allowed: $ALLOWED_DATA_FILE_EXTENSIONS"
-        }
-        val safePath = canonicalFile.path.replace("\\", "/")
+        val (safePath, _) = resolveForQuery(filePath)
 
-        synchronized(lock) {
-            val conn = getConnection()
+        return DuckDb.withConnection { conn ->
             val sql = "SELECT file_path, count(*) AS positions, min(pos) AS lowest, max(pos) AS highest " +
                 "FROM read_parquet(?) GROUP BY file_path ORDER BY positions DESC, file_path"
             conn.prepareStatement(sql).use { pstmt ->
@@ -191,7 +167,7 @@ object SampleRowReader {
                         )
                     }
                     logger.debug("Delete targets queried: {} data files from {}", tallies.size, safePath)
-                    return tallies
+                    tallies
                 }
             }
         }

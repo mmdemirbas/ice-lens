@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+- **Tables in object storage can be opened directly.** `s3://`, `gs://`, `gcs://` and `r2://` are
+  read without copying the table down first, metadata and sample rows alike. This is supplied as a
+  read-only `java.nio` `FileSystemProvider`, so the model layer is unchanged and every write
+  operation throws `ReadOnlyFileSystemException`. The bytes come from DuckDB, which was already a
+  dependency and which reads the sample rows too — measured against AWS's `aws-java-nio-spi-for-s3`,
+  which adds 48 jars for one scheme, needs its own separate credentials for `read_parquet`, and
+  reports a 403 as an absent file because `Files.exists()` may not throw.
+- Object-store credentials, per location: an explicit key, or the ambient AWS credential chain, with
+  an endpoint override for MinIO, Ceph, OBS and anything else speaking the S3 API.
+- `docs/fixtures/minio-lab.sh` — a loopback-only MinIO holding the checked-in fixtures, so the
+  remote read path is tested against the same table the local one is tested against.
+
 - **Four graph layouts, chosen from the toolbar.** Layered left-to-right stays the default and is
   unchanged; layered top-to-bottom suits a tall window, a tree follows one branch down to its files,
   and force-directed answers "what is clustered with what" rather than "what contains what". The
