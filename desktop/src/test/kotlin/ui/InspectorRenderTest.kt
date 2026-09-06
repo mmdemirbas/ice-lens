@@ -900,24 +900,32 @@ class InspectorRenderTest {
     @Test
     fun `the clause editor renders a disjunction and a parse error`() {
         val graph = graphFor("parted")
+        val sugar = "name IN ('alpha', 'bravo') AND d BETWEEN 2024-03-05 AND 2024-03-07"
+        val editor: @Composable (String) -> Unit = { text ->
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
+                Column {
+                    ClauseEditor(
+                        graph = graph,
+                        filter = model.ScanFilter.of(emptyList()),
+                        onChange = {},
+                        onUseForm = {},
+                        initialText = text,
+                    )
+                }
+            }
+        }
         listOf(
             "clause-valid" to "d >= 2024-03-05 AND (name = 'alpha' OR name = 'bravo')",
             "clause-error" to "d >= 2024-03-05 AND name = ",
-            "clause-in" to "name IN ('alpha', 'bravo') AND d BETWEEN 2024-03-05 AND 2024-03-07",
+            "clause-in" to sugar,
         ).forEach { (name, text) ->
-            renderScene("scan-pruning-$name", width = 900, height = 340) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
-                    Column {
-                        ClauseEditor(
-                            graph = graph,
-                            filter = model.ScanFilter.of(emptyList()),
-                            onChange = {},
-                            onUseForm = {},
-                            initialText = text,
-                        )
-                    }
-                }
-            }
+            renderScene("scan-pruning-$name", width = 900, height = 340) { editor(text) }
+        }
+        // And at 300dp — the width the panel opens at, draggable down to 200dp (`App.kt`). That is
+        // where a clause worth writing stops fitting on one line, so it is the width this control's
+        // shape is decided at, the same reason `collapse-pages-narrow` exists.
+        renderScene("scan-pruning-clause-narrow", width = 300, height = 460, density = 1f) {
+            editor(sugar)
         }
     }
 

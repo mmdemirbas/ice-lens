@@ -378,7 +378,14 @@ intellij/src/main/kotlin/plugin/
   the first version cut at a fixed offset and produced `…D name =`, the tail of `AND` reading as a
   word of its own. **Literals stay text in the parser**: `2024-03-05` is a date to one column and a
   string to another, and only the artifact being evaluated knows which, so `parseLiteral` stays the
-  one place a literal becomes a value
+  one place a literal becomes a value. **The field wraps rather than scrolling sideways**, which is
+  a decision about the width the panel is actually used at: it opens at 300dp and drags to 200dp,
+  where one line showed `name IN ('alph` of a filter four times that long — so a reader could not
+  see whether their own parentheses balanced, and the error message's word-window was carrying that
+  alone. It is capped at four lines, because a filter is not a document and the verdicts it explains
+  have to stay on screen. Wrapping is also what exposed Material3's `lineHeight = 24.sp` surviving
+  in a `textStyle` that overrode only `fontSize` — the same trap `CardColumn` exists for, invisible
+  on one line and double-spaced on three
 - **`IN` and `BETWEEN` are parser sugar, and a leaf for either would have been a second
   implementation of a rule already written.** `IN (a, b)` is `= a OR = b` and `BETWEEN lo AND hi` is
   `>= lo AND <= hi` — SQL's own definitions — so `ScanFilter` gained no node and the evaluator no

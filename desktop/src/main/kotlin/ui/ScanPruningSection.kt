@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import model.GraphModel
@@ -34,11 +35,14 @@ import model.prunableColumns
 /**
  * Enter a scan filter; see which manifests it would let a query skip, and why.
  *
- * The input is a form rather than a `WHERE` clause on purpose. Every field here is one a
- * partition reads, offered from the table's own specs with its own type, so there is no parser to
- * disagree with a query engine's and no way to name a column that cannot prune anything. A typed
- * clause would be more familiar and is worth having later; it would also mean a second place
- * where a literal is read, and this one has to be right first.
+ * There are two inputs and the filter decides which is shown. The **form** offers the table's own
+ * prunable columns with their own types, which is where a reader who does not know what this table
+ * is partitioned on has to start, and it can only ever be a conjunction of plain conditions. The
+ * **clause editor** ([ClauseEditor]) is the only one that can say `OR`, `NOT` or a group, so a
+ * filter [asConjunction] cannot represent keeps the reader there — offering "use the form" for
+ * `a = 1 OR b = 2` would have to drop the `OR`. Neither is a second place a literal is read:
+ * `parseScanFilter` keeps literals as text and `parseLiteral` remains the one place one becomes a
+ * value, against the column's own type.
  *
  * The verdict is asymmetric and the wording keeps it that way. **Skipped** is a proof: some term
  * showed the manifest's own recorded bounds cannot contain a matching row. **Would be read** is
@@ -325,8 +329,22 @@ internal fun ClauseEditor(
                     Text("d >= 2024-03-05 AND (name = 'alpha' OR name = 'bravo')", fontSize = TypeScale.small)
                 },
                 isError = parse is ScanFilterParse.Failed,
-                singleLine = true,
-                textStyle = LocalTextStyle.current.copy(fontSize = TypeScale.small),
+                // The clause wraps rather than scrolling sideways. The panel opens at 300dp and can
+                // be dragged to 200dp, where a single line showed `name IN ('alph` of a filter three
+                // times that long — so the reader could not see whether their own parentheses
+                // balanced, and the error message's word-window was carrying the whole burden of
+                // saying what they had written. Capped, because a filter is not a document and the
+                // verdicts it explains have to stay on screen; past the cap the field scrolls.
+                singleLine = false,
+                maxLines = 4,
+                // `lineHeight` is unspecified for the same reason `CompactText` provides it:
+                // Material3's body style carries 24.sp, and a style overriding only `fontSize`
+                // keeps it — which a single line never showed and a wrapped one spaces out to
+                // twice the height of its own text.
+                textStyle = LocalTextStyle.current.copy(
+                    fontSize = TypeScale.small,
+                    lineHeight = TextUnit.Unspecified,
+                ),
                 modifier = Modifier.fillMaxWidth(),
             )
             CompactText {

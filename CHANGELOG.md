@@ -287,6 +287,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **The filter clause is readable at the width the panel is actually used at.** It wrapped nowhere
+  and scrolled sideways instead, so the inspector at its normal width showed about a dozen
+  characters of it — enough to lose track of your own parentheses. It now wraps to four lines, with
+  the line spacing its own text size asks for rather than the 24sp Material's body style was
+  handing it.
 - **A pruning row no longer contradicts itself.** With `OR` in the filter, a term that ruled out
   its own condition stopped meaning the artifact was ruled out — so a manifest could show
   "would be read" beside the reason a skip would have carried. The reason now explains the verdict
