@@ -877,12 +877,44 @@ class InspectorRenderTest {
             ScanPredicate("id", PredicateOp.LTE, "7"),
         )
         renderScene("scan-pruning-table", width = 1400, height = 3200) {
-            NodeDetailsContent(graph, setOf(table.id), scanPredicates = predicates)
+            NodeDetailsContent(graph, setOf(table.id), scanFilter = model.ScanFilter.of(predicates))
         }
 
         val manifest = graph.nodes.filterIsInstance<GraphNode.ManifestNode>().first()
         renderScene("scan-pruning-manifest", width = 1400, height = 1600) {
-            NodeDetailsContent(graph, setOf(manifest.id), scanPredicates = predicates)
+            NodeDetailsContent(graph, setOf(manifest.id), scanFilter = model.ScanFilter.of(predicates))
+        }
+    }
+
+    /**
+     * The clause editor, in the two states that matter: a filter the rows cannot express, and one
+     * that does not parse.
+     *
+     * The form above it can only build a conjunction, so a disjunction is the whole reason this
+     * input exists — and the error line is the half worth looking at, because it is what a reader
+     * sees while they are still typing. Both are states a click or a keystroke produces, so the
+     * text is passed in rather than driven, the same way `sectionCollapse` is.
+     */
+    @Test
+    fun `the clause editor renders a disjunction and a parse error`() {
+        val graph = graphFor("parted")
+        listOf(
+            "clause-valid" to "d >= 2024-03-05 AND (name = 'alpha' OR name = 'bravo')",
+            "clause-error" to "d >= 2024-03-05 AND name = ",
+        ).forEach { (name, text) ->
+            renderScene("scan-pruning-$name", width = 900, height = 340) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
+                    Column {
+                        ClauseEditor(
+                            graph = graph,
+                            filter = model.ScanFilter.of(emptyList()),
+                            onChange = {},
+                            onUseForm = {},
+                            initialText = text,
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -941,7 +973,7 @@ class InspectorRenderTest {
         val literal = (1..64).first { model.BucketTransform.bucketOf(it, 4) != it }
         val predicates = listOf(ScanPredicate("id", PredicateOp.EQ, "$literal"))
         renderScene("scan-pruning-bucket", width = 1400, height = 3200) {
-            NodeDetailsContent(graph, setOf(table.id), scanPredicates = predicates)
+            NodeDetailsContent(graph, setOf(table.id), scanFilter = model.ScanFilter.of(predicates))
         }
     }
 

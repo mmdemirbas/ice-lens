@@ -106,6 +106,20 @@ fun ScanFilter.verdict(leaf: (ScanPredicate) -> ScanVerdict): ScanVerdict = when
     is ScanFilter.Not -> ScanVerdict.MIGHT_MATCH
 }
 
+/**
+ * The filter as a flat list of conditions, or null when it is not one.
+ *
+ * The row-per-condition form can only build and show a conjunction of plain terms; an `Or`, a `Not`
+ * or a nested group has no row to be. Returning null rather than something lossy is what lets the
+ * panel *keep the reader in the clause editor* instead of silently dropping half their filter the
+ * moment they switch back.
+ */
+fun ScanFilter.asConjunction(): List<ScanPredicate>? = when (this) {
+    is ScanFilter.Term -> listOf(predicate)
+    is ScanFilter.And -> terms.map { (it as? ScanFilter.Term ?: return null).predicate }
+    is ScanFilter.Or, is ScanFilter.Not -> null
+}
+
 /** The filter written back out, with the parentheses it needs and no others. */
 fun ScanFilter.render(): String = when (this) {
     is ScanFilter.Term -> predicate.toString()

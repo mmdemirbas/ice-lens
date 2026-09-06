@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A scan filter can be written as a `WHERE` clause.** `AND`, `OR`, `NOT` and parentheses, with
+  SQL's precedence, beside the row-per-condition form rather than instead of it — the rows carry
+  the table's prunable columns in a menu, which is where a reader who does not know what it is
+  partitioned on starts. A filter the rows cannot represent keeps the reader in the clause editor,
+  because offering "use the form" for `a = 1 OR b = 2` would have to drop the `OR`. A clause that
+  does not parse says what is wrong and where, and leaves the last working filter in force rather
+  than clearing the verdicts on screen.
 - **Scan pruning evaluates a boolean filter, not just a list of ANDed terms.** `OR`, `NOT` and
   grouping are handled: an `AND` is ruled out by one branch, an `OR` only when every branch is, and
   `NOT` is rewritten into the leaves before evaluation because negating a one-sided proof yields no

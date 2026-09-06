@@ -195,8 +195,8 @@ fun App() {
                 selectedNodeIds = state.selectedNodeIds,
                 onExpandGroup = state::expandGroup,
                 onExpandGroupFully = state::expandGroupFully,
-                scanPredicates = state.scanPredicates,
-                onScanPredicatesChange = state::updateScanPredicates,
+                scanFilter = state.scanFilter,
+                onScanFilterChange = state::updateScanFilter,
                 expandedGroupIds = state.expandedGroupIds,
                 onCollapseGroupsUnder = state::collapseGroupsUnder,
             )
@@ -444,8 +444,8 @@ fun App() {
                         // Recomputed here rather than held in state: it is a pure function of the
                         // drawn graph and the filter, and a second copy of it would be a second
                         // thing to keep in step with the graph rebuilds aggregation causes.
-                        val prunedNodeIds = remember(currentGraph, state.scanPredicates) {
-                            val plan = evaluateScan(currentGraph, state.scanPredicates)
+                        val prunedNodeIds = remember(currentGraph, state.scanFilter) {
+                            val plan = evaluateScan(currentGraph, state.scanFilter)
                             plan.manifests.filterValues { it.isSkipped }.keys +
                                 plan.files.filterValues {
                                     it.fate == FileFate.SKIPPED || it.fate == FileFate.NOT_REACHED

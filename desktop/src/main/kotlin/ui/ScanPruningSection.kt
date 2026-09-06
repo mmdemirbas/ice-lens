@@ -18,7 +18,13 @@ import model.ManifestPruneResult
 import model.PredicateOp
 import model.PredicateOutcome
 import model.PrunableColumn
+import model.ScanFilter
+import model.ScanFilterParse
 import model.ScanPredicate
+import model.asConjunction
+import model.isEmpty
+import model.parseScanFilter
+import model.render
 import model.TermEffect
 import model.FileFate
 import model.FilePruneResult
@@ -39,9 +45,16 @@ import model.prunableColumns
  * only the absence of such a proof — it does not say the manifest holds anything.
  */
 @Composable
-fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onChange: (List<ScanPredicate>) -> Unit) {
+fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFilter) -> Unit) {
     val colors = MaterialTheme.colorScheme
     val columns = remember(graph) { prunableColumns(graph) }
+    // The form is a list of rows and can only be a conjunction of plain conditions. Anything else —
+    // an OR, a NOT, a group — has no row to be, so the clause editor is not a preference there but
+    // the only input that can show the filter the reader has.
+    val conjunction = filter.asConjunction()
+    var clauseChosen by remember(graph) { mutableStateOf(false) }
+    val asClause = clauseChosen || conjunction == null
+    val predicates = conjunction.orEmpty()
     if (columns.isEmpty()) {
         Section("Scan Pruning") {
             Text(
@@ -78,10 +91,23 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
             )
         }
 
+        if (asClause) {
+            ClauseEditor(
+                graph = graph,
+                filter = filter,
+                onChange = onChange,
+                // Only offered when the filter could be shown as rows. Switching back from
+                // `a = 1 OR b = 2` would have to drop the OR, and a control that silently discards
+                // half of what the reader typed is worse than no control.
+                onUseForm = if (conjunction != null) ({ clauseChosen = false }) else null,
+            )
+            if (filter.isEmpty()) return@Section
+        }
+
         // The three controls are unlabelled pills on their own — a reader sees `d` and `=` and has no
         // way to know which is the column and which the operator, nor that either opens a menu. The
         // header names them once, above the first row, the way the field it names sits above it.
-        if (predicates.isNotEmpty()) {
+        if (!asClause && predicates.isNotEmpty()) {
             DisableSelection {
                 Row(modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 2.dp)) {
                     FormLabel("Field", COLUMN_PICKER_WIDTH)
@@ -93,37 +119,50 @@ fun ScanPruningSection(graph: GraphModel, predicates: List<ScanPredicate>, onCha
             }
         }
 
-        predicates.forEachIndexed { index, predicate ->
+        if (!asClause) predicates.forEachIndexed { index, predicate ->
             PredicateRow(
                 predicate = predicate,
                 columns = columns,
-                onChange = { updated -> onChange(predicates.toMutableList().also { it[index] = updated }) },
-                onRemove = { onChange(predicates.toMutableList().also { it.removeAt(index) }) },
+                onChange = { updated ->
+                    onChange(ScanFilter.of(predicates.toMutableList().also { it[index] = updated }))
+                },
+                onRemove = {
+                    onChange(ScanFilter.of(predicates.toMutableList().also { it.removeAt(index) }))
+                },
             )
         }
 
-        DisableSelection {
+        if (!asClause) DisableSelection {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(
                     onClick = {
                         val first = columns.firstOrNull { it.isPrunable } ?: columns.first()
-                        onChange(predicates + ScanPredicate(first.name, PredicateOp.EQ, ""))
+                        onChange(ScanFilter.of(predicates + ScanPredicate(first.name, PredicateOp.EQ, "")))
                     },
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                 ) { Text(if (predicates.isEmpty()) "Add a condition" else "Add another", fontSize = TypeScale.small) }
                 if (predicates.isNotEmpty()) {
                     Spacer(Modifier.width(8.dp))
                     TextButton(
-                        onClick = { onChange(emptyList()) },
+                        onClick = { onChange(ScanFilter.of(emptyList())) },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     ) { Text("Clear", fontSize = TypeScale.small) }
                 }
+                Spacer(Modifier.width(8.dp))
+                // The way to OR, NOT and group, which the rows cannot express at all. Offered here
+                // rather than as the only input because the rows carry the prunable columns in a
+                // menu, and a reader who does not know what this table is partitioned on has
+                // nowhere to start from in a text field.
+                TextButton(
+                    onClick = { clauseChosen = true },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                ) { Text("Write a clause", fontSize = TypeScale.small) }
             }
         }
 
-        if (predicates.isEmpty()) return@Section
+        if (filter.isEmpty()) return@Section
 
-        val plan = remember(graph, predicates) { evaluateScan(graph, predicates) }
+        val plan = remember(graph, filter) { evaluateScan(graph, filter) }
         val results = plan.manifests
         val manifests = remember(graph) { graph.nodes.filterIsInstance<GraphNode.ManifestNode>() }
         val files = remember(graph) { graph.nodes.filterIsInstance<GraphNode.FileNode>() }
@@ -246,6 +285,99 @@ private val OP_PICKER_WIDTH = 110.dp
 private val LITERAL_FIELD_WIDTH = 190.dp
 
 /** Names one form control, above it and left-aligned with it. */
+/**
+ * The filter as text, which is the only input that can say `OR`, `NOT` or a group.
+ *
+ * The text is held here and not derived from [filter] on every keystroke, because it must not be
+ * normalised while the reader is typing: seeding from `render()` each frame would rewrite
+ * `a=1` into `a = 1` under the cursor and move it. It is seeded when the editor opens and pushed
+ * out only when it parses — an unparseable filter leaves the last good one in force and says why,
+ * rather than clearing the verdicts the reader is reading.
+ */
+@Composable
+internal fun ClauseEditor(
+    graph: GraphModel,
+    filter: ScanFilter,
+    onChange: (ScanFilter) -> Unit,
+    onUseForm: (() -> Unit)?,
+    /**
+     * What the field starts with. Defaulted to the filter, and passed in only by the render tests:
+     * an unparseable clause is a state typing produces and a capture otherwise never reaches, and
+     * the error line is the half of this editor worth looking at.
+     */
+    initialText: String = filter.render(),
+) {
+    val colors = MaterialTheme.colorScheme
+    var text by remember(graph) { mutableStateOf(initialText) }
+    val parse = remember(text) { parseScanFilter(text) }
+
+    DisableSelection {
+        Column(modifier = Modifier.padding(top = 4.dp)) {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { typed ->
+                    text = typed
+                    val result = parseScanFilter(typed)
+                    if (result is ScanFilterParse.Parsed) onChange(result.filter)
+                },
+                label = { Text("Filter", fontSize = TypeScale.small) },
+                placeholder = {
+                    Text("d >= 2024-03-05 AND (name = 'alpha' OR name = 'bravo')", fontSize = TypeScale.small)
+                },
+                isError = parse is ScanFilterParse.Failed,
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(fontSize = TypeScale.small),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            CompactText {
+                Text(
+                    text = when (parse) {
+                        // The offset is turned into something a reader can act on rather than
+                        // printed as a number: a caret under the character beats "at index 17".
+                        is ScanFilterParse.Failed ->
+                            "${parse.message} — at \"${text.caretAt(parse.at)}\""
+                        is ScanFilterParse.Parsed ->
+                            "AND, OR, NOT and parentheses. Quote a value that holds a space."
+                    },
+                    fontSize = TypeScale.micro,
+                    color = if (parse is ScanFilterParse.Failed) colors.error else colors.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onUseForm != null) {
+                    TextButton(
+                        onClick = onUseForm,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    ) { Text("Use the form", fontSize = TypeScale.small) }
+                }
+                if (text.isNotBlank()) {
+                    TextButton(
+                        onClick = { text = ""; onChange(ScanFilter.of(emptyList())) },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    ) { Text("Clear", fontSize = TypeScale.small) }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A short window of the filter around [at], snapped to whole words.
+ *
+ * Snapped because the first version cut at a fixed offset and produced `…D name =` — the tail of
+ * `AND` read as a word of its own, and a fragment the reader has to decode is worse than no
+ * fragment at all. The window is what the message points at, so it has to be quotable back.
+ */
+private fun String.caretAt(at: Int): String {
+    if (isEmpty()) return this
+    val from = (at - 10).coerceIn(0, length)
+    val to = (at + 14).coerceIn(0, length)
+    val start = if (from == 0) 0 else indexOf(' ', from).takeIf { it in 0..<to }?.plus(1) ?: from
+    val end = if (to == length) length else lastIndexOf(' ', to).takeIf { it > start } ?: to
+    return (if (start > 0) "…" else "") + substring(start, end).trim() + (if (end < length) "…" else "")
+}
+
 @Composable
 private fun FormLabel(text: String, width: Dp) {
     Text(

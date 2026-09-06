@@ -33,12 +33,11 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   evaluated now (`model/BucketTransform.kt`, checked against the buckets Spark recorded at two
   bucket counts), and every other operator on a bucket field still declines, correctly — a range of
   bucket numbers says nothing about a range of values. A `WHERE` clause would be more familiar than
-  the form and is worth having, at the cost of a second place where a literal is read. **The
-  evaluator handles `OR`, `NOT` and grouping now** (`model/ScanFilter.kt`) — an `And` is proved by
-  one branch, an `Or` by every branch, and `NOT` is rewritten into the leaves before anything is
-  evaluated. What is missing is a **way in**: the form still builds a conjunction, so the only
-  caller that can express a disjunction is a test. A `WHERE`-clause parser is the next step, and
-  it is the whole of what stands between the engine and the feature.
+  the form. **`OR`, `NOT` and grouping are done** — `model/ScanFilter.kt` evaluates the tree and
+  `model/ScanFilterParser.kt` reads a `WHERE` clause, offered beside the rows in the panel. The
+  literal is still read in one place (`parseLiteral`, against the column's own type), because the
+  parser keeps literals as text. What is left is smaller: `IN`, `BETWEEN` and `LIKE`, none of which
+  the evaluator has a leaf for yet.
 
 - **Iceberg v3 is half-modelled.** A deletion vector's Puffin blob is now opened and its
   positions decoded (`service/PuffinReader.kt`), so the inspector answers which rows a vector

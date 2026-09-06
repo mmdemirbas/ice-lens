@@ -364,6 +364,21 @@ intellij/src/main/kotlin/plugin/
   looked at. A `Not` that somehow reaches the fold answers "might match" rather than being guessed
   at — the absence of a proof is the only safe answer, and a wrong skip is the one pruning bug
   that loses rows
+- **There are two ways to write the filter, and which one is shown is decided by the filter.**
+  The rows carry the prunable columns in a menu, which is where a reader who does not know what
+  the table is partitioned on has to start; the clause editor (`parseScanFilter`) is the only
+  input that can say `OR`, `NOT` or a group. `ScanFilter.asConjunction()` returns null for
+  anything the rows cannot represent, and the panel then **keeps the reader in the editor** —
+  offering "use the form" for `a = 1 OR b = 2` would have to drop the `OR`, and a control that
+  silently discards half of what was typed is worse than no control. The clause's text is local
+  state seeded when the editor opens, never re-derived from the filter per keystroke: rendering it
+  each frame would rewrite `a=1` to `a = 1` under the cursor. It is pushed out only when it
+  parses, so a half-typed clause leaves the last good verdicts on screen instead of clearing them.
+  A parse failure carries the **offset**, and the panel shows a word-snapped window around it —
+  the first version cut at a fixed offset and produced `…D name =`, the tail of `AND` reading as a
+  word of its own. **Literals stay text in the parser**: `2024-03-05` is a date to one column and a
+  string to another, and only the artifact being evaluated knows which, so `parseLiteral` stays the
+  one place a literal becomes a value
 - **`bucket[N]` prunes on equality, and only because the hash is the writer's own.**
   `BucketTransform` calls `Hashing.murmur3_32_fixed()` — the same Guava function Iceberg's
   `Bucket` transform calls — so nothing here re-derives a hash, and the only thing left to get
@@ -993,7 +1008,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~755 tests across 82 files (544 in :core, 206 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~768 tests across 83 files (556 in :core, 207 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

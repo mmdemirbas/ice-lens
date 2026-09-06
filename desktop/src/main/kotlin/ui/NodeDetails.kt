@@ -41,6 +41,8 @@ import service.PositionalDeleteTally
 import service.SampleRowReader
 import model.DataFile
 import model.statisticsRows
+import model.ScanFilter
+import model.isEmpty
 import model.ComparableSnapshot
 import service.GraphAggregation
 import model.DiffSide
@@ -792,8 +794,8 @@ fun NodeDetailsContent(
     /** Opens every remaining page of a group at once. Defaulted for the same reason. */
     onExpandGroupFully: (GraphNode.GroupNode) -> Unit = {},
     /** The scan filter, and the way to change it. Defaulted so the render tests need no state. */
-    scanPredicates: List<ScanPredicate> = emptyList(),
-    onScanPredicatesChange: (List<ScanPredicate>) -> Unit = {},
+    scanFilter: ScanFilter = ScanFilter.of(emptyList()),
+    onScanFilterChange: (ScanFilter) -> Unit = {},
     /**
      * Which sections are folded. Remembered here rather than held per node, because a reader who
      * folds "Raw metadata.json" away means it for the table, not for the one metadata version
@@ -1017,7 +1019,7 @@ fun NodeDetailsContent(
                         // derivation ledgers. A control nobody scrolls to is a control nobody
                         // has. It costs about eighty dp here while no filter is entered.
                         currentGraph?.let { graph ->
-                            ScanPruningSection(graph, scanPredicates, onScanPredicatesChange)
+                            ScanPruningSection(graph, scanFilter, onScanFilterChange)
                         }
 
                         // Folded, and out of the identity table above, because none of the three
@@ -1634,8 +1636,8 @@ fun NodeDetailsContent(
                         // What the reader's filter did to this one manifest, next to the bounds it
                         // did it with. The table node says how many were skipped; this says why
                         // this one was, which is the question asked from here.
-                        if (scanPredicates.isNotEmpty()) {
-                            val result = evaluatePruning(node.partitionSummaries, scanPredicates)
+                        if (!scanFilter.isEmpty()) {
+                            val result = evaluatePruning(node.partitionSummaries, scanFilter)
                             Section(
                                 if (result.isSkipped) "Scan Pruning — this manifest would be skipped"
                                 else "Scan Pruning — this manifest would be read"

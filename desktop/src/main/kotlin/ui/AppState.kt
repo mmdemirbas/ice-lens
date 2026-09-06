@@ -223,11 +223,11 @@ class AppState(
      * against one table's partition columns, and carrying it across would leave a filter on
      * screen naming columns the new table does not have.
      */
-    var scanPredicates by mutableStateOf<List<ScanPredicate>>(emptyList())
+    var scanFilter by mutableStateOf<ScanFilter>(ScanFilter.of(emptyList()))
         private set
 
-    fun updateScanPredicates(next: List<ScanPredicate>) {
-        scanPredicates = next
+    fun updateScanFilter(next: ScanFilter) {
+        scanFilter = next
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -773,7 +773,7 @@ class AppState(
         // The scan filter names one table's partition columns. Carrying it to another table would
         // leave conditions on screen for columns that table does not have, all reporting that
         // nothing matched them.
-        if (normalizedTablePath != selectedTablePath) scanPredicates = emptyList()
+        if (normalizedTablePath != selectedTablePath) scanFilter = ScanFilter.of(emptyList())
         // "Draw all of it" was consented to for a table whose node count the reader had in front
         // of them. Carrying it to the next table applies that consent to a figure they have not
         // seen, which on a production table is the difference between a graph and a hung window.
