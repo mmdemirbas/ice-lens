@@ -210,4 +210,44 @@ class WorkspaceUtilsTest {
         // found nothing" and "not swept".
         assertTrue("s3://warehouse/db" in scanWorkspace(items).warehouseTables)
     }
+
+    /**
+     * A location in object storage is not a file on this machine, and must not be judged as one.
+     *
+     * `File("s3://warehouse/db").exists()` is false for every bucket that has ever existed, so the
+     * row drew in error red with "(deleted)" beside it from the moment the reader added it — while
+     * the tables underneath it listed and opened perfectly well.
+     */
+    @Test
+    fun `a remote warehouse is not called deleted because it is not a local file`() {
+        val remote = WorkspaceItem.Warehouse("s3://warehouse/db", "db")
+        assertEquals(null, workspaceRootStatus(remote, emptyMap()))
+    }
+
+    @Test
+    fun `a local warehouse that is gone is still called deleted`() {
+        val missing = WorkspaceItem.Warehouse("/nonexistent/warehouse", "warehouse")
+        assertEquals(WorkspaceTableStatus.DELETED, workspaceRootStatus(missing, emptyMap()))
+    }
+
+    @Test
+    fun `a local warehouse that is there claims nothing`() {
+        val dir = kotlin.io.path.createTempDirectory("warehouse-status").toFile()
+        try {
+            assertEquals(null, workspaceRootStatus(WorkspaceItem.Warehouse(dir.absolutePath, "w"), emptyMap()))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    /** A single table's status is the sweep's, and defaults to present when it has not run. */
+    @Test
+    fun `a single table takes the status the sweep gave it`() {
+        val table = WorkspaceItem.SingleTable("s3://warehouse/db/orders", "orders")
+        assertEquals(WorkspaceTableStatus.EXISTING, workspaceRootStatus(table, emptyMap()))
+        assertEquals(
+            WorkspaceTableStatus.DELETED,
+            workspaceRootStatus(table, mapOf(table.path to WorkspaceTableStatus.DELETED)),
+        )
+    }
 }

@@ -419,13 +419,7 @@ fun WorkspacePanel(
                             item = item,
                             isSelected = isSelected,
                             isExpanded = effectivelyExpanded,
-                            status = when {
-                                item is WorkspaceItem.SingleTable ->
-                                    singleTableStatuses[item.path] ?: WorkspaceTableStatus.EXISTING
-                                item is WorkspaceItem.Warehouse && !File(item.path).exists() ->
-                                    WorkspaceTableStatus.DELETED
-                                else -> null
-                            },
+                            status = workspaceRootStatus(item, singleTableStatuses),
                             onToggleExpand = {
                                 onExpandedPathsChange(if (expandedPaths.contains(item.path)) {
                                     expandedPaths - item.path

@@ -153,6 +153,27 @@ fun canonicalWorkspacePath(path: String): String =
     if (StorageLocation.isRemote(path)) path.trim().trimEnd('/')
     else runCatching { File(path).canonicalPath }.getOrElse { File(path).absolutePath }
 
+/**
+ * The status a workspace *root* row draws, or null when nothing is being claimed about it.
+ *
+ * A warehouse used to be called deleted whenever `File(path).exists()` answered false, which is
+ * true of **every** location in object storage: `File("s3://warehouse/db")` is a relative path that
+ * is not there, so a bucket the reader had just added drew in error red with "(deleted)" beside it
+ * for as long as it stayed in the workspace. Whether a remote warehouse is still there is a
+ * question about the store, which only a sweep can ask — so until one has, this claims nothing
+ * rather than claiming the wrong thing.
+ */
+fun workspaceRootStatus(
+    item: WorkspaceItem,
+    singleTableStatuses: Map<String, WorkspaceTableStatus>,
+): WorkspaceTableStatus? = when (item) {
+    is WorkspaceItem.SingleTable -> singleTableStatuses[item.path] ?: WorkspaceTableStatus.EXISTING
+    is WorkspaceItem.Warehouse ->
+        if (StorageLocation.isRemote(item.path)) null
+        else if (!File(item.path).exists()) WorkspaceTableStatus.DELETED
+        else null
+}
+
 fun deduplicateWorkspaceItems(items: List<WorkspaceItem>): List<WorkspaceItem> {
     val seen = mutableSetOf<String>()
     return items.filter { item ->

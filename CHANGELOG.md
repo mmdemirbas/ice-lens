@@ -252,6 +252,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **A remote warehouse was drawn as deleted from the moment it was added.** The workspace row
+  asked `File(path).exists()`, which is false for every location in object storage — `s3://` is not
+  a path on this machine — so a bucket whose tables listed and opened perfectly well sat in the list
+  in error red with "(deleted)" beside it. Whether a remote warehouse is still there is a question
+  about the store, and the row now claims nothing until a sweep has asked it.
 - **A table in object storage could never be seen to change.** `ObjectStorage` caches a directory
   listing per prefix so a graph build is not a round trip per data file, and the fingerprint the
   poll compares is the set of file names under `metadata/` — so the fingerprint was answered from
