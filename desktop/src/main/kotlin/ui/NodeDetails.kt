@@ -1344,9 +1344,16 @@ fun NodeDetailsContent(
                         // which is one row per blob with its field ids resolved to a name. The
                         // column goes first because it is the answer, then the figure — the
                         // WideTable ordering rule, since the panel is narrower than the table.
-                        val statsRows = remember(node.data) { statisticsRows(node.data) }
+                        // The Puffin footers are a DeferredRead on the node: opened on the first
+                        // render of this panel and never again, rather than at graph-build time
+                        // where it would be a file open per metadata version of the table.
+                        val footers = node.statisticsFooters.value.orEmpty()
+                        val statsRows = remember(node.data, footers) {
+                            statisticsRows(node.data) { file -> footers[file.statisticsPath]?.footer }
+                        }
                         CountedSection("Statistics", node.data.statistics.size, "statistics files") {
                             node.data.statistics.forEach { file ->
+                                val read = footers[file.statisticsPath]
                                 DetailTable {
                                     DetailRow("File", fileNameFromPath(file.statisticsPath.orEmpty()))
                                     DetailRow("Snapshot", file.snapshotId?.toString() ?: "N/A")
@@ -1355,15 +1362,48 @@ fun NodeDetailsContent(
                                         "Footer Size",
                                         file.fileFooterSizeInBytes?.let { formatBytes(it) } ?: "N/A",
                                     )
+                                    // Recorded beside read, the same idea as a manifest's tallies:
+                                    // metadata.json holds a copy of the blob list so a planner
+                                    // never opens the file, and that copy is what can go stale.
+                                    DetailRow(
+                                        "Blobs",
+                                        when {
+                                            read?.footer != null ->
+                                                "${file.blobMetadata.size} recorded, " +
+                                                    "${read.footer!!.blobs.size} in the file"
+                                            else -> "${file.blobMetadata.size} recorded, file not read"
+                                        },
+                                    )
+                                    read?.footer?.createdBy?.let { DetailRow("Written By", it) }
+                                    read?.problem?.let {
+                                        // The path is named because the recorded one is usually
+                                        // some other machine's, and a reader told a file is
+                                        // missing needs to know which one was looked at.
+                                        DetailRow("Could Not Open", "${read.localPath}: $it")
+                                    }
                                 }
                             }
                             WideTable(
-                                headers = listOf("Column", "Distinct Values", "Type", "Snapshot", "Sequence"),
+                                headers = listOf(
+                                    "Column", "Distinct Values", "In File", "Type",
+                                    "Size", "Codec", "Snapshot", "Sequence",
+                                ),
                                 rows = statsRows.map { row ->
                                     listOf(
                                         row.column,
                                         row.ndv?.let { formatCount(it) } ?: "N/A",
+                                        // Three states, not two: a file never opened and a file
+                                        // opened without this blob would otherwise read the same,
+                                        // and the second means the table is pointing a planner at
+                                        // statistics that are not there.
+                                        when {
+                                            !row.fileRead -> "not read"
+                                            row.fileNdv == null -> "missing"
+                                            else -> formatCount(row.fileNdv!!)
+                                        },
                                         row.type,
+                                        row.compressedLength?.let { formatBytes(it) } ?: "N/A",
+                                        row.codec ?: "N/A",
                                         row.snapshotId?.toString() ?: "N/A",
                                         row.sequenceNumber?.toString() ?: "N/A",
                                     )
@@ -1373,7 +1413,14 @@ fun NodeDetailsContent(
                                 // snapshot id is 19 digits, and at the first two widths tried both
                                 // wrapped on every row, which doubled the height of the whole table
                                 // to say nothing.
-                                columnWidths = listOf(120.dp, 110.dp, 250.dp, 180.dp, 80.dp),
+                                columnWidths = listOf(
+                                    120.dp, 110.dp, 90.dp, 250.dp, 80.dp, 70.dp, 180.dp, 80.dp,
+                                ),
+                                // Only a row whose file disagreed is coloured. A column bolded on
+                                // every row has spent its emphasis before the exception arrives.
+                                leadCellColors = statsRows.map { row ->
+                                    if (row.agrees == false) colors.error else null
+                                },
                             )
                         }
 

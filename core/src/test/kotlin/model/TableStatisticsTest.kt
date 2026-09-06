@@ -4,6 +4,7 @@ import java.io.File
 import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -80,5 +81,59 @@ class TableStatisticsTest {
     @Test
     fun `a table with no statistics reports none`() {
         assertEquals(emptyList(), statisticsRows(metadataOf("test")))
+    }
+
+    /**
+     * The record in `metadata.json` against the Puffin file it names.
+     *
+     * `metadata.json` carries a *copy* of the blob metadata so a planner never has to open the
+     * file, which is exactly what lets the two drift — a statistics file removed by an
+     * orphan-file cleanup leaves its record behind and nothing on the read path notices. This is
+     * `manifestTallies` one level up: the claim beside the thing claimed about.
+     */
+    @Test
+    fun `the recorded blobs agree with the file's own footer`() {
+        val graph = service.GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/stats").absolutePath)),
+            showRows = false,
+        )
+        val node = graph.nodes.filterIsInstance<GraphNode.MetadataNode>()
+            .first { it.data.statistics.isNotEmpty() }
+        val footers = node.statisticsFooters.value
+        assertNotNull(footers, "the metadata node should offer its statistics footers")
+
+        val footer = footers.values.single()
+        assertEquals(null, footer.problem, "the file is beside the metadata and should open")
+        assertEquals(4, footer.footer?.blobs?.size)
+        assertTrue(
+            footer.footer?.createdBy.orEmpty().contains("Iceberg 1.8.1"),
+            "the footer names its writer, which the record does not: ${footer.footer?.createdBy}",
+        )
+
+        val rows = statisticsRows(node.data) { file -> footers[file.statisticsPath]?.footer }
+        assertTrue(rows.all { it.agrees == true }, "disagreements: ${rows.filter { it.agrees != true }}")
+        assertEquals(listOf(6L, 5L, 3L, 6L), rows.map { it.fileNdv })
+        // Three things only the file knows, so a null here means the footer was never consulted.
+        assertTrue(rows.all { it.codec == "zstd" }, "codecs: ${rows.map { it.codec }}")
+        assertTrue(rows.all { (it.compressedLength ?: 0L) > 0L })
+    }
+
+    /**
+     * A blob the record names and the file does not hold is a disagreement, not an absence.
+     *
+     * The distinction is the whole point of carrying `fileRead`: without it, "the file was never
+     * opened" and "the file was opened and has no such blob" are the same three nulls, and the
+     * second is the one that means the table is pointing a planner at statistics that are gone.
+     */
+    @Test
+    fun `a blob missing from the file reads as a disagreement, not as unread`() {
+        val emptyFooter = PuffinFileMetadata(blobs = emptyList())
+        val rows = statisticsRows(metadata) { emptyFooter }
+        assertTrue(rows.isNotEmpty())
+        assertTrue(rows.all { it.agrees == false }, "a file with no blobs disagrees with all four")
+        assertTrue(rows.all { it.fileNdv == null })
+
+        val unread = statisticsRows(metadata)
+        assertTrue(unread.all { it.agrees == null }, "and a file never opened claims nothing")
     }
 }

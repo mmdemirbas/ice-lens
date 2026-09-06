@@ -148,7 +148,9 @@ object IcebergGraphBuilder {
                     fileName = fileName,
                     data = meta,
                     localPath = metadata.path.toString(),
-                    rawJson = metadata.rawJson
+                    rawJson = metadata.rawJson,
+                    statisticsFooters = if (meta.statistics.isEmpty()) DeferredRead.none()
+                    else DeferredRead.of { readStatisticsFooters(metadata.path, meta) },
                 )
             }
             val tableEdgeId = "e_table_${tableNodeId}_to_$mId"
@@ -731,4 +733,35 @@ object IcebergGraphBuilder {
         0 -> 1 // Data manifest second
         else -> 2
     }
+}
+
+/**
+ * Opens each statistics file a metadata version names, and says what happened to each.
+ *
+ * The path is resolved recorded-first, the same rule a manifest list follows: a table written by
+ * a container records `/wh/...` and a table copied down from object storage records `s3://...`,
+ * and neither is on this machine — the file name against the local metadata directory is what
+ * opens both. A failure is captured rather than thrown, because a statistics file that has been
+ * cleaned up is a thing to *report*, not a reason a metadata panel cannot be drawn.
+ */
+private fun readStatisticsFooters(
+    metadataPath: java.nio.file.Path,
+    metadata: TableMetadata,
+): Map<String, StatisticsFileFooter> {
+    // The metadata *directory*, not the metadata.json: the fallback resolves a recorded path's
+    // last segment against what it is given, so handing it the file produces
+    // `v4.metadata.json/<name>.stats` — a path that is not a directory and never will be. Every
+    // other caller passes `metadataDir` for the same reason.
+    val metadataDir = metadataPath.parent ?: metadataPath
+    return metadata.statistics.mapNotNull { file ->
+        val recorded = file.statisticsPath ?: return@mapNotNull null
+        val (path, resolution) = resolveRecordedOrRelative(metadataDir, recorded)
+        val read = runCatching { PuffinReader.readFooter(path) }
+        recorded to StatisticsFileFooter(
+            localPath = path.toString(),
+            resolution = resolution,
+            footer = read.getOrNull(),
+            problem = read.exceptionOrNull()?.let { it.message ?: it::class.simpleName },
+        )
+    }.toMap()
 }

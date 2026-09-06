@@ -326,6 +326,18 @@ intellij/src/main/kotlin/plugin/
   as its id rather than guessed at. The `ndv` a `apache-datasketches-theta-v1` blob declares is a
   *property string*, and it is the figure a planner uses without opening the sketch — reading the
   sketch itself would need the datasketches library and answers nothing more precise
+- **And the record is shown against the file it describes**, the same rule as `manifestTallies` one
+  level up. `metadata.json` carries a *copy* of the blob metadata so a planner never has to open
+  the `.stats` file, which is precisely what lets the two drift: a statistics file removed by an
+  orphan-file cleanup leaves its record behind and nothing on the read path notices.
+  `MetadataNode.statisticsFooters` is a `DeferredRead` — opened on the first render of that panel,
+  not at build time, where it would be a file open per metadata version of the table — and the
+  path resolves recorded-first like a manifest list's, which is what opens it for a table written
+  at some container's `/wh` or copied down from a bucket. `StatisticsBlobRow.fileRead` is carried
+  rather than inferred from the file-side fields being null, because **"the file was not read" and
+  "the file was read and holds no such blob" would otherwise look identical**, and the second is
+  the one that means the table is pointing a planner at statistics that are gone. The file also
+  answers three things the record cannot: each blob's compressed size, its codec, and `created-by`
 - **Pruning has two stages and they prune on different things.** `evaluateScan` in
   `model/ScanPruning.kt` returns a `ScanPlan` carrying both: a manifest is ruled out by the
   partition summaries its list records, a **file** by the `lower_bounds`/`upper_bounds` it records
@@ -957,7 +969,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~737 tests across 81 files (527 in :core, 205 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~739 tests across 81 files (529 in :core, 205 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

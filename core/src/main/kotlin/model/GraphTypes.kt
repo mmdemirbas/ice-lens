@@ -332,6 +332,15 @@ sealed class GraphNode(
         val data: TableMetadata,
         val localPath: String? = null,
         val rawJson: String? = null,
+        /**
+         * The Puffin footer of each statistics file this metadata names, keyed by recorded path.
+         *
+         * Deferred, and a [DeferredRead] rather than a lambda so it stays out of the node's
+         * identity: a graph is built for every metadata version a table has, and opening every
+         * one's statistics file at build time is a file open per version — a network round trip
+         * each, once the table is in object storage — for a panel that shows one.
+         */
+        val statisticsFooters: DeferredRead<Map<String, StatisticsFileFooter>> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         // 100, not 96. `CardHeightTest`'s stress pass measured this card at exactly 96.0dp of a

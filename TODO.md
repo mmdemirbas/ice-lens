@@ -61,14 +61,11 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   the header layout all have their interesting cases at three. A second branched fixture needs
   docker, same as the row-lineage and statistics-file gaps below.
 
-- **A statistics file's Puffin blobs are recorded, not opened.** `statistics` is typed now and
-  `example/iceberg/default/stats` exercises it (`model/TableStatistics.kt`), so the panel answers
-  distinct-count per column from what `metadata.json` records. What is still not done is opening
-  the `.stats` container itself: its footer lists the same blobs, so the two could be shown against
-  each other the way `manifestTallies` shows a manifest's recorded counts against its entries', and
-  that is the only way a stale record would ever be caught. Reading the *sketch* is a separate and
-  much larger step — it needs the datasketches library and yields no figure the `ndv` property does
-  not already carry.
+- **A statistics blob's sketch is never decoded.** The `.stats` container is opened now and its
+  footer shown against what `metadata.json` records (`model/TableStatistics.kt`), so a stale record
+  or a cleaned-up file is visible. What is not done is reading the theta sketch itself — it needs
+  the datasketches library, and it yields no figure the `ndv` property does not already carry, so
+  the only thing it would add is catching an `ndv` that disagrees with its own sketch.
 - **`partition-statistics` is typed but has never been seen with a value in it.** Iceberg 1.8.1 —
   the version in the fixture image — has no `compute_partition_stats` procedure, so
   `docs/fixtures/stats.sql` cannot produce one and the three modelled fields are written from the

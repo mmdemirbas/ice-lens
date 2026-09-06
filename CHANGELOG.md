@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A statistics file is opened, and its footer shown against what the table records about it.**
+  `metadata.json` carries a copy of the blob metadata so a query planner never has to open the
+  Puffin file — which is exactly what lets the two drift, since a statistics file removed by an
+  orphan-file cleanup leaves its record behind and nothing on the read path notices. The panel now
+  puts the recorded distinct count beside the one in the file, per column, and says which of "not
+  read" and "missing" it is when there is nothing to compare. The file also answers three things
+  the record cannot: each blob's compressed size, its codec, and the writer that produced it.
 - **A table's statistics are read and shown per column.** `statistics` and `partition-statistics`
   in `metadata.json` were untyped and rendered as one JSON blob per cell — invisible, because every
   fixture in the repository carried an empty list for both. They are records now, and the panel
