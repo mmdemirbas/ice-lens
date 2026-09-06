@@ -313,6 +313,19 @@ intellij/src/main/kotlin/plugin/
   for the same reason `manifestTallies` exists: the blob's own CRC-32, and the *manifest's*
   `record_count`, which the spec requires to equal the cardinality and which a scan plans against
   without opening the Puffin file at all. Both are passed in by the builder, not read here.
+- **A statistics file is read as a record, and its blobs are read as rows.** `statistics` and
+  `partition-statistics` in `metadata.json` were `List<JsonElement>` and rendered as one JSON blob
+  per cell, which was invisible because every fixture carried `[]` — `docs/fixtures/stats.sql`
+  exists so they are exercised full. The shape that matters is that the list is *files*, each
+  holding *blobs*, and the question a reader has is about neither: it is "how many distinct values
+  does this column have", which `model/TableStatistics.kt` answers as one row per blob. **A blob's
+  `fields` are field ids resolved against the schema its own snapshot used**, never the table's
+  current one — the same rule that decodes a manifest against the partition spec it records, and
+  for the same reason: a statistics file describes one commit, and a column renamed after it would
+  otherwise put a name against a figure never measured for it. A field no schema names is printed
+  as its id rather than guessed at. The `ndv` a `apache-datasketches-theta-v1` blob declares is a
+  *property string*, and it is the figure a planner uses without opening the sketch — reading the
+  sketch itself would need the datasketches library and answers nothing more precise
 - **Pruning has two stages and they prune on different things.** `evaluateScan` in
   `model/ScanPruning.kt` returns a `ScanPlan` carrying both: a manifest is ruled out by the
   partition summaries its list records, a **file** by the `lower_bounds`/`upper_bounds` it records
@@ -944,7 +957,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~730 tests across 80 files (521 in :core, 204 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~737 tests across 81 files (527 in :core, 205 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1029,6 +1042,7 @@ container invocation and the traps in it:
 | `default/evolved` | `SchemaEvolutionFixtureTest` | three manifest schemas — `int`→`long`, `float`→`double`, a rename and a drop |
 | `default/respec` | `PartitionSpecEvolutionTest` | two partition specs — dropped, rebucketed, `days`→`months` |
 | `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
+| `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
 | `paimon/db.db/test` | `RealTableFixtureTest` | a real Flink/Paimon table |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`

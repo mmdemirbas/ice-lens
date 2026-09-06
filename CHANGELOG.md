@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A table's statistics are read and shown per column.** `statistics` and `partition-statistics`
+  in `metadata.json` were untyped and rendered as one JSON blob per cell — invisible, because every
+  fixture in the repository carried an empty list for both. They are records now, and the panel
+  lists **one row per blob**: the column, its distinct-value count, the sketch that produced it and
+  the commit it describes. A blob names field *ids*, and they are resolved against the schema its
+  own snapshot used rather than the table's current one, so a column renamed after the statistics
+  were computed cannot put its name against a figure never measured for it.
+- `example/iceberg/default/stats` and `docs/fixtures/stats.sql` — a real Spark-written Puffin
+  statistics file. The four distinct counts were predicted from the INSERT statements before the
+  fixture was generated, and Spark's own theta sketches agree with all four.
 
 - **Tables in object storage can be opened directly.** `s3://`, `gs://`, `gcs://` and `r2://` are
   read without copying the table down first, metadata and sample rows alike. This is supplied as a

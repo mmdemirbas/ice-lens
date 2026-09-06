@@ -138,6 +138,26 @@ class InspectorRenderTest {
      * and metadata log are all non-empty — a metadata.json's panel is mostly lists, and a capture
      * taken where the lists are empty checks the identity table and nothing else.
      */
+    /**
+     * The same panel where the statistics list is not empty, which is the only place it can be judged.
+     *
+     * `branched` above is chosen because its refs and logs are non-empty, and by the same rule this
+     * one exists because every other fixture carries `"statistics": []`. The section used to print
+     * one row per *file* with the whole record as a single cell; what has to be readable now is one
+     * row per blob — the column, its distinct count, and the sketch that produced it — which is the
+     * question a reader opened this panel with. Four blobs with four different columns and three
+     * different counts, so a column of identical values cannot pass for a table.
+     */
+    @Test
+    fun `the metadata inspector renders a table's statistics`() {
+        val graph = graphFor("stats")
+        val metadata = graph.nodes.filterIsInstance<GraphNode.MetadataNode>()
+            .filter { it.data.statistics.isNotEmpty() }
+            .maxByOrNull { it.simpleId }
+        assertNotNull(metadata, "the stats fixture should carry a metadata version with statistics")
+        renderInspector(graph, metadata.id, "metadata-node-statistics", height = 5600)
+    }
+
     @Test
     fun `the metadata inspector renders`() {
         val graph = graphFor("branched")

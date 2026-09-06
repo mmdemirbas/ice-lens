@@ -40,6 +40,7 @@ import kotlinx.coroutines.withContext
 import service.PositionalDeleteTally
 import service.SampleRowReader
 import model.DataFile
+import model.statisticsRows
 import model.ComparableSnapshot
 import service.GraphAggregation
 import model.DiffSide
@@ -1337,21 +1338,60 @@ fun NodeDetailsContent(
                             }
                         }
 
+                        // One row per *blob*, not per file. The list in metadata.json is a list of
+                        // files each holding a list of blobs, and neither level is the question a
+                        // reader has: that is "how many distinct values does this column have",
+                        // which is one row per blob with its field ids resolved to a name. The
+                        // column goes first because it is the answer, then the figure — the
+                        // WideTable ordering rule, since the panel is narrower than the table.
+                        val statsRows = remember(node.data) { statisticsRows(node.data) }
                         CountedSection("Statistics", node.data.statistics.size, "statistics files") {
-                            WideTable(
-                                headers = listOf("Index", "Value"),
-                                rows = node.data.statistics.mapIndexed { index, stat ->
-                                    listOf("${index + 1}", normalizeText(stat.toString()))
+                            node.data.statistics.forEach { file ->
+                                DetailTable {
+                                    DetailRow("File", fileNameFromPath(file.statisticsPath.orEmpty()))
+                                    DetailRow("Snapshot", file.snapshotId?.toString() ?: "N/A")
+                                    DetailRow("Size", file.fileSizeInBytes?.let { formatBytes(it) } ?: "N/A")
+                                    DetailRow(
+                                        "Footer Size",
+                                        file.fileFooterSizeInBytes?.let { formatBytes(it) } ?: "N/A",
+                                    )
                                 }
+                            }
+                            WideTable(
+                                headers = listOf("Column", "Distinct Values", "Type", "Snapshot", "Sequence"),
+                                rows = statsRows.map { row ->
+                                    listOf(
+                                        row.column,
+                                        row.ndv?.let { formatCount(it) } ?: "N/A",
+                                        row.type,
+                                        row.snapshotId?.toString() ?: "N/A",
+                                        row.sequenceNumber?.toString() ?: "N/A",
+                                    )
+                                },
+                                // Sized to the longest value each column can hold rather than to
+                                // this fixture: the sketch type is a fixed vocabulary string and a
+                                // snapshot id is 19 digits, and at the first two widths tried both
+                                // wrapped on every row, which doubled the height of the whole table
+                                // to say nothing.
+                                columnWidths = listOf(120.dp, 110.dp, 250.dp, 180.dp, 80.dp),
                             )
                         }
 
-                        CountedSection("Partition Statistics", node.data.partitionStatistics.size, "partition statistics files") {
+                        CountedSection(
+                            "Partition Statistics",
+                            node.data.partitionStatistics.size,
+                            "partition statistics files",
+                        ) {
                             WideTable(
-                                headers = listOf("Index", "Value"),
-                                rows = node.data.partitionStatistics.mapIndexed { index, stat ->
-                                    listOf("${index + 1}", normalizeText(stat.toString()))
-                                }
+                                headers = listOf("File", "Snapshot", "Size"),
+                                rows = node.data.partitionStatistics.map { file ->
+                                    listOf(
+                                        fileNameFromPath(file.statisticsPath.orEmpty()),
+                                        file.snapshotId?.toString() ?: "N/A",
+                                        file.fileSizeInBytes?.let { formatBytes(it) } ?: "N/A",
+                                    )
+                                },
+                                columnWidths = listOf(260.dp, 150.dp, 80.dp),
                             )
                         }
 

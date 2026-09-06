@@ -27,11 +27,61 @@ data class TableMetadata(
     val schemas: List<TableSchema> = emptyList(),
     val refs: Map<String, SnapshotRef> = emptyMap(),
     val snapshots: List<Snapshot> = emptyList(),
-    val statistics: List<JsonElement> = emptyList(),
-    @SerialName("partition-statistics") val partitionStatistics: List<JsonElement> = emptyList(),
+    val statistics: List<StatisticsFile> = emptyList(),
+    @SerialName("partition-statistics") val partitionStatistics: List<PartitionStatisticsFile> = emptyList(),
     @SerialName("snapshot-log") val snapshotLog: List<SnapshotLogEntry> = emptyList(),
     @SerialName("metadata-log") val metadataLog: List<MetadataLogEntry> = emptyList(),
     val properties: Map<String, String> = emptyMap(),
+)
+
+/**
+ * A Puffin file of table statistics, and what `metadata.json` records about it.
+ *
+ * The container is the same format a v3 deletion vector lives in — see `service/PuffinReader.kt` —
+ * so the file this points at holds a footer and one blob per entry in [blobMetadata]. What is here
+ * is the *record* of that file, which a planner reads without opening it: that is the whole point
+ * of copying the blob metadata up into the table's metadata, and it is why the two can disagree.
+ */
+@Serializable
+data class StatisticsFile(
+    @SerialName("snapshot-id") val snapshotId: Long? = null,
+    @SerialName("statistics-path") val statisticsPath: String? = null,
+    @SerialName("file-size-in-bytes") val fileSizeInBytes: Long? = null,
+    @SerialName("file-footer-size-in-bytes") val fileFooterSizeInBytes: Long? = null,
+    @SerialName("key-metadata") val keyMetadata: String? = null,
+    @SerialName("blob-metadata") val blobMetadata: List<BlobMetadata> = emptyList(),
+)
+
+/**
+ * One blob inside a statistics file: what it measures, for which columns, at which commit.
+ *
+ * [fields] are **field ids**, not names, and are resolved against the schema the blob's own
+ * snapshot used — see [statisticsRows]. [properties] is where the answer lives: a
+ * `apache-datasketches-theta-v1` blob carries its distinct count as the string property `ndv`,
+ * which is the figure a cost-based optimiser plans against without opening the sketch.
+ */
+@Serializable
+data class BlobMetadata(
+    val type: String? = null,
+    @SerialName("snapshot-id") val snapshotId: Long? = null,
+    @SerialName("sequence-number") val sequenceNumber: Long? = null,
+    val fields: List<Int> = emptyList(),
+    val properties: Map<String, String> = emptyMap(),
+)
+
+/**
+ * A Puffin file of partition statistics.
+ *
+ * Deliberately thin: no fixture in this repository has one, because the procedure that writes them
+ * does not exist in the Iceberg the fixture image ships (see `docs/fixtures/stats.sql`). The three
+ * fields the spec requires are modelled so the list stops being raw JSON; anything more would be
+ * written against the spec with nothing to check it.
+ */
+@Serializable
+data class PartitionStatisticsFile(
+    @SerialName("snapshot-id") val snapshotId: Long? = null,
+    @SerialName("statistics-path") val statisticsPath: String? = null,
+    @SerialName("file-size-in-bytes") val fileSizeInBytes: Long? = null,
 )
 
 @Serializable
