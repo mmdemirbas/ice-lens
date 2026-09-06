@@ -6,7 +6,7 @@ import model.PaimonManifestFileMeta
 import model.PaimonSchema
 import model.PaimonSnapshot
 import org.slf4j.LoggerFactory
-import java.io.File
+import java.nio.file.Files
 
 private val logger = LoggerFactory.getLogger(PaimonReader::class.java)
 
@@ -19,12 +19,12 @@ object PaimonReader {
     /** Reads a Paimon snapshot JSON file. */
     fun readSnapshot(path: String): PaimonSnapshot {
         logger.debug("Reading Paimon snapshot: {}", path)
-        val file = File(path)
-        if (!file.exists()) {
+        val location = StorageLocation.pathOf(path)
+        if (!Files.exists(location)) {
             logger.error("Paimon snapshot file not found: {}", path)
             throw IllegalArgumentException("File not found: $path")
         }
-        val snapshot = json.decodeFromString(PaimonSnapshot.serializer(), file.readText())
+        val snapshot = json.decodeFromString(PaimonSnapshot.serializer(), Files.readString(location))
         logger.debug("Paimon snapshot read: id={}, schemaId={}, commitKind={}", snapshot.id, snapshot.schemaId, snapshot.commitKind)
         return snapshot
     }
@@ -32,12 +32,12 @@ object PaimonReader {
     /** Reads a Paimon schema JSON file. */
     fun readSchema(path: String): PaimonSchema {
         logger.debug("Reading Paimon schema: {}", path)
-        val file = File(path)
-        if (!file.exists()) {
+        val location = StorageLocation.pathOf(path)
+        if (!Files.exists(location)) {
             logger.error("Paimon schema file not found: {}", path)
             throw IllegalArgumentException("File not found: $path")
         }
-        val schema = json.decodeFromString(PaimonSchema.serializer(), file.readText())
+        val schema = json.decodeFromString(PaimonSchema.serializer(), Files.readString(location))
         logger.debug("Paimon schema read: id={}, fields={}", schema.id, schema.fields.size)
         return schema
     }

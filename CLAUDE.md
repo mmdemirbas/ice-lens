@@ -424,6 +424,18 @@ desktop/src/main/kotlin/
   pass rather than being the one kind exempt from the page size. The second pass can only touch
   rows — every other kind is already at or below the page size, and a `GroupNode` has no
   `aggregationKind()`, so it never becomes a member of anything
+- **Every read opens through `StorageLocation.pathOf`, and nothing in core names `java.io.File`.**
+  A `File` can only ever be a file on this machine's disk, so every reader that built one — the
+  Avro reader, both JSON readers, the Puffin reader, the format detector — was a place a table in
+  object storage could not reach. `Paths.get(URI)` dispatches to whichever `FileSystemProvider`
+  claims the scheme, so the same call opens a local path today and a remote one as soon as a
+  provider is installed, and no reader has to know which it got. The trap the type exists to close
+  is that **`Path.of("s3://bucket/key")` does not fail**: it yields a *relative* path whose first
+  segment is `s3:`, which then reports "not found" against the working directory — a wrong answer
+  wearing a plausible message. `pathOf` throws `UnsupportedLocationException` naming the scheme
+  instead. Avro needed one more piece: `DataFileReader` seeks, and Avro ships adapters for exactly
+  a `java.io.File` and a `ByteArray`, so `AvroReader.ChannelInput` adapts its `SeekableInput` to
+  the `SeekableByteChannel` that `Files.newByteChannel` returns for *any* filesystem
 - `formatCount` / `formatBytes` / `formatBytesExact` live in `ui/FormatUtils.kt` — do not add
   private copies to a UI file. Byte units are binary and labelled as such (KiB, not KB)
 - **A `GraphNode`'s declared width/height is what ELK reserves, and Compose clips nothing.** A

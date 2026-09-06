@@ -3,9 +3,10 @@ package service
 import kotlinx.serialization.json.Json
 import model.DeletionVector
 import model.PuffinFileMetadata
-import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.channels.SeekableByteChannel
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.zip.CRC32
 
@@ -57,20 +58,20 @@ object PuffinReader {
      * to a large table is not something to read front to back for its table of contents.
      */
     fun readFooter(path: Path): PuffinFileMetadata {
-        RandomAccessFile(path.toFile(), "r").use { file ->
-            val size = file.length()
+        Files.newByteChannel(path).use { file ->
+            val size = file.size()
             if (size < 4L + 4 + 4 + 4 + 4) {
                 throw PuffinFormatException("$size bytes is too short to be a Puffin file")
             }
 
-            val head = ByteArray(4).also { file.readFully(it) }
+            val head = file.readFully(4)
             if (!head.contentEquals(MAGIC)) {
                 throw PuffinFormatException("does not start with the Puffin magic PFA1")
             }
 
             // Footer: Magic | FooterPayload | FooterPayloadSize (4, LE) | Flags (4) | Magic
-            file.seek(size - 12)
-            val tail = ByteArray(12).also { file.readFully(it) }
+            file.position(size - 12)
+            val tail = file.readFully(12)
             val buffer = ByteBuffer.wrap(tail).order(ByteOrder.LITTLE_ENDIAN)
             val payloadSize = buffer.getInt()
             val flags = ByteArray(4).also { buffer.get(it) }
@@ -87,8 +88,8 @@ object PuffinReader {
                 throw PuffinFormatException("the footer is LZ4-compressed, which this reader does not decompress")
             }
 
-            file.seek(size - 12 - payloadSize)
-            val payload = ByteArray(payloadSize).also { file.readFully(it) }
+            file.position(size - 12 - payloadSize)
+            val payload = file.readFully(payloadSize)
             return runCatching { json.decodeFromString<PuffinFileMetadata>(payload.decodeToString()) }
                 .getOrElse { throw PuffinFormatException("the footer is not readable as Puffin JSON: ${it.message}") }
         }
@@ -113,13 +114,12 @@ object PuffinReader {
         recordedCardinality: Long? = null,
     ): DeletionVector {
         if (length < 12) throw PuffinFormatException("a $length-byte blob is too short to hold a vector")
-        val blob = ByteArray(length.toInt())
-        RandomAccessFile(path.toFile(), "r").use { file ->
-            if (offset < 0 || offset + length > file.length()) {
-                throw PuffinFormatException("blob at $offset+$length lies outside a ${file.length()}-byte file")
+        val blob = Files.newByteChannel(path).use { file ->
+            if (offset < 0 || offset + length > file.size()) {
+                throw PuffinFormatException("blob at $offset+$length lies outside a ${file.size()}-byte file")
             }
-            file.seek(offset)
-            file.readFully(blob)
+            file.position(offset)
+            file.readFully(length.toInt())
         }
         return decodeDeletionVector(blob, referencedDataFile, recordedCardinality)
     }
@@ -255,5 +255,23 @@ object PuffinReader {
             }
         }
         check(buffer.position() > start) { "a Roaring bitmap consumed no bytes" }
+    }
+
+    /**
+     * Exactly [count] bytes from the channel's current position, or a format error.
+     *
+     * A channel read is allowed to return fewer bytes than asked for without being at the end of
+     * the file — which `RandomAccessFile.readFully` hid, and which a single `read` would turn into
+     * a short buffer this decoder would then read as a malformed Puffin file. Looping until the
+     * buffer is full is what makes the two equivalent.
+     */
+    private fun SeekableByteChannel.readFully(count: Int): ByteArray {
+        val buffer = ByteBuffer.allocate(count)
+        while (buffer.hasRemaining()) {
+            if (read(buffer) < 0) {
+                throw PuffinFormatException("the file ended ${buffer.remaining()} bytes before a $count-byte read finished")
+            }
+        }
+        return buffer.array()
     }
 }

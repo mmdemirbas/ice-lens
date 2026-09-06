@@ -9,14 +9,33 @@ import org.apache.avro.file.DataFileReader
 import org.apache.avro.generic.GenericDatumReader
 import org.apache.avro.generic.GenericRecord
 import org.slf4j.LoggerFactory
-import java.io.File
-import java.net.URI
+import java.nio.ByteBuffer
+import java.nio.channels.SeekableByteChannel
+import java.nio.file.Files
 
 /** Shared Avro file reader for any `@Serializable` data class. */
 object AvroReader {
 
     @PublishedApi internal val logger = LoggerFactory.getLogger(AvroReader::class.java)
-    @PublishedApi internal val URI_SCHEME_PATTERN = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:.*")
+
+    /**
+     * Avro's own random-access abstraction, over any NIO channel.
+     *
+     * `DataFileReader` needs to seek — an Avro file's schema is in its header and its sync markers
+     * are scattered through it — and Avro ships adapters for exactly two sources, a
+     * [java.io.File] and a `ByteArray`. Neither can name a file that is not on this machine's
+     * disk. A [SeekableByteChannel] is what `Files.newByteChannel` returns for *any* filesystem,
+     * so this adapter is what lets one reader serve both a local manifest and a remote one.
+     */
+    @PublishedApi
+    internal class ChannelInput(private val channel: SeekableByteChannel) : org.apache.avro.file.SeekableInput {
+        override fun seek(position: Long) { channel.position(position) }
+        override fun tell(): Long = channel.position()
+        override fun length(): Long = channel.size()
+        override fun read(bytes: ByteArray, offset: Int, length: Int): Int =
+            channel.read(ByteBuffer.wrap(bytes, offset, length))
+        override fun close() { channel.close() }
+    }
 
     /**
      * Result of reading an Avro file: decoded entries, per-record errors, and the file's own
@@ -93,16 +112,11 @@ object AvroReader {
         decode: (GenericRecord) -> R,
     ): ReadResult<R> {
         logger.debug("Reading Avro file: {} (type={})", localPath, typeName)
-        val file = when {
-            localPath.startsWith("file:") -> File(URI(localPath))
-            localPath.matches(URI_SCHEME_PATTERN) -> {
-                logger.error("Unsupported URI scheme in Avro path: {}", localPath)
-                throw IllegalArgumentException("Unsupported URI scheme in path: $localPath")
-            }
-            else -> File(localPath)
-        }
+        val path = StorageLocation.pathOf(localPath)
 
-        return DataFileReader(file, GenericDatumReader<GenericRecord>()).use { reader ->
+        return DataFileReader(
+            ChannelInput(Files.newByteChannel(path)), GenericDatumReader<GenericRecord>(),
+        ).use { reader ->
             val entries = mutableListOf<R>()
             val errors = mutableListOf<ReadError>()
             var rowIndex = 0

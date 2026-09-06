@@ -195,7 +195,7 @@ private fun readManifestList(
     // Paimon stores manifest lists in the manifest/ subdirectory.
     // Snapshot JSON contains just the filename — resolve under manifest/.
     val manifestDir = tablePath.resolve("manifest")
-    val resolvedPath = if (manifestDir.resolve(manifestListPath).toFile().exists()) {
+    val resolvedPath = if (Files.exists(manifestDir.resolve(manifestListPath))) {
         manifestDir.resolve(manifestListPath)
     } else {
         // Fallback: resolve directly from table root (for non-standard layouts)

@@ -439,7 +439,7 @@ class AppState(
     /** Creates the appropriate format-specific table model for a table path. */
     private fun loadTableModel(tablePath: String): FormatTableModel {
         val path = Paths.get(tablePath)
-        return when (TableFormatDetector.detect(path.toFile())) {
+        return when (TableFormatDetector.detect(path)) {
             TableFormat.PAIMON -> PaimonUnifiedTableModel(path)
             else -> UnifiedTableModel(path)
         }

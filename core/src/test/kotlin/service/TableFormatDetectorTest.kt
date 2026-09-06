@@ -16,8 +16,8 @@ class TableFormatDetectorTest {
         metaDir.mkdirs()
         File(metaDir, "v1.metadata.json").writeText("{}")
         try {
-            assertEquals(TableFormat.ICEBERG, TableFormatDetector.detect(dir))
-            assertTrue(TableFormatDetector.isIcebergTable(dir))
+            assertEquals(TableFormat.ICEBERG, TableFormatDetector.detect(dir.toPath()))
+            assertTrue(TableFormatDetector.isIcebergTable(dir.toPath()))
         } finally {
             dir.deleteRecursively()
         }
@@ -27,8 +27,8 @@ class TableFormatDetectorTest {
     fun `detect returns UNKNOWN for empty directory`() {
         val dir = createTempDirectory("empty").toFile()
         try {
-            assertEquals(TableFormat.UNKNOWN, TableFormatDetector.detect(dir))
-            assertFalse(TableFormatDetector.isIcebergTable(dir))
+            assertEquals(TableFormat.UNKNOWN, TableFormatDetector.detect(dir.toPath()))
+            assertFalse(TableFormatDetector.isIcebergTable(dir.toPath()))
         } finally {
             dir.deleteRecursively()
         }
@@ -41,7 +41,7 @@ class TableFormatDetectorTest {
         metaDir.mkdirs()
         File(metaDir, "manifest.avro").writeText("")
         try {
-            assertEquals(TableFormat.UNKNOWN, TableFormatDetector.detect(dir))
+            assertEquals(TableFormat.UNKNOWN, TableFormatDetector.detect(dir.toPath()))
         } finally {
             dir.deleteRecursively()
         }
@@ -51,7 +51,7 @@ class TableFormatDetectorTest {
     fun `detect returns UNKNOWN for non-directory`() {
         val file = File.createTempFile("test", ".txt")
         file.deleteOnExit()
-        assertEquals(TableFormat.UNKNOWN, TableFormatDetector.detect(file))
+        assertEquals(TableFormat.UNKNOWN, TableFormatDetector.detect(file.toPath()))
     }
 
     @Test
@@ -60,9 +60,9 @@ class TableFormatDetectorTest {
         File(dir, "snapshot").mkdirs()
         File(dir, "schema").mkdirs()
         try {
-            assertEquals(TableFormat.PAIMON, TableFormatDetector.detect(dir))
-            assertTrue(TableFormatDetector.isPaimonTable(dir))
-            assertFalse(TableFormatDetector.isIcebergTable(dir))
+            assertEquals(TableFormat.PAIMON, TableFormatDetector.detect(dir.toPath()))
+            assertTrue(TableFormatDetector.isPaimonTable(dir.toPath()))
+            assertFalse(TableFormatDetector.isIcebergTable(dir.toPath()))
         } finally {
             dir.deleteRecursively()
         }
@@ -73,8 +73,8 @@ class TableFormatDetectorTest {
         val dir = createTempDirectory("half-paimon").toFile()
         File(dir, "snapshot").mkdirs()
         try {
-            assertFalse(TableFormatDetector.isPaimonTable(dir))
-            assertEquals(TableFormat.UNKNOWN, TableFormatDetector.detect(dir))
+            assertFalse(TableFormatDetector.isPaimonTable(dir.toPath()))
+            assertEquals(TableFormat.UNKNOWN, TableFormatDetector.detect(dir.toPath()))
         } finally {
             dir.deleteRecursively()
         }
@@ -85,7 +85,7 @@ class TableFormatDetectorTest {
         val dir = createTempDirectory("half-paimon2").toFile()
         File(dir, "schema").mkdirs()
         try {
-            assertFalse(TableFormatDetector.isPaimonTable(dir))
+            assertFalse(TableFormatDetector.isPaimonTable(dir.toPath()))
         } finally {
             dir.deleteRecursively()
         }
@@ -100,7 +100,7 @@ class TableFormatDetectorTest {
         File(dir, "snapshot").mkdirs()
         File(dir, "schema").mkdirs()
         try {
-            assertEquals(TableFormat.ICEBERG, TableFormatDetector.detect(dir))
+            assertEquals(TableFormat.ICEBERG, TableFormatDetector.detect(dir.toPath()))
         } finally {
             dir.deleteRecursively()
         }

@@ -2,7 +2,7 @@ package service
 
 import model.*
 import org.slf4j.LoggerFactory
-import java.io.File
+import java.nio.file.Files
 import java.util.UUID
 
 private val logger = LoggerFactory.getLogger(PaimonGraphBuilder::class.java)
@@ -250,7 +250,7 @@ object PaimonGraphBuilder {
         dataFile: PaimonUnifiedDataFile,
         simpleId: Int,
     ): () -> List<GraphNode.RowNode> = {
-        if (!File(dataFile.path.toString()).exists()) {
+        if (!Files.exists(dataFile.path)) {
             emptyList()
         } else {
             (0 until MAX_ROWS_PER_FILE).map { rowIndex ->

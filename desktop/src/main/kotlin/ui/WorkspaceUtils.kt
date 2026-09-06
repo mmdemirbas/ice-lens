@@ -9,7 +9,7 @@ import java.io.File
 
 private val logger = LoggerFactory.getLogger("ui.WorkspaceUtils")
 
-fun isTableDirectory(dir: File): Boolean = TableFormatDetector.detect(dir) != TableFormat.UNKNOWN
+fun isTableDirectory(dir: File): Boolean = TableFormatDetector.detect(dir.toPath()) != TableFormat.UNKNOWN
 
 /**
  * Recursively scans [warehouseDir] for table directories (Iceberg or Paimon).
@@ -39,7 +39,7 @@ fun scanForTables(warehouseDir: File, maxDepth: Int = 50): List<String> {
         if (!visited.add(canonical)) return
         directoriesScanned++
 
-        if (TableFormatDetector.detect(dir) != TableFormat.UNKNOWN) {
+        if (TableFormatDetector.detect(dir.toPath()) != TableFormat.UNKNOWN) {
             tables.add(relativePath)
             return // don't recurse into table directories
         }
@@ -97,7 +97,7 @@ fun chooseDirectory(initialDir: File?): File? {
 }
 
 /** Returns a short badge label for the detected table format, or null if unknown. */
-fun formatBadgeLabel(dir: File): String? = when (TableFormatDetector.detect(dir)) {
+fun formatBadgeLabel(dir: File): String? = when (TableFormatDetector.detect(dir.toPath())) {
     TableFormat.ICEBERG -> "ICE"
     TableFormat.PAIMON -> "PMN"
     TableFormat.UNKNOWN -> null

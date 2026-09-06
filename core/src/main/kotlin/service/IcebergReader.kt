@@ -7,8 +7,8 @@ import model.TableMetadata
 import org.apache.avro.generic.GenericFixed
 import org.apache.avro.generic.GenericRecord
 import org.slf4j.LoggerFactory
-import java.io.File
 import java.nio.ByteBuffer
+import java.nio.file.Files
 
 private val logger = LoggerFactory.getLogger(IcebergReader::class.java)
 
@@ -17,12 +17,12 @@ object IcebergReader {
 
     fun readTableMetadata(localPath: String): TableMetadata {
         logger.debug("Reading Iceberg metadata: {}", localPath)
-        val file = File(localPath)
-        if (!file.exists()) {
+        val path = StorageLocation.pathOf(localPath)
+        if (!Files.exists(path)) {
             logger.error("Iceberg metadata file not found: {}", localPath)
             throw IllegalArgumentException("File not found: $localPath")
         }
-        val metadata = json.decodeFromString(TableMetadata.serializer(), file.readText())
+        val metadata = json.decodeFromString(TableMetadata.serializer(), Files.readString(path))
         logger.debug("Iceberg metadata read: formatVersion={}, snapshots={}", metadata.formatVersion, metadata.snapshots?.size ?: 0)
         return metadata
     }

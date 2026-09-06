@@ -1,7 +1,9 @@
 package service
 
 import org.slf4j.LoggerFactory
-import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlin.streams.asSequence
 
 private val logger = LoggerFactory.getLogger(TableFormatDetector::class.java)
 
@@ -22,8 +24,8 @@ enum class TableFormat {
 object TableFormatDetector {
 
     /** Returns the detected [TableFormat] for the given directory. */
-    fun detect(dir: File): TableFormat {
-        if (!dir.isDirectory) return TableFormat.UNKNOWN
+    fun detect(dir: Path): TableFormat {
+        if (!Files.isDirectory(dir)) return TableFormat.UNKNOWN
         val format = when {
             isIcebergTable(dir) -> TableFormat.ICEBERG
             isPaimonTable(dir) -> TableFormat.PAIMON
@@ -36,18 +38,19 @@ object TableFormatDetector {
     }
 
     /** Checks whether the given directory is an Iceberg table. */
-    fun isIcebergTable(dir: File): Boolean {
-        val metaDir = File(dir, "metadata")
-        return metaDir.exists() && metaDir.isDirectory && metaDir.listFiles { f ->
-            f.name.endsWith(".metadata.json")
-        }?.isNotEmpty() == true
+    fun isIcebergTable(dir: Path): Boolean {
+        val metaDir = dir.resolve("metadata")
+        if (!Files.isDirectory(metaDir)) return false
+        // A listing is a network round trip once the directory is in object storage, so this stops
+        // at the first match rather than materialising every metadata version of the table.
+        return runCatching {
+            Files.list(metaDir).use { entries ->
+                entries.asSequence().any { it.fileName.toString().endsWith(".metadata.json") }
+            }
+        }.getOrDefault(false)
     }
 
     /** Checks whether the given directory is a Paimon table (has `snapshot/` + `schema/` dirs). */
-    fun isPaimonTable(dir: File): Boolean {
-        val snapshotDir = File(dir, "snapshot")
-        val schemaDir = File(dir, "schema")
-        return snapshotDir.exists() && snapshotDir.isDirectory &&
-            schemaDir.exists() && schemaDir.isDirectory
-    }
+    fun isPaimonTable(dir: Path): Boolean =
+        Files.isDirectory(dir.resolve("snapshot")) && Files.isDirectory(dir.resolve("schema"))
 }
