@@ -252,6 +252,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **A table in object storage could never be seen to change.** `ObjectStorage` caches a directory
+  listing per prefix so a graph build is not a round trip per data file, and the fingerprint the
+  poll compares is the set of file names under `metadata/` — so the fingerprint was answered from
+  the cache and returned the same value forever, whatever was committed to the table. Nothing
+  cleared those caches when a table was opened either, so an explicit reload re-decoded the
+  metadata the table used to have. `ObjectStorage.invalidate(prefix)` now drops both the listings
+  and the bytes under a prefix, and the fingerprint invalidates the three prefixes it is about
+  before listing them. The regression test writes a second object through DuckDB and asserts both
+  directions — still stale without the invalidation, current with it.
+- **Remote roots are polled on their own cadence.** The workspace sweep and the open table's
+  fingerprint ran every three seconds, which for a remote warehouse is two recursive globs against
+  a store that bills per request — 1,200 requests an hour per root for a table nobody is committing
+  to. Remote work now runs every 30 seconds (`REMOTE_POLL_INTERVAL_MS`); local roots keep the
+  three-second cadence, since a local check is a `stat` against a warm page cache. A sweep that
+  skips the remote roots omits them rather than reporting them empty, so a warehouse is never
+  briefly emptied on screen.
 - **The workspace poll no longer freezes the window every three seconds.** `refreshWarehouseTables`
   walked every warehouse directory tree on the main thread, on a three-second timer. Measured on a
   warm cache and a local disk: 19ms at 200 tables, 90ms at 1,000, and 226ms at the 10,000-directory

@@ -28,6 +28,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import model.*
+import service.StorageLocation
 import java.io.File
 import java.util.prefs.Preferences
 
@@ -925,16 +926,28 @@ fun App() {
         state.persistSnapshotFilter()
     }
 
+    // Has the open table changed under us? Asked on two cadences, because the question costs two
+    // very different amounts: a local table is a `stat`, and a remote one is a LIST against a store
+    // that bills per request — see REMOTE_POLL_INTERVAL_MS.
     LaunchedEffect(state.selectedTablePath, state.showRows) {
+        var lastRemoteCheck = 0L
         while (isActive) {
             val tablePath = state.selectedTablePath
             if (tablePath != null && !state.isLoadingTable) {
-                val cacheKey = "$tablePath-rows_${state.showRows}"
-                val session = state.sessionCache[cacheKey]
-                if (session != null) {
-                    val currentFingerprint = withContext(Dispatchers.Default) { state.computeTableFingerprint(tablePath) }
-                    if (currentFingerprint != session.fingerprint) {
-                        state.reloadCurrentTableFromFilesystem(preserveLayout = true)
+                val remote = StorageLocation.isRemote(tablePath)
+                val now = System.currentTimeMillis()
+                val due = !remote || now - lastRemoteCheck >= REMOTE_POLL_INTERVAL_MS
+                if (due) {
+                    if (remote) lastRemoteCheck = now
+                    val cacheKey = "$tablePath-rows_${state.showRows}"
+                    val session = state.sessionCache[cacheKey]
+                    if (session != null) {
+                        val currentFingerprint = withContext(Dispatchers.IO) {
+                            state.computeTableFingerprint(tablePath)
+                        }
+                        if (currentFingerprint != session.fingerprint) {
+                            state.reloadCurrentTableFromFilesystem(preserveLayout = true)
+                        }
                     }
                 }
             }
@@ -957,9 +970,16 @@ fun App() {
         // are read on this thread and passed in, because Compose state must not be read from the
         // dispatcher; the result is keyed by path so it folds into whatever the list holds by the
         // time it lands.
+        // A remote root is swept on the slower cadence: it is two recursive globs over the whole
+        // warehouse, not a directory walk. `scanWorkspace` omits those roots when it is not their
+        // turn, and `applyWorkspaceScan` already leaves a root it did not see exactly as it was.
+        var lastRemoteSweep = 0L
         while (isActive) {
             val roots = state.workspaceItems
-            val scan = withContext(Dispatchers.IO) { scanWorkspace(roots) }
+            val now = System.currentTimeMillis()
+            val sweepRemote = now - lastRemoteSweep >= REMOTE_POLL_INTERVAL_MS
+            if (sweepRemote) lastRemoteSweep = now
+            val scan = withContext(Dispatchers.IO) { scanWorkspace(roots, includeRemote = sweepRemote) }
             state.applyWorkspaceScan(scan)
             delay(FILESYSTEM_POLL_INTERVAL_MS)
         }

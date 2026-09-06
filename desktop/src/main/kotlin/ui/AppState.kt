@@ -566,6 +566,12 @@ class AppState(
      */
     private fun remoteTableFingerprint(tablePath: String): String {
         val root = tablePath.trimEnd('/')
+        // A real read, every time. The whole job of a fingerprint is to notice that the store
+        // changed, and `ObjectStorage` caches a listing per prefix — so served from that cache this
+        // would return whatever the first read produced, forever, and a remote table would never
+        // reload. The cost of that honesty is a LIST per call, which is why the callers space these
+        // out (REMOTE_POLL_INTERVAL_MS) rather than asking on the local table's three-second timer.
+        listOf("metadata", "snapshot", "schema").forEach { ObjectStorage.invalidate("$root/$it") }
         val names = runCatching {
             ObjectStorage.list("$root/metadata")
                 .filter { it.name.endsWith(".metadata.json") || it.name == "version-hint.text" }

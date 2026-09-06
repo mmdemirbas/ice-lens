@@ -1,5 +1,6 @@
 package ui
 
+import java.io.File
 import model.WorkspaceItem
 import model.WorkspaceTableStatus
 import kotlin.test.Test
@@ -153,5 +154,60 @@ class WorkspaceUtilsTest {
     fun `scanForTables returns empty for non-existent directory`() {
         val tables = scanForTables(java.io.File("/nonexistent/path"))
         assertEquals(emptyList(), tables)
+    }
+
+    /**
+     * A remote root can be left out of a sweep, and leaving it out is not the same as finding it
+     * empty.
+     *
+     * A local warehouse is a directory walk against a warm page cache. A remote one is two
+     * recursive globs against object storage — on the three-second timer that is a request every
+     * three seconds for as long as the window is open, against a store that bills per request. So
+     * remote roots are swept on a slower cadence, and this is the mechanism: they are **omitted**
+     * from both maps, which the fold already reads as "not covered" and leaves alone.
+     */
+    @Test
+    fun `a sweep can skip remote roots, and omits them rather than reporting them empty`() {
+        val local = kotlin.io.path.createTempDirectory("ws-local").toFile()
+        try {
+            File(local, "t/metadata").mkdirs()
+            File(local, "t/metadata/v1.metadata.json").writeText("{}")
+            val items = listOf(
+                WorkspaceItem.Warehouse(local.absolutePath, local.name),
+                WorkspaceItem.Warehouse("s3://warehouse/db", "db"),
+                WorkspaceItem.SingleTable("s3://warehouse/db/orders", "orders"),
+            )
+
+            val skipped = scanWorkspace(items, includeRemote = false)
+            assertTrue(
+                "s3://warehouse/db" !in skipped.warehouseTables,
+                "a skipped remote root must be absent, not present-and-empty — present-and-empty " +
+                    "is what would blank a warehouse full of tables",
+            )
+            assertTrue("s3://warehouse/db/orders" !in skipped.singleTableExists)
+            assertTrue(
+                local.absolutePath in skipped.warehouseTables,
+                "the local root is on the fast cadence and must still be swept",
+            )
+            assertEquals(listOf("t"), skipped.warehouseTables.getValue(local.absolutePath))
+        } finally {
+            local.deleteRecursively()
+        }
+    }
+
+    /**
+     * The default still covers everything, so nothing had to change at the other call sites.
+     *
+     * `refreshWarehouseTables()` and the tests that predate the cadence both call the one-argument
+     * form, and a default that quietly skipped remote roots would make an explicit refresh not
+     * refresh the roots the reader most likely pressed it for.
+     */
+    @Test
+    fun `the default sweep covers remote roots`() {
+        val items = listOf(WorkspaceItem.Warehouse("s3://warehouse/db", "db"))
+        // No credentials are configured here, so the glob fails and the scan reports no tables —
+        // what matters is that the key is *present*, which is the difference between "swept and
+        // found nothing" and "not swept".
+        assertTrue("s3://warehouse/db" in scanWorkspace(items).warehouseTables)
     }
 }

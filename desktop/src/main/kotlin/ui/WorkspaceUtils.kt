@@ -182,6 +182,12 @@ fun initialWarehouseTableStatuses(items: List<WorkspaceItem>): Map<String, Map<S
  * A path missing from either map is one the sweep did not cover, which is what a root added while
  * it was running looks like. The caller leaves such a root exactly as it is rather than guessing;
  * the next poll covers it.
+ *
+ * **That "not covered" rule is what lets a remote root be swept on a slower cadence.** A local
+ * warehouse is a directory walk against a warm page cache; a remote one is two recursive globs
+ * against object storage, and on the three-second timer that is a request every three seconds for
+ * as long as the window is open — against a store that bills per request. `includeRemote = false`
+ * omits those roots from both maps, and the existing rule then leaves them exactly as they were.
  */
 data class WorkspaceScan(
     /** Warehouse path → the table paths under it, relative to the warehouse and sorted. */
@@ -195,15 +201,20 @@ data class WorkspaceScan(
  * thread — and it takes the roots as a parameter rather than reading them, because reading Compose
  * state from a background dispatcher is the bug this is meant to avoid, not one to introduce.
  */
-fun scanWorkspace(items: List<WorkspaceItem>): WorkspaceScan = WorkspaceScan(
-    warehouseTables = items.filterIsInstance<WorkspaceItem.Warehouse>()
-        .associate { it.path to scanForTablesAt(it.path) },
-    singleTableExists = items.filterIsInstance<WorkspaceItem.SingleTable>()
-        .associate { table ->
-            table.path to if (StorageLocation.isRemote(table.path)) isTableLocation(table.path)
-            else File(table.path).let { dir -> dir.exists() && dir.isDirectory && isTableDirectory(dir) }
-        },
-)
+fun scanWorkspace(items: List<WorkspaceItem>, includeRemote: Boolean = true): WorkspaceScan {
+    fun covered(path: String) = includeRemote || !StorageLocation.isRemote(path)
+    return WorkspaceScan(
+        warehouseTables = items.filterIsInstance<WorkspaceItem.Warehouse>()
+            .filter { covered(it.path) }
+            .associate { it.path to scanForTablesAt(it.path) },
+        singleTableExists = items.filterIsInstance<WorkspaceItem.SingleTable>()
+            .filter { covered(it.path) }
+            .associate { table ->
+                table.path to if (StorageLocation.isRemote(table.path)) isTableLocation(table.path)
+                else File(table.path).let { dir -> dir.exists() && dir.isDirectory && isTableDirectory(dir) }
+            },
+    )
+}
 
 /**
  * The status a single table carries after a sweep saw it — or did not.

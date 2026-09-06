@@ -10,6 +10,20 @@ const val TOOLTIP_DELAY_MS = 500
 const val ERROR_AUTO_DISMISS_MS = 8000L
 const val MAX_UNDO_DEPTH = 20
 const val FILESYSTEM_POLL_INTERVAL_MS = 3000L
+
+/**
+ * How often a location in object storage is re-checked.
+ *
+ * Ten times the local interval, because the two cost nothing alike. A local check is a `stat`
+ * against a warm page cache; a remote one is a LIST against a store that bills per request and
+ * answers in tens to hundreds of milliseconds. On the three-second timer that is 1,200 requests an
+ * hour per remote root for a table nobody is committing to — which is a bill, not a refresh.
+ *
+ * Thirty seconds is the compromise: a commit made elsewhere still appears without the reader doing
+ * anything, and the standing cost of leaving the window open is small. An explicit reload does not
+ * wait for it.
+ */
+const val REMOTE_POLL_INTERVAL_MS = 30_000L
 const val MIN_ZOOM = 0.1f
 const val MAX_ZOOM = 3f
 

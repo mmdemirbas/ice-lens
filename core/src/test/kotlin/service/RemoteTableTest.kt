@@ -191,6 +191,69 @@ class RemoteTableTest {
     }
 
     /**
+     * A table that gains a file is seen to have gained one — which the caches would otherwise hide.
+     *
+     * This is the regression test for the defect the caches introduced. `ObjectStorage` keeps a
+     * listing per prefix so that building a graph is not a round trip per artifact; served from
+     * that cache, the fingerprint the app watches for change is frozen at whatever the first read
+     * produced, and a remote table would never reload no matter how many commits it received.
+     *
+     * The store is made to change for real — DuckDB writes a new object through the same httpfs
+     * connection — so the assertion is about the store and not about a stub. Both directions are
+     * checked, because only the pair says the invalidation is what did it: the stale listing must
+     * still be stale before `invalidate`, and current after.
+     */
+    @Test
+    fun `a new object is invisible until the prefix is invalidated, and visible after`() {
+        requireLab()
+        // A scratch prefix, so the shared fixture the other tests read is not written to.
+        val probe = "s3://warehouse/probe-${System.nanoTime()}"
+        DuckDb.withConnection { conn ->
+            conn.createStatement().use { it.execute("COPY (SELECT 1 AS n) TO '$probe/metadata/v1.metadata.json'") }
+        }
+
+        val first = ObjectStorage.list("$probe/metadata").map { it.name }
+        assertEquals(listOf("v1.metadata.json"), first, "the object just written should be listed")
+
+        DuckDb.withConnection { conn ->
+            conn.createStatement().use { it.execute("COPY (SELECT 2 AS n) TO '$probe/metadata/v2.metadata.json'") }
+        }
+
+        assertEquals(
+            first, ObjectStorage.list("$probe/metadata").map { it.name },
+            "without invalidation the listing is the cached one — which is exactly why a " +
+                "fingerprint taken from it can never notice a commit",
+        )
+
+        ObjectStorage.invalidate("$probe/metadata")
+        assertEquals(
+            listOf("v1.metadata.json", "v2.metadata.json"),
+            ObjectStorage.list("$probe/metadata").map { it.name }.sorted(),
+            "after invalidation the listing is the store's",
+        )
+    }
+
+    /**
+     * Invalidating one prefix does not throw away the rest of the table.
+     *
+     * The caches are what make a remote table openable at all — a thousand-file table is a thousand
+     * round trips without them — so an invalidation that swept everything would turn every change
+     * check into a full re-read of the table it was only meant to look at the metadata of.
+     */
+    @Test
+    fun `invalidating one prefix leaves its siblings cached`() {
+        requireLab()
+        val metadata = ObjectStorage.list("$remoteRoot/metadata")
+        val data = ObjectStorage.list("$remoteRoot/data")
+        assertTrue(metadata.isNotEmpty() && data.isNotEmpty())
+
+        ObjectStorage.invalidate("$remoteRoot/metadata")
+        // Still answerable, and answered identically — from the cache, since nothing wrote to it.
+        assertEquals(data.map { it.name }, ObjectStorage.list("$remoteRoot/data").map { it.name })
+        assertEquals(metadata.map { it.name }.sorted(), ObjectStorage.list("$remoteRoot/metadata").map { it.name }.sorted())
+    }
+
+    /**
      * A refused key says so, and does not present as a missing table.
      *
      * This is the specific defect that decided the storage layer. Through an S3 `FileSystem`,

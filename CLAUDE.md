@@ -481,12 +481,31 @@ intellij/src/main/kotlin/plugin/
   A graph is built for every artifact the metadata names and `Files.isRegularFile` runs once per
   data file — a thousand-file table would be a thousand round trips before anything is drawn. So
   `ObjectStorage` caches a **directory listing** per prefix and the **bytes** of the objects it
-  reads, and both are cleared when a table is opened. `list` globs the whole subtree and derives
-  one level from it rather than globbing one level, because object storage has no directory
-  entries and a one-level glob silently omits every subdirectory; that costs a subtree listing, so
-  it belongs on `metadata/`, never on a warehouse root. A warehouse is scanned by
-  `globTables` instead — two globs for the two path shapes the formats are detected by, rather
-  than a request per level per table
+  reads. `list` globs the whole subtree and derives one level from it rather than globbing one
+  level, because object storage has no directory entries and a one-level glob silently omits every
+  subdirectory; that costs a subtree listing, so it belongs on `metadata/`, never on a warehouse
+  root. A warehouse is scanned by `globTables` instead — two globs for the two path shapes the
+  formats are detected by, rather than a request per level per table
+- **The same caches make "has this changed" a question about memory, so change detection has to
+  invalidate first.** `AppState.remoteTableFingerprint` calls `ObjectStorage.invalidate` on the
+  table's `metadata/`, `snapshot/` and `schema/` prefixes before listing them, because a
+  fingerprint served from a cached listing is frozen at whatever the first read produced — a
+  remote table would never reload, however many commits it received, and an explicit reload would
+  re-decode the metadata the table used to have. `invalidate` sweeps **both** maps under the
+  prefix, since a stale listing and stale bytes fail differently: the first hides a new snapshot,
+  the second re-reads the old one. `RemoteTableTest` writes a second object through DuckDB and
+  asserts *both* directions — still stale before, current after — because only the pair says the
+  invalidation is what did it
+- **Locality decides the poll cadence, and that is a cost decision, not a tuning one.** A local
+  check is a `stat` against a warm page cache; a remote one is a LIST against a store that bills
+  per request. On `FILESYSTEM_POLL_INTERVAL_MS` (3s) that is 1,200 requests an hour per remote
+  root for a table nobody is committing to. So remote work runs on `REMOTE_POLL_INTERVAL_MS`
+  (30s): the open table's fingerprint, and the workspace sweep, which for a remote warehouse is
+  two recursive globs over the whole thing rather than a directory walk. The mechanism is
+  `scanWorkspace(items, includeRemote = false)`, which **omits** those roots rather than reporting
+  them empty — the fold already reads a missing key as "not covered" and leaves the root alone,
+  so the slower cadence needed no new state. The default stays `true`, because an explicit
+  refresh must refresh the roots the reader pressed it for
 - **Credentials are a `CREATE SECRET` statement, which makes them the app's one SQL trust
   boundary.** `CREATE SECRET` takes no bind parameters, so every value is inlined; quotes are
   doubled, and the one field that cannot be escaped at all — the secret's *name*, which is an
@@ -912,7 +931,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~713 tests across 80 files (518 in :core, 190 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~717 tests across 80 files (520 in :core, 192 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -61,10 +61,27 @@ object ObjectStorage {
         }
     )
 
-    /** Forgets every listing and every retained object. Called when a table is opened. */
+    /** Forgets every listing and every retained object. Called when the credentials change. */
     fun clearCache() {
         listings.clear()
         contents.clear()
+    }
+
+    /**
+     * Forgets everything cached under [prefix], listings and bytes alike.
+     *
+     * This is what makes a *re-read* possible. The caches exist so that building a graph does not
+     * become a round trip per artifact, but the same caches turn "has this table changed" into a
+     * question about memory rather than about the store — a fingerprint served from a listing is
+     * frozen at whatever the first read produced, and would report a table unchanged forever.
+     *
+     * Both maps are swept, because a stale *listing* and stale *bytes* fail differently: the first
+     * hides a new snapshot, the second re-decodes the metadata the table used to have.
+     */
+    fun invalidate(prefix: String) {
+        val root = prefix.trimEnd('/')
+        synchronized(listings) { listings.keys.removeIf { it == root || it.startsWith("$root/") } }
+        synchronized(contents) { contents.keys.removeIf { it == root || it.startsWith("$root/") } }
     }
 
     /**
