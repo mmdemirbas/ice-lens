@@ -351,12 +351,3 @@ What is left:
   on Google Maven (`androidx.compose.material:material-icons-extended-desktop`) reaches `1.7.8` and
   stops there too. The icons library is frozen at 1.7.x upstream and coexists with Compose `1.10.x`
   either way, so the five patch versions on the other coordinate are the whole difference.
-
-- **`formatBadgeLabelAt` has no callers, so a remote table shows no ICE/PMN badge.** The function
-  was written for remote paths and every call site still passes a `java.io.File`, which is null for
-  `s3://…`. The obvious swap introduces a defect rather than fixing one: detecting a format is a
-  network round trip, and the badge is computed during composition, so a warehouse of forty remote
-  tables would make forty of them on the main thread. The fix belongs in the sweep, which already
-  runs off the main thread and already knows the answer — `ObjectStorage.globTables` separates the
-  Iceberg and Paimon matches before merging them, so the format is free there and only needs
-  carrying back through `WorkspaceScan`.

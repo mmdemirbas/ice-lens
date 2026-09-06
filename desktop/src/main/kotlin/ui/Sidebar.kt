@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import model.WorkspaceItem
 import model.WorkspaceTableStatus
 import java.io.File
+import service.StorageLocation
 
 
 @Composable
@@ -237,6 +238,7 @@ fun WorkspacePanel(
     warehouseTableStatuses: Map<String, Map<String, WorkspaceTableStatus>>,
     singleTableStatuses: Map<String, WorkspaceTableStatus>,
     unreachableRoots: Map<String, String> = emptyMap(),
+    tableFormats: Map<String, String> = emptyMap(),
     selectedTablePath: String?,
     expandedPaths: Set<String>,
     onExpandedPathsChange: (Set<String>) -> Unit,
@@ -422,6 +424,7 @@ fun WorkspacePanel(
                             isSelected = isSelected,
                             isExpanded = effectivelyExpanded,
                             status = workspaceRootStatus(item, singleTableStatuses),
+                            tableFormat = tableFormats[item.path],
                             unreachable = unreachableRoots[item.path],
                             onFixCredentials = if (item.path in unreachableRoots) {
                                 { onFixRemote(item) }
@@ -522,7 +525,13 @@ fun WorkspacePanel(
                                 WorkspaceTableStatus.EXISTING -> tableName
                             }
 
-                            val formatBadge = remember(tablePath) { formatBadgeLabel(File(tablePath)) }
+                            // The local stat is cheap and stays in the row; a remote one is a
+                            // network round trip, so it comes from the sweep that already knew.
+                            val localBadge = remember(tablePath) {
+                                if (StorageLocation.isRemote(tablePath)) null
+                                else formatBadgeLabel(File(tablePath))
+                            }
+                            val formatBadge = tableFormats[tablePath] ?: localBadge
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -602,6 +611,7 @@ fun WorkspaceRootItem(
     isSelected: Boolean,
     isExpanded: Boolean,
     status: WorkspaceTableStatus? = null,
+    tableFormat: String? = null,
     unreachable: String? = null,
     onFixCredentials: (() -> Unit)? = null,
     onToggleExpand: () -> Unit,
@@ -612,9 +622,12 @@ fun WorkspaceRootItem(
     val colors = MaterialTheme.colorScheme
     val selectionColor = selectionHighlightColor()
     val selectedBgColor = selectionColor.copy(alpha = if (isDarkSurface(colors.surface)) 0.4f else 0.2f)
-    val formatBadge = remember(item.path) {
-        if (item is WorkspaceItem.SingleTable) formatBadgeLabel(File(item.path)) else null
+    val localBadge = remember(item.path) {
+        if (item is WorkspaceItem.SingleTable && !StorageLocation.isRemote(item.path)) {
+            formatBadgeLabel(File(item.path))
+        } else null
     }
+    val formatBadge = tableFormat ?: localBadge
     val prefix = when (item) {
         is WorkspaceItem.Warehouse   -> "warehouse: "
         is WorkspaceItem.SingleTable -> "table: "

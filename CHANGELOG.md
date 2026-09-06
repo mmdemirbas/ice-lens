@@ -252,6 +252,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **A table in object storage now carries its format badge.** The ICE / PMN chip was computed
+  through `java.io.File`, which is null for every `s3://` path, so remote tables drew without one.
+  The badge comes from the sweep rather than from the row: which of the two globs matched a table
+  *is* its format, so the warehouse listing already knew, and asking the detector in the row would
+  have put a network round trip per table on the thread that draws frames.
 - **A refused key was reported as an empty warehouse.** `ObjectStorage.globTables` wrapped both of
   its globs in a `runCatching { }.getOrDefault(emptyList())`, which could only ever absorb a real
   failure — `glob` already answers an empty list for a prefix with nothing under it. So a key that

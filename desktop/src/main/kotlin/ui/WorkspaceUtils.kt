@@ -34,13 +34,31 @@ fun isTableLocation(path: String): Boolean =
  */
 fun scanForTablesAt(warehouse: String): List<String> =
     if (!StorageLocation.isRemote(warehouse)) scanForTables(File(warehouse))
-    else {
-        val root = warehouse.trimEnd('/')
-        ObjectStorage.globTables(root).mapNotNull { it.removePrefix("$root/").takeIf { rel -> rel != root } }.sorted()
-    }
+    else remoteTablesAt(warehouse).keys.toList()
 
 /**
- * Whether a remote root is still a table, letting a refusal through as an exception.
+ * The same listing, keeping the format each table's own path shape already revealed.
+ *
+ * `globTables` matched either a metadata JSON under a table's `metadata` directory or a numbered
+ * file under its `snapshot` one, and which of the two it was is the whole of what detection asks —
+ * so the format arrives with the listing and costs nothing. It is
+ * worth carrying rather than re-deriving: `TableFormatDetector` on a remote path is two network
+ * round trips, and the badge is drawn during composition, so asking there would put one of those
+ * per table on the main thread for as long as the warehouse is expanded.
+ */
+internal fun remoteTablesAt(warehouse: String): Map<String, TableFormat> {
+    val root = warehouse.trimEnd('/')
+    return ObjectStorage.globTables(root)
+        .mapNotNull { (path, format) ->
+            path.removePrefix("$root/").takeIf { it != path }?.let { it to format }
+        }
+        .sortedBy { it.first }
+        .toMap()
+}
+
+/**
+ * The format of a remote root, or UNKNOWN once it is no longer a table — letting a refusal
+ * through as an exception.
  *
  * [isTableLocation] cannot answer this on its own, and the reason is worth stating because it is
  * the same trap twice: `TableFormatDetector` asks `Files.isDirectory`, which is *specified* to
@@ -49,9 +67,10 @@ fun scanForTablesAt(warehouse: String): List<String> =
  * because object storage has no directory entries and a table's own prefix usually holds no files
  * directly. Deciding stays with the detector.
  */
-private fun remoteTableStillThere(path: String): Boolean {
+private fun remoteTableFormat(path: String): TableFormat {
     ObjectStorage.glob("${path.trimEnd('/')}/*")
-    return isTableLocation(path)
+    return runCatching { TableFormatDetector.detect(StorageLocation.pathOf(path)) }
+        .getOrDefault(TableFormat.UNKNOWN)
 }
 
 /**
@@ -140,15 +159,21 @@ fun chooseDirectory(initialDir: File?): File? {
 }
 
 /** Returns a short badge label for the detected table format, or null if unknown. */
-fun formatBadgeLabel(dir: File): String? = formatBadgeLabelAt(dir.absolutePath)
+fun formatBadgeLabel(dir: File): String? = formatBadge(TableFormatDetector.detect(dir.toPath()))
 
-/** The same badge for a location that may be remote. */
-fun formatBadgeLabelAt(path: String): String? =
-    when (runCatching { TableFormatDetector.detect(StorageLocation.pathOf(path)) }.getOrDefault(TableFormat.UNKNOWN)) {
-        TableFormat.ICEBERG -> "ICE"
-        TableFormat.PAIMON -> "PMN"
-        TableFormat.UNKNOWN -> null
-    }
+/**
+ * The badge for a format that is already known — the one place the two short labels are written.
+ *
+ * There is deliberately no path-taking form any more. One existed, it read well, and nothing ever
+ * called it: every call site had a local directory, so the remote branch it was written for was
+ * never exercised, and remote tables simply drew no badge. The answer for a remote table comes
+ * from the sweep now, which learned it while listing.
+ */
+fun formatBadge(format: TableFormat): String? = when (format) {
+    TableFormat.ICEBERG -> "ICE"
+    TableFormat.PAIMON -> "PMN"
+    TableFormat.UNKNOWN -> null
+}
 
 /**
  * The form of a path two workspace entries are compared by.
@@ -231,6 +256,14 @@ data class WorkspaceScan(
      * tables, and it must not mark a single table deleted, because neither is what happened.
      */
     val unreachable: Map<String, String> = emptyMap(),
+    /**
+     * Table path → its format badge, for the tables whose format the sweep learned while listing.
+     *
+     * Remote tables only, and that asymmetry is the point rather than an omission: a local badge
+     * is a `stat` the row can do itself during composition, while a remote one is two network
+     * round trips. This carries the answer the listing already produced so the row never asks.
+     */
+    val tableFormats: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -242,16 +275,31 @@ fun scanWorkspace(items: List<WorkspaceItem>, includeRemote: Boolean = true): Wo
     val warehouseTables = mutableMapOf<String, List<String>>()
     val singleTableExists = mutableMapOf<String, Boolean>()
     val unreachable = mutableMapOf<String, String>()
+    val tableFormats = mutableMapOf<String, String>()
 
     items.filter { includeRemote || !StorageLocation.isRemote(it.path) }.forEach { item ->
+        val root = item.path.trimEnd('/')
         // The catch is here rather than inside the helpers because this is where the decision is:
         // a sweep can carry "I could not ask" back, while a helper can only invent an answer.
         runCatching {
             when (item) {
-                is WorkspaceItem.Warehouse -> warehouseTables[item.path] = scanForTablesAt(item.path)
-                is WorkspaceItem.SingleTable -> singleTableExists[item.path] =
-                    if (StorageLocation.isRemote(item.path)) remoteTableStillThere(item.path)
-                    else File(item.path).let { dir -> dir.exists() && dir.isDirectory && isTableDirectory(dir) }
+                is WorkspaceItem.Warehouse -> if (StorageLocation.isRemote(item.path)) {
+                    val found = remoteTablesAt(item.path)
+                    warehouseTables[item.path] = found.keys.toList()
+                    found.forEach { (relative, format) ->
+                        formatBadge(format)?.let { tableFormats["$root/$relative"] = it }
+                    }
+                } else {
+                    warehouseTables[item.path] = scanForTables(File(item.path))
+                }
+                is WorkspaceItem.SingleTable -> if (StorageLocation.isRemote(item.path)) {
+                    val format = remoteTableFormat(item.path)
+                    singleTableExists[item.path] = format != TableFormat.UNKNOWN
+                    formatBadge(format)?.let { tableFormats[item.path] = it }
+                } else {
+                    singleTableExists[item.path] =
+                        File(item.path).let { dir -> dir.exists() && dir.isDirectory && isTableDirectory(dir) }
+                }
             }
         }.onFailure { failure ->
             logger.warn("Could not read the workspace root {}: {}", item.path, failure.message)
@@ -259,7 +307,7 @@ fun scanWorkspace(items: List<WorkspaceItem>, includeRemote: Boolean = true): Wo
                 ?: "${failure::class.simpleName} while reading ${item.path}"
         }
     }
-    return WorkspaceScan(warehouseTables, singleTableExists, unreachable)
+    return WorkspaceScan(warehouseTables, singleTableExists, unreachable, tableFormats)
 }
 
 /**

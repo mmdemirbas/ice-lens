@@ -482,6 +482,40 @@ class AppStateTest {
         }
     }
 
+    /**
+     * A sweep that skipped the remote roots does not drop the badges of the tables under them.
+     *
+     * The badges are keyed by *table* while "covered" is a set of *roots*, so the rule that keeps
+     * a skipped root's state has to be applied through the prefix rather than by key equality —
+     * otherwise every table's badge disappears on each of the nine local sweeps between two remote
+     * ones, and the chips blink.
+     */
+    @Test
+    fun `a sweep that skipped a remote root keeps the badges under it`() {
+        val local = kotlin.io.path.createTempDirectory("ws-badges").toFile()
+        try {
+            state.addWorkspaceRoot(local.absolutePath)
+            state.applyWorkspaceScan(
+                WorkspaceScan(
+                    warehouseTables = mapOf("s3://warehouse/db" to listOf("mor")),
+                    singleTableExists = emptyMap(),
+                    tableFormats = mapOf("s3://warehouse/db/mor" to "ICE"),
+                )
+            )
+            assertEquals("ICE", state.remoteTableFormats["s3://warehouse/db/mor"])
+
+            // The next sweep is a local-only one: the remote root is not in any of its maps.
+            state.applyWorkspaceScan(scanWorkspace(state.workspaceItems, includeRemote = false))
+            assertEquals(
+                "ICE",
+                state.remoteTableFormats["s3://warehouse/db/mor"],
+                "the sweep never looked at that root, so it said nothing about its tables",
+            )
+        } finally {
+            local.deleteRecursively()
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  Table Fingerprinting
     // ═══════════════════════════════════════════════════════════════

@@ -129,6 +129,10 @@ class AppState(
      */
     var unreachableRoots by mutableStateOf<Map<String, String>>(emptyMap())
         private set
+
+    /** Table path → format badge, for remote tables. See [WorkspaceScan.tableFormats]. */
+    var remoteTableFormats by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
     var lastBrowseDirectory by mutableStateOf<String?>(null)
         private set
     var workspaceSearchQuery by mutableStateOf("")
@@ -573,6 +577,13 @@ class AppState(
         val covered = scan.warehouseTables.keys + scan.singleTableExists.keys + scan.unreachable.keys
         val nextUnreachable = unreachableRoots.filterKeys { it !in covered } + scan.unreachable
         if (nextUnreachable != unreachableRoots) unreachableRoots = nextUnreachable
+
+        // Keyed by *table*, so "covered" is by the root the table sits under — a sweep that
+        // skipped the remote roots must not drop the badges of the tables beneath them.
+        val nextFormats = remoteTableFormats.filterKeys { table ->
+            covered.none { root -> table == root || table.startsWith("$root/") }
+        } + scan.tableFormats
+        if (nextFormats != remoteTableFormats) remoteTableFormats = nextFormats
     }
 
     fun updateLastBrowseDirectory(dir: String) {

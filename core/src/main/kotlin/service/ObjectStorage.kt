@@ -168,6 +168,10 @@ object ObjectStorage {
      * each format is detected by is a path shape: a `.metadata.json` under the table's `metadata`
      * directory for Iceberg, a `snapshot-` file under its `snapshot` directory for Paimon.
      *
+     * That path shape is also the *answer* to which format a table is, which is why this returns
+     * the two together. Detecting it separately would open every table again over the network to
+     * learn something the listing had already established.
+     *
      * **A refusal is thrown, not returned as an empty warehouse.** Both globs used to be wrapped in
      * a `runCatching { }.getOrDefault(emptyList())`, which was reaching for the wrong thing: [glob]
      * already answers an empty list for a prefix with nothing under it, so the only failures that
@@ -175,13 +179,17 @@ object ObjectStorage {
      * as "this warehouse holds no tables" — the same answer as an empty warehouse, and the reader
      * had nothing to open that might have said otherwise.
      */
-    fun globTables(warehouse: String): List<String> {
+    fun globTables(warehouse: String): Map<String, TableFormat> {
         val root = warehouse.trimEnd('/')
         val iceberg = glob("$root/**/metadata/*.metadata.json")
             .mapNotNull { it.substringBeforeLast("/metadata/", "").takeIf(String::isNotEmpty) }
         val paimon = glob("$root/**/snapshot/snapshot-*")
             .mapNotNull { it.substringBeforeLast("/snapshot/", "").takeIf(String::isNotEmpty) }
-        return (iceberg + paimon).distinct().sorted()
+        // Which glob matched *is* the format, so the caller gets it for nothing rather than
+        // opening each table again to ask. Iceberg wins a directory that somehow matched both,
+        // the same precedence `TableFormatDetector` applies.
+        return (paimon.associateWith { TableFormat.PAIMON } + iceberg.associateWith { TableFormat.ICEBERG })
+            .toSortedMap()
     }
 
     /** The raw glob. A pattern that matches nothing is an empty list, not an error. */

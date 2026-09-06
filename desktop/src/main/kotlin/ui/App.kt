@@ -163,6 +163,7 @@ fun App() {
                 },
                 onAddRoot = { path -> state.addWorkspaceRoot(path) },
                 unreachableRoots = state.unreachableRoots,
+                tableFormats = state.remoteTableFormats,
                 onAddRemote = { remoteDialogExisting = null; remoteDialogOpen = true },
                 onFixRemote = { item ->
                     remoteDialogExisting = state.remoteLocationFor(item.path)

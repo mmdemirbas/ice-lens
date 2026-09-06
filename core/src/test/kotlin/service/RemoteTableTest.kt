@@ -188,6 +188,9 @@ class RemoteTableTest {
         requireLab()
         val tables = ObjectStorage.globTables("s3://warehouse/db")
         assertTrue("s3://warehouse/db/mor" in tables, "expected the mor table, found $tables")
+        // The glob that matched is the format, so the listing answers both questions at once and
+        // nothing has to open the table again over the network to ask which one it is.
+        assertEquals(TableFormat.ICEBERG, tables["s3://warehouse/db/mor"])
     }
 
     /**
