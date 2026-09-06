@@ -376,6 +376,46 @@ class InspectorRenderTest {
      * the two they are in, and whether the sentence saying the secret is not written to disk is
      * where they will read it rather than under a control they have already passed.
      */
+    /**
+     * A workspace root that the store refused, at the width the panel actually opens at.
+     *
+     * The three rows are rendered together because that is the only view in which the judgement
+     * can be made: whether the message reads as belonging to the root above it rather than to the
+     * root below, and whether a four-line explanation at 10sp still leaves the panel a list of
+     * roots rather than a wall of red. A row on its own answers neither.
+     *
+     * The narrow width is the point. A sidebar is around 250dp, the message wraps, and Material3's
+     * body line height would give each of those lines 24dp — which is why the message goes through
+     * `CompactText`, and why this is rendered rather than asserted.
+     */
+    @Test
+    fun `a workspace root says why its store could not be read`() {
+        renderScene("workspace-unreachable-1", width = 520, height = 420, density = 2f) {
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp)) {
+                Column {
+                    WorkspaceRootItem(
+                        item = model.WorkspaceItem.Warehouse("/data/warehouse", "warehouse", listOf("orders")),
+                        isSelected = false, isExpanded = false,
+                        onToggleExpand = {}, onSelect = {}, onRemove = {},
+                    )
+                    WorkspaceRootItem(
+                        item = model.WorkspaceItem.Warehouse("s3://warehouse/db", "db", listOf("orders")),
+                        isSelected = false, isExpanded = false,
+                        unreachable = "Access denied by the store for 's3://warehouse/db'. " +
+                            "Check the key for this bucket, and that it is allowed to list it.",
+                        onFixCredentials = {},
+                        onToggleExpand = {}, onSelect = {}, onRemove = {},
+                    )
+                    WorkspaceRootItem(
+                        item = model.WorkspaceItem.SingleTable("s3://warehouse/db/orders", "orders"),
+                        isSelected = false, isExpanded = false,
+                        onToggleExpand = {}, onSelect = {}, onRemove = {},
+                    )
+                }
+            }
+        }
+    }
+
     @Test
     fun `the remote location form draws both ways of authenticating`() {
         fun capture(name: String, useChain: Boolean, endpoint: String) {

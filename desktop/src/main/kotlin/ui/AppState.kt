@@ -113,6 +113,22 @@ class AppState(
         private set
     var singleTableStatuses by mutableStateOf<Map<String, WorkspaceTableStatus>>(emptyMap())
         private set
+
+    /**
+     * Root path → why the last sweep could not read it, for the roots that live in object storage.
+     *
+     * This is the *reason* a root is showing what it is showing, and it exists because the reason
+     * is otherwise unreachable. A refused key produces an error from the store saying exactly what
+     * is wrong and what to do — and the sweep, which runs on a timer and cannot put a dialog on
+     * screen, is the only thing that ever sees it. For a single table the message was at least
+     * reachable by opening the table; for a warehouse there was nothing to open, because the
+     * warehouse drew as empty.
+     *
+     * An entry is cleared as soon as a sweep reads the root, so the message never outlives the
+     * failure it describes.
+     */
+    var unreachableRoots by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
     var lastBrowseDirectory by mutableStateOf<String?>(null)
         private set
     var workspaceSearchQuery by mutableStateOf("")
@@ -493,6 +509,30 @@ class AppState(
      * alone until the next poll rather than being reported as deleted. That is the whole reason
      * [WorkspaceScan] is keyed by path instead of being a list of finished items.
      */
+    /**
+     * One sweep of every root, now, with the reading off the main thread.
+     *
+     * The same two halves the poll runs, in one place: the roots are read here — on the main
+     * thread, which is the only place Compose state may be read — handed to the dispatcher, and
+     * the answer folded back here. A caller that wants a sweep should not have to re-derive that
+     * split, and a second copy of it is how one of the two halves ends up on the wrong thread.
+     */
+    suspend fun sweepWorkspaceNow(includeRemote: Boolean = true) {
+        val roots = workspaceItems
+        val scan = withContext(Dispatchers.IO) { scanWorkspace(roots, includeRemote = includeRemote) }
+        applyWorkspaceScan(scan)
+    }
+
+    /**
+     * The saved location whose credentials cover [path], if there is one.
+     *
+     * By prefix, the same rule [removeWorkspaceRoot] drops credentials by: a key is scoped to its
+     * bucket, so one location covers every root under it and a table added below a warehouse is
+     * reached by the warehouse's own key.
+     */
+    fun remoteLocationFor(path: String): RemoteLocation? =
+        remoteLocations.filter { path.startsWith(it.url) }.maxByOrNull { it.url.length }
+
     fun applyWorkspaceScan(scan: WorkspaceScan) {
         var hasWorkspaceUpdate = false
 
@@ -527,6 +567,12 @@ class AppState(
         // Compose does, run twice.
         if (nextSingleStatuses != singleTableStatuses) singleTableStatuses = nextSingleStatuses
         if (nextWarehouseStatuses != warehouseTableStatuses) warehouseTableStatuses = nextWarehouseStatuses
+
+        // Covered by this sweep, whatever it concluded — so a root that came back is no longer
+        // reported as unreachable, and a root the sweep skipped keeps the message it had.
+        val covered = scan.warehouseTables.keys + scan.singleTableExists.keys + scan.unreachable.keys
+        val nextUnreachable = unreachableRoots.filterKeys { it !in covered } + scan.unreachable
+        if (nextUnreachable != unreachableRoots) unreachableRoots = nextUnreachable
     }
 
     fun updateLastBrowseDirectory(dir: String) {

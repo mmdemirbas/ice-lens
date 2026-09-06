@@ -18,16 +18,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 
 /**
@@ -70,7 +67,12 @@ fun RemoteLocationDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add a location in object storage", fontSize = TypeScale.body) },
+        title = {
+            Text(
+                if (existing == null) "Add a location in object storage" else "Credentials for this location",
+                fontSize = TypeScale.body,
+            )
+        },
         text = {
             RemoteLocationForm(
                 url = url, onUrlChange = { url = it }, problem = problem,
@@ -86,7 +88,7 @@ fun RemoteLocationDialog(
             TextButton(
                 onClick = { onConfirm(build(), secret.takeIf { !useChain && it.isNotBlank() }) },
                 enabled = problem == null,
-            ) { Text("Add") }
+            ) { Text(if (existing == null) "Add" else "Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
@@ -232,20 +234,6 @@ private fun CredentialChoice(selected: Boolean, onSelect: () -> Unit, title: Str
             }
         }
     }
-}
-
-/**
- * Text sized by its own font metrics rather than by Material3's 24sp body line height.
- *
- * See `CardColumn` in `NodeComponents.kt` — same defect, same fix, different surface. Anything in
- * this form that wraps needs it; a single-line label does not care either way.
- */
-@Composable
-private fun CompactText(content: @Composable () -> Unit) {
-    CompositionLocalProvider(
-        LocalTextStyle provides LocalTextStyle.current.copy(lineHeight = TextUnit.Unspecified),
-        content = content,
-    )
 }
 
 private val FORM_WIDTH = 420.dp

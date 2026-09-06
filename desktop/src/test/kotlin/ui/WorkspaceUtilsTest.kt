@@ -205,10 +205,50 @@ class WorkspaceUtilsTest {
     @Test
     fun `the default sweep covers remote roots`() {
         val items = listOf(WorkspaceItem.Warehouse("s3://warehouse/db", "db"))
-        // No credentials are configured here, so the glob fails and the scan reports no tables —
-        // what matters is that the key is *present*, which is the difference between "swept and
-        // found nothing" and "not swept".
-        assertTrue("s3://warehouse/db" in scanWorkspace(items).warehouseTables)
+        val scan = scanWorkspace(items)
+        // No credentials are configured here, so the listing cannot be done at all — which is a
+        // third outcome, not a second. What this pins is only that the root was *looked at*:
+        // covered means it appears in one of the three maps, and not covered means none of them.
+        assertTrue(
+            "s3://warehouse/db" in scan.warehouseTables || "s3://warehouse/db" in scan.unreachable,
+            "the default must sweep a remote root, and reach one of the two conclusions",
+        )
+    }
+
+    /**
+     * A store that cannot be listed is a third answer, and it must not be spelled as the second.
+     *
+     * Reported as an empty warehouse, a refused key blanks a list of tables that are all still
+     * there — and the reader has nothing left to click that might have said why, because the
+     * message only ever existed inside the sweep.
+     */
+    @Test
+    fun `a warehouse that cannot be listed is reported as unreachable, not as empty`() {
+        val scan = scanWorkspace(listOf(WorkspaceItem.Warehouse("s3://warehouse/db", "db")))
+        assertTrue(
+            "s3://warehouse/db" !in scan.warehouseTables,
+            "an unlistable warehouse must be absent, so the 'not covered' rule keeps its tables",
+        )
+        val reason = scan.unreachable["s3://warehouse/db"]
+        assertTrue(!reason.isNullOrBlank(), "the store's own words are the only diagnosis there is")
+    }
+
+    /** A local root is unaffected: its answers are still the two it always had. */
+    @Test
+    fun `a local root is never reported as unreachable`() {
+        val warehouse = kotlin.io.path.createTempDirectory("unreachable-local").toFile()
+        try {
+            val items = listOf(
+                WorkspaceItem.Warehouse(warehouse.absolutePath, "w"),
+                WorkspaceItem.SingleTable(File(warehouse, "gone").absolutePath, "gone"),
+            )
+            val scan = scanWorkspace(items)
+            assertTrue(scan.unreachable.isEmpty(), "got ${scan.unreachable}")
+            assertEquals(emptyList(), scan.warehouseTables.getValue(warehouse.absolutePath))
+            assertEquals(false, scan.singleTableExists.getValue(File(warehouse, "gone").absolutePath))
+        } finally {
+            warehouse.deleteRecursively()
+        }
     }
 
     /**

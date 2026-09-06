@@ -34,17 +34,25 @@ fun isTableLocation(path: String): Boolean =
  */
 fun scanForTablesAt(warehouse: String): List<String> =
     if (!StorageLocation.isRemote(warehouse)) scanForTables(File(warehouse))
-    else runCatching {
+    else {
         val root = warehouse.trimEnd('/')
         ObjectStorage.globTables(root).mapNotNull { it.removePrefix("$root/").takeIf { rel -> rel != root } }.sorted()
-    }.getOrElse {
-        // A refused key or an unreachable endpoint is not "this warehouse has no tables", but the
-        // poll that calls this runs every three seconds and cannot put a dialog on screen. It is
-        // logged and the list is left empty; the failure surfaces with its real message the moment
-        // the reader opens something.
-        logger.warn("Could not list tables under {}: {}", warehouse, it.message)
-        emptyList()
     }
+
+/**
+ * Whether a remote root is still a table, letting a refusal through as an exception.
+ *
+ * [isTableLocation] cannot answer this on its own, and the reason is worth stating because it is
+ * the same trap twice: `TableFormatDetector` asks `Files.isDirectory`, which is *specified* to
+ * answer `false` rather than throw, so through any filesystem it reports a refused key and a
+ * dropped table identically. The glob is only there to fail — what it returns is not consulted,
+ * because object storage has no directory entries and a table's own prefix usually holds no files
+ * directly. Deciding stays with the detector.
+ */
+private fun remoteTableStillThere(path: String): Boolean {
+    ObjectStorage.glob("${path.trimEnd('/')}/*")
+    return isTableLocation(path)
+}
 
 /**
  * Recursively scans [warehouseDir] for table directories (Iceberg or Paimon).
@@ -215,6 +223,14 @@ data class WorkspaceScan(
     val warehouseTables: Map<String, List<String>>,
     /** Single-table path → whether it is still a table directory on disk. */
     val singleTableExists: Map<String, Boolean>,
+    /**
+     * Root path → why the store could not be asked, in the words the store's own error produced.
+     *
+     * A root here is absent from the other two maps, so the "not covered" rule leaves whatever it
+     * already showed alone. That is the point: a refused key must not blank a warehouse full of
+     * tables, and it must not mark a single table deleted, because neither is what happened.
+     */
+    val unreachable: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -223,18 +239,27 @@ data class WorkspaceScan(
  * state from a background dispatcher is the bug this is meant to avoid, not one to introduce.
  */
 fun scanWorkspace(items: List<WorkspaceItem>, includeRemote: Boolean = true): WorkspaceScan {
-    fun covered(path: String) = includeRemote || !StorageLocation.isRemote(path)
-    return WorkspaceScan(
-        warehouseTables = items.filterIsInstance<WorkspaceItem.Warehouse>()
-            .filter { covered(it.path) }
-            .associate { it.path to scanForTablesAt(it.path) },
-        singleTableExists = items.filterIsInstance<WorkspaceItem.SingleTable>()
-            .filter { covered(it.path) }
-            .associate { table ->
-                table.path to if (StorageLocation.isRemote(table.path)) isTableLocation(table.path)
-                else File(table.path).let { dir -> dir.exists() && dir.isDirectory && isTableDirectory(dir) }
-            },
-    )
+    val warehouseTables = mutableMapOf<String, List<String>>()
+    val singleTableExists = mutableMapOf<String, Boolean>()
+    val unreachable = mutableMapOf<String, String>()
+
+    items.filter { includeRemote || !StorageLocation.isRemote(it.path) }.forEach { item ->
+        // The catch is here rather than inside the helpers because this is where the decision is:
+        // a sweep can carry "I could not ask" back, while a helper can only invent an answer.
+        runCatching {
+            when (item) {
+                is WorkspaceItem.Warehouse -> warehouseTables[item.path] = scanForTablesAt(item.path)
+                is WorkspaceItem.SingleTable -> singleTableExists[item.path] =
+                    if (StorageLocation.isRemote(item.path)) remoteTableStillThere(item.path)
+                    else File(item.path).let { dir -> dir.exists() && dir.isDirectory && isTableDirectory(dir) }
+            }
+        }.onFailure { failure ->
+            logger.warn("Could not read the workspace root {}: {}", item.path, failure.message)
+            unreachable[item.path] = failure.message?.takeIf { it.isNotBlank() }
+                ?: "${failure::class.simpleName} while reading ${item.path}"
+        }
+    }
+    return WorkspaceScan(warehouseTables, singleTableExists, unreachable)
 }
 
 /**

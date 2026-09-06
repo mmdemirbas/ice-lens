@@ -252,6 +252,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **A refused key was reported as an empty warehouse.** `ObjectStorage.globTables` wrapped both of
+  its globs in a `runCatching { }.getOrDefault(emptyList())`, which could only ever absorb a real
+  failure — `glob` already answers an empty list for a prefix with nothing under it. So a key that
+  had stopped working produced exactly the answer an empty warehouse produces: the tables vanished
+  from the list, and the store's own message, which says what is wrong and what to do, was seen by
+  nothing but a log line. A warehouse offered nothing to open that might have said otherwise.
+  A listing that could not be done is now a third answer rather than the second one. The sweep
+  carries the reason back, the root **keeps the tables it last had** instead of blanking, and the
+  message is drawn under the root with a **Credentials…** button beside it that reopens the form
+  for that location. Since the secret is held for the session only, this is the ordinary state
+  after a restart, not an exceptional one — which is why the way out is a control on the root
+  rather than knowing that "Add object storage…" doubles as "edit".
 - **A remote warehouse was drawn as deleted from the moment it was added.** The workspace row
   asked `File(path).exists()`, which is false for every location in object storage — `s3://` is not
   a path on this machine — so a bucket whose tables listed and opened perfectly well sat in the list

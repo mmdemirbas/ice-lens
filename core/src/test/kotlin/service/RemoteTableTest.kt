@@ -285,4 +285,40 @@ class RemoteTableTest {
             ObjectStorage.clearCache()
         }
     }
+
+    /**
+     * And a warehouse listing says the same thing, rather than "this warehouse holds no tables".
+     *
+     * [ObjectStorage.globTables] wrapped each of its two globs in a
+     * `runCatching { }.getOrDefault(emptyList())`, which could only ever absorb a real failure:
+     * [ObjectStorage.glob] already answers an empty list for a prefix with nothing under it. So a
+     * key that had stopped working produced exactly the answer an empty warehouse produces, and
+     * the workspace drew it as one — with nothing under it for the reader to open that might have
+     * said otherwise.
+     */
+    @Test
+    fun `a warehouse that cannot be listed is a refusal, not an empty warehouse`() {
+        requireLab()
+        DuckDb.setCredentials(
+            listOf(
+                ObjectStoreCredentials(
+                    name = "icelens_bad", keyId = "wrong", secret = "wrong",
+                    endpoint = "127.0.0.1:9000", useSsl = false, urlStyle = "path",
+                    region = "us-east-1", scope = "s3://warehouse",
+                )
+            )
+        )
+        ObjectStorage.clearCache()
+        try {
+            val failure = runCatching { ObjectStorage.globTables("s3://warehouse/db") }.exceptionOrNull()
+            assertTrue(
+                failure is ObjectStorage.ObjectStorageException,
+                "a refused warehouse must throw, not come back empty — got ${failure?.javaClass?.name}",
+            )
+            assertTrue("Access denied" in failure.message.orEmpty(), "and say what it was: ${failure.message}")
+        } finally {
+            DuckDb.setCredentials(emptyList())
+            ObjectStorage.clearCache()
+        }
+    }
 }

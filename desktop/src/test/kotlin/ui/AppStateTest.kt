@@ -405,6 +405,83 @@ class AppStateTest {
         }
     }
 
+    /**
+     * A store that could not be read keeps the tables it last had, and says why.
+     *
+     * This is the shape a refused key arrives in, and both halves matter. The tables are still
+     * there — nothing was deleted, the key stopped working — so emptying the list would report a
+     * data loss that did not happen. And the store's own message is the only diagnosis anyone will
+     * ever get, because the sweep runs on a timer and the warehouse has nothing to open.
+     */
+    @Test
+    fun `a root the store refused keeps its tables and carries the reason`() {
+        val warehouse = kotlin.io.path.createTempDirectory("ws-refused").toFile()
+        try {
+            File(warehouse, "orders/metadata").mkdirs()
+            File(warehouse, "orders/metadata/v1.metadata.json").writeText("{}")
+            state.addWorkspaceRoot(warehouse.absolutePath)
+            state.applyWorkspaceScan(scanWorkspace(state.workspaceItems))
+            // From the workspace, not from the temp dir: a root is stored canonicalised, and on
+            // macOS /var canonicalises to /private/var — a message filed under the other spelling
+            // would never be cleared by a sweep, and the test would be asserting about a key
+            // nothing else uses.
+            val path = state.workspaceItems.single().path
+            assertEquals(listOf("orders"), (state.workspaceItems.single() as WorkspaceItem.Warehouse).tables)
+
+            val refused = WorkspaceScan(
+                warehouseTables = emptyMap(),
+                singleTableExists = emptyMap(),
+                unreachable = mapOf(path to "Access denied — check the key for this bucket"),
+            )
+            state.applyWorkspaceScan(refused)
+
+            assertEquals(
+                listOf("orders"),
+                (state.workspaceItems.single() as WorkspaceItem.Warehouse).tables,
+                "the tables are still in the bucket; only the key stopped working",
+            )
+            assertEquals("Access denied — check the key for this bucket", state.unreachableRoots[path])
+        } finally {
+            warehouse.deleteRecursively()
+        }
+    }
+
+    /** And the message goes as soon as a sweep reads the root, so it never outlives the failure. */
+    @Test
+    fun `a root that comes back is no longer reported unreachable`() {
+        val warehouse = kotlin.io.path.createTempDirectory("ws-recovered").toFile()
+        try {
+            File(warehouse, "orders/metadata").mkdirs()
+            File(warehouse, "orders/metadata/v1.metadata.json").writeText("{}")
+            state.addWorkspaceRoot(warehouse.absolutePath)
+            val path = state.workspaceItems.single().path
+            state.applyWorkspaceScan(
+                WorkspaceScan(emptyMap(), emptyMap(), mapOf(path to "Access denied"))
+            )
+            assertTrue(path in state.unreachableRoots)
+
+            state.applyWorkspaceScan(scanWorkspace(state.workspaceItems))
+            assertTrue(path !in state.unreachableRoots, "a sweep that read the root answers the question")
+        } finally {
+            warehouse.deleteRecursively()
+        }
+    }
+
+    /** A root the sweep skipped keeps whatever message it had — absence is not an answer. */
+    @Test
+    fun `a sweep that skipped a root leaves its message alone`() {
+        val warehouse = kotlin.io.path.createTempDirectory("ws-skipped").toFile()
+        try {
+            state.addWorkspaceRoot(warehouse.absolutePath)
+            val path = state.workspaceItems.single().path
+            state.applyWorkspaceScan(WorkspaceScan(emptyMap(), emptyMap(), mapOf(path to "Access denied")))
+            state.applyWorkspaceScan(WorkspaceScan(emptyMap(), emptyMap(), emptyMap()))
+            assertEquals("Access denied", state.unreachableRoots[path])
+        } finally {
+            warehouse.deleteRecursively()
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  Table Fingerprinting
     // ═══════════════════════════════════════════════════════════════

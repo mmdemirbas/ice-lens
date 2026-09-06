@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
@@ -30,6 +31,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
@@ -424,3 +426,18 @@ fun WideTableRow(
 }
 
 /** A contribution's delta, signed, because a Paimon delta manifest can take files back out. */
+
+/**
+ * Text sized by its own font metrics rather than by Material3's 24sp body line height.
+ *
+ * See `CardColumn` in `NodeComponents.kt` — same defect, same fix, a third surface. Anything that
+ * wraps needs it, because a 10sp caption otherwise occupies 24dp per line and a three-line
+ * explanation asks for 72dp of a panel that is 250dp wide; a single-line label does not care.
+ */
+@Composable
+fun CompactText(content: @Composable () -> Unit) {
+    CompositionLocalProvider(
+        LocalTextStyle provides LocalTextStyle.current.copy(lineHeight = TextUnit.Unspecified),
+        content = content,
+    )
+}

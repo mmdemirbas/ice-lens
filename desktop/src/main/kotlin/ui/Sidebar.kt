@@ -236,6 +236,7 @@ fun WorkspacePanel(
     workspaceItems: List<WorkspaceItem>,
     warehouseTableStatuses: Map<String, Map<String, WorkspaceTableStatus>>,
     singleTableStatuses: Map<String, WorkspaceTableStatus>,
+    unreachableRoots: Map<String, String> = emptyMap(),
     selectedTablePath: String?,
     expandedPaths: Set<String>,
     onExpandedPathsChange: (Set<String>) -> Unit,
@@ -246,6 +247,7 @@ fun WorkspacePanel(
     onTableSelect: (String) -> Unit,
     onAddRoot: (String) -> Unit,
     onAddRemote: () -> Unit,
+    onFixRemote: (WorkspaceItem) -> Unit = {},
     onRemoveRoot: (WorkspaceItem) -> Unit,
     onMoveRoot: (WorkspaceItem, Int) -> Unit,
 ) {
@@ -420,6 +422,10 @@ fun WorkspacePanel(
                             isSelected = isSelected,
                             isExpanded = effectivelyExpanded,
                             status = workspaceRootStatus(item, singleTableStatuses),
+                            unreachable = unreachableRoots[item.path],
+                            onFixCredentials = if (item.path in unreachableRoots) {
+                                { onFixRemote(item) }
+                            } else null,
                             onToggleExpand = {
                                 onExpandedPathsChange(if (expandedPaths.contains(item.path)) {
                                     expandedPaths - item.path
@@ -596,6 +602,8 @@ fun WorkspaceRootItem(
     isSelected: Boolean,
     isExpanded: Boolean,
     status: WorkspaceTableStatus? = null,
+    unreachable: String? = null,
+    onFixCredentials: (() -> Unit)? = null,
     onToggleExpand: () -> Unit,
     onSelect: () -> Unit,
     onRemove: () -> Unit,
@@ -611,9 +619,12 @@ fun WorkspaceRootItem(
         is WorkspaceItem.Warehouse   -> "warehouse: "
         is WorkspaceItem.SingleTable -> "table: "
     }
-    val statusBgColor = when (status) {
-        WorkspaceTableStatus.NEW -> colors.secondaryContainer.copy(alpha = 0.42f)
-        WorkspaceTableStatus.DELETED -> colors.errorContainer.copy(alpha = 0.42f)
+    val statusBgColor = when {
+        // The tint covers the row *and* its message, which is what says the two are one thing —
+        // an explanation on the panel's own field could be read as belonging to the row below it.
+        unreachable != null -> colors.errorContainer.copy(alpha = 0.42f)
+        status == WorkspaceTableStatus.NEW -> colors.secondaryContainer.copy(alpha = 0.42f)
+        status == WorkspaceTableStatus.DELETED -> colors.errorContainer.copy(alpha = 0.42f)
         else -> Color.Transparent
     }
     val bgColor = if (isSelected) selectedBgColor else statusBgColor
@@ -629,10 +640,10 @@ fun WorkspaceRootItem(
         else -> ""
     }
 
+    Column(modifier = modifier.fillMaxWidth().background(bgColor)) {
     Row(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
-            .background(bgColor)
             .clickable {
                 if (item is WorkspaceItem.Warehouse) onToggleExpand() else onSelect()
             }
@@ -687,6 +698,37 @@ fun WorkspaceRootItem(
                 modifier = Modifier.size(14.dp),
                 tint = colors.error.copy(alpha = 0.8f)
             )
+        }
+    }
+
+        // Indented to the row's text, not to its edge: the message is about this root, and the
+        // 24dp is the same gutter the expander and the table icon occupy above it.
+        if (unreachable != null) {
+            Column(Modifier.padding(start = 24.dp, end = 4.dp, bottom = 4.dp)) {
+                CompactText {
+                    Text(
+                        text = unreachable,
+                        fontSize = TypeScale.micro,
+                        color = colors.error,
+                        maxLines = 4,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
+                if (onFixCredentials != null) {
+                    // A key is held for the session only, so this is the ordinary state on the
+                    // second launch rather than an exceptional one — which is exactly why the way
+                    // out is a control here and not a mode of "Add object storage…" that the
+                    // reader has to know doubles as "edit".
+                    // No horizontal content padding: the button's text is a field of this block
+                    // and starts on the same x as the message above it. A default TextButton
+                    // indents its label, which leaves the two lines ragged against each other.
+                    TextButton(
+                        onClick = onFixCredentials,
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.height(24.dp),
+                    ) { Text("Credentials…", fontSize = TypeScale.micro) }
+                }
+            }
         }
     }
 }

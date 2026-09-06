@@ -506,6 +506,19 @@ intellij/src/main/kotlin/plugin/
   them empty — the fold already reads a missing key as "not covered" and leaves the root alone,
   so the slower cadence needed no new state. The default stays `true`, because an explicit
   refresh must refresh the roots the reader pressed it for
+- **A listing that could not be done is a third answer, and spelling it as the second is how a
+  refusal disappears.** `globTables` used to wrap both globs in
+  `runCatching { }.getOrDefault(emptyList())`, which could only absorb real failures — `glob`
+  already answers an empty list for a prefix holding nothing — so a refused key produced exactly
+  what an empty warehouse produces. It throws now, and `scanWorkspace` catches it into
+  `WorkspaceScan.unreachable` rather than into either of the other two maps, so the existing
+  "a root the sweep did not cover is left alone" rule keeps the tables the reader had. The message
+  is the store's own, drawn under the root with the control that fixes it: **the secret is
+  session-only by design, so a saved location with a typed key arrives unusable on every restart**,
+  which makes this the ordinary state rather than an exceptional one. The same trap sits one level
+  down and is why `remoteTableStillThere` exists — `TableFormatDetector` asks `Files.isDirectory`,
+  which is specified to answer `false` rather than throw, so a throwing glob has to run first or a
+  refused key and a dropped table are the same answer
 - **Credentials are a `CREATE SECRET` statement, which makes them the app's one SQL trust
   boundary.** `CREATE SECRET` takes no bind parameters, so every value is inlined; quotes are
   doubled, and the one field that cannot be escaped at all — the secret's *name*, which is an
@@ -931,7 +944,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~717 tests across 80 files (520 in :core, 192 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~728 tests across 80 files (521 in :core, 202 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

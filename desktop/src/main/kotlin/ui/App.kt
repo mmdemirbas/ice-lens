@@ -60,6 +60,9 @@ fun App() {
     // Not persisted: an open find bar is about the question being asked right now, and restoring
     // one over a table opened tomorrow restores a question nobody asked.
     var remoteDialogOpen by remember { mutableStateOf(false) }
+    // Non-null when the dialog was opened to fix a location that already exists, which is the
+    // ordinary case after a restart: the secret is deliberately session-only.
+    var remoteDialogExisting by remember { mutableStateOf<RemoteLocation?>(null) }
     var isSearchOpen by remember { mutableStateOf(false) }
     var searchBarEpoch by remember { mutableStateOf(0) }
     var fitGraphRequest by remember { mutableIntStateOf(0) }
@@ -159,7 +162,13 @@ fun App() {
                     state.loadTable(tablePath)
                 },
                 onAddRoot = { path -> state.addWorkspaceRoot(path) },
-                onAddRemote = { remoteDialogOpen = true },
+                unreachableRoots = state.unreachableRoots,
+                onAddRemote = { remoteDialogExisting = null; remoteDialogOpen = true },
+                onFixRemote = { item ->
+                    remoteDialogExisting = state.remoteLocationFor(item.path)
+                        ?: RemoteLocation(url = item.path)
+                    remoteDialogOpen = true
+                },
                 onRemoveRoot = { item -> state.removeWorkspaceRoot(item) },
                 onMoveRoot = { item, delta -> state.moveWorkspaceRoot(item, delta) }
             )
@@ -819,24 +828,37 @@ fun App() {
             }
 
             if (remoteDialogOpen) {
+                val fixing = remoteDialogExisting != null
                 RemoteLocationDialog(
-                    onDismiss = { remoteDialogOpen = false },
+                    existing = remoteDialogExisting,
+                    onDismiss = { remoteDialogOpen = false; remoteDialogExisting = null },
                     onConfirm = { location, secret ->
                         remoteDialogOpen = false
+                        remoteDialogExisting = null
                         // The credentials go in first: adding the root immediately reads the
                         // location to decide whether it is a table or a warehouse, and that read
                         // has nothing to authenticate with until this has run.
                         state.saveRemoteLocation(location, secret)
                         coroutineScope.launch {
-                            // The reading inside is on Dispatchers.IO; the state it writes is not.
-                            val failure = runCatching { state.addRemoteWorkspaceRoot(location.url) }
-                                .exceptionOrNull()
-                            if (failure != null) {
-                                // Nothing was added, so the credentials it was given should not
-                                // linger either — otherwise a mistyped key stays configured and
-                                // quietly shadows a later, correct one for the same bucket.
-                                state.forgetRemoteLocation(location.url)
-                                state.errorMsg = failure.message ?: "Could not open ${location.url}"
+                            if (fixing) {
+                                // The root is already in the workspace, so there is nothing to
+                                // add — what the reader is waiting to see is whether the new key
+                                // works, and a sweep answers exactly that: the message under the
+                                // root either clears or is replaced by what the store said this
+                                // time. The location is kept on failure, unlike the add below,
+                                // because forgetting it would take away the thing being fixed.
+                                state.sweepWorkspaceNow()
+                            } else {
+                                // The reading inside is on Dispatchers.IO; the state it writes is not.
+                                val failure = runCatching { state.addRemoteWorkspaceRoot(location.url) }
+                                    .exceptionOrNull()
+                                if (failure != null) {
+                                    // Nothing was added, so the credentials it was given should not
+                                    // linger either — otherwise a mistyped key stays configured and
+                                    // quietly shadows a later, correct one for the same bucket.
+                                    state.forgetRemoteLocation(location.url)
+                                    state.errorMsg = failure.message ?: "Could not open ${location.url}"
+                                }
                             }
                         }
                     },
@@ -975,12 +997,10 @@ fun App() {
         // turn, and `applyWorkspaceScan` already leaves a root it did not see exactly as it was.
         var lastRemoteSweep = 0L
         while (isActive) {
-            val roots = state.workspaceItems
             val now = System.currentTimeMillis()
             val sweepRemote = now - lastRemoteSweep >= REMOTE_POLL_INTERVAL_MS
             if (sweepRemote) lastRemoteSweep = now
-            val scan = withContext(Dispatchers.IO) { scanWorkspace(roots, includeRemote = sweepRemote) }
-            state.applyWorkspaceScan(scan)
+            state.sweepWorkspaceNow(includeRemote = sweepRemote)
             delay(FILESYSTEM_POLL_INTERVAL_MS)
         }
     }

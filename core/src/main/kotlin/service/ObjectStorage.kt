@@ -167,12 +167,19 @@ object ObjectStorage {
      * level per table. Two globs answer the same question in two round trips, because the marker
      * each format is detected by is a path shape: a `.metadata.json` under the table's `metadata`
      * directory for Iceberg, a `snapshot-` file under its `snapshot` directory for Paimon.
+     *
+     * **A refusal is thrown, not returned as an empty warehouse.** Both globs used to be wrapped in
+     * a `runCatching { }.getOrDefault(emptyList())`, which was reaching for the wrong thing: [glob]
+     * already answers an empty list for a prefix with nothing under it, so the only failures that
+     * wrapper could ever absorb were the real ones. A key that no longer opens the bucket came back
+     * as "this warehouse holds no tables" — the same answer as an empty warehouse, and the reader
+     * had nothing to open that might have said otherwise.
      */
     fun globTables(warehouse: String): List<String> {
         val root = warehouse.trimEnd('/')
-        val iceberg = runCatching { glob("$root/**/metadata/*.metadata.json") }.getOrDefault(emptyList())
+        val iceberg = glob("$root/**/metadata/*.metadata.json")
             .mapNotNull { it.substringBeforeLast("/metadata/", "").takeIf(String::isNotEmpty) }
-        val paimon = runCatching { glob("$root/**/snapshot/snapshot-*") }.getOrDefault(emptyList())
+        val paimon = glob("$root/**/snapshot/snapshot-*")
             .mapNotNull { it.substringBeforeLast("/snapshot/", "").takeIf(String::isNotEmpty) }
         return (iceberg + paimon).distinct().sorted()
     }
