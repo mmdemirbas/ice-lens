@@ -245,6 +245,7 @@ fun WorkspacePanel(
     onLastBrowseDirectoryChange: (String) -> Unit,
     onTableSelect: (String) -> Unit,
     onAddRoot: (String) -> Unit,
+    onAddRemote: () -> Unit,
     onRemoveRoot: (WorkspaceItem) -> Unit,
     onMoveRoot: (WorkspaceItem, Int) -> Unit,
 ) {
@@ -275,6 +276,16 @@ fun WorkspacePanel(
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
             Text("Add to Workspace", fontSize = TypeScale.small)
+        }
+
+        // A second control rather than a second mode of the first, because the native chooser
+        // cannot browse a bucket: there is no directory to point at until the credentials exist,
+        // so the two paths into the workspace genuinely differ and one button would have to
+        // explain that. Secondary weight — a local warehouse is still the common case.
+        TextButton(onClick = onAddRemote, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.CloudQueue, contentDescription = null, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Add object storage…", fontSize = TypeScale.small)
         }
 
         Spacer(modifier = Modifier.height(16.dp))

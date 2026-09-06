@@ -58,6 +58,7 @@ fun App() {
     var snapshotFilterMenuExpanded by remember { mutableStateOf(false) }
     // Not persisted: an open find bar is about the question being asked right now, and restoring
     // one over a table opened tomorrow restores a question nobody asked.
+    var remoteDialogOpen by remember { mutableStateOf(false) }
     var isSearchOpen by remember { mutableStateOf(false) }
     var searchBarEpoch by remember { mutableStateOf(0) }
     var fitGraphRequest by remember { mutableIntStateOf(0) }
@@ -157,6 +158,7 @@ fun App() {
                     state.loadTable(tablePath)
                 },
                 onAddRoot = { path -> state.addWorkspaceRoot(path) },
+                onAddRemote = { remoteDialogOpen = true },
                 onRemoveRoot = { item -> state.removeWorkspaceRoot(item) },
                 onMoveRoot = { item, delta -> state.moveWorkspaceRoot(item, delta) }
             )
@@ -812,6 +814,31 @@ fun App() {
                 AboutDialog(
                     onDismiss = { showAboutDialog = false },
                     onError = { msg -> state.errorMsg = msg },
+                )
+            }
+
+            if (remoteDialogOpen) {
+                RemoteLocationDialog(
+                    onDismiss = { remoteDialogOpen = false },
+                    onConfirm = { location, secret ->
+                        remoteDialogOpen = false
+                        // The credentials go in first: adding the root immediately reads the
+                        // location to decide whether it is a table or a warehouse, and that read
+                        // has nothing to authenticate with until this has run.
+                        state.saveRemoteLocation(location, secret)
+                        coroutineScope.launch {
+                            // The reading inside is on Dispatchers.IO; the state it writes is not.
+                            val failure = runCatching { state.addRemoteWorkspaceRoot(location.url) }
+                                .exceptionOrNull()
+                            if (failure != null) {
+                                // Nothing was added, so the credentials it was given should not
+                                // linger either — otherwise a mistyped key stays configured and
+                                // quietly shadows a later, correct one for the same bucket.
+                                state.forgetRemoteLocation(location.url)
+                                state.errorMsg = failure.message ?: "Could not open ${location.url}"
+                            }
+                        }
+                    },
                 )
             }
 

@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an endpoint override for MinIO, Ceph, OBS and anything else speaking the S3 API.
 - `docs/fixtures/minio-lab.sh` — a loopback-only MinIO holding the checked-in fixtures, so the
   remote read path is tested against the same table the local one is tested against.
+- **Add object storage…** in the workspace panel, with a form for the location and its credentials.
+  The secret is held for the session only and never written to preferences, which the form says
+  where the reader will read it; the default is the credential chain already on the machine.
 
 - **Four graph layouts, chosen from the toolbar.** Layered left-to-right stays the default and is
   unchanged; layered top-to-bottom suits a tall window, a tree follows one branch down to its files,

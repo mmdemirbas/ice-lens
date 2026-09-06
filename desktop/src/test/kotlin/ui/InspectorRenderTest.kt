@@ -366,6 +366,63 @@ class InspectorRenderTest {
      * `parted` and a partition value, because that is the query this feature exists for: a string
      * the reader can see in the inspector and cannot find by any label the tree prints.
      */
+    /**
+     * The form for a location that cannot be browsed to.
+     *
+     * A native chooser can point at a directory; it cannot point at a bucket, so this form is the
+     * only way into object storage and there is nothing else on screen to explain it. Both
+     * credential states are captured because they are different forms — the chain hides the key
+     * fields entirely — and what the picture is judged on is whether a reader can tell which of
+     * the two they are in, and whether the sentence saying the secret is not written to disk is
+     * where they will read it rather than under a control they have already passed.
+     */
+    @Test
+    fun `the remote location form draws both ways of authenticating`() {
+        fun capture(name: String, useChain: Boolean, endpoint: String) {
+            val png = renderPng(name, width = 1000, height = 1500, density = 2f) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
+                    RemoteLocationForm(
+                        url = "s3://warehouse/db",
+                        onUrlChange = {},
+                        problem = null,
+                        useChain = useChain,
+                        onUseChainChange = {},
+                        keyId = if (useChain) "" else "minioadmin",
+                        onKeyIdChange = {},
+                        secret = if (useChain) "" else "minioadmin",
+                        onSecretChange = {},
+                        region = "us-east-1",
+                        onRegionChange = {},
+                        endpoint = endpoint,
+                        onEndpointChange = {},
+                        useSsl = endpoint.isBlank(),
+                        onUseSslChange = {},
+                    )
+                }
+            }
+            File(outputDir, "$name.png").writeBytes(png)
+        }
+        capture("remote-location-chain-1", useChain = true, endpoint = "")
+        capture("remote-location-key-1", useChain = false, endpoint = "127.0.0.1:9000")
+
+        // And the state a reader reaches by typing something that is not a location: the message
+        // has to replace the hint rather than appear beside it, or the field says two things.
+        val png = renderPng("remote-location-invalid-1", width = 1000, height = 1100, density = 2f) {
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
+                RemoteLocationForm(
+                    url = "hdfs://namenode:8020/wh",
+                    onUrlChange = {},
+                    problem = RemoteLocation.validate("hdfs://namenode:8020/wh"),
+                    useChain = true, onUseChainChange = {},
+                    keyId = "", onKeyIdChange = {}, secret = "", onSecretChange = {},
+                    region = "", onRegionChange = {}, endpoint = "", onEndpointChange = {},
+                    useSsl = true, onUseSslChange = {},
+                )
+            }
+        }
+        File(outputDir, "remote-location-invalid-1.png").writeBytes(png)
+    }
+
     @Test
     fun `the find bar draws on the canvas and haloes what it matched`() {
         val graph = partedGraph()

@@ -3,6 +3,8 @@ package ui
 import model.WorkspaceItem
 import model.WorkspaceTableStatus
 import org.slf4j.LoggerFactory
+import service.ObjectStorage
+import service.StorageLocation
 import service.TableFormat
 import service.TableFormatDetector
 import java.io.File
@@ -10,6 +12,39 @@ import java.io.File
 private val logger = LoggerFactory.getLogger("ui.WorkspaceUtils")
 
 fun isTableDirectory(dir: File): Boolean = TableFormatDetector.detect(dir.toPath()) != TableFormat.UNKNOWN
+
+/**
+ * The same question for a location that may not be on this machine.
+ *
+ * Everything about a workspace root is a string until something opens it, and this is where a
+ * remote one stops being treated as a local path. `StorageLocation.pathOf` gives back a `Path` on
+ * whichever filesystem the scheme names, so the detector runs unchanged either way.
+ */
+fun isTableLocation(path: String): Boolean =
+    runCatching { TableFormatDetector.detect(StorageLocation.pathOf(path)) != TableFormat.UNKNOWN }
+        .getOrDefault(false)
+
+/**
+ * Every table under a warehouse, wherever the warehouse is.
+ *
+ * A local warehouse is walked; a remote one is **globbed**, because a walk over object storage
+ * costs a request per level per table and the two markers this app detects a format by are path
+ * shapes a glob can express directly. The result is relative to [warehouse] either way, which is
+ * what the rest of the workspace expects.
+ */
+fun scanForTablesAt(warehouse: String): List<String> =
+    if (!StorageLocation.isRemote(warehouse)) scanForTables(File(warehouse))
+    else runCatching {
+        val root = warehouse.trimEnd('/')
+        ObjectStorage.globTables(root).mapNotNull { it.removePrefix("$root/").takeIf { rel -> rel != root } }.sorted()
+    }.getOrElse {
+        // A refused key or an unreachable endpoint is not "this warehouse has no tables", but the
+        // poll that calls this runs every three seconds and cannot put a dialog on screen. It is
+        // logged and the list is left empty; the failure surfaces with its real message the moment
+        // the reader opens something.
+        logger.warn("Could not list tables under {}: {}", warehouse, it.message)
+        emptyList()
+    }
 
 /**
  * Recursively scans [warehouseDir] for table directories (Iceberg or Paimon).
@@ -97,14 +132,26 @@ fun chooseDirectory(initialDir: File?): File? {
 }
 
 /** Returns a short badge label for the detected table format, or null if unknown. */
-fun formatBadgeLabel(dir: File): String? = when (TableFormatDetector.detect(dir.toPath())) {
-    TableFormat.ICEBERG -> "ICE"
-    TableFormat.PAIMON -> "PMN"
-    TableFormat.UNKNOWN -> null
-}
+fun formatBadgeLabel(dir: File): String? = formatBadgeLabelAt(dir.absolutePath)
 
+/** The same badge for a location that may be remote. */
+fun formatBadgeLabelAt(path: String): String? =
+    when (runCatching { TableFormatDetector.detect(StorageLocation.pathOf(path)) }.getOrDefault(TableFormat.UNKNOWN)) {
+        TableFormat.ICEBERG -> "ICE"
+        TableFormat.PAIMON -> "PMN"
+        TableFormat.UNKNOWN -> null
+    }
+
+/**
+ * The form of a path two workspace entries are compared by.
+ *
+ * A remote URL must not go through `File.canonicalPath`: that resolves it against the working
+ * directory and turns `s3://warehouse/db` into `<cwd>/s3:/b/db` — a path that is not the location,
+ * would be stored instead of it, and would never open anything.
+ */
 fun canonicalWorkspacePath(path: String): String =
-    runCatching { File(path).canonicalPath }.getOrElse { File(path).absolutePath }
+    if (StorageLocation.isRemote(path)) path.trim().trimEnd('/')
+    else runCatching { File(path).canonicalPath }.getOrElse { File(path).absolutePath }
 
 fun deduplicateWorkspaceItems(items: List<WorkspaceItem>): List<WorkspaceItem> {
     val seen = mutableSetOf<String>()
@@ -150,11 +197,11 @@ data class WorkspaceScan(
  */
 fun scanWorkspace(items: List<WorkspaceItem>): WorkspaceScan = WorkspaceScan(
     warehouseTables = items.filterIsInstance<WorkspaceItem.Warehouse>()
-        .associate { it.path to scanForTables(File(it.path)) },
+        .associate { it.path to scanForTablesAt(it.path) },
     singleTableExists = items.filterIsInstance<WorkspaceItem.SingleTable>()
         .associate { table ->
-            val dir = File(table.path)
-            table.path to (dir.exists() && dir.isDirectory && isTableDirectory(dir))
+            table.path to if (StorageLocation.isRemote(table.path)) isTableLocation(table.path)
+            else File(table.path).let { dir -> dir.exists() && dir.isDirectory && isTableDirectory(dir) }
         },
 )
 

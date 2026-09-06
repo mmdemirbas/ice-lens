@@ -12,14 +12,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import model.*
 import service.AggregationPolicy
+import service.DuckDb
 import service.GraphAggregation
 import service.GraphLayoutAlgorithm
 import service.GraphLayoutService
+import service.ObjectStorage
+import service.StorageLocation
 import service.TableFormat
 import service.TableFormatDetector
 import java.io.File
 import java.nio.file.NoSuchFileException
-import java.nio.file.Paths
 import org.slf4j.LoggerFactory
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicLong
@@ -66,6 +68,7 @@ class AppState(
         internal const val PREF_LAST_BROWSE_DIRECTORY = "last_browse_directory"
         internal const val PREF_GRAPH_PAGE_SIZE = "graph_page_size"
         internal const val PREF_GRAPH_LAYOUT = "graph_layout_algorithm"
+        internal const val PREF_REMOTE_LOCATIONS = "remote_locations"
 
         /**
          * The page sizes the badge offers. A reader on a 27-inch monitor and one on a laptop
@@ -83,6 +86,27 @@ class AppState(
 
     var workspaceItems by mutableStateOf<List<WorkspaceItem>>(emptyList())
         private set
+
+    /**
+     * The object-storage locations this workspace knows how to reach.
+     *
+     * Persisted, minus the secret — see [RemoteLocation]. Every change re-applies the whole set to
+     * [DuckDb], which is what makes removing a location actually remove its key from the engine
+     * rather than leaving it live for the rest of the session.
+     */
+    var remoteLocations by mutableStateOf<List<RemoteLocation>>(emptyList())
+        private set
+
+    /**
+     * Secrets for this session only, keyed by location URL. Never written to preferences.
+     *
+     * `java.util.prefs` is a plain-text file in the user's home on every platform this ships to, so
+     * a cloud key written there is readable by every process the user runs. Holding it here means a
+     * reader who typed one re-types it next launch; that is the cost, and the dialog states it.
+     */
+    var remoteSecrets by mutableStateOf<Map<String, String>>(emptyMap())
+        private set
+
     var workspaceExpandedPaths by mutableStateOf<Set<String>>(emptySet())
         private set
     var warehouseTableStatuses by mutableStateOf<Map<String, Map<String, WorkspaceTableStatus>>>(emptyMap())
@@ -287,6 +311,8 @@ class AppState(
         // By name, and tolerant of one that no longer exists: an enum entry removed in a later
         // version would otherwise make the app fail to start for whoever had it selected.
         graphLayout = GraphLayoutAlgorithm.byNameOrDefault(prefs.get(PREF_GRAPH_LAYOUT, null))
+        remoteLocations = RemoteLocation.deserializeAll(prefs.get(PREF_REMOTE_LOCATIONS, ""))
+        applyRemoteCredentials()
         selectedSnapshotFilterSnapshotIds = parseLongSet(prefs.get(PREF_SELECTED_SNAPSHOT_IDS, ""))
         lastBrowseDirectory = prefs.get(PREF_LAST_BROWSE_DIRECTORY, "").ifBlank { null }
     }
@@ -330,6 +356,9 @@ class AppState(
     }
 
     fun addWorkspaceRoot(path: String) {
+        require(!StorageLocation.isRemote(path)) {
+            "A remote root is added through addRemoteWorkspaceRoot, which reads off the main thread"
+        }
         val file = File(path)
         if (file.exists() && file.isDirectory) {
             val normalizedPath = canonicalWorkspacePath(path)
@@ -356,7 +385,80 @@ class AppState(
         }
     }
 
+    /**
+     * A remote root reached through [addWorkspaceRoot], which cannot do the work itself.
+     *
+     * Locally, "is this a table" and "what is under it" are filesystem calls; here they are network
+     * round trips, and on a warehouse the second is a glob over every table under it. So the
+     * reading happens on [Dispatchers.IO] and only the *deciding* comes back to the main thread,
+     * which is the one place [workspaceItems] may be written.
+     *
+     * It also probes first, and lets that probe throw. Every other question this asks — is it a
+     * directory, is it a table — is written to answer `false` when it cannot tell, so a refused key
+     * would otherwise arrive as an empty warehouse the reader has to diagnose from nothing.
+     * Credentials must already be configured; the dialog calls [saveRemoteLocation] before this.
+     */
+    suspend fun addRemoteWorkspaceRoot(path: String) {
+        val normalizedPath = canonicalWorkspacePath(path)
+        if (workspaceItems.any { canonicalWorkspacePath(it.path) == normalizedPath }) {
+            logger.debug("Workspace root already exists, skipping: {}", normalizedPath)
+            return
+        }
+        val probe = withContext(Dispatchers.IO) {
+            // Throws on a refusal or an unreachable endpoint, which is the point of doing it.
+            ObjectStorage.glob("$normalizedPath/*")
+            if (isTableLocation(normalizedPath)) null else scanForTablesAt(normalizedPath)
+        }
+        val name = normalizedPath.substringAfterLast('/').ifBlank { normalizedPath }
+        val newItem = if (probe == null) WorkspaceItem.SingleTable(normalizedPath, name)
+        else WorkspaceItem.Warehouse(normalizedPath, name, probe)
+        logger.info("Adding remote workspace root: {} ({})", normalizedPath, newItem::class.simpleName)
+        saveWorkspace(workspaceItems + newItem)
+        if (newItem is WorkspaceItem.Warehouse) {
+            updateWorkspaceExpandedPaths(workspaceExpandedPaths + newItem.path)
+        }
+    }
+
+    /**
+     * Hands every configured location's credentials to DuckDB, replacing whatever was there.
+     *
+     * Replacing rather than adding: a location removed from the workspace must have its key gone
+     * from the engine too, and DuckDB has no way to drop one secret by name that is cheaper than
+     * rebuilding the set.
+     */
+    fun applyRemoteCredentials() {
+        runCatching {
+            DuckDb.setCredentials(remoteLocations.map { it.credentials(remoteSecrets[it.url]) })
+        }.onFailure { logger.warn("Could not apply object-store credentials: {}", it.message) }
+    }
+
+    /** Adds or replaces a remote location. [secret] is kept for this session only. */
+    fun saveRemoteLocation(location: RemoteLocation, secret: String?) {
+        remoteLocations = remoteLocations.filterNot { it.url == location.url } + location
+        prefs.put(PREF_REMOTE_LOCATIONS, RemoteLocation.serializeAll(remoteLocations))
+        remoteSecrets = if (secret.isNullOrBlank()) remoteSecrets - location.url
+        else remoteSecrets + (location.url to secret)
+        applyRemoteCredentials()
+        ObjectStorage.clearCache()
+    }
+
+    fun forgetRemoteLocation(url: String) {
+        remoteLocations = remoteLocations.filterNot { it.url == url }
+        prefs.put(PREF_REMOTE_LOCATIONS, RemoteLocation.serializeAll(remoteLocations))
+        remoteSecrets = remoteSecrets - url
+        applyRemoteCredentials()
+        ObjectStorage.clearCache()
+    }
+
     fun removeWorkspaceRoot(item: WorkspaceItem) {
+        if (StorageLocation.isRemote(item.path)) {
+            // Only when nothing else in the workspace is under the same location, so removing one
+            // table of a bucket does not take the credentials the sibling tables are using.
+            val others = workspaceItems.filter { it != item && StorageLocation.isRemote(it.path) }
+            remoteLocations.map { it.url }
+                .filter { url -> item.path.startsWith(url) && others.none { it.path.startsWith(url) } }
+                .forEach(::forgetRemoteLocation)
+        }
         saveWorkspace(workspaceItems.filter { it != item })
     }
 
@@ -438,7 +540,7 @@ class AppState(
 
     /** Creates the appropriate format-specific table model for a table path. */
     private fun loadTableModel(tablePath: String): FormatTableModel {
-        val path = Paths.get(tablePath)
+        val path = StorageLocation.pathOf(tablePath)
         return when (TableFormatDetector.detect(path)) {
             TableFormat.PAIMON -> PaimonUnifiedTableModel(path)
             else -> UnifiedTableModel(path)
@@ -446,6 +548,7 @@ class AppState(
     }
 
     fun computeTableFingerprint(tablePath: String): String {
+        if (StorageLocation.isRemote(tablePath)) return remoteTableFingerprint(tablePath)
         val tableDir = File(tablePath)
         if (!tableDir.exists() || !tableDir.isDirectory) return "missing"
         // Iceberg first; fall back to Paimon. UNKNOWN treated as a present-but-empty directory.
@@ -456,6 +559,29 @@ class AppState(
             "${file.name}:${file.length()}:${file.lastModified()}"
         }
         return signature.hashCode().toString()
+    }
+
+    /**
+     * The remote fingerprint, from names alone.
+     *
+     * An object listing through DuckDB carries no size and no modification time, so the local
+     * signature cannot be computed. Names are enough for what this is for: a commit to either
+     * format *adds a file* — `v<N>.metadata.json` for Iceberg, `snapshot-<N>` for Paimon — so the
+     * set of names changes on exactly the events this is watching for.
+     */
+    private fun remoteTableFingerprint(tablePath: String): String {
+        val root = tablePath.trimEnd('/')
+        val names = runCatching {
+            ObjectStorage.list("$root/metadata")
+                .filter { it.name.endsWith(".metadata.json") || it.name == "version-hint.text" }
+                .ifEmpty {
+                    ObjectStorage.list("$root/snapshot").filter { it.name.startsWith("snapshot-") } +
+                        ObjectStorage.list("$root/schema").filter { it.name.startsWith("schema-") }
+                }
+                .map { it.name }.sorted()
+        }.getOrElse { return "unreachable" }
+        if (names.isEmpty()) return "empty"
+        return names.joinToString("|").hashCode().toString()
     }
 
     private fun icebergTrackedFiles(tableDir: File): List<File> {

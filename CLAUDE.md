@@ -98,6 +98,8 @@ desktop/src/main/kotlin/
     ├── GraphCanvas.kt         # Interactive graph: zoom/pan, node selection/drag, marquee, mini-map, viewport culling
     ├── NodeComponents.kt      # Node card composables (Iceberg + Paimon node types) + tooltip + copy buttons
     ├── NodeDetails.kt         # Inspector panel — detailed metadata, JSON highlighting, changelogs, sample rows
+    ├── RemoteLocations.kt      # A location in object storage and how to reach it — persisted, minus the secret
+    ├── RemoteLocationDialog.kt # The form for a location no file chooser can browse to
     ├── Sidebar.kt             # Workspace panel — add/remove roots, search, drag-to-reorder, format badges (ICE/PMN)
     ├── NavigationTree.kt      # Structure tree view — flatten graph, search, expand/collapse
     ├── ScanPruningSection.kt  # The filter form and its per-manifest verdicts, in the table inspector
@@ -470,6 +472,34 @@ desktop/src/main/kotlin/
   key into a log line. `useCredentialChain` exists because on a developer's machine or an instance
   with a role the key is already in the environment, and asking for a paste is asking a reader to
   copy a secret into one more place
+- **The secret is the one thing about a remote location that is not persisted.** Everything else —
+  URL, key id, region, endpoint, TLS, URL style — goes into `java.util.prefs`, which is a plist in
+  the user's Library on macOS and an XML file under `~/.java` on Linux: plain text, world-readable,
+  backed up and synced. A cloud key written there is a key handed to every process the reader runs.
+  So `RemoteLocation` **has no field for a secret at all** — there is nothing to accidentally
+  serialise — and the typed one lives in `AppState.remoteSecrets` for the session. The form says so
+  under the field rather than leaving it to be discovered at the next launch, and the default is the
+  ambient credential chain, which on a machine with the AWS CLI configured needs no paste at all.
+  A key is scoped to its **bucket**, never to the store: a workspace holding two buckets in two
+  accounts must not send one account's key to the other's endpoint
+- **A remote root is added by a second control, and the reading happens off the main thread.** The
+  native chooser cannot browse a bucket — there is no directory to point at until credentials
+  exist — so `Add object storage…` is its own affordance rather than a mode of `Add to Workspace`,
+  at secondary weight because a local warehouse is still the common case.
+  `AppState.addRemoteWorkspaceRoot` is `suspend`: "is this a table" and "what is under it" are one
+  filesystem call locally and network round trips here, so they run on `Dispatchers.IO` and only
+  the *deciding* returns to the main thread, which is the one place `workspaceItems` may be
+  written. **It probes first and lets that probe throw** — every other question it asks
+  (`isDirectory`, `isTableLocation`) is written to answer `false` when it cannot tell, so a refused
+  key would otherwise arrive as an empty warehouse with nothing to diagnose. A failed add also
+  forgets the credentials it was given, or a mistyped key stays configured and shadows the correct
+  one for the same bucket. **`canonicalWorkspacePath` must not send a remote URL through
+  `File.canonicalPath`**: that resolves it against the working directory and stores
+  `<cwd>/s3:/warehouse/db` in place of the location
+- **A remote table's fingerprint is its file *names*.** An object listing through DuckDB carries no
+  size and no modification time, so the local signature cannot be computed — but a commit to either
+  format *adds a file* (`v<N>.metadata.json`, `snapshot-<N>`), so the set of names changes on
+  exactly the events the poll is watching for
 - **Every read opens through `StorageLocation.pathOf`, and nothing in core names `java.io.File`.**
   A `File` can only ever be a file on this machine's disk, so every reader that built one — the
   Avro reader, both JSON readers, the Puffin reader, the format detector — was a place a table in
@@ -841,7 +871,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~696 tests across 78 files (518 in :core, 178 in :desktop) covering full pipelines for both formats (Avro fixtures
+~708 tests across 79 files (518 in :core, 190 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
