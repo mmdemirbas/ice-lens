@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Export the graph — PNG, SVG, JSON or CSV.** A menu in the toolbar, saving through the platform's
+  own save dialog. SVG and PNG are the drawing, with the reader's own node drags in them; JSON is
+  the graph as structure for another tool to read; CSV is one row per data or delete file, with
+  path, format, record count, size and partition — the inventory that goes into a spreadsheet. The
+  PNG renders through the same canvas the window draws, minus the mini-map, so it cannot drift from
+  what is on screen, and it scales down rather than allocating when a graph is too large to
+  rasterise.
 - **A Paimon manifest now says what each of its entries did to the table.** The Iceberg panel has
   listed per-entry contributions for a while and Paimon had nothing below the per-manifest figures.
   It cannot have the same thing: an Iceberg entry is decidable on its own, while a Paimon

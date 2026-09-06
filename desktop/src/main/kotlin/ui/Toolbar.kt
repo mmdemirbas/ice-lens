@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.Schema
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.ZoomIn
@@ -23,6 +24,10 @@ import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -55,6 +60,7 @@ fun Toolbar(
     onSnapshotFilterMenuChange: (Boolean) -> Unit,
     isSearchOpen: Boolean,
     onSearchOpenChange: (Boolean) -> Unit,
+    onExport: (GraphExportFormat) -> Unit,
 ) {
     Row(
         Modifier
@@ -147,6 +153,8 @@ fun Toolbar(
                 isSelected = isSearchOpen,
                 modifier = Modifier.size(32.dp)
             )
+            Box(Modifier.width(1.dp).height(16.dp).background(MaterialTheme.colorScheme.outlineVariant))
+            ExportMenuButton(enabled = state.visibleGraphModel != null, onExport = onExport)
         }
 
         Spacer(Modifier.width(10.dp))
@@ -333,4 +341,55 @@ private fun SnapshotFilterGroup(
                 modifier = Modifier.padding(horizontal = 8.dp)
             )
         }
+}
+
+/**
+ * The four ways out, behind one button.
+ *
+ * Four toolbar icons would spend a quarter of the bar on an action taken once a session, and the
+ * formats are alternatives rather than parallel tools — a menu is the shape of "pick one". Each
+ * item says what the format is *for* rather than repeating its own name, because "SVG" tells a
+ * reader who already knows nothing new and a reader who does not know is the one reading the menu.
+ */
+@Composable
+private fun ExportMenuButton(enabled: Boolean, onExport: (GraphExportFormat) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        ToolbarIconButton(
+            icon = Icons.Default.FileDownload,
+            tooltip = if (enabled) "Export the graph" else "Open a table to export it",
+            onClick = { if (enabled) expanded = true },
+            modifier = Modifier.size(32.dp),
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            ExportMenuItems { format ->
+                expanded = false
+                onExport(format)
+            }
+        }
+    }
+}
+
+/**
+ * The items, separately from the menu around them, for the same reason `GraphOptionsMenuItems` is:
+ * a `DropdownMenu` is a popup and a popup is not what an offscreen scene renders reliably, so this
+ * is the part a capture can put in front of somebody.
+ */
+@Composable
+fun ExportMenuItems(onPick: (GraphExportFormat) -> Unit) {
+    GraphExportFormat.entries.forEach { format ->
+        DropdownMenuItem(
+            text = {
+                Column {
+                    Text(format.label, fontSize = TypeScale.small)
+                    Text(
+                        format.description,
+                        fontSize = TypeScale.micro,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            onClick = { onPick(format) },
+        )
+    }
 }

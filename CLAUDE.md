@@ -38,6 +38,8 @@ Where the boundary sits, and why:
 
 ```
 core/src/main/kotlin/
+├── export/
+│   └── GraphExport.kt         # The graph as SVG, JSON and CSV — pure text, no toolkit
 ├── model/
 │   ├── IcebergSchema.kt       # @Serializable Iceberg data classes (metadata, snapshot, manifest, data file)
 │   ├── IcebergPaths.kt        # Shared path utilities (normalizeFilePath, metadataVersionFromFileName)
@@ -529,6 +531,22 @@ desktop/src/main/kotlin/
   steps through the drawing they made. **`GraphSearchResult.notDrawn` is why it is a type and not a
   `List<String>`**: aggregation folded those nodes out of the graph, so "no matches" is a claim
   about the whole table that is only true of the part drawn, and the bar says so on a second line
+- **Four export formats, because they answer four questions.** SVG is the picture at any size and
+  stays editable, PNG is the picture where only a raster will do, JSON is the graph as structure,
+  and CSV is **the file inventory** — one row per data or delete file, which is the row-shaped thing
+  in this domain and the one that goes into a spreadsheet. A CSV of every node would be a table
+  whose columns are empty for most rows. Three of the four are `export/GraphExport.kt` in core,
+  pure text and no toolkit; **PNG needs a renderer and so is the shell's**, and it renders through
+  `GraphCanvas` rather than laying the cards out again, because a second drawing of the same graph
+  drifts the first time a card changes. Two consequences of going through the canvas: `chromeVisible
+  = false` drops the mini-map, which means nothing in a picture that has no viewport, and the scene
+  must be sized from **where the cards are** plus `CANVAS_INITIAL_OFFSET` — `GraphModel.width` is
+  neither the rightmost card's right edge nor where the canvas starts drawing, and sizing to it lost
+  the whole file column off the first export taken, in a perfectly valid PNG. `MAX_PNG_SIDE` caps a
+  side at 8,000px and scales down to fit, because a scene is one bitmap and a few thousand nodes at
+  density 2 asks for tens of gigabytes. Colours come through a `colorOf` lambda from
+  `getGraphNodeColor` — core has no palette — and the SVG always uses the **light** one, since an
+  exported picture is read on a white page where the dark cards were never going to work
 - **The find bar is drawn on the canvas, and stepping is just selecting.** `GraphSearchBar` is a
   `searchOverlay` slot on `GraphCanvas`, top-centre, for the same reason `GraphStatusBadge` sits
   bottom-left: a question about what this drawing contains belongs on the drawing. It is *not* in
@@ -750,7 +768,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~646 tests across 72 files (476 in :core, 170 in :desktop) covering full pipelines for both formats (Avro fixtures
+~664 tests across 74 files (487 in :core, 177 in :desktop) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

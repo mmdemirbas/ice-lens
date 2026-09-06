@@ -214,7 +214,10 @@ What is left:
   is this file?") without removing anything. If filtering is wanted later it should be a third
   named reason in the status badge's arithmetic, not a fourth way for a node to vanish.
 
-- **Export** — graph as PNG/SVG; node details as JSON/CSV.
+- **Export — done.** Graph as PNG and SVG, the graph as JSON, and the file inventory as CSV, from a
+  menu in the toolbar. The node-details half of the original item became the CSV: a spreadsheet of
+  every data and delete file with path, format, records, bytes and partition is what a reader
+  actually wants outside the app, where a dump of one node's panel is not.
 
 - **Snapshot compare exists, and its way in is selection.** `model/SnapshotDiff.kt` answers "what
   is different between these two" for any pair, and selecting two snapshots on the canvas opens

@@ -67,6 +67,15 @@ internal val MINI_MAP_MARGIN = 16.dp
 private val MINI_MAP_INSET = 4.dp
 private val MINI_MAP_SHAPE = RoundedCornerShape(8.dp)
 
+/**
+ * Where the canvas puts the graph's origin before anyone pans.
+ *
+ * A margin so the first card is not flush against the corner. It is `internal` because an image
+ * export has to size its scene around it: the content starts here, so a scene sized to the graph's
+ * bare extent loses this much off the right and the bottom.
+ */
+internal val CANVAS_INITIAL_OFFSET = 100.dp
+
 /** Thick enough to read at a zoomed-out graph, where a match may be a few pixels of card. */
 private val SEARCH_HALO_WIDTH = 2.dp
 
@@ -144,6 +153,14 @@ fun GraphCanvas(
     matchedNodeIds: Set<String> = emptySet(),
     /** The find bar, when it is open. Top-centre, where a find bar is. */
     searchOverlay: @Composable () -> Unit = {},
+    /**
+     * Whether to draw the navigation chrome — currently the mini-map.
+     *
+     * False for an image export. A mini-map shows where the viewport sits inside the graph, and an
+     * exported picture has no viewport: it is the whole graph, so the aid is a box of duplicated
+     * drawing over the corner of it.
+     */
+    chromeVisible: Boolean = true,
 ) {
     val colors = MaterialTheme.colorScheme
     val isDarkSurface = isDarkSurface(colors.surface)
@@ -163,7 +180,12 @@ fun GraphCanvas(
 
     // The pan is a pixel translation on the layer, so the opening margin is stated in dp and
     // converted, or the graph starts twice as close to the corner on a scaled display.
-    val offsetAnim = remember { Animatable(Offset(100f * density, 100f * density), Offset.VectorConverter) }
+    val offsetAnim = remember {
+        Animatable(
+            Offset(CANVAS_INITIAL_OFFSET.value * density, CANVAS_INITIAL_OFFSET.value * density),
+            Offset.VectorConverter,
+        )
+    }
     val coroutineScope = rememberCoroutineScope()
 
     // Smooth internal state to eliminate lag during gestures
@@ -885,7 +907,7 @@ fun GraphCanvas(
             searchOverlay()
         }
 
-        Box(
+        if (chromeVisible) Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(MINI_MAP_MARGIN)

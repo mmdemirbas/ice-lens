@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import model.*
 import java.io.File
@@ -292,6 +293,43 @@ fun App() {
                 onSearchOpenChange = { open ->
                     isSearchOpen = open
                     if (!open) state.updateGraphSearch("")
+                },
+                onExport = { format ->
+                    val graph = state.visibleGraphModel
+                    if (graph != null) {
+                        val target = chooseSaveFile(
+                            suggestedExportName(state.selectedTablePath, format),
+                            state.lastBrowseDirectory?.let { java.io.File(it) },
+                        )
+                        if (target != null) {
+                            // Off the UI thread: a PNG of a large graph is composition, layout and
+                            // draw for every node, which is the same work the render benchmark
+                            // measured at about a second for four thousand of them.
+                            coroutineScope.launch {
+                                val result = runCatching {
+                                    val bytes = withContext(Dispatchers.Default) {
+                                        exportGraph(
+                                            graph = graph,
+                                            format = format,
+                                            positionOf = { id ->
+                                                state.nodePositions?.of(id)
+                                                    ?.let { model.Point(it.x, it.y) }
+                                                    ?: graph.layoutPositions[id]
+                                            },
+                                            colorOf = { node -> svgColorOf(node) },
+                                        )
+                                    }
+                                    withContext(Dispatchers.IO) { target.writeBytes(bytes) }
+                                    bytes.size
+                                }
+                                result.onSuccess { size ->
+                                    state.errorMsg = "Exported ${formatBytes(size.toLong())} to ${target.name}"
+                                }.onFailure { e ->
+                                    state.errorMsg = "Export failed: ${e.message ?: e::class.simpleName}"
+                                }
+                            }
+                        }
+                    }
                 },
             )
             HorizontalDivider()
