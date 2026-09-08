@@ -462,6 +462,14 @@ sealed class GraphNode(
         val localPath: String? = null,
         /** How [localPath] was arrived at — see [UnifiedDataFile.pathResolution]. */
         val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
+        /**
+         * The sequence number of the manifest this entry came from, so the entry's own can be
+         * inherited from it — see [effectiveSequenceNumber] for why a null entry value is not
+         * "unknown". Carried on the node because the builder has it and the panel does not: the
+         * manifest is a *parent* here, and a file reached from two of them would otherwise have to
+         * pick one.
+         */
+        val manifestSequenceNumber: Long? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         /**
@@ -488,6 +496,12 @@ sealed class GraphNode(
         // of a declared 68.0, which is a fit with nothing left for rounding at another scale.
     ) : GraphNode(id, initialX, initialY, 200.0, 72.0) {
         val data: DataFile get() = entry.dataFile ?: DataFile(filePath = "unknown")
+
+        /** This file's sequence number, inherited from its manifest when the entry records none. */
+        val sequenceNumber: Long? get() = effectiveSequenceNumber(entry, manifestSequenceNumber)
+
+        /** Whether [sequenceNumber] came from the manifest rather than from the entry. */
+        val sequenceInherited: Boolean get() = entry.sequenceNumber == null && sequenceNumber != null
 
         /** Per-column statistics with bounds decoded against [schema]. */
         val columnStats: List<ColumnStats> by lazy { columnStatsFor(data, schema) }

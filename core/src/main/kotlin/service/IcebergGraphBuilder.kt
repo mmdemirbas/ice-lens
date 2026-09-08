@@ -249,6 +249,7 @@ object IcebergGraphBuilder {
                                         partition = unifiedDataFile.partition,
                                         localPath = unifiedDataFile.path.toString(),
                                         pathResolution = unifiedDataFile.pathResolution,
+                                        manifestSequenceNumber = unifiedManifest.metadata.sequenceNumber,
                                         deletionVectorLoader = deletionVectorLoader(dataFile, unifiedDataFile.path),
                                     )
                                 }

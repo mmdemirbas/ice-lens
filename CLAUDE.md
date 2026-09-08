@@ -468,6 +468,15 @@ intellij/src/main/kotlin/plugin/
 - **The partition spec comes from the manifest, not from `metadata.json`** — same rule as the
   schema for bounds. A repartitioned table describes each file by the spec in force when it was
   written, and using the current spec mis-decodes silently
+- **A null sequence number on an entry means "the manifest's", never "unknown".** Iceberg inherits
+  it: an entry written by the commit that wrote its manifest stores nothing, because every entry
+  that commit adds shares one number, and only an entry *carried forward* records one of its own.
+  `effectiveSequenceNumber` in `IcebergSchema.kt` is the single reading of that rule, and
+  `FileNode.sequenceNumber` / `.sequenceInherited` carry it to the panel — which said `N/A` for three
+  of `mor`'s four files until it existed. The manifest's number reaches the node from the *builder*
+  rather than being looked up from a parent, because one file can hang under several manifests and
+  the panel would have to pick one. It is not only a display fact: which delete files a scan applies
+  to a data file is decided by comparing these two numbers
 - Spec constants live in `IcebergSchema.kt` (`ManifestContent`, `ManifestEntryStatus`,
   `DataFileContent`) and `PaimonSchema.kt` (`PaimonEntryKind`). Prefer them over 0/1/2 literals
 - `versionHint` is nullable — `version-hint.text` exists only for HadoopCatalog/HadoopTables
@@ -1055,7 +1064,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~791 tests across 84 files (574 in :core, 212 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~794 tests across 85 files (577 in :core, 212 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -292,6 +292,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **A file's sequence number is shown even when the file does not record one.** Iceberg leaves it
+  out of every entry a commit adds and keeps it once on the manifest, so three of the four files in
+  the merge-on-read fixture were printing `N/A` for a number the format defines exactly. The panel
+  now shows the inherited value and says that it was inherited.
 - **A filter holding a quoted value survives the trip through the form.** The clause is written back
   from the filter when the editor opens, and it was written back without the quotes it needed — so
   `ts > '2024-03-05 10:00:00'` came back as two values and the reader's own accepted filter read as

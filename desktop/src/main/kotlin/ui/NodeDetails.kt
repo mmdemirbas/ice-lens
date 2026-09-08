@@ -39,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import service.PositionalDeleteTally
 import service.SampleRowReader
+import model.effectiveSequenceNumber
 import model.DataFile
 import model.statisticsRows
 import model.ScanFilter
@@ -1816,7 +1817,7 @@ fun NodeDetailsContent(
                                             status,
                                             content,
                                             "${view.entry.snapshotId ?: "N/A"}",
-                                            "${view.entry.sequenceNumber ?: "N/A"}",
+                                            "${effectiveSequenceNumber(view.entry, node.data.sequenceNumber) ?: "N/A"}",
                                             "${view.entry.fileSequenceNumber ?: "N/A"}",
                                             normalizeText(data.filePath),
                                             data.fileFormat ?: "N/A",
@@ -1858,7 +1859,14 @@ fun NodeDetailsContent(
                             DetailRow("Content Type", contentType)
                             DetailRow("Status", status)
                             DetailRow("Snapshot ID", "${node.entry.snapshotId ?: "N/A"}")
-                            DetailRow("Sequence Num.", "${node.entry.sequenceNumber ?: "N/A"}")
+                            // Inherited from the manifest when the entry records none, which is
+                            // the ordinary case — and said out loud, because a number the file did
+                            // not write is a different fact from one it did.
+                            DetailRow(
+                                "Sequence Num.",
+                                "${node.sequenceNumber ?: "N/A"}" +
+                                    if (node.sequenceInherited) " (inherited from the manifest)" else "",
+                            )
                             DetailRow("File Seq. Num.", "${node.entry.fileSequenceNumber ?: "N/A"}")
                             DetailRow("File Format", "${node.data.fileFormat ?: "N/A"}")
                             DetailRow("Record Count", "${node.data.recordCount ?: 0}")

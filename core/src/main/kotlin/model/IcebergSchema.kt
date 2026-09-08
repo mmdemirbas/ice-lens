@@ -257,6 +257,22 @@ data class ManifestEntry(
     @SerialName("data_file") val dataFile: DataFile? = null,
 )
 
+/**
+ * The sequence number that applies to an entry, which is usually not the one it records.
+ *
+ * Iceberg **inherits** it. An entry written by the same commit as its manifest stores null, and the
+ * value is `manifest_file.sequence_number` — the number is not repeated per entry because every
+ * entry a commit adds shares it. Only an entry *carried forward* from an earlier commit records one
+ * of its own, because by then the manifest's number has moved on and the file's has not.
+ *
+ * So a null here means "the manifest's", never "unknown", and printing it as unknown is how three
+ * of `mor`'s four files came to show `N/A` for a number the format defines exactly. It matters
+ * beyond display: which delete files a scan applies to a data file is decided by comparing these
+ * two numbers, so an entry read as having none is an entry no rule can be applied to.
+ */
+fun effectiveSequenceNumber(entry: ManifestEntry, manifestSequenceNumber: Long?): Long? =
+    entry.sequenceNumber ?: manifestSequenceNumber
+
 @Serializable
 data class DataFile(
     @SerialName("file_path") val filePath: String? = null,
