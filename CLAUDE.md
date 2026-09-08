@@ -378,7 +378,11 @@ intellij/src/main/kotlin/plugin/
   the first version cut at a fixed offset and produced `…D name =`, the tail of `AND` reading as a
   word of its own. **Literals stay text in the parser**: `2024-03-05` is a date to one column and a
   string to another, and only the artifact being evaluated knows which, so `parseLiteral` stays the
-  one place a literal becomes a value. **The field wraps rather than scrolling sideways**, which is
+  one place a literal becomes a value — and **what a literal needs quoting back to is the
+  tokenizer's rule, kept beside the tokenizer** (`quoteScanLiteral`), because a renderer deciding
+  that separately drifts from what the parser accepts and the drift arrives as the reader's own
+  filter reading as an error: `ts > '2024-03-05 10:00:00'` rendered as `ts > 2024-03-05 10:00:00`,
+  which is two literals and parses as neither. **The field wraps rather than scrolling sideways**, which is
   a decision about the width the panel is actually used at: it opens at 300dp and drags to 200dp,
   where one line showed `name IN ('alph` of a filter four times that long — so a reader could not
   see whether their own parentheses balanced, and the error message's word-window was carrying that

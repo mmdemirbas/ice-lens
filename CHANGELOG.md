@@ -287,6 +287,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected the node to see.
 
 ### Fixed
+- **A filter holding a quoted value survives the trip through the form.** The clause is written back
+  from the filter when the editor opens, and it was written back without the quotes it needed — so
+  `ts > '2024-03-05 10:00:00'` came back as two values and the reader's own accepted filter read as
+  a syntax error.
 - **The filter clause is readable at the width the panel is actually used at.** It wrapped nowhere
   and scrolled sideways instead, so the inspector at its normal width showed about a dozen
   characters of it — enough to lose track of your own parentheses. It now wraps to four lines, with

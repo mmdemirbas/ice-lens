@@ -244,6 +244,27 @@ class ScanFilterParserTest {
         assertTrue(failed("a BETWEEN").message.contains("no value"))
     }
 
+    /**
+     * A literal that is not a bare word comes back quoted, or the round trip loses the filter.
+     *
+     * The clause editor seeds its field from `render()` when it opens, so a filter the reader typed
+     * and the panel accepted came back as an error message the moment they used the form and
+     * returned: `ts > '2024-03-05 10:00:00'` rendered as `ts > 2024-03-05 10:00:00`, which is two
+     * literals to the tokenizer and does not parse at all.
+     */
+    @Test
+    fun `a literal that needs quotes keeps them`() {
+        listOf(
+            "ts > '2024-03-05 10:00:00'",
+            "name = 'o''brien'",
+            "name = ''",
+            "path = 'data/name=alpha'",
+        ).forEach { text ->
+            val once = parsed(text)
+            assertEquals(once, parsed(once.render()), "'$text' rendered as '${once.render()}'")
+        }
+    }
+
     /** What is rendered can be read back, which is what lets the form and the clause be one state. */
     @Test
     fun `render and parse round-trip`() {

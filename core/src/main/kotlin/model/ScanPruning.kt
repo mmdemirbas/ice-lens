@@ -85,8 +85,10 @@ enum class PredicateOp(val symbol: String, val takesLiteral: Boolean = true) {
 
 /** One condition of a scan filter, written against a source column the way a query writes it. */
 data class ScanPredicate(val column: String, val op: PredicateOp, val literal: String = "") {
+    // Quoted through the tokenizer's own rule, because this is what the clause editor is seeded
+    // from: a literal holding a space came back as two and the reader's own filter read as an error.
     override fun toString(): String =
-        if (op.takesLiteral) "$column ${op.symbol} $literal" else "$column ${op.symbol}"
+        if (op.takesLiteral) "$column ${op.symbol} ${quoteScanLiteral(literal)}" else "$column ${op.symbol}"
 }
 
 /** What one predicate did to one manifest. */

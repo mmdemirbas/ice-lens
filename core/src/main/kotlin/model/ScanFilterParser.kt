@@ -41,6 +41,19 @@ private data class Token(val kind: TokenKind, val text: String, val at: Int)
 /** Characters an unquoted token may hold. Dashes and colons are in so `2024-03-05` is one token. */
 private fun Char.isWordChar(): Boolean = isLetterOrDigit() || this in "_.-:+"
 
+/**
+ * A literal written back so the tokenizer reads it as one token again.
+ *
+ * The rule is the tokenizer's, and it lives beside the tokenizer for that reason: a renderer that
+ * decides separately what needs quoting drifts from what the parser accepts, and the drift arrives
+ * as the reader's own filter coming back an error. `ts > '2024-03-05 10:00:00'` rendered as
+ * `ts > 2024-03-05 10:00:00`, which is two literals here and parses as neither. The empty string is
+ * quoted too — nothing at all is not a token.
+ */
+fun quoteScanLiteral(literal: String): String =
+    if (literal.isNotEmpty() && literal.all { it.isWordChar() }) literal
+    else "'" + literal.replace("'", "''") + "'"
+
 private fun tokenize(text: String): List<Token>? {
     val tokens = mutableListOf<Token>()
     var i = 0
