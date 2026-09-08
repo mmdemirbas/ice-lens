@@ -58,6 +58,10 @@ enum class PredicateOp(val symbol: String, val takesLiteral: Boolean = true) {
     GTE(">="),
     IS_NULL("is null", takesLiteral = false),
     IS_NOT_NULL("is not null", takesLiteral = false),
+
+    /** `LIKE`, carrying the pattern rather than a value. See [likePattern] for what can be proved. */
+    LIKE("like"),
+    NOT_LIKE("not like"),
     ;
 
     /**
@@ -78,9 +82,116 @@ enum class PredicateOp(val symbol: String, val takesLiteral: Boolean = true) {
             GTE -> LT
             IS_NULL -> IS_NOT_NULL
             IS_NOT_NULL -> IS_NULL
+            LIKE -> NOT_LIKE
+            NOT_LIKE -> LIKE
         }
 
     override fun toString(): String = symbol
+}
+
+/**
+ * What a `LIKE` pattern fixes at the front, and whether that is all it says.
+ *
+ * Bounds are a range of strings, so the only thing a pattern can be disproved against is the text
+ * it pins at the *start*: the values beginning with `alp` are one contiguous interval in the order
+ * the bounds record, and `%pha` or `_lpha` pin nothing there at all. [prefix] is therefore the text
+ * before the first wildcard, and a pattern that begins with one has none.
+ *
+ * [exactlyPrefix] is the second, stricter question, and only `NOT LIKE` asks it. Proving a `LIKE`
+ * empty needs "no value here starts with the prefix", which is implied by any pattern that fixes
+ * one. Proving a `NOT LIKE` empty needs the opposite direction — *every* value matches the pattern
+ * — and "every value starts with `abc`" does not mean every value matches `abc_`, since `abcde`
+ * starts with it and matches nothing of the kind. So that proof is offered only for `abc%`, where
+ * starting with the prefix and matching are the same set.
+ *
+ * `%` and `_` are the wildcards; there is no `ESCAPE` clause here, so a pattern meaning to match a
+ * literal `%` is read as one that fixes the text before it. That is the safe direction — a wider
+ * matching set can only produce fewer proofs, never a wrong one. A pattern holding no wildcard is
+ * equality, so all of it is the prefix and none of it is [exactlyPrefix]: every value starting with
+ * `alpha` is not every value *being* `alpha`.
+ */
+internal data class LikePattern(val prefix: String, val exactlyPrefix: Boolean)
+
+internal fun likePattern(pattern: String): LikePattern? {
+    val stop = pattern.indexOfFirst { it == '%' || it == '_' }
+    if (stop == 0 || pattern.isEmpty()) return null
+    // No wildcard at all is equality, and the whole pattern is the prefix. The clause parser reads
+    // that as `=` before it gets here, which is stronger; the row form can still produce it, and
+    // answering "pins no text at the start" about `alpha` would be nonsense on the reader's screen.
+    val prefix = if (stop < 0) pattern else pattern.take(stop)
+    return LikePattern(prefix, exactlyPrefix = pattern == "$prefix%")
+}
+
+/**
+ * `LIKE` and `NOT LIKE` against one pair of recorded string bounds.
+ *
+ * Shared by both stages, because the reasoning is about the bounds and not about what recorded
+ * them — a file's column statistics and an identity partition summary are the same two strings for
+ * this purpose. The comparison runs over **the shorter of the prefix and the bound**, which is what
+ * keeps it sound against bounds that are themselves truncated: Iceberg truncates string metrics at
+ * 16 characters by default, and a `truncate[W]` partition value is a prefix by construction. A
+ * bound compared over only the characters it has still orders every value behind it.
+ *
+ * [boundsAreTheValues] is false where a transform folded many source values into one recorded
+ * value. It costs only the `NOT LIKE` proof, which is the one that needs every value to match.
+ */
+private fun evaluatePrefixTerm(
+    predicate: ScanPredicate,
+    lower: String,
+    upper: String,
+    lowerShown: String,
+    upperShown: String,
+    boundsAreTheValues: Boolean,
+    foldedBy: String?,
+    outcome: (TermEffect, String) -> PredicateOutcome,
+): PredicateOutcome {
+    val typed = predicate.literal.trim()
+    val pattern = likePattern(typed) ?: return outcome(
+        TermEffect.NOT_EVALUATED,
+        "'$typed' pins no text at the start, and a range of strings can only rule out a pattern " +
+            "that does",
+    )
+    val prefix = pattern.prefix
+    val range = "$lowerShown … $upperShown"
+
+    fun heads(bound: String): Pair<String, String> {
+        val shared = minOf(prefix.length, bound.length)
+        return bound.take(shared) to prefix.take(shared)
+    }
+
+    if (predicate.op == PredicateOp.LIKE) {
+        val (lowHead, lowWanted) = heads(lower)
+        if (lowHead > lowWanted) {
+            return outcome(TermEffect.SKIPS, "the lowest here is $lowerShown, already past '$prefix'")
+        }
+        val (highHead, highWanted) = heads(upper)
+        if (highHead < highWanted) {
+            return outcome(TermEffect.SKIPS, "the highest here is $upperShown, already below '$prefix'")
+        }
+        return outcome(TermEffect.KEEPS, "$range spans values starting '$prefix'")
+    }
+
+    if (!pattern.exactlyPrefix) {
+        return outcome(
+            TermEffect.NOT_EVALUATED,
+            "'$typed' matches less than everything starting '$prefix', so bounds that all start " +
+                "with it do not mean every row matches",
+        )
+    }
+    if (!boundsAreTheValues) {
+        return outcome(
+            TermEffect.NOT_EVALUATED,
+            "$foldedBy maps many values to one, so bounds that all start '$prefix' do not mean " +
+                "every row does",
+        )
+    }
+    val bothStart = lower.length >= prefix.length && upper.length >= prefix.length &&
+        lower.startsWith(prefix) && upper.startsWith(prefix)
+    return if (bothStart) {
+        outcome(TermEffect.SKIPS, "every value here starts '$prefix', which is what is excluded")
+    } else {
+        outcome(TermEffect.KEEPS, "$range holds values that do not start '$prefix'")
+    }
 }
 
 /** One condition of a scan filter, written against a source column the way a query writes it. */
@@ -311,6 +422,39 @@ private fun evaluateTerm(summary: PartitionSummary, predicate: ScanPredicate): P
         return evaluateBucketTerm(summary, predicate, buckets, fieldName, transform)
     }
 
+    // A pattern is not a value, so it never reaches the bridge below: `truncate(alp%, 3)` would
+    // truncate the pattern. It is answered against the bounds directly, for the two transforms that
+    // keep a value's leading text — identity, and truncate, which *is* a prefix.
+    if (predicate.op == PredicateOp.LIKE || predicate.op == PredicateOp.NOT_LIKE) {
+        if (transform != "identity" && truncateWidth(transform) == null) {
+            return outcome(
+                TermEffect.NOT_EVALUATED,
+                "'$transform' does not keep a value's leading text, so a pattern says nothing " +
+                    "about the range it records",
+            )
+        }
+        if (summary.type !is IcebergType.StringType) {
+            return outcome(
+                TermEffect.NOT_EVALUATED,
+                "$fieldName records ${summary.type.typeName} bounds, and a pattern compares text",
+            )
+        }
+        val low = summary.lower?.takeIf { !it.isError }?.value as? String
+        val high = summary.upper?.takeIf { !it.isError }?.value as? String
+        if (low == null || high == null) {
+            return outcome(
+                TermEffect.NOT_EVALUATED,
+                "$fieldName has no usable text bounds in this manifest, so there is no range to " +
+                    "rule the pattern out against",
+            )
+        }
+        return evaluatePrefixTerm(
+            // Rendered by the transform where it has a rendering; the bound itself otherwise.
+            predicate, low, high, summary.humanLower ?: low, summary.humanUpper ?: high,
+            boundsAreTheValues = transform == "identity", foldedBy = transform,
+        ) { effect, reason -> outcome(effect, reason) }
+    }
+
     val bridge = transformBridge(transform)
     if (bridge == null) {
         return outcome(
@@ -420,7 +564,8 @@ private fun evaluateTerm(summary: PartitionSummary, predicate: ScanPredicate): P
             else -> outcome(TermEffect.KEEPS, "$range holds more than $applied")
         }
 
-        PredicateOp.IS_NULL, PredicateOp.IS_NOT_NULL -> error("handled above")
+        PredicateOp.IS_NULL, PredicateOp.IS_NOT_NULL, PredicateOp.LIKE, PredicateOp.NOT_LIKE ->
+            error("handled above")
     }
 }
 
@@ -694,6 +839,28 @@ private fun evaluateColumnTerm(stats: ColumnStats, predicate: ScanPredicate): Pr
                 "cannot be read",
         )
 
+    // Same reason as the manifest stage: the literal here is a pattern, not a value of the column.
+    if (predicate.op == PredicateOp.LIKE || predicate.op == PredicateOp.NOT_LIKE) {
+        if (type !is IcebergType.StringType) {
+            return outcome(
+                TermEffect.NOT_EVALUATED,
+                "'$name' is a ${type.typeName}, and a pattern compares text",
+            )
+        }
+        val low = lower as? String
+        val high = upper as? String
+        if (low == null || high == null) {
+            return outcome(TermEffect.NOT_EVALUATED, "$name's bounds here did not decode as text")
+        }
+        return evaluatePrefixTerm(
+            predicate, low, high, stats.lowerBound.display, stats.upperBound.display,
+            // A file's bounds are the values themselves, truncated at worst — which the shared
+            // comparison already allows for — so `NOT LIKE` is answerable here and not under a
+            // transform that folds.
+            boundsAreTheValues = true, foldedBy = null,
+        ) { effect, reason -> outcome(effect, reason) }
+    }
+
     val literal = parseLiteral(predicate.literal, type)
         ?: return outcome(
             TermEffect.NOT_EVALUATED,
@@ -755,7 +922,8 @@ private fun evaluateColumnTerm(stats: ColumnStats, predicate: ScanPredicate): Pr
             else -> outcome(TermEffect.KEEPS, "$range holds more than $shown")
         }
 
-        PredicateOp.IS_NULL, PredicateOp.IS_NOT_NULL -> error("handled above")
+        PredicateOp.IS_NULL, PredicateOp.IS_NOT_NULL, PredicateOp.LIKE, PredicateOp.NOT_LIKE ->
+            error("handled above")
     }
 }
 

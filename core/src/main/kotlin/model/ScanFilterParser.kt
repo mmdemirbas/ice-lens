@@ -99,7 +99,7 @@ private fun tokenize(text: String): List<Token>? {
     return tokens
 }
 
-private val KEYWORDS = setOf("and", "or", "not", "is", "null", "in", "between")
+private val KEYWORDS = setOf("and", "or", "not", "is", "null", "in", "between", "like")
 
 private val OPERATORS = mapOf(
     "=" to PredicateOp.EQ,
@@ -228,12 +228,13 @@ private class FilterParser(private val tokens: List<Token>, private val text: St
         // `pushNegation` stays the one place a negation is worked out: `NOT IN` is a conjunction of
         // `<>` and `NOT BETWEEN` a disjunction of `<` and `>`, and writing either out here would be
         // a second implementation of De Morgan.
-        val negated = keywordAt() == "not" && keywordAt(1) in setOf("in", "between")
+        val negated = keywordAt() == "not" && keywordAt(1) in setOf("in", "between", "like")
         if (negated) pos++
         fun negate(filter: ScanFilter?) = filter?.let { if (negated) ScanFilter.Not(it) else it }
         when (keywordAt()) {
             "in" -> return negate(parseIn(column.text))
             "between" -> return negate(parseBetween(column.text))
+            "like" -> return negate(parseLike(column.text))
         }
 
         val operator = peek()
@@ -294,6 +295,21 @@ private class FilterParser(private val tokens: List<Token>, private val text: St
                 ScanFilter.Term(ScanPredicate(column, PredicateOp.LTE, high)),
             )
         )
+    }
+
+    /**
+     * `c LIKE 'pat'`, kept as the pattern it is — unless it holds no wildcard at all.
+     *
+     * A pattern with neither `%` nor `_` matches exactly one string, which is what `=` means and is
+     * the stronger proof: `=` is settled by any bound that excludes the value, while `LIKE` can
+     * only ever be settled by the leading text. Reading it as equality is not a shortcut, it is
+     * what the pattern says.
+     */
+    private fun parseLike(column: String): ScanFilter? {
+        pos++
+        val pattern = literal("$column LIKE") ?: return null
+        val op = if (pattern.none { it == '%' || it == '_' }) PredicateOp.EQ else PredicateOp.LIKE
+        return ScanFilter.Term(ScanPredicate(column, op, pattern))
     }
 
     /**

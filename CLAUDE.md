@@ -403,6 +403,19 @@ intellij/src/main/kotlin/plugin/
   parent**: `BETWEEN` desugars to an `And`, so without that `a = 1 AND d BETWEEN 2 AND 3` is a
   nested `And`, `asConjunction` answers null, and the panel keeps the reader in the editor for a
   filter the rows can show perfectly well
+- **`LIKE` is the one pattern operator with a leaf, and it proves only what a prefix can.** Bounds
+  are a range of strings, so the only thing a pattern can be disproved against is the text it pins
+  at the *start*. `likePattern` in `model/ScanPruning.kt` takes the text before the first wildcard;
+  `%pha` pins nothing and reports that it did not evaluate. The comparison runs over **the shorter
+  of the prefix and the bound**, which is what keeps it sound where the bound is itself a prefix —
+  Iceberg truncates string metrics at 16 characters and a `truncate[W]` partition value is a prefix
+  by construction, so comparing `alph` against a three-character `alp` would skip a manifest holding
+  `alpha`, which is the one pruning bug that loses rows. **`NOT LIKE` runs the proof the other way**
+  and needs *every* value to match, so it is answered only where the bounds are the values
+  themselves — an identity field, or a file's own column statistics — and only for `text%`, since
+  every value starting `abc` is not every value matching `abc_`. A wildcard-free pattern is
+  equality: the clause parser reads it as `=`, which is settled by any bound that excludes the
+  value, while the row form can still produce a bare `LIKE` and the whole pattern is its prefix
 - **`bucket[N]` prunes on equality, and only because the hash is the writer's own.**
   `BucketTransform` calls `Hashing.murmur3_32_fixed()` — the same Guava function Iceberg's
   `Bucket` transform calls — so nothing here re-derives a hash, and the only thing left to get
@@ -1042,7 +1055,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~780 tests across 84 files (563 in :core, 212 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~791 tests across 84 files (574 in :core, 212 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

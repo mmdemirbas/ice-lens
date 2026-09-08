@@ -27,20 +27,16 @@ Neither is worth doing before the plugin has a reason to read a data file.
 These are the differences between "renders the metadata tree" and "answers the questions a
 table-format engineer opens a debugger for". Ordered by how often the question comes up.
 
-- **Pruning is answered for a filter, but the filter is a form and not a clause.** Both stages are
-  modelled now — manifests by partition summary, files by their own column bounds — and the panel
-  reports which and why (`model/ScanPruning.kt`). Two gaps remain. `bucket[N]` equality is
-  evaluated now (`model/BucketTransform.kt`, checked against the buckets Spark recorded at two
-  bucket counts), and every other operator on a bucket field still declines, correctly — a range of
-  bucket numbers says nothing about a range of values. A `WHERE` clause would be more familiar than
-  the form. **`OR`, `NOT` and grouping are done** — `model/ScanFilter.kt` evaluates the tree and
-  `model/ScanFilterParser.kt` reads a `WHERE` clause, offered beside the rows in the panel. The
-  literal is still read in one place (`parseLiteral`, against the column's own type), because the
-  parser keeps literals as text. `IN` and `BETWEEN` are done as **parser sugar** — the disjunction
-  and the pair of bounds SQL defines them as — so neither needed an evaluator leaf. What is left is
-  `LIKE`, which does need one: only a prefix pattern says anything a bound can prove
-  (`c LIKE 'abc%'` implies `c >= 'abc'` and `c < 'abd'`), every other pattern proves nothing, and
-  the increment is over the column's own string type rather than over the literal.
+- **Scan pruning is answered end to end, and what is left is the operators nothing records a bound
+  for.** Both stages are modelled — manifests by partition summary, files by their own column
+  bounds — and the panel reports which and why (`model/ScanPruning.kt`). The filter is a boolean
+  expression (`model/ScanFilter.kt`) written either as rows or as a `WHERE` clause
+  (`model/ScanFilterParser.kt`), with `OR`, `NOT`, grouping, `IN`, `BETWEEN` and `LIKE`. Three
+  operators decline on purpose rather than guess, each with its reason on screen: every non-equality
+  comparison on a `bucket[N]` field, since a range of bucket numbers says nothing about a range of
+  values; a pattern that pins no leading text; and `NOT LIKE` where a transform folded many values
+  into one. What has no way in at all is a comparison **between two columns**, and nothing recorded
+  in a manifest could answer one anyway.
 
 - **Iceberg v3 is half-modelled.** A deletion vector's Puffin blob is now opened and its
   positions decoded (`service/PuffinReader.kt`), so the inspector answers which rows a vector

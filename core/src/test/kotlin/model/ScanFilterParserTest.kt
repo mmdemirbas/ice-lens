@@ -245,6 +245,49 @@ class ScanFilterParserTest {
     }
 
     /**
+     * `LIKE` keeps its pattern; the panel decides later what can be proved from it.
+     *
+     * The pattern is not a value of the column, so nothing here reads it — the same rule that keeps
+     * every other literal as text.
+     */
+    @Test
+    fun `LIKE carries the pattern`() {
+        assertEquals(term("name", PredicateOp.LIKE, "alp%"), parsed("name LIKE 'alp%'"))
+        assertEquals(term("name", PredicateOp.LIKE, "%pha"), parsed("name like '%pha'"))
+        assertEquals(term("name", PredicateOp.LIKE, "a_pha"), parsed("name LIKE 'a_pha'"))
+    }
+
+    /**
+     * A pattern with no wildcard is equality, which is a stronger proof and already implemented.
+     *
+     * `=` is settled by any bound that excludes the value; `LIKE` only ever by leading text. Left
+     * as `LIKE` it would answer a narrower question than the reader asked for.
+     */
+    @Test
+    fun `a wildcard-free LIKE is equality`() {
+        assertEquals(term("name", PredicateOp.EQ, "alpha"), parsed("name LIKE 'alpha'"))
+        assertEquals(
+            ScanFilter.Term(ScanPredicate("name", PredicateOp.NOT_EQ, "alpha")),
+            parsed("name NOT LIKE 'alpha'").pushNegation(),
+        )
+    }
+
+    @Test
+    fun `NOT LIKE is the negation, worked out in one place`() {
+        assertEquals(
+            term("name", PredicateOp.NOT_LIKE, "alp%"),
+            parsed("name NOT LIKE 'alp%'").pushNegation(),
+        )
+        assertEquals(term("name", PredicateOp.LIKE, "alp%"), parsed("NOT name NOT LIKE 'alp%'").pushNegation())
+    }
+
+    @Test
+    fun `a malformed LIKE is reported`() {
+        assertTrue(failed("name LIKE").message.contains("no value"))
+        assertTrue(failed("name LIKE AND").message.contains("expected a value"))
+    }
+
+    /**
      * A literal that is not a bare word comes back quoted, or the round trip loses the filter.
      *
      * The clause editor seeds its field from `render()` when it opens, so a filter the reader typed
@@ -278,6 +321,8 @@ class ScanFilterParserTest {
             // Neither has a node of its own, so what comes back is the shape being evaluated.
             "a IN (1, 2)",
             "a BETWEEN 1 AND 9",
+            // The pattern needs its quotes back, since `%` is not a character a bare token may hold.
+            "name like 'alp%'",
         ).forEach { text ->
             val once = parsed(text)
             assertEquals(once, parsed(once.render()), "'$text' rendered as '${once.render()}'")

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`LIKE` and `NOT LIKE` prune.** A pattern is answered against the text a column's bounds pin at
+  the start — `name LIKE 'b%'` rules out every manifest and every file whose recorded names are all
+  below `b` or all past it — and a partition truncated to its first characters answers it too, since
+  a truncation is a prefix. A pattern that pins nothing at the front says so rather than pretending
+  to a verdict, and `NOT LIKE` is answered only where the bounds are the values themselves.
 - **`IN` and `BETWEEN` in the filter clause**, including `NOT IN` and `NOT BETWEEN`. Both are read
   as what SQL defines them to be — a disjunction of equalities, and a pair of bounds — so the
   pruning engine gained nothing to get wrong. Written back, they show as the shape being evaluated

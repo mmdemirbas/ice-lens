@@ -884,6 +884,18 @@ class InspectorRenderTest {
         renderScene("scan-pruning-manifest", width = 1400, height = 1600) {
             NodeDetailsContent(graph, setOf(manifest.id), scanFilter = model.ScanFilter.of(predicates))
         }
+
+        // A pattern, whose reasons are prose nothing else in these tables produces — and the one
+        // filter where the same term reaches two partition fields of the same column with different
+        // answers: `name` records `alpha … charlie` and `name_trunc` only its first three
+        // characters, so what the reason has to name is which field, not which literal.
+        renderScene("scan-pruning-like", width = 1400, height = 3200) {
+            NodeDetailsContent(
+                graph,
+                setOf(table.id),
+                scanFilter = model.ScanFilter.of(listOf(ScanPredicate("name", PredicateOp.LIKE, "b%"))),
+            )
+        }
     }
 
     /**

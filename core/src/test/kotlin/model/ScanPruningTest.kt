@@ -317,4 +317,131 @@ class ScanPruningTest {
         println("Checked $checked file-own-value predicates against their own manifests")
         assertTrue(checked > 0, "the fixtures should have identity partition fields to check")
     }
+
+    /**
+     * `LIKE` against the two string fields `parted` records: `name` (identity) and `name_trunc`
+     * (`truncate[3]`).
+     *
+     * The bounds are the fixture's own, printed once and read off: the three-file manifest records
+     * `name` as `alpha … charlie` and `name_trunc` as `alp … cha`; the one-row manifest records
+     * `alpha … alpha` and `alp … alp`. So `del%` is past the top of both fields on both manifests,
+     * `b%` sits inside the wide one and above the narrow one, and `a%` is inside both.
+     */
+    @Test
+    fun `a pattern prunes on the leading text, under identity and under truncate`() {
+        val far = ScanPredicate("name", PredicateOp.LIKE, "del%")
+        assertEquals(TermEffect.SKIPS, effectOn(wide(), "name", far))
+        assertEquals(TermEffect.SKIPS, effectOn(oneRow(), "name", far))
+        // truncate is a prefix, so it keeps exactly the text a pattern is compared against.
+        assertEquals(TermEffect.SKIPS, effectOn(wide(), "name_trunc", far))
+        assertEquals(TermEffect.SKIPS, effectOn(oneRow(), "name_trunc", far))
+
+        val bravo = ScanPredicate("name", PredicateOp.LIKE, "b%")
+        assertEquals(TermEffect.KEEPS, effectOn(wide(), "name", bravo), "bravo is in alpha … charlie")
+        assertEquals(TermEffect.SKIPS, effectOn(oneRow(), "name", bravo), "alpha … alpha is below b")
+
+        val alpha = ScanPredicate("name", PredicateOp.LIKE, "a%")
+        assertEquals(TermEffect.KEEPS, effectOn(wide(), "name", alpha))
+        assertEquals(TermEffect.KEEPS, effectOn(oneRow(), "name", alpha))
+    }
+
+    /**
+     * A prefix longer than the bound is compared over what the bound has, and that is the whole
+     * reason truncated bounds stay sound.
+     *
+     * `name_trunc` records three characters. `alph%` is four, and `alp … alp` cannot rule it out —
+     * the manifest genuinely may hold `alpha`. Comparing the full prefix against a bound three
+     * characters long would find `alp` < `alph` and skip a manifest holding a matching row, which
+     * is the one pruning bug that loses data.
+     */
+    @Test
+    fun `a prefix longer than the recorded bound does not prune`() {
+        val predicate = ScanPredicate("name", PredicateOp.LIKE, "alph%")
+        assertEquals(TermEffect.KEEPS, effectOn(oneRow(), "name_trunc", predicate))
+        assertEquals(TermEffect.SKIPS, effectOn(oneRow(), "name_trunc", ScanPredicate("name", PredicateOp.LIKE, "b%")))
+    }
+
+    /**
+     * `NOT LIKE` runs the proof the other way: it needs *every* value to match the pattern.
+     *
+     * So it is answered where the bounds are the values — an identity field — and declines where a
+     * transform folded many values into one, since bounds that both start `alp` under `truncate[3]`
+     * say nothing about what follows in the source.
+     */
+    @Test
+    fun `NOT LIKE is proved only where every value must match`() {
+        val predicate = ScanPredicate("name", PredicateOp.NOT_LIKE, "alpha%")
+        assertEquals(TermEffect.SKIPS, effectOn(oneRow(), "name", predicate), "every row here is alpha")
+        assertEquals(TermEffect.KEEPS, effectOn(wide(), "name", predicate), "alpha … charlie holds more")
+        assertEquals(TermEffect.NOT_EVALUATED, effectOn(oneRow(), "name_trunc", predicate))
+    }
+
+    /**
+     * The row form can also produce a `LIKE`, and there it may hold no wildcard at all.
+     *
+     * The clause parser reads a wildcard-free pattern as `=` before the evaluator sees it, but the
+     * form has an operator menu and no parser, so `like alpha` arrives intact. Answering "pins no
+     * text at the start" about `alpha` would be nonsense; it prunes on the whole pattern instead,
+     * which is weaker than equality and never wrong.
+     */
+    @Test
+    fun `a wildcard-free pattern from the form still prunes on its text`() {
+        assertEquals(
+            TermEffect.SKIPS,
+            effectOn(oneRow(), "name", ScanPredicate("name", PredicateOp.LIKE, "charlie")),
+        )
+        assertEquals(
+            TermEffect.KEEPS,
+            effectOn(oneRow(), "name", ScanPredicate("name", PredicateOp.LIKE, "alpha")),
+        )
+    }
+
+    /** A pattern that pins nothing at the front, and one on a field that is not text. */
+    @Test
+    fun `a pattern with no leading text, and one on a bucket, report that they did not evaluate`() {
+        assertEquals(
+            TermEffect.NOT_EVALUATED,
+            effectOn(oneRow(), "name", ScanPredicate("name", PredicateOp.LIKE, "%pha")),
+        )
+        // The bucket path answers first, and its reason is the one that fits: a hash keeps no
+        // ordering at all, let alone leading text.
+        assertEquals(
+            TermEffect.NOT_EVALUATED,
+            evaluate(oneRow(), ScanPredicate("id", PredicateOp.LIKE, "1%"))
+                .outcomes.single { it.fieldName == "id_bucket" }.effect,
+        )
+    }
+
+    /**
+     * The file stage answers the same question against a file's own column bounds.
+     *
+     * `parted`'s three-file manifest holds one file per name — `alpha`, `bravo`, `charlie` — so a
+     * pattern separates them one from another, which a manifest-level range cannot.
+     */
+    @Test
+    fun `a pattern prunes a file by its own column bounds`() {
+        val files = wide().dataFiles.map { columnStatsFor(it.metadata.dataFile!!, wide().schema) }
+        fun fates(predicate: ScanPredicate) =
+            files.map { evaluateFilePruning(it, listOf(predicate)).fate }.groupingBy { it }.eachCount()
+
+        assertEquals(
+            mapOf(FileFate.WOULD_BE_READ to 1, FileFate.SKIPPED to 2),
+            fates(ScanPredicate("name", PredicateOp.LIKE, "b%")),
+            "only the file whose name bounds are bravo … bravo can hold one",
+        )
+        assertEquals(
+            mapOf(FileFate.SKIPPED to 3),
+            fates(ScanPredicate("name", PredicateOp.LIKE, "del%")),
+        )
+        assertEquals(
+            mapOf(FileFate.SKIPPED to 1, FileFate.WOULD_BE_READ to 2),
+            fates(ScanPredicate("name", PredicateOp.NOT_LIKE, "alpha%")),
+            "the alpha … alpha file holds nothing that is not alpha",
+        )
+        // A pattern on a column that is not text is declined rather than answered.
+        assertEquals(
+            mapOf(FileFate.UNEVALUATED to 3),
+            fates(ScanPredicate("amount", PredicateOp.LIKE, "1%")),
+        )
+    }
 }
