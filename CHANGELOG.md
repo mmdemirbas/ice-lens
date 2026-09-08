@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A snapshot says which of its delete files reach which of its data files — and which reach
+  nothing.** A scan pairs the two by sequence number and by the paths a delete file records about
+  itself, both readable without opening anything, so the panel can now name the *dangling* delete
+  files: still read during planning, deleting rows that are no longer in the table. The
+  merge-on-read fixture has two, left behind by its compaction, and they were previously visible
+  only as an arithmetic that does not add up.
 - **`LIKE` and `NOT LIKE` prune.** A pattern is answered against the text a column's bounds pin at
   the start — `name LIKE 'b%'` rules out every manifest and every file whose recorded names are all
   below `b` or all past it — and a partition truncated to its first characters answers it too, since

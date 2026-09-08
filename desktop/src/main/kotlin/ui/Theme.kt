@@ -58,6 +58,17 @@ fun verdictUnevaluatedColor(): Color =
     if (isDarkSurface(MaterialTheme.colorScheme.surface)) Color(0xFFE0A64A) else Color(0xFFA8600C)
 
 /**
+ * A dangling delete's row, in the same amber a verdict column's exception takes.
+ *
+ * Deliberately not a new colour: one vocabulary per window, and amber already means "this is the
+ * row to look at" wherever a column of ordinary outcomes holds one that is not. It has its own
+ * name because the *reason* differs — nothing failed to evaluate here, the evaluation succeeded
+ * and the answer is that this delete file reaches nothing.
+ */
+@Composable
+fun danglingDeleteColor(): Color = verdictUnevaluatedColor()
+
+/**
  * The halo around a node the find bar matched.
  *
  * Amber rather than the accent, because the accent is already what selection means on this canvas

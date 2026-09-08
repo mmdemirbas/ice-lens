@@ -39,6 +39,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import service.PositionalDeleteTally
 import service.SampleRowReader
+import model.DeleteFileKind
+import model.ManifestContent
 import model.effectiveSequenceNumber
 import model.DataFile
 import model.statisticsRows
@@ -1511,6 +1513,8 @@ fun NodeDetailsContent(
 
                         node.change?.let { CommitSection(it) }
 
+                        DeleteReachSection(node, children)
+
                         if (node.data.summary.isNotEmpty()) {
                             Section("Summary") {
                                 // Copied out of the snapshot as the writer left them. The section
@@ -2849,6 +2853,96 @@ private fun DeletionVectorSection(node: GraphNode.FileNode) {
  * Placed above the raw summary rather than below it: this is the answer to "what changed here",
  * and the summary is the data it was partly read from.
  */
+/**
+ * Which of this snapshot's delete files reach which of its data files, from the metadata alone.
+ *
+ * The pairing is what a scan actually does and what the tree cannot show: a delete file is drawn
+ * under the manifest that lists it, beside data files it may have nothing to do with. The row that
+ * matters is the one reaching **nothing** — a dangling delete, still planned against on every scan
+ * until a rewrite drops it, and invisible in every count the panel above prints.
+ *
+ * Drawn even when there is nothing to say, the same rule as `Statistics (0)`: "this snapshot has no
+ * delete files" is an answer a reader comes for, and a section that is simply absent cannot be told
+ * from one this panel does not know how to render. What it will *not* do is walk for that answer —
+ * the manifest list records each manifest's content, so whether there is a delete manifest at all
+ * is known without opening anything, and the deferred walk is forced only when there is.
+ */
+@Composable
+private fun DeleteReachSection(node: GraphNode.SnapshotNode, children: List<GraphNode>) {
+    val colors = MaterialTheme.colorScheme
+    val hasDeleteManifest = children.filterIsInstance<GraphNode.ManifestNode>()
+        .any { it.data.content == ManifestContent.DELETES }
+    val reach = if (hasDeleteManifest) node.deleteReach.orEmpty() else emptyList()
+
+    CountedSection("Delete Reach", reach.size, "delete files") {
+        if (reach.isEmpty()) {
+            Text(
+                if (hasDeleteManifest) {
+                    "This snapshot lists a delete manifest, but no live delete file inside it."
+                } else {
+                    "No delete files here: every manifest this snapshot lists holds data entries only."
+                },
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+            )
+            return@CountedSection
+        }
+        Text(
+            "A scan pairs a delete file with a data file by two rules, both answerable without " +
+                "opening either: the delete file's sequence number must be at or above the data " +
+                "file's — strictly above, for an equality delete — and its recorded targets must " +
+                "not rule the path out. \"Reaches nothing\" is a proof, and it means the file is " +
+                "dangling: still read during planning, deleting rows that are no longer here.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            headers = listOf("Reaches", "Delete File", "Kind", "Seq", "Records", "Recorded Targets"),
+            columnWidths = listOf(150.dp, 260.dp, 130.dp, 60.dp, 90.dp, 300.dp),
+            leadCellColors = reach.map { if (it.isDangling) danglingDeleteColor() else null },
+            rows = reach.map { file ->
+                listOf(
+                    when {
+                        file.isDangling -> "nothing"
+                        file.reaches.isEmpty() -> "${formatCount(file.mayReach.size.toLong())} unsettled"
+                        file.mayReach.isEmpty() ->
+                            "${formatCount(file.reaches.size.toLong())} data " +
+                                if (file.reaches.size == 1) "file" else "files"
+                        else -> "${formatCount(file.reaches.size.toLong())} + " +
+                            "${formatCount(file.mayReach.size.toLong())} unsettled"
+                    },
+                    fileNameFromPath(file.deletePath),
+                    when (file.kind) {
+                        DeleteFileKind.DELETION_VECTOR -> "deletion vector"
+                        DeleteFileKind.POSITIONAL -> "positional"
+                        DeleteFileKind.EQUALITY -> "equality"
+                    },
+                    "${file.sequenceNumber ?: "N/A"}",
+                    formatCount(file.recordCount ?: 0L),
+                    file.targets.onlyPath?.let { "names ${fileNameFromPath(it)}" }
+                        ?: file.targets.low?.let { low ->
+                            "${fileNameFromPath(low)} … ${fileNameFromPath(file.targets.high.orEmpty())}"
+                        }
+                        ?: "none recorded — applies by value",
+                )
+            },
+        )
+        // The files each one reaches, listed once rather than per row: on any real table the same
+        // data file is named by several delete files, and a column of them would be the same paths
+        // repeated down the table.
+        reach.filter { it.reaches.isNotEmpty() }.forEach { file ->
+            Text(
+                "${fileNameFromPath(file.deletePath)} → " +
+                    file.reaches.joinToString(", ") { fileNameFromPath(it) },
+                fontSize = TypeScale.micro,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+}
+
 @Composable
 private fun CommitSection(change: SnapshotChange) {
     val colors = MaterialTheme.colorScheme

@@ -384,6 +384,15 @@ sealed class GraphNode(
          * would walk twenty of them at build time to answer a question the reader asks about two.
          */
         private val liveFilesLoader: DeferredRead<List<LiveFile>> = DeferredRead.none(),
+        /**
+         * Which of this snapshot's delete files reach which of its data files — see [deleteReach].
+         *
+         * Deferred for the same reason [liveFilesLoader] is, and it costs that walk plus a pass
+         * over the entries: computing it for every snapshot at build time would answer a question
+         * about one commit for all of them. The panel only forces it when the manifest list says
+         * there is a delete manifest to be about, which the list records without being opened.
+         */
+        private val deleteReachLoader: DeferredRead<List<DeleteReach>> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         // The card grows for its ref chips rather than clipping them. Node height is what ELK
@@ -416,6 +425,9 @@ sealed class GraphNode(
         override val liveFiles: List<LiveFile>? get() = liveFilesLoader.value
 
         override val canDiff: Boolean get() = liveFilesLoader.isPresent
+
+        /** Which delete files reach which data files here, walked on first ask. */
+        val deleteReach: List<DeleteReach>? get() = deleteReachLoader.value
     }
 
     data class ManifestNode(

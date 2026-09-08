@@ -259,6 +259,23 @@ intellij/src/main/kotlin/plugin/
   The colour marks `REPLACED` and `REMOVED_ABSENT` only: adding and removing are both ordinary in a
   compaction, while a rewrite whose record delta is a *difference* and a removal that **found
   nothing to remove** are the two rows invisible in every figure above them
+- **Which delete files a scan pairs with which data files is answered from the metadata, and the
+  interesting answer is "none".** `model/DeleteAssignment.kt` applies the two rules a scan applies,
+  neither of which needs a file opened. **Sequence:** a positional delete or a v3 vector reaches a
+  data file at or below its own number, an equality delete only one strictly below — the difference
+  is what makes equality deletes safe to write, since they must not touch rows a later commit adds.
+  **Target:** a vector names its file in `referenced_data_file`, and a v2 positional delete records
+  **bounds on its own `file_path` column** (reserved field 2147483546) — the same thing Iceberg's
+  planner prunes with, and the reason this needs no scatter-gather. Bounds that *meet* name one file
+  and settle it; bounds that span only rule paths out. An equality delete has no target and every
+  candidate stays unsettled, which is why `reaches` and `mayReach` are separate lists: "the metadata
+  ruled everything out" and "the metadata could rule nothing out" would otherwise both read as an
+  empty list, and only the first means the file is **dangling**. The partition is deliberately *not*
+  compared — Iceberg never applies a delete across one, so including it would rule *more* out, and a
+  wrong exclusion here hides a delete. Omitting it can only leave a pair unsettled, which is the
+  absence of a proof and is what the panel says. `mor` was already documented as having two dangling
+  deletes and nothing asserted it, because nothing could compute it; `DeleteAssignmentTest` now does,
+  from the delete files' own bounds against the live paths
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
@@ -1064,7 +1081,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~794 tests across 85 files (577 in :core, 212 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~800 tests across 86 files (583 in :core, 212 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

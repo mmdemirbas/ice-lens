@@ -109,6 +109,15 @@ rather than computed, and a per-manifest verdict on the snapshot's manifest-list
 
 What is left:
 
+- **The delete side is answered by metadata, not yet by contents.** `model/DeleteAssignment.kt`
+  pairs each of a snapshot's delete files with the data files it can reach — by sequence number and
+  by the `file_path` bounds a positional delete records about itself — so a *dangling* delete is now
+  named as one. What that does **not** answer is the row-level question in the other direction:
+  standing on a data file, how many of its rows are deleted and by which files. The pairing narrows
+  the candidates to a handful, so the scatter-gather is smaller than it was, but it is still a read
+  per candidate delete file. Equality deletes stay out of both: they match by value, so no bound
+  and no path links them to anything.
+
 - **The delete side's ledger stops at one delete file.** "Read the file" on a positional delete
   file now names every data file it deletes from and how many rows out of each
   (`SampleRowReader.queryPositionalDeleteTargets`, aggregated by DuckDB so an unbounded read is

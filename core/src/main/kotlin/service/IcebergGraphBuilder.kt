@@ -176,6 +176,9 @@ object IcebergGraphBuilder {
                         // Deferred, not computed: this walks the snapshot's whole manifest
                         // closure, and only two snapshots in a table are ever compared.
                         liveFilesLoader = DeferredRead.of { liveFilesOf(snapshot) },
+                        // Deferred for the same reason, and it costs that walk again: the pairing
+                        // is a question about one commit, asked of one panel.
+                        deleteReachLoader = DeferredRead.of { deleteReach(snapshot) },
                     )
                 }
                 snapshot.readErrors.forEach { error ->

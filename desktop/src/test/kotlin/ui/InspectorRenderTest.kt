@@ -199,7 +199,9 @@ class InspectorRenderTest {
                 SnapshotCard(withMain.copy(refs = withMain.refs + SnapshotRefLabel("v1.0-release", isBranch = false)))
             }
         }
-        renderInspector(graph, withMain.id, "snapshot-node", height = 2600)
+        // Taller than the other panels because this one now carries the delete-reach table, and a
+        // capture that stops above the rows it was taken for shows nothing.
+        renderInspector(graph, withMain.id, "snapshot-node", height = 3600)
 
         // A commit that takes files out, which the one above does not. "What this commit did"
         // draws a removal in the error colour against additions in body colour, and a verdict
@@ -208,7 +210,7 @@ class InspectorRenderTest {
         val compaction = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>()
             .firstOrNull { it.change?.removed?.isNotEmpty() == true }
         assertNotNull(compaction, "the merge-on-read fixture should carry a commit that removes files")
-        renderInspector(graph, compaction.id, "snapshot-node-compaction", height = 2600)
+        renderInspector(graph, compaction.id, "snapshot-node-compaction", height = 3600)
     }
 
     /**
