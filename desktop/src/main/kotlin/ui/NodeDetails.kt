@@ -39,6 +39,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import service.PositionalDeleteTally
 import service.SampleRowReader
+import model.DeleteReachVerdict
+import model.deleteCandidatesFor
+import model.deleteKindOf
+import model.deleteTargetsOf
 import model.DeleteFileKind
 import model.ManifestContent
 import model.effectiveSequenceNumber
@@ -1981,11 +1985,30 @@ fun NodeDetailsContent(
                                         }
                                         else -> {
                                             DetailRow("Applies by", "Row position")
+                                            // The exact targets are inside the file, but the range
+                                            // of them is not: the manifest records bounds on this
+                                            // file's own file_path column, and that is what a
+                                            // planner prunes with before opening anything.
+                                            val targets = deleteTargetsOf(node.data)
                                             DetailRow(
                                                 "Target Files",
-                                                "Recorded inside this file, not in the metadata. Its own " +
-                                                    "file_path column names the data files and the pos column the " +
-                                                    "rows — read them below.",
+                                                "Named row by row inside this file — its file_path column names " +
+                                                    "the data files and pos the rows, read them below. The " +
+                                                    "manifest records the range those names fall in, which is " +
+                                                    "what a scan prunes with without opening this file.",
+                                            )
+                                            DetailRow(
+                                                "Recorded Range",
+                                                when {
+                                                    targets.namesOneFile ->
+                                                        "${targets.onlyPath} — the bounds meet, so this file " +
+                                                            "targets exactly one data file"
+                                                    targets.low != null ->
+                                                        "${targets.low} … ${targets.high}"
+                                                    else ->
+                                                        "Not recorded. Without bounds on file_path a scan cannot " +
+                                                            "rule this delete file out of any data file."
+                                                },
                                             )
                                         }
                                     }
@@ -1996,6 +2019,8 @@ fun NodeDetailsContent(
                             }
                             DeletionVectorSection(node)
                         }
+
+                        DeletesReachingSection(node, currentGraph)
 
                         // The five per-column statistics maps, pivoted into one row per column and
                         // decoded against the schema this file's manifest was written with. Stored
@@ -2867,6 +2892,104 @@ private fun DeletionVectorSection(node: GraphNode.FileNode) {
  * the manifest list records each manifest's content, so whether there is a delete manifest at all
  * is known without opening anything, and the deferred walk is forced only when there is.
  */
+/**
+ * The delete files that reach this data file — [DeleteReachSection] asked from the other end.
+ *
+ * Standing on a data file is the position a reader is usually in when the question comes up ("why
+ * does this file cost what it does"), and it is the direction the tree cannot answer at all: the
+ * delete files that apply to it hang under other manifests entirely, and the ones drawn beside it
+ * mostly do not apply.
+ *
+ * Answered over every delete file the **graph draws**, not over one snapshot's closure. Both
+ * operands' sequence numbers and recorded targets are facts about the files themselves, so no walk
+ * is needed — what that gives up is liveness, since a delete file a later commit removed is still
+ * drawn. That is the scope `evaluateScan` already answers in, and it is said on screen rather than
+ * left to be assumed.
+ *
+ * Absent entirely when the graph draws no delete file — unlike [DeleteReachSection], which is drawn
+ * empty because "this commit lists no delete files" is a fact about the commit. Here the sentence
+ * has no subject: there is nothing that could have reached this file.
+ */
+@Composable
+private fun DeletesReachingSection(node: GraphNode.FileNode, graph: GraphModel) {
+    val colors = MaterialTheme.colorScheme
+    if (deleteKindOf(node.data) != null) return
+
+    val candidates = remember(node.id, graph.nodes) {
+        deleteCandidatesFor(node, graph.nodes.filterIsInstance<GraphNode.FileNode>())
+    }
+    if (candidates.isEmpty()) return
+
+    val reaching = candidates.filter { it.verdict != DeleteReachVerdict.RULED_OUT_BY_TARGET &&
+        it.verdict != DeleteReachVerdict.RULED_OUT_BY_SEQUENCE }
+    CountedSection("Deletes Reaching This File", reaching.size, "delete files") {
+        Text(
+            "Of the ${formatCount(candidates.size.toLong())} delete files drawn for this table, " +
+                "these are the ones a scan could pair with this data file — by sequence number and " +
+                "by the paths each records about itself, neither of which needs a file opened. The " +
+                "ruled-out rows are kept so the reason is visible: a delete file drawn beside this " +
+                "one usually applies to something else entirely. Every delete file the graph holds " +
+                "is weighed, including any a later commit has since removed.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            // The reason comes before the file name, unlike the pruning table where the identifier
+            // is `MANIFEST 1` and costs 130dp. A delete file's name is sixty characters, so putting
+            // it second pushes the only cell that explains the verdict past the panel edge — and
+            // this panel is 700dp at the width these captures are taken.
+            headers = listOf("Reaches This", "Why", "Delete File", "Kind", "Seq"),
+            columnWidths = listOf(120.dp, 330.dp, 260.dp, 130.dp, 60.dp),
+            leadCellColors = candidates.map {
+                when (it.verdict) {
+                    DeleteReachVerdict.REACHES -> verdictSkippedColor()
+                    DeleteReachVerdict.MAY_REACH -> verdictUnevaluatedColor()
+                    else -> null
+                }
+            },
+            rows = candidates.map { candidate ->
+                listOf(
+                    when (candidate.verdict) {
+                        DeleteReachVerdict.REACHES -> "yes"
+                        DeleteReachVerdict.MAY_REACH -> "maybe"
+                        else -> "no"
+                    },
+                    when (candidate.verdict) {
+                        DeleteReachVerdict.REACHES ->
+                            "its recorded target is this file"
+                        DeleteReachVerdict.RULED_OUT_BY_TARGET ->
+                            "its recorded targets do not include this file"
+                        // Kind-aware, because the rule differs and the sentence would otherwise
+                        // be wrong for one of them: a positional delete fails only when it is
+                        // strictly below, an equality delete when it is not strictly above.
+                        DeleteReachVerdict.RULED_OUT_BY_SEQUENCE ->
+                            if (candidate.kind == DeleteFileKind.EQUALITY) {
+                                "sequence ${candidate.delete.sequenceNumber} is not above this " +
+                                    "file's ${node.sequenceNumber}, and an equality delete must be"
+                            } else {
+                                "sequence ${candidate.delete.sequenceNumber} is below this file's " +
+                                    "${node.sequenceNumber}, so this file did not exist yet"
+                            }
+                        DeleteReachVerdict.MAY_REACH -> when (candidate.kind) {
+                            DeleteFileKind.EQUALITY ->
+                                "an equality delete records no target, so only reading it settles this"
+                            else -> "this file is inside its recorded range, which does not name it"
+                        }
+                    },
+                    fileNameFromPath(candidate.delete.data.filePath.orEmpty()),
+                    when (candidate.kind) {
+                        DeleteFileKind.DELETION_VECTOR -> "deletion vector"
+                        DeleteFileKind.POSITIONAL -> "positional"
+                        DeleteFileKind.EQUALITY -> "equality"
+                    },
+                    "${candidate.delete.sequenceNumber ?: "N/A"}",
+                )
+            },
+        )
+    }
+}
+
 @Composable
 private fun DeleteReachSection(node: GraphNode.SnapshotNode, children: List<GraphNode>) {
     val colors = MaterialTheme.colorScheme

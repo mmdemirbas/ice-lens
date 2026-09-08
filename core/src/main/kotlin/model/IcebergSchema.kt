@@ -297,9 +297,11 @@ data class DataFile(
      * so the entry carries the byte range as well as the path, and — uniquely among delete
      * files — names the single data file it applies to.
      *
-     * This is the only place the format records a delete-to-data link. A v2 positional delete
-     * keeps its targets inside its own `file_path` column, and an equality delete has no target
-     * at all: it applies by predicate. Null on every v2 table.
+     * This is the only place the format records a delete-to-data link *exactly*. A v2 positional
+     * delete keeps its targets inside its own `file_path` column — but the manifest still records
+     * that column's **bounds**, which is a one-sided link a planner can prune with and this app
+     * reads in [deleteTargetsOf]. An equality delete has neither: it applies by predicate. Null on
+     * every v2 table.
      */
     @SerialName("referenced_data_file") val referencedDataFile: String? = null,
     @SerialName("content_offset") val contentOffset: Long? = null,

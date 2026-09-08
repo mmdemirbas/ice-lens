@@ -111,11 +111,7 @@ fun deleteReach(snapshot: UnifiedSnapshot): List<DeleteReach> {
     }
 
     return deletes.map { (entry, sequence, file) ->
-        val kind = when {
-            file.contentOffset != null -> DeleteFileKind.DELETION_VECTOR
-            file.content == DataFileContent.EQUALITY_DELETES -> DeleteFileKind.EQUALITY
-            else -> DeleteFileKind.POSITIONAL
-        }
+        val kind = deleteKindOf(file) ?: DeleteFileKind.POSITIONAL
         val targets = deleteTargetsOf(file)
         val reaches = mutableListOf<String>()
         val mayReach = mutableListOf<String>()
@@ -136,6 +132,58 @@ fun deleteReach(snapshot: UnifiedSnapshot): List<DeleteReach> {
             targets = targets,
         )
     }.sortedBy { it.deletePath }
+}
+
+/**
+ * Which of the three a file is, or null when it is not a delete file at all.
+ *
+ * `content` alone does not separate the first two: a v3 deletion vector and a v2 positional delete
+ * both declare 1, and only `content_offset` — the byte range of the blob inside a Puffin container
+ * — is written for a vector. A `.puffin` extension is a naming convention, not a statement.
+ */
+fun deleteKindOf(file: DataFile): DeleteFileKind? = when {
+    file.contentOffset != null -> DeleteFileKind.DELETION_VECTOR
+    file.content == DataFileContent.EQUALITY_DELETES -> DeleteFileKind.EQUALITY
+    file.content == DataFileContent.POSITION_DELETES -> DeleteFileKind.POSITIONAL
+    else -> null
+}
+
+/** One delete file weighed against one data file, for the panel that stands on the data file. */
+data class DeleteCandidate(
+    val delete: GraphNode.FileNode,
+    val kind: DeleteFileKind,
+    val verdict: DeleteReachVerdict,
+)
+
+/**
+ * Every delete file among [candidates] weighed against [dataFile], by the same two rules.
+ *
+ * This is [deleteReach] asked from the other end, and it is deliberately *not* scoped to a
+ * snapshot: both operands' sequence numbers and recorded targets are facts about the files
+ * themselves, so the pairing needs no closure walked. What that gives up is liveness — a delete
+ * file a later commit removed is still drawn, and is still listed here — which is the same scope
+ * `evaluateScan` already answers in, and the panel says so rather than implying a snapshot.
+ */
+fun deleteCandidatesFor(
+    dataFile: GraphNode.FileNode,
+    candidates: List<GraphNode.FileNode>,
+): List<DeleteCandidate> {
+    val dataPath = normalizeFilePath(dataFile.data.filePath.orEmpty())
+    if (dataPath.isEmpty() || deleteKindOf(dataFile.data) != null) return emptyList()
+    return candidates.mapNotNull { node ->
+        val kind = deleteKindOf(node.data) ?: return@mapNotNull null
+        DeleteCandidate(
+            delete = node,
+            kind = kind,
+            verdict = reachVerdict(
+                kind = kind,
+                deleteSequence = node.sequenceNumber,
+                targets = deleteTargetsOf(node.data),
+                dataPath = dataPath,
+                dataSequence = dataFile.sequenceNumber,
+            ),
+        )
+    }
 }
 
 /**

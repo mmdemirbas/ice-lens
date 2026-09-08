@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A data file says which delete files reach it, and why the others do not.** The same pairing
+  from the position a reader is usually in, and the direction the tree cannot show at all: the
+  delete files that apply hang under other manifests, and the ones drawn beside it mostly apply to
+  something else. A positional delete file's panel now also states the **range of data files it
+  records about itself**, which is what a scan prunes with before opening it.
 - **A snapshot says which of its delete files reach which of its data files — and which reach
   nothing.** A scan pairs the two by sequence number and by the paths a delete file records about
   itself, both readable without opening anything, so the panel can now name the *dangling* delete

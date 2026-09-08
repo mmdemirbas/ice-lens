@@ -141,4 +141,79 @@ class DeleteAssignmentTest {
             assertEquals(emptyList(), deleteReach(currentSnapshot(name)), name)
         }
     }
+
+    /**
+     * The same pairing asked from the data file's end, over the graph rather than a closure.
+     *
+     * `mor`'s compacted file is the one every count in the panel is about, and two of the three
+     * delete files drawn for the table have nothing to do with it. That is the whole reason this
+     * section exists: they are drawn under other manifests, and nothing on screen said which of
+     * them mattered.
+     *
+     * The two are excluded for **different reasons**, which was not what this test first expected.
+     * One was written before the compaction produced this file, so no path comparison is even
+     * reached — the sequence rule settles it. The other is contemporary and is ruled out by its
+     * recorded target. One fixture, both exclusions, which is what makes the pair worth asserting
+     * as a distribution rather than as a count.
+     */
+    @Test
+    fun `a data file lists the delete files that can reach it, and why the others cannot`() {
+        val graph = service.GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/mor").absolutePath)),
+            showRows = false,
+        )
+        val files = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+        val compacted = files.single {
+            deleteKindOf(it.data) == null &&
+                it.data.filePath.orEmpty().endsWith("8bb56de0-bda3-4465-be13-0a3f8fd26149-0-00001.parquet")
+        }
+
+        val candidates = deleteCandidatesFor(compacted, files)
+        assertEquals(3, candidates.size, "every delete file drawn is weighed")
+        assertEquals(
+            mapOf(
+                DeleteReachVerdict.REACHES to 1,
+                DeleteReachVerdict.RULED_OUT_BY_SEQUENCE to 1,
+                DeleteReachVerdict.RULED_OUT_BY_TARGET to 1,
+            ),
+            candidates.groupingBy { it.verdict }.eachCount(),
+        )
+        val reaching = candidates.single { it.verdict == DeleteReachVerdict.REACHES }
+        assertEquals(6L, reaching.delete.sequenceNumber)
+        assertEquals(DeleteFileKind.POSITIONAL, reaching.kind)
+    }
+
+    /** Asked of a delete file, the answer is nothing: it is not a data file and pairs with none. */
+    @Test
+    fun `a delete file has no candidates of its own`() {
+        val graph = service.GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/mor").absolutePath)),
+            showRows = false,
+        )
+        val files = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+        val delete = files.first { deleteKindOf(it.data) != null }
+        assertEquals(emptyList(), deleteCandidatesFor(delete, files))
+    }
+
+    /** Both directions agree on `mor`: the file the snapshot pairing found is the one this finds. */
+    @Test
+    fun `the two directions name the same pair`() {
+        val model = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/mor").absolutePath))
+        val fromSnapshot = deleteReach(model.metadatas.last().snapshots.last())
+            .single { it.reaches.isNotEmpty() }
+
+        val graph = service.GraphLayoutService.layoutGraph(model, showRows = false)
+        val files = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+        val target = files.single {
+            deleteKindOf(it.data) == null &&
+                normalizeFilePath(it.data.filePath.orEmpty()) == fromSnapshot.reaches.single()
+        }
+        val fromFile = deleteCandidatesFor(target, files)
+            .single { it.verdict == DeleteReachVerdict.REACHES }
+        assertEquals(
+            fromSnapshot.deletePath,
+            normalizeFilePath(fromFile.delete.data.filePath.orEmpty()),
+            "the snapshot walk and the per-file pairing must name one relationship, not two",
+        )
+    }
 }

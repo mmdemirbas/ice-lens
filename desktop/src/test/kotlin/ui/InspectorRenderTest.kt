@@ -232,6 +232,26 @@ class InspectorRenderTest {
         renderInspector(eqdel, equality.id, "delete-equality-node", height = 2000)
     }
 
+    /**
+     * The same relationship from the data file's end, which is where a reader usually stands.
+     *
+     * `mor`'s compacted file is the one worth rendering: of the three delete files drawn for the
+     * table one reaches it and the other two are ruled out for *different* reasons, so the "Why"
+     * column has three different sentences in it. A capture where every row said the same thing
+     * would show nothing about whether the column can be scanned.
+     */
+    @Test
+    fun `a data file lists the deletes that reach it`() {
+        val mor = graphFor("mor")
+        val compacted = mor.nodes.filterIsInstance<GraphNode.FileNode>()
+            .firstOrNull { node ->
+                model.deleteKindOf(node.data) == null &&
+                    node.data.filePath.orEmpty().contains("8bb56de0")
+            }
+        assertNotNull(compacted, "mor should draw the file its compaction wrote")
+        renderInspector(mor, compacted.id, "data-file-deletes", height = 2600)
+    }
+
     @Test
     fun `the manifest inspector renders the entry table`() {
         val graph = partedGraph()

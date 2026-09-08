@@ -275,7 +275,14 @@ intellij/src/main/kotlin/plugin/
   wrong exclusion here hides a delete. Omitting it can only leave a pair unsettled, which is the
   absence of a proof and is what the panel says. `mor` was already documented as having two dangling
   deletes and nothing asserted it, because nothing could compute it; `DeleteAssignmentTest` now does,
-  from the delete files' own bounds against the live paths
+  from the delete files' own bounds against the live paths. **The same pairing is asked from both
+  ends and they are one implementation**: `deleteReach(snapshot)` walks a closure and answers per
+  delete file, `deleteCandidatesFor(dataFile, drawn)` needs no walk at all — both operands' sequence
+  numbers and targets are facts about the files — and both fold `reachVerdict`. The per-file
+  direction is therefore scoped to *what the graph draws* rather than to a snapshot, which is the
+  scope `evaluateScan` already answers in and gives up only liveness; the panel says so. `mor` is
+  where the two rules separate: of the two delete files that miss the compacted file, one is ruled
+  out by its target and the other by sequence, having been written before that file existed
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
@@ -1081,7 +1088,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~800 tests across 86 files (583 in :core, 212 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~804 tests across 86 files (586 in :core, 213 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
