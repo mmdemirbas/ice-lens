@@ -44,6 +44,15 @@ object SampleRowReader {
     const val FILE_ROW_NUMBER = "file_row_number"
 
     /**
+     * How many delete files one [queryDeletedRowCount] will open in a single statement.
+     *
+     * A cap rather than a limit anybody should reach: the candidates are already narrowed by the
+     * sequence and target rules, and a data file that a hundred delete files can reach is a table
+     * whose problem is not this query.
+     */
+    const val MAX_DELETE_FILES_PER_COUNT = 64
+
+    /**
      * Closes the shared DuckDB connection if open. Safe to call multiple times.
      *
      * The connection itself moved to [DuckDb], because once a table can live in object storage the
@@ -148,6 +157,54 @@ object SampleRowReader {
      * positional delete file (field ids 2147483546 and 2147483545). A file missing them is not a
      * positional delete file, and the SQL error says so more usefully than a silent empty result.
      */
+    /**
+     * How many distinct rows of one data file a set of positional delete files marks.
+     *
+     * The other direction from [queryPositionalDeleteTargets], and the one that answers the
+     * question a reader standing on a data file has: not "which files does this delete from" but
+     * "how many of *my* rows are gone". It is the number that makes a live row count possible at
+     * all — `record_count` counts rows before deletes, and subtracting a delete file's own
+     * `record_count` is wrong whenever a delete is dangling, which is why the merge-on-read
+     * fixture's naive subtraction gives 3 where the table holds 5.
+     *
+     * **Distinct, and across all the files at once.** Two delete files may mark the same position
+     * of the same data file — a second commit deleting a row an earlier one already did — so
+     * summing per-file counts can exceed the row count, which is a plausible wrong number of
+     * exactly the kind a reader cannot catch. One `UNION ALL` over the candidates and one
+     * `count(DISTINCT pos)` gives the union, and DuckDB does it: what crosses back is a long.
+     *
+     * [dataFilePath] is the path as the **table recorded it**, not where the file is read from. A
+     * delete file's `file_path` column holds the writer's own spelling, and so does the data
+     * file's manifest entry, so the two agree even for a table copied down from object storage
+     * where neither matches the local path.
+     *
+     * The candidate list is expected to be short — [model.deleteCandidatesFor] narrows it by the
+     * sequence and target rules before anything is opened — and [MAX_DELETE_FILES_PER_COUNT] caps
+     * it rather than building SQL of unbounded length.
+     */
+    fun queryDeletedRowCount(deleteFilePaths: List<String>, dataFilePath: String): Long {
+        if (deleteFilePaths.isEmpty()) return 0L
+        require(deleteFilePaths.size <= MAX_DELETE_FILES_PER_COUNT) {
+            "Too many delete files to count at once: ${deleteFilePaths.size}"
+        }
+        val resolved = deleteFilePaths.map { resolveForQuery(it).first }
+
+        return DuckDb.withConnection { conn ->
+            // One branch per delete file, every value bound. The text is generated because
+            // `read_parquet` takes a file per call, not because anything here is interpolated.
+            val branches = resolved.joinToString(" UNION ALL ") {
+                "SELECT pos FROM read_parquet(?) WHERE file_path = ?"
+            }
+            conn.prepareStatement("SELECT count(DISTINCT pos) FROM ($branches)").use { pstmt ->
+                resolved.forEachIndexed { index, path ->
+                    pstmt.setString(index * 2 + 1, path)
+                    pstmt.setString(index * 2 + 2, dataFilePath)
+                }
+                pstmt.executeQuery().use { rs -> if (rs.next()) rs.getLong(1) else 0L }
+            }
+        }
+    }
+
     fun queryPositionalDeleteTargets(filePath: String): List<PositionalDeleteTally> {
         val (safePath, _) = resolveForQuery(filePath)
 

@@ -1147,6 +1147,33 @@ class InspectorRenderTest {
     }
 
     /**
+     * The live row count, which is the sentence this whole pairing exists to make possible.
+     *
+     * `mor`'s compacted file records six rows and one of them is deleted, so five are live — and
+     * the figure the panel above it prints, `record_count` minus the delete files' own record
+     * counts, gives three. A capture rather than only an assertion because the two numbers sit
+     * inches apart on one screen, and which of them a reader trusts is decided by how each is
+     * worded.
+     */
+    @Test
+    fun `a data file counts the rows its deletes remove`() {
+        val graph = graphFor("mor")
+        val files = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+        val compacted = files.firstOrNull { node ->
+            model.deleteKindOf(node.data) == null && node.data.filePath.orEmpty().contains("8bb56de0")
+        }
+        assertNotNull(compacted, "mor should draw the file its compaction wrote")
+        val candidates = model.deleteCandidatesFor(compacted, files)
+
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("deleted-row-count", width = 1400, height = 200, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                DeletedRowCount(compacted, candidates, startRequested = true) { settled.set(true) }
+            }
+        }
+    }
+
+    /**
      * The same graph at two display scales, and the assertion that it is the same drawing.
      *
      * A scene twice as wide, twice as tall and at twice the density is the same window on a

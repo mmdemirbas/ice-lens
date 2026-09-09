@@ -283,6 +283,20 @@ intellij/src/main/kotlin/plugin/
   scope `evaluateScan` already answers in and gives up only liveness; the panel says so. `mor` is
   where the two rules separate: of the two delete files that miss the compacted file, one is ruled
   out by its target and the other by sequence, having been written before that file existed
+- **The live row count exists only by reading the delete files, and the pairing is what makes that
+  cheap.** `record_count` counts rows *before* deletes, and subtracting the delete files' own
+  `record_count` is wrong the moment one is dangling — on `mor` that subtraction gives 3 where the
+  table holds 5, which `MergeOnReadFixtureTest` pins precisely so nobody ships it. So
+  `SampleRowReader.queryDeletedRowCount` counts the positions that land in *one* data file, over the
+  candidates `deleteCandidatesFor` already narrowed to, behind a click for the same reason
+  `queryPositionalDeleteTargets` is. **`count(DISTINCT pos)` over one `UNION ALL`, not a sum of
+  per-file counts**: two delete files may mark the same position, and a sum can exceed the row count
+  it is subtracted from — a plausible wrong number of exactly the kind a reader cannot catch. Every
+  value is bound; the SQL text is generated only because `read_parquet` takes one file per call. A
+  deletion vector is not queried at all — it was decoded exactly — and the two figures are reported
+  side by side rather than added, because the union of an in-process bitmap and a DuckDB aggregate
+  is not something either of them can compute. On `mor` the answer is *1 of 6 rows deleted, 5 live*,
+  which is the figure the table actually has and the first time this app could say it
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
@@ -1088,7 +1102,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~804 tests across 86 files (586 in :core, 213 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~808 tests across 86 files (589 in :core, 214 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -39,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import service.PositionalDeleteTally
 import service.SampleRowReader
+import model.DeleteCandidate
 import model.DeleteReachVerdict
 import model.deleteCandidatesFor
 import model.deleteKindOf
@@ -2984,6 +2985,118 @@ private fun DeletesReachingSection(node: GraphNode.FileNode, graph: GraphModel) 
                         DeleteFileKind.EQUALITY -> "equality"
                     },
                     "${candidate.delete.sequenceNumber ?: "N/A"}",
+                )
+            },
+        )
+        DeletedRowCount(node, candidates)
+    }
+}
+
+/**
+ * How many of this file's rows the reachable delete files actually remove, behind a click.
+ *
+ * The pairing above says *which* delete files matter; only their contents say how many rows they
+ * take, because a positional delete records one row per deleted position and nothing summarises it.
+ * That makes this the only way to a **live row count**: `record_count` counts rows before deletes,
+ * and subtracting the delete files' own `record_count` is wrong the moment one of them is
+ * dangling — on the merge-on-read fixture that subtraction gives 3 where the table holds 5.
+ *
+ * Behind an action for the same reason [PositionalDeleteTargets] is: reading delete files while a
+ * graph is being built is a file open per delete on a table where most are never looked at. The
+ * pairing is what makes the click cheap — the candidates are already narrowed to the files that
+ * can reach this one.
+ *
+ * A deletion vector is not queried: it was decoded when its own panel was opened and its
+ * cardinality is exact. The two are reported separately rather than added, because adding them
+ * would double-count any position both mark — the v3 spec does not allow a data file to have both,
+ * so the case should not arise, and a number that is wrong only in an impossible case is still a
+ * number nobody could check.
+ */
+@Composable
+internal fun DeletedRowCount(
+    node: GraphNode.FileNode,
+    candidates: List<DeleteCandidate>,
+    startRequested: Boolean = false,
+    onSettled: () -> Unit = {},
+) {
+    val colors = MaterialTheme.colorScheme
+    val reachable = candidates.filter {
+        it.verdict == DeleteReachVerdict.REACHES || it.verdict == DeleteReachVerdict.MAY_REACH
+    }
+    val positional = reachable.filter { it.kind == DeleteFileKind.POSITIONAL }
+        .mapNotNull { it.delete.localPath }
+    val vectors = reachable.filter { it.kind == DeleteFileKind.DELETION_VECTOR }.map { it.delete }
+    val equalities = reachable.count { it.kind == DeleteFileKind.EQUALITY }
+    if (positional.isEmpty() && vectors.isEmpty()) return
+
+    var requested by remember(node.id) { mutableStateOf(startRequested) }
+    val outcome by produceState<Result<Pair<Long, Long>>?>(null, node.id, requested) {
+        value = null
+        if (requested) {
+            value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val fromFiles = SampleRowReader.queryDeletedRowCount(
+                        positional,
+                        node.data.filePath.orEmpty(),
+                    )
+                    val fromVectors = vectors.sumOf { it.deletionVector?.positions?.size?.toLong() ?: 0L }
+                    fromFiles to fromVectors
+                }
+            }
+            onSettled()
+        }
+    }
+
+    Spacer(Modifier.height(8.dp))
+    when {
+        !requested -> OutlinedButton(onClick = { requested = true }) {
+            Text("Count the rows these delete", fontSize = TypeScale.small)
+        }
+        outcome == null -> Text(
+            "Reading ${formatCount((positional.size + vectors.size).toLong())} delete files…",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+        )
+        else -> outcome?.fold(
+            onSuccess = { (fromFiles, fromVectors) ->
+                val rows = node.data.recordCount
+                Text(
+                    buildString {
+                        if (fromFiles > 0 && fromVectors > 0) {
+                            append(
+                                "${formatCount(fromFiles)} from delete files and " +
+                                    "${formatCount(fromVectors)} from deletion vectors. They are not " +
+                                    "added: a position both mark would be counted twice, and the " +
+                                    "format does not put both on one data file.",
+                            )
+                        } else {
+                            val deleted = fromFiles + fromVectors
+                            append("${formatCount(deleted)} of ")
+                            append(rows?.let { formatCount(it) } ?: "an unrecorded number of")
+                            append(" rows deleted")
+                            if (rows != null) {
+                                append(" — ${formatCount(rows - deleted)} live in this file.")
+                            } else {
+                                append(".")
+                            }
+                        }
+                        if (equalities > 0) {
+                            append(
+                                " ${formatCount(equalities.toLong())} equality delete files also " +
+                                    "reach this file and are not counted: they match rows by value, " +
+                                    "which needs the data read rather than the delete.",
+                            )
+                        }
+                    },
+                    fontSize = TypeScale.small,
+                    color = colors.onSurfaceVariant,
+                )
+            },
+            onFailure = { failure ->
+                Text(
+                    "Could not read the delete files: ${failure.message ?: failure::class.simpleName}",
+                    fontSize = TypeScale.small,
+                    color = colors.error,
                 )
             },
         )

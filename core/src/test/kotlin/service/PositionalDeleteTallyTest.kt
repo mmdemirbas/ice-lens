@@ -134,4 +134,65 @@ class PositionalDeleteTallyTest {
                 "that the file deletes nothing — an empty result would read as a true answer",
         )
     }
+
+    /**
+     * The live row count, which nothing in this app could produce before.
+     *
+     * `mor`'s compacted data file records 6 rows and the table holds 5 — `MergeOnReadFixtureTest`
+     * pins that the obvious subtraction, `record_count - deleteRecordCount`, gives 3 instead,
+     * because two of the three delete files are dangling and delete rows no live file has.
+     * Counting the positions that actually land in *this* file gives 1, and 6 - 1 is the 5 the
+     * table has. That equality is the oracle: two numbers from different sources meeting on a
+     * figure neither of them computed.
+     */
+    @Test
+    fun `deleted positions in one data file give the live row count the subtraction cannot`() {
+        val graph = morGraph()
+        val files = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+        val compacted = files.single { node ->
+            model.deleteKindOf(node.data) == null &&
+                node.data.filePath.orEmpty().contains("8bb56de0")
+        }
+        val candidates = model.deleteCandidatesFor(compacted, files)
+            .filter { it.verdict != model.DeleteReachVerdict.RULED_OUT_BY_TARGET }
+            .filter { it.verdict != model.DeleteReachVerdict.RULED_OUT_BY_SEQUENCE }
+            .mapNotNull { it.delete.localPath }
+        assertEquals(1, candidates.size, "one delete file reaches the compacted file")
+
+        val deleted = SampleRowReader.queryDeletedRowCount(candidates, compacted.data.filePath.orEmpty())
+        assertEquals(1L, deleted, "one position lands in this file")
+        assertEquals(6L, compacted.data.recordCount, "the file records six rows before deletes")
+        assertEquals(5L, (compacted.data.recordCount ?: 0L) - deleted, "which is the table's live row count")
+    }
+
+    /**
+     * The count is over the union of the candidates, not their sum.
+     *
+     * Passing the same delete file twice is the cheapest way to exercise that: a sum would report
+     * two positions where the file marks one, and a row counted twice is a number that can exceed
+     * the row count it is subtracted from.
+     */
+    @Test
+    fun `the same position counted through two delete files is one deleted row`() {
+        val graph = morGraph()
+        val files = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+        val compacted = files.single { node ->
+            model.deleteKindOf(node.data) == null &&
+                node.data.filePath.orEmpty().contains("8bb56de0")
+        }
+        val one = model.deleteCandidatesFor(compacted, files)
+            .single { it.verdict == model.DeleteReachVerdict.REACHES }
+            .delete.localPath
+        requireNotNull(one)
+        assertEquals(
+            1L,
+            SampleRowReader.queryDeletedRowCount(listOf(one, one), compacted.data.filePath.orEmpty()),
+        )
+    }
+
+    /** No candidates is zero rows deleted, without opening anything. */
+    @Test
+    fun `no delete files is no deleted rows`() {
+        assertEquals(0L, SampleRowReader.queryDeletedRowCount(emptyList(), "anything"))
+    }
 }

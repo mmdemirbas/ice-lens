@@ -41,7 +41,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 - **Iceberg v3 is half-modelled.** A deletion vector's Puffin blob is now opened and its
   positions decoded (`service/PuffinReader.kt`), so the inspector answers which rows a vector
   deletes rather than only where the blob sits. What is still unsurfaced: **row lineage**
-  (`first-row-id`, `added-rows`, `_row_id`, `_last_updated_sequence_number`) and the **variant /
+  (`first-row-id`, `added-rows`, `_row_id`, `_last_updated_sequence_number` — **checked**: the v3
+  fixture's `metadata.json` carries no row-lineage field at all, so Iceberg 1.8.1 writes none and
+  this needs a newer image rather than different code here) and the **variant /
   geometry / geography / timestamp_ns** types. What the vector work does *not* cover: an Iceberg
   **positional delete** file (v2) marks no rows, because its targets are one per row and only
   known after reading the file — the same reason there is no `e_dv_*`-style edge for it.
@@ -109,14 +111,14 @@ rather than computed, and a per-manifest verdict on the snapshot's manifest-list
 
 What is left:
 
-- **The delete side is answered by metadata, not yet by contents.** `model/DeleteAssignment.kt`
-  pairs each of a snapshot's delete files with the data files it can reach — by sequence number and
-  by the `file_path` bounds a positional delete records about itself — so a *dangling* delete is now
-  named as one. What that does **not** answer is the row-level question in the other direction:
-  standing on a data file, how many of its rows are deleted and by which files. The pairing narrows
-  the candidates to a handful, so the scatter-gather is smaller than it was, but it is still a read
-  per candidate delete file. Equality deletes stay out of both: they match by value, so no bound
-  and no path links them to anything.
+- **The delete side is answered, metadata first and then contents.** `model/DeleteAssignment.kt`
+  pairs each delete file with the data files it can reach — by sequence number and by the
+  `file_path` bounds a positional delete records about itself — so a *dangling* delete is named as
+  one, and `SampleRowReader.queryDeletedRowCount` then reads only the narrowed candidates: one
+  `count(DISTINCT pos)` gives how many of a data file's rows are gone, which is what makes a **live
+  row count** possible at all. Equality deletes stay out of both: they match by value, so no bound
+  and no path links them to any file, and counting what they remove means evaluating a predicate
+  over the data rather than reading the delete.
 
 - **The delete side's ledger stops at one delete file.** "Read the file" on a positional delete
   file now names every data file it deletes from and how many rows out of each

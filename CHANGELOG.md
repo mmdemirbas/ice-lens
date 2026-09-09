@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A data file can say how many of its rows are actually deleted, and so how many are live.** One
+  click over the delete files the pairing narrowed to, counting the positions that land in this
+  file. It is the only way to the number: rows-minus-delete-rows is wrong whenever a delete file is
+  dangling, and on the merge-on-read fixture it gives 3 where the table holds 5. The panel now says
+  "1 of 6 rows deleted — 5 live in this file".
 - **A data file says which delete files reach it, and why the others do not.** The same pairing
   from the position a reader is usually in, and the direction the tree cannot show at all: the
   delete files that apply hang under other manifests, and the ones drawn beside it mostly apply to
