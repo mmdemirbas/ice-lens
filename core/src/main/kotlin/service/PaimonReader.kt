@@ -1,6 +1,7 @@
 package service
 
 import kotlinx.serialization.json.Json
+import model.PaimonIndexManifestEntry
 import model.PaimonManifestEntry
 import model.PaimonManifestFileMeta
 import model.PaimonSchema
@@ -51,6 +52,12 @@ object PaimonReader {
     /** Reads a Paimon manifest Avro file (contains [PaimonManifestEntry] entries). */
     fun readManifest(path: String): AvroReader.ReadResult<PaimonManifestEntry> {
         logger.debug("Reading Paimon manifest: {}", path)
+        return AvroReader.readAvro(path)
+    }
+
+    /** Reads a Paimon index manifest Avro file (contains [PaimonIndexManifestEntry] entries). */
+    fun readIndexManifest(path: String): AvroReader.ReadResult<PaimonIndexManifestEntry> {
+        logger.debug("Reading Paimon index manifest: {}", path)
         return AvroReader.readAvro(path)
     }
 }

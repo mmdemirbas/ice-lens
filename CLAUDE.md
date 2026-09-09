@@ -1102,7 +1102,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~808 tests across 86 files (589 in :core, 214 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~813 tests across 87 files (593 in :core, 215 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1189,7 +1189,7 @@ container invocation and the traps in it:
 | `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
-| `paimon/db.db/test` | `RealTableFixtureTest` | a real Flink/Paimon table |
+| `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
 starts a loopback-only MinIO and uploads `example/iceberg/default/mor` to `s3://warehouse/db/mor`;
@@ -1229,6 +1229,19 @@ also on the classpath.
   stream, not the table's contents.
 - Paimon has no data/delete manifest split (every manifest carries both kinds of entry), so
   all manifests count as `dataManifestCount`.
+- **A snapshot's `indexManifest` is read, and it is the only place two things are recorded.**
+  The field was parsed into `PaimonSnapshot` and dropped — the same shape of gap Iceberg's
+  `statistics` had, and invisible for the same reason: nothing rendered it, so nothing noticed it
+  was never opened. It lists one index file per partition and bucket, and `_INDEX_TYPE` decides what
+  the row means. `HASH` is the primary-key index a bucket looks a key up in, so its size and row
+  count *are* the cost of that lookup. `DELETION_VECTORS` is Paimon's answer to the problem Iceberg
+  solves with a Puffin vector, and `_DELETIONS_VECTORS_RANGES` is the only place the format records
+  which data file has deleted rows and how many — a container with a blob per file, the same shape
+  as Puffin, which is why a vector's length is not the index file's size. The field names come from
+  the fixture's own Avro header rather than from prose, and they are not descriptive: the range
+  record's `f0`, `f1`, `f2` are the data file, the offset and the length. **Only the `HASH` branch
+  has an oracle** — the checked-in table has no deletion vectors, so that half is modelled from a
+  schema and drawn but unexercised
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

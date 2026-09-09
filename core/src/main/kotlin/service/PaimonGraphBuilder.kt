@@ -104,6 +104,7 @@ object PaimonGraphBuilder {
                     // Deferred: replaying a snapshot's base and delta is work only a comparison
                     // asks for, and it asks about two of them.
                     liveFilesLoader = DeferredRead.of { paimonLiveFilesOf(unifiedSnapshot) },
+                    indexFiles = unifiedSnapshot.indexFiles,
                 )
             }
 

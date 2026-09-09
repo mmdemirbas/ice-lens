@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A Paimon snapshot's index files are read and shown.** The snapshot named an index manifest and
+  nothing opened it. It carries one index file per bucket — the primary-key hash index, with the
+  size and row count that are the cost of a key lookup, and, on a table with deletion vectors
+  enabled, the only record the format keeps of which data files have deleted rows. The snapshot's
+  `nextRowId` is shown too.
 - **A data file can say how many of its rows are actually deleted, and so how many are live.** One
   click over the delete files the pairing narrowed to, counting the positions that land in this
   file. It is the only way to the number: rows-minus-delete-rows is wrong whenever a delete file is

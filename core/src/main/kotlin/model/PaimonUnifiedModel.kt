@@ -29,6 +29,14 @@ data class PaimonUnifiedSnapshot(
     val baseManifests: List<PaimonUnifiedManifest>,
     val deltaManifests: List<PaimonUnifiedManifest>,
     val changelogManifests: List<PaimonUnifiedManifest>,
+    /**
+     * The index files this snapshot's index manifest lists — a key index per bucket, or, on a
+     * table with deletion vectors enabled, the rows deleted from each data file.
+     *
+     * Read eagerly like the manifest lists rather than deferred: an index manifest is one small
+     * Avro file per snapshot, where a data-file read is one per file.
+     */
+    val indexFiles: List<PaimonIndexManifestEntry> = emptyList(),
     val readErrors: List<UnifiedReadError> = emptyList(),
 )
 
@@ -179,8 +187,38 @@ private fun readPaimonSnapshot(
         baseManifests = baseManifests,
         deltaManifests = deltaManifests,
         changelogManifests = changelogManifests,
+        indexFiles = readIndexManifest(tablePath, snapshot.indexManifest, snapshotErrors),
         readErrors = snapshotErrors,
     )
+}
+
+/**
+ * The index manifest a snapshot names, or nothing when it names none.
+ *
+ * Resolved the same way a manifest list is — `manifest/` first, the table root as a fallback for a
+ * layout that does not use it — because the snapshot records a bare file name for both.
+ */
+private fun readIndexManifest(
+    tablePath: Path,
+    indexManifestName: String?,
+    errors: MutableList<UnifiedReadError>,
+): List<PaimonIndexManifestEntry> {
+    if (indexManifestName.isNullOrBlank()) return emptyList()
+    val manifestDir = tablePath.resolve("manifest")
+    val resolved = if (Files.exists(manifestDir.resolve(indexManifestName))) {
+        manifestDir.resolve(indexManifestName)
+    } else {
+        tablePath.resolve(indexManifestName)
+    }
+    val result = runCatching { PaimonReader.readIndexManifest(resolved.toString()) }
+        .getOrElse { e ->
+            errors += toError("index-manifest", resolved.toString(), e)
+            return emptyList()
+        }
+    errors += result.errors.map { error ->
+        UnifiedReadError("decode-index-manifest-entry", resolved.toString(), error.message, error.stackTrace)
+    }
+    return result.entries
 }
 
 private fun readManifestList(

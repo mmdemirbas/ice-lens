@@ -2179,7 +2179,11 @@ fun NodeDetailsContent(
                             DetailRow("Delta Manifest List", node.data.deltaManifestList ?: "N/A", copyable = true)
                             DetailRow("Changelog Manifest List", node.data.changelogManifestList ?: "N/A", copyable = true)
                             DetailRow("Index Manifest", node.data.indexManifest ?: "N/A", copyable = true)
+                            // Written from snapshot version 3. Absent on an older table, which is
+                            // a different thing from a table that has produced no rows yet.
+                            DetailRow("Next Row ID", "${node.data.nextRowId ?: "not recorded"}")
                         }
+                        PaimonIndexFilesSection(node)
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
                     }
                     is GraphNode.PaimonSchemaNode -> {
@@ -3097,6 +3101,77 @@ internal fun DeletedRowCount(
                     "Could not read the delete files: ${failure.message ?: failure::class.simpleName}",
                     fontSize = TypeScale.small,
                     color = colors.error,
+                )
+            },
+        )
+    }
+}
+
+/**
+ * The index files a Paimon snapshot's index manifest lists.
+ *
+ * `indexManifest` was a name in the identity table and nothing else — parsed into the model and
+ * dropped — which is the same shape of gap Iceberg's `statistics` had, and invisible for the same
+ * reason: nothing rendered it, so nothing noticed it was never read.
+ *
+ * Two kinds land here and they answer different questions. A `HASH` index is what a bucket looks a
+ * primary key up in, so its size and row count are the cost of that lookup. A `DELETION_VECTORS`
+ * index is Paimon's answer to the problem Iceberg solves with a Puffin vector, and it is the only
+ * place the format records which data files have deleted rows — so its ranges get their own column
+ * rather than being folded into a count.
+ *
+ * Drawn even when empty, the same rule as `Statistics (0)`: whether a snapshot names an index
+ * manifest at all is an answer, and a section that is simply absent cannot be told from one this
+ * panel does not know how to render.
+ */
+@Composable
+private fun PaimonIndexFilesSection(node: GraphNode.PaimonSnapshotNode) {
+    val colors = MaterialTheme.colorScheme
+    val files = node.indexFiles
+    CountedSection("Index Files", files.size, "index files") {
+        if (files.isEmpty()) {
+            Text(
+                if (node.data.indexManifest.isNullOrBlank()) {
+                    "This snapshot names no index manifest. A table with no primary key and no " +
+                        "deletion vectors writes none."
+                } else {
+                    "This snapshot names an index manifest, and it lists nothing."
+                },
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+            )
+            return@CountedSection
+        }
+        Text(
+            "One index file per bucket. A HASH index is what a bucket looks a primary key up in; a " +
+                "DELETION_VECTORS index is where Paimon records the rows deleted from a data file " +
+                "without rewriting it, and is the only place that link exists.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            // Deleted rows before the file name: on a table with deletion vectors that column is
+            // the answer, and a file name is the identifier the table decides — the one thing
+            // `WideTable` is willing to put behind a scroll.
+            headers = listOf("Type", "Bucket", "Rows", "Size", "Deleted rows", "File"),
+            columnWidths = listOf(160.dp, 70.dp, 90.dp, 90.dp, 260.dp, 300.dp),
+            rows = files.map { file ->
+                val ranges = file.deletionVectorRanges?.filterNotNull().orEmpty()
+                listOf(
+                    file.indexType ?: "N/A",
+                    "${file.bucket ?: "N/A"}",
+                    formatCount(file.rowCount ?: 0L),
+                    formatBytes(file.fileSize ?: 0L),
+                    if (ranges.isEmpty()) {
+                        "—"
+                    } else {
+                        ranges.joinToString("; ") { range ->
+                            "${fileNameFromPath(range.dataFileName.orEmpty())}: " +
+                                "${range.cardinality?.let { formatCount(it) } ?: "?"}"
+                        }
+                    },
+                    file.fileName ?: "N/A",
                 )
             },
         )

@@ -22,6 +22,53 @@ data class PaimonSnapshot(
     val deltaRecordCount: Long? = null,
     val changelogRecordCount: Long? = null,
     val watermark: Long? = null,
+    /** Paimon's row lineage counter, written from snapshot version 3. Absent on older tables. */
+    val nextRowId: Long? = null,
+)
+
+/**
+ * One entry of a Paimon **index manifest**, which the snapshot names and nothing here read until
+ * now — `indexManifest` was parsed and dropped, the same shape of gap Iceberg's `statistics` had.
+ *
+ * An index file is per partition and per bucket, and its meaning is [indexType]:
+ * `HASH` is the primary-key index a bucket looks a key up in, and `DELETION_VECTORS` is Paimon's
+ * answer to the same problem Iceberg solves with a Puffin vector — rows marked deleted in a data
+ * file without rewriting it. The second is why this is worth reading: a table with deletion vectors
+ * enabled records here, and only here, which data files have deleted rows and how many.
+ *
+ * The field names are the Avro schema's own, taken from the fixture's file header rather than from
+ * prose. [deletionVectorRanges] is null on a `HASH` entry.
+ */
+@Serializable
+data class PaimonIndexManifestEntry(
+    @SerialName("_VERSION") val version: Int? = null,
+    @SerialName("_KIND") val kind: Int? = null,
+    @SerialName("_BUCKET") val bucket: Int? = null,
+    @SerialName("_INDEX_TYPE") val indexType: String? = null,
+    @SerialName("_FILE_NAME") val fileName: String? = null,
+    @SerialName("_FILE_SIZE") val fileSize: Long? = null,
+    @SerialName("_ROW_COUNT") val rowCount: Long? = null,
+    @SerialName("_DELETIONS_VECTORS_RANGES") val deletionVectorRanges: List<PaimonDeletionVectorRange?>? = null,
+    @SerialName("_EXTERNAL_PATH") val externalPath: String? = null,
+) {
+    /** Whether this entry describes deleted rows rather than a key index. */
+    val isDeletionVectorIndex: Boolean get() = indexType.equals("DELETION_VECTORS", ignoreCase = true)
+}
+
+/**
+ * One data file's slice of a Paimon deletion-vector index file.
+ *
+ * The three positional fields are the Avro record's own names, and they are not descriptive: `f0`
+ * is the **data file** the vector applies to, `f1` its byte offset inside the index file and `f2`
+ * the length. That container-with-a-blob-per-file shape is the same one Iceberg's Puffin has, and
+ * it is why a vector's size is not the index file's size.
+ */
+@Serializable
+data class PaimonDeletionVectorRange(
+    @SerialName("f0") val dataFileName: String? = null,
+    @SerialName("f1") val offset: Int? = null,
+    @SerialName("f2") val length: Int? = null,
+    @SerialName("_CARDINALITY") val cardinality: Long? = null,
 )
 
 /** Paimon table schema, deserialized from `schema/schema-N` JSON files. */

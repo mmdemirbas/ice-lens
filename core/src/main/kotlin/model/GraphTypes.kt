@@ -592,6 +592,14 @@ sealed class GraphNode(
          * table are ever compared.
          */
         private val liveFilesLoader: DeferredRead<List<LiveFile>> = DeferredRead.none(),
+        /**
+         * The index files this snapshot's index manifest lists — see [PaimonIndexManifestEntry].
+         *
+         * A value rather than a [DeferredRead]: an index manifest is one small Avro file per
+         * snapshot and the model already read it, where a deletion vector's blob is one file per
+         * data file and is not read until asked for.
+         */
+        val indexFiles: List<PaimonIndexManifestEntry> = emptyList(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 210.0, 84.0), ComparableSnapshot {

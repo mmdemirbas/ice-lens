@@ -700,6 +700,26 @@ class InspectorRenderTest {
     }
 
     /**
+     * A Paimon snapshot's index files, read from the real Flink-written fixture.
+     *
+     * The snapshot named an index manifest and nothing opened it, so this panel is the first time
+     * the contents are on screen at all. What the capture is for is the shape of the empty case
+     * against the full one: the fixture has a `HASH` index and no deletion vectors, so the column
+     * that would carry the deleted-row link has to read as "there are none" rather than as a gap.
+     */
+    @Test
+    fun `a paimon snapshot lists its index files`() {
+        val graph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/test").absolutePath)),
+            showRows = false,
+        )
+        val snapshot = graph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>()
+            .firstOrNull { it.indexFiles.isNotEmpty() }
+        assertNotNull(snapshot, "the paimon fixture should carry a snapshot with an index file")
+        renderInspector(graph, snapshot.id, "paimon-snapshot-index", height = 1800)
+    }
+
+    /**
      * Focus on a copy button, which lives in a panel several screens tall.
      *
      * `KeyboardReachTest` settles that Tab arrives; the chrome capture above settles that a ring is
