@@ -28,6 +28,24 @@ data class PaimonPartitionValue(
     val display: String get() = value?.toString() ?: "null"
 }
 
+/**
+ * One field of any Paimon `BinaryRow` — a key bound, a column statistic — with whether it was
+ * decoded at all: a type this does not read leaves [value] null and [decoded] false, which is
+ * not the same fact as a null the writer recorded.
+ */
+data class PaimonRowValue(
+    val name: String,
+    val type: String,
+    val value: Any?,
+    val decoded: Boolean,
+) {
+    val display: String get() = when {
+        !decoded -> "not decoded ($type)"
+        value == null -> "null"
+        else -> value.toString()
+    }
+}
+
 /** A manifest entry's partition, decoded against the partition keys of the schema it was written under. */
 data class DecodedPaimonPartition(val values: List<PaimonPartitionValue>) {
     /** `dt=19787/region=eu` — the partition's directory, relative to the table root. Empty when unpartitioned. */
@@ -46,7 +64,8 @@ private const val LEGACY_PARTITION_NAME_OPTION = "partition.legacy-name"
 
 /**
  * Decodes a manifest entry's `_PARTITION` bytes: a 4-byte big-endian arity, then a Paimon
- * `BinaryRow` holding one field per partition key.
+ * `BinaryRow` holding one field per partition key — [decodePaimonRow] with the strictness a path
+ * needs, and the directory text each value is written as.
  *
  * The row is little-endian. It opens with a null-bit region of `((arity + 63 + 8) / 64) * 8`
  * bytes whose first eight bits are the row kind, so field *i*'s null bit is bit `i + 8`; then one
@@ -68,31 +87,87 @@ fun decodePaimonPartition(
     options: Map<String, String> = emptyMap(),
 ): DecodedPaimonPartition? {
     if (keys.isEmpty()) return DecodedPaimonPartition(emptyList())
+    val row = decodePaimonRow(bytes, keys) ?: return null
+    if (row.any { !it.decoded }) return null
+
+    val defaultName = options[DEFAULT_PARTITION_NAME_OPTION] ?: DEFAULT_PARTITION_NAME
+    val legacyNames = options[LEGACY_PARTITION_NAME_OPTION]?.toBooleanStrictOrNull() ?: true
+    return DecodedPaimonPartition(
+        row.map { field ->
+            PaimonPartitionValue(
+                name = field.name,
+                type = field.type,
+                value = field.value,
+                pathText = field.value?.let { escapePartitionValue(partitionPathText(it, legacyNames)) } ?: defaultName,
+            )
+        },
+    )
+}
+
+/**
+ * Decodes any Paimon `BinaryRow` this format serialises with a 4-byte big-endian arity in front
+ * — a partition, a key bound, a statistics row — one value per field of [fields], in order.
+ *
+ * Null when the bytes are not a row over [fields]: the wrong arity, or too short to hold the
+ * null bits and a slot per field. A field of a type this does not read is returned undecoded
+ * rather than failing the row, because a statistics row over a table with one `ARRAY` column
+ * still says something about every other column.
+ */
+fun decodePaimonRow(bytes: ByteArray, fields: List<PaimonField>): List<PaimonRowValue>? {
     if (bytes.size < 4) return null
     val arity = ByteBuffer.wrap(bytes, 0, 4).order(ByteOrder.BIG_ENDIAN).int
-    if (arity != keys.size) return null
+    if (arity != fields.size) return null
 
     val row = ByteBuffer.wrap(bytes, 4, bytes.size - 4).slice().order(ByteOrder.LITTLE_ENDIAN)
     val nullBitsBytes = ((arity + 63 + 8) / 64) * 8
     if (row.limit() < nullBitsBytes + 8 * arity) return null
 
-    val defaultName = options[DEFAULT_PARTITION_NAME_OPTION] ?: DEFAULT_PARTITION_NAME
-    val legacyNames = options[LEGACY_PARTITION_NAME_OPTION]?.toBooleanStrictOrNull() ?: true
-
-    val values = keys.mapIndexed { index, key ->
+    return fields.mapIndexed { index, field ->
         val bitPosition = index + 8
         val isNull = (row.get(bitPosition ushr 3).toInt() shr (bitPosition and 7)) and 1 == 1
         val slot = nullBitsBytes + 8 * index
-        val type = key.type.orEmpty()
-        val value = if (isNull) null else decodeField(row, slot, type) ?: return null
-        PaimonPartitionValue(
-            name = key.name.orEmpty(),
+        val type = field.type.orEmpty()
+        val value = if (isNull) null else decodeField(row, slot, type)
+        PaimonRowValue(
+            name = field.name.orEmpty(),
             type = type,
             value = value,
-            pathText = if (value == null) defaultName else escapePartitionValue(partitionPathText(value, legacyNames)),
+            decoded = isNull || value != null,
         )
     }
-    return DecodedPaimonPartition(values)
+}
+
+/**
+ * Per-column bounds of one data file, from its `_VALUE_STATS` (or `_KEY_STATS`): the minimum,
+ * the maximum and the null count of each column the statistics cover.
+ */
+data class PaimonColumnBounds(
+    val name: String,
+    val type: String,
+    val min: Any?,
+    val max: Any?,
+    val nullCount: Long?,
+    val decoded: Boolean,
+)
+
+/**
+ * [stats] over [fields], one bounds row per field. Null when either `BinaryRow` is not a row over
+ * the fields — a `_VALUE_STATS_COLS` subset the schema does not name, or an arity that does not
+ * match — because a bound attributed to the wrong column reads as an answer.
+ */
+fun decodePaimonColumnBounds(stats: PaimonSimpleStats, fields: List<PaimonField>): List<PaimonColumnBounds>? {
+    val mins = stats.minValues?.let { decodePaimonRow(it, fields) } ?: return null
+    val maxes = stats.maxValues?.let { decodePaimonRow(it, fields) } ?: return null
+    return fields.indices.map { index ->
+        PaimonColumnBounds(
+            name = mins[index].name,
+            type = mins[index].type,
+            min = mins[index].value,
+            max = maxes[index].value,
+            nullCount = stats.nullCounts?.getOrNull(index),
+            decoded = mins[index].decoded && maxes[index].decoded,
+        )
+    }
 }
 
 private val TYPE_HEAD = Regex("""^([A-Z]+)(?:\((\d+)(?:,\s*(\d+))?\))?""")

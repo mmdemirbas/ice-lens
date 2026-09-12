@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A Paimon data file shows its key range and column bounds.** `_MIN_KEY` / `_MAX_KEY` over the
+  trimmed primary key and `_VALUE_STATS` over every column — the figures a scan prunes files with
+  and the answer to "which file holds key 42" — are decoded and drawn on the file panel, with
+  `_DELETE_ROW_COUNT` (the `-D` rows inside the file, not what a vector marks) and `_FILE_SOURCE`.
 - **A Paimon manifest's recorded figures are checked against its entries.** The manifest list's
   entry counts, bucket and level ranges, and partition statistics — a per-column minimum and
   maximum with null counts, two more `BinaryRow`s — sit beside the same figures folded from the

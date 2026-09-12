@@ -222,15 +222,75 @@ data class PaimonManifestEntry(
     }
 }
 
-/** Metadata for a single Paimon data file, nested inside [PaimonManifestEntry]. */
+/** `_FILE_SOURCE`: how the file came to be written. */
+object PaimonFileSource {
+    const val APPEND = 0
+    const val COMPACT = 1
+}
+
+/**
+ * Metadata for a single Paimon data file, nested inside [PaimonManifestEntry].
+ *
+ * [minKey] and [maxKey] are `BinaryRow`s over the *trimmed* primary key — the primary keys that
+ * are not partition keys — and [keyStats] covers the same fields; [valueStats] covers every field
+ * of the schema in schema order, or the columns [valueStatsCols] names when it is set. All decode
+ * with [decodePaimonRow]. [deleteRowCount] counts the rows of kind `-D`/`-U` *inside* the file,
+ * not rows a deletion vector marks — on `dv` it is 3 on the level-0 file holding the three delete
+ * rows and 0 on the two files the vector covers.
+ */
 @Serializable
 data class PaimonDataFileMeta(
     @SerialName("_FILE_NAME") val fileName: String? = null,
     @SerialName("_FILE_SIZE") val fileSize: Long? = null,
     @SerialName("_ROW_COUNT") val rowCount: Long? = null,
+    @SerialName("_MIN_KEY") val minKey: ByteArray? = null,
+    @SerialName("_MAX_KEY") val maxKey: ByteArray? = null,
+    @SerialName("_KEY_STATS") val keyStats: PaimonSimpleStats? = null,
+    @SerialName("_VALUE_STATS") val valueStats: PaimonSimpleStats? = null,
     @SerialName("_LEVEL") val level: Int? = null,
     @SerialName("_SCHEMA_ID") val schemaId: Long? = null,
     @SerialName("_MIN_SEQUENCE_NUMBER") val minSequenceNumber: Long? = null,
     @SerialName("_MAX_SEQUENCE_NUMBER") val maxSequenceNumber: Long? = null,
     @SerialName("_CREATION_TIME") val creationTime: Long? = null,
-)
+    @SerialName("_DELETE_ROW_COUNT") val deleteRowCount: Long? = null,
+    @SerialName("_FILE_SOURCE") val fileSource: Int? = null,
+    @SerialName("_VALUE_STATS_COLS") val valueStatsCols: List<String>? = null,
+    @SerialName("_EXTERNAL_PATH") val externalPath: String? = null,
+    @SerialName("_FIRST_ROW_ID") val firstRowId: Long? = null,
+    @SerialName("_EXTRA_FILES") val extraFiles: List<String>? = null,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is PaimonDataFileMeta) return false
+        return fileName == other.fileName && fileSize == other.fileSize && rowCount == other.rowCount &&
+            minKey.contentEquals(other.minKey) && maxKey.contentEquals(other.maxKey) &&
+            keyStats == other.keyStats && valueStats == other.valueStats &&
+            level == other.level && schemaId == other.schemaId &&
+            minSequenceNumber == other.minSequenceNumber && maxSequenceNumber == other.maxSequenceNumber &&
+            creationTime == other.creationTime && deleteRowCount == other.deleteRowCount &&
+            fileSource == other.fileSource && valueStatsCols == other.valueStatsCols &&
+            externalPath == other.externalPath && firstRowId == other.firstRowId && extraFiles == other.extraFiles
+    }
+
+    override fun hashCode(): Int {
+        var result = fileName.hashCode()
+        result = 31 * result + fileSize.hashCode()
+        result = 31 * result + rowCount.hashCode()
+        result = 31 * result + minKey.contentHashCode()
+        result = 31 * result + maxKey.contentHashCode()
+        result = 31 * result + keyStats.hashCode()
+        result = 31 * result + valueStats.hashCode()
+        result = 31 * result + level.hashCode()
+        result = 31 * result + schemaId.hashCode()
+        result = 31 * result + minSequenceNumber.hashCode()
+        result = 31 * result + maxSequenceNumber.hashCode()
+        result = 31 * result + creationTime.hashCode()
+        result = 31 * result + deleteRowCount.hashCode()
+        result = 31 * result + fileSource.hashCode()
+        result = 31 * result + valueStatsCols.hashCode()
+        result = 31 * result + externalPath.hashCode()
+        result = 31 * result + firstRowId.hashCode()
+        result = 31 * result + extraFiles.hashCode()
+        return result
+    }
+}

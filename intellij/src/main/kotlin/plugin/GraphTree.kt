@@ -4,6 +4,7 @@ import javax.swing.tree.DefaultMutableTreeNode
 import model.DecodedPaimonPartition
 import model.GraphModel
 import model.GraphNode
+import model.PaimonRowValue
 import model.displayLabel
 
 /**
@@ -143,6 +144,7 @@ object GraphTree {
         is GraphNode.PaimonDataFileNode -> listOf(
             "File" to (node.entry.file?.fileName ?: "—"),
             "Partition" to (node.partition?.display?.ifEmpty { "none" } ?: "not decoded"),
+            "Key range" to keyRangeText(node.keyMin, node.keyMax),
             "Level" to (node.entry.file?.level?.toString() ?: "—"),
             "Records" to (node.entry.file?.rowCount?.toString() ?: "—"),
             "Kind" to node.entry.kind.toString(),
@@ -161,6 +163,11 @@ object GraphTree {
     /** `0..3`, or the absent mark when the manifest list recorded no range. */
     private fun rangeText(low: Int?, high: Int?): String =
         if (low == null || high == null) ABSENT else "$low..$high"
+
+    /** `k=1 .. k=1000`, or the absent mark when the file records no key bounds. */
+    private fun keyRangeText(min: List<PaimonRowValue>?, max: List<PaimonRowValue>?): String =
+        if (min == null || max == null) ABSENT
+        else min.joinToString(", ") { "${it.name}=${it.display}" } + " .. " + max.joinToString(", ") { "${it.name}=${it.display}" }
 
     /** The per-column partition range a manifest list records, or `none` for an unpartitioned table. */
     private fun partitionRangeText(min: DecodedPaimonPartition?, max: DecodedPaimonPartition?): String = when {

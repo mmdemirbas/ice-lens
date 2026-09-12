@@ -78,6 +78,7 @@ import model.evaluatePruning
 import model.SnapshotChange
 import model.FileChange
 import model.manifestTallies
+import model.PaimonFileSource
 import model.paimonManifestTallies
 import model.KeyValuePairLong
 import model.MetadataLogEntry
@@ -2338,6 +2339,63 @@ fun NodeDetailsContent(
                             DetailRow("Min Seq", "${file?.minSequenceNumber ?: "N/A"}")
                             DetailRow("Max Seq", "${file?.maxSequenceNumber ?: "N/A"}")
                             DetailRow("Creation Time", ui.formatTimestamp(file?.creationTime))
+                            // The trimmed primary key's range — which keys a lookup can find in
+                            // this file — and two facts about how the file was written.
+                            val keyMin = node.keyMin
+                            val keyMax = node.keyMax
+                            DetailRow(
+                                "Key Range",
+                                when {
+                                    keyMin == null || keyMax == null -> "none — no primary key outside the partition, or not decoded"
+                                    else -> keyMin.joinToString(", ") { "${it.name}=${it.display}" } +
+                                        " .. " + keyMax.joinToString(", ") { "${it.name}=${it.display}" }
+                                },
+                            )
+                            DetailRow(
+                                "Delete Rows",
+                                file?.deleteRowCount?.let { "${formatCount(it)} — rows of kind -D/-U inside the file, not rows a vector marks" } ?: "N/A",
+                            )
+                            DetailRow(
+                                "Source",
+                                when (file?.fileSource) {
+                                    PaimonFileSource.APPEND -> "APPEND — written by a commit"
+                                    PaimonFileSource.COMPACT -> "COMPACT — written by a compaction"
+                                    null -> "N/A"
+                                    else -> "${file.fileSource}"
+                                },
+                            )
+                            file?.externalPath?.let { DetailRow("External Path", it, copyable = true) }
+                            file?.firstRowId?.let { DetailRow("First Row ID", "$it") }
+                            if (!file?.extraFiles.isNullOrEmpty()) DetailRow("Extra Files", file?.extraFiles.orEmpty().joinToString(", "))
+                        }
+                        // The file's own bounds, the same section the Iceberg data file has: a
+                        // scan skips a file whose bounds exclude the predicate without opening it.
+                        val bounds = node.columnBounds
+                        if (bounds != null) {
+                            Section("Column Bounds (${formatCount(bounds.size)})") {
+                                Text(
+                                    "From the entry's _VALUE_STATS: a per-column minimum, maximum and null " +
+                                        "count over the rows in this file, two BinaryRows decoded against the " +
+                                        "schema the manifest names. A string bound is the whole value, not a " +
+                                        "truncated prefix.",
+                                    fontSize = TypeScale.small,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp),
+                                )
+                                WideTable(
+                                    headers = listOf("Column", "Minimum", "Maximum", "Nulls", "Type"),
+                                    columnWidths = listOf(140.dp, 180.dp, 180.dp, 70.dp, 150.dp),
+                                    rows = bounds.map { bound ->
+                                        listOf(
+                                            bound.name,
+                                            if (bound.decoded) bound.min?.toString() ?: "null" else "not decoded",
+                                            if (bound.decoded) bound.max?.toString() ?: "null" else "not decoded",
+                                            bound.nullCount?.let { formatCount(it) } ?: "N/A",
+                                            bound.type,
+                                        )
+                                    },
+                                )
+                            }
                         }
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
                     }

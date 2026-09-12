@@ -705,6 +705,11 @@ sealed class GraphNode(
         val bucket: Int? = null,
         /** The partition the file is in, decoded from the entry — the directory half of [localPath]. */
         val partition: DecodedPaimonPartition? = null,
+        /** `_MIN_KEY` / `_MAX_KEY` over the trimmed primary key, decoded; null on a table without one or when undecodable. */
+        val keyMin: List<PaimonRowValue>? = null,
+        val keyMax: List<PaimonRowValue>? = null,
+        /** `_VALUE_STATS` per column — the file's own bounds, decoded. Null when undecodable. */
+        val columnBounds: List<PaimonColumnBounds>? = null,
         val level: Int? = null,
         val operationKind: Int? = null,     // 0=ADD, 1=DELETE
         val localPath: String? = null,

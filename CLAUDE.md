@@ -1167,7 +1167,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~868 tests across 94 files (643 in :core, 220 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~872 tests across 95 files (647 in :core, 220 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1258,7 +1258,7 @@ container invocation and the traps in it:
 | `default/maint` | `MaintenanceFixtureTest` | `rewrite_position_delete_files` dropping two dangling deletes, then `rewrite_manifests` — the commit whose summary counts manifests |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
-| `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
+| `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest`, `PaimonFileBoundsFixtureTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1330,6 +1330,19 @@ also on the classpath.
   included — folding additions only puts `dv`'s lowest level at 5 where the list says 0 — which
   is a fact the fixtures settled and not one a document did. Both sides are text, because a range
   of dates is not a `Long`, and the panel draws them the way the Iceberg manifest's section does
+- **A Paimon data file's own bounds are read, and they are three more `BinaryRow`s.** `_MIN_KEY`
+  / `_MAX_KEY` are rows over the *trimmed* primary key — the primary keys that are not partition
+  keys, in primary-key order — and `_VALUE_STATS` is a `SimpleStats` over every field of the schema
+  in schema order (or the columns `_VALUE_STATS_COLS` names). `decodePaimonRow` reads any of them,
+  and unlike the partition decoder it leaves a field of a type it does not read *undecoded* rather
+  than failing the row, because a statistics row over a table with one `ARRAY` column still says
+  something about every other column. The file panel shows the key range, the per-column bounds,
+  `_DELETE_ROW_COUNT` and `_FILE_SOURCE`; the IDE tree the key range. `PaimonFileBoundsFixtureTest`
+  reads every bound off the scripts that wrote the rows, and two of its facts are the kind a
+  document does not settle: **a string bound is lexicographic over the whole value** (`v1..v999`
+  over a thousand rows, `v1001..v2` over three), and **`_DELETE_ROW_COUNT` counts the `-D` rows
+  inside a file**, not the rows a deletion vector marks — 3 on `dv`'s level-0 delete file, 0 on
+  the two files its vector covers
 - **A snapshot's `indexManifest` is read, and it is the only place two things are recorded.**
   The field was parsed into `PaimonSnapshot` and dropped — the same shape of gap Iceberg's
   `statistics` had, and invisible for the same reason: nothing rendered it, so nothing noticed it

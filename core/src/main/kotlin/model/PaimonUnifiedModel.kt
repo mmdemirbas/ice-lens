@@ -93,6 +93,12 @@ data class PaimonUnifiedDataFile(
     val metadata: PaimonManifestEntry,
     /** The entry's `_PARTITION`, decoded against its manifest's schema; null when it could not be. */
     val partition: DecodedPaimonPartition? = null,
+    /** `_MIN_KEY` over the trimmed primary key — the primary keys that are not partition keys. Null when not decodable. */
+    val keyMin: List<PaimonRowValue>? = null,
+    /** `_MAX_KEY`, likewise. */
+    val keyMax: List<PaimonRowValue>? = null,
+    /** `_VALUE_STATS` per column, over every field of the schema or the ones `_VALUE_STATS_COLS` names. */
+    val columnBounds: List<PaimonColumnBounds>? = null,
     private val rowsLoader: () -> List<UnifiedRow> = {
         SampleRowReader.querySampleRows(path.toString()).map { UnifiedRow(it) }
     },
@@ -367,11 +373,27 @@ private fun readPaimonManifest(
         val schema = schemasById[meta.schemaId?.toInt()] ?: schemasById.values.maxByOrNull { it.id ?: -1 }
         val partitionKeys = schema?.partitionKeys.orEmpty()
         val partitionFields = partitionKeys.mapNotNull { key -> schema?.fields?.firstOrNull { it.name == key } }
+        // The key bounds are over the trimmed primary key — every primary key that is not a
+        // partition key, in primary-key order — which is what Paimon's key type is once the
+        // partition has been taken out of it.
+        val keyNames = schema?.primaryKeys.orEmpty().filterNot { it in partitionKeys }
+        val keyFields = keyNames.mapNotNull { key -> schema?.fields?.firstOrNull { it.name == key } }
         result.entries.map { entry ->
             val partition = entry.partition
                 ?.takeIf { partitionFields.size == partitionKeys.size }
                 ?.let { decodePaimonPartition(it, partitionFields, schema?.options.orEmpty()) }
             val dataFilePath = resolveDataFilePath(tablePath, entry, partition)
+            val file = entry.file
+            val keysResolved = keyFields.size == keyNames.size && keyFields.isNotEmpty()
+            val keyMin = file?.minKey?.takeIf { keysResolved }?.let { decodePaimonRow(it, keyFields) }
+            val keyMax = file?.maxKey?.takeIf { keysResolved }?.let { decodePaimonRow(it, keyFields) }
+            // The value statistics cover the schema's fields in order, or the subset
+            // _VALUE_STATS_COLS names — every name has to resolve, or a bound lands on the wrong column.
+            val statsNames = file?.valueStatsCols ?: schema?.fields?.mapNotNull { it.name }.orEmpty()
+            val statsFields = statsNames.mapNotNull { name -> schema?.fields?.firstOrNull { it.name == name } }
+            val columnBounds = file?.valueStats
+                ?.takeIf { statsFields.size == statsNames.size && statsFields.isNotEmpty() }
+                ?.let { decodePaimonColumnBounds(it, statsFields) }
             val normalizedResolved = runCatching { dataFilePath.toAbsolutePath().normalize() }
                 .getOrElse { dataFilePath.normalize() }
             if (!normalizedResolved.startsWith(normalizedTableRoot)) {
@@ -381,7 +403,14 @@ private fun readPaimonManifest(
                     message = "Data file path resolves outside the table directory: $normalizedResolved",
                 )
             }
-            PaimonUnifiedDataFile(path = dataFilePath, metadata = entry, partition = partition)
+            PaimonUnifiedDataFile(
+                path = dataFilePath,
+                metadata = entry,
+                partition = partition,
+                keyMin = keyMin,
+                keyMax = keyMax,
+                columnBounds = columnBounds,
+            )
         }
     } else {
         emptyList()

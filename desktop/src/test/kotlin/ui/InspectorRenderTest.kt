@@ -248,7 +248,7 @@ class InspectorRenderTest {
         val file = graph.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
             .firstOrNull { it.partition?.values?.any { v -> v.value == "north-america" } == true }
         assertNotNull(file, "the pt fixture should carry a file in the north-america partition")
-        renderInspector(graph, file.id, "paimon-file-node-partitioned", height = 1400)
+        renderInspector(graph, file.id, "paimon-file-node-partitioned", height = 2200)
 
         // The manifest whose recorded minimum is a partition none of its entries has: the
         // "Recorded Summary" rows are where a reader would see the per-column rule at work.
