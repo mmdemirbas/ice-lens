@@ -120,13 +120,6 @@ What is left:
   and no path links them to any file, and counting what they remove means evaluating a predicate
   over the data rather than reading the delete.
 
-- **The delete side's ledger stops at one delete file.** "Read the file" on a positional delete
-  file now names every data file it deletes from and how many rows out of each
-  (`SampleRowReader.queryPositionalDeleteTargets`, aggregated by DuckDB so an unbounded read is
-  one click). What has no equivalent is the other direction: standing on a **data file**, how many
-  of its rows are deleted and by which delete files. That is a scatter-gather over every delete
-  file in the snapshot rather than one file open, so it needs its own decision about where the
-  cost sits. Equality deletes stay out of both — they match by value with no link to any file.
 - **Cross-manifest deduplication is invisible from a manifest — and measurement says the case is
   empty where the panel would show it.** The drill-down scopes deduplication to the manifest on
   screen and says so; naming *which* manifest counted a file first would need the table's claim
@@ -147,11 +140,15 @@ What is left:
   (absent) — emitted by `replayPaimonSnapshot` under a `traceFor`, so the trace and the figures
   come out of one walk and the test asserts the trace sums to the contribution it explains.
 
-  What the checked-in fixture cannot reach: `example/paimon/db.db/test` is one snapshot, one
-  manifest, one ADD entry, so three of the four effects are exercised by constructed snapshots
-  rather than by an engine-written table. That is the right level for a rule this repository owns,
-  but a Paimon fixture with a compaction behind it would make the arithmetic oracle much stronger,
-  and it stays blocked on the Flink container.
+  `example/paimon/db.db/dv` now reaches `REMOVED` on Spark-written bytes three ways — two upgrade
+  compactions (`DELETE` at level 0, `ADD` of the same file at level 5, contributing nothing) and
+  the deletion vector's commit (a pure removal, contribution −1/−3 against the snapshot's own
+  `deltaRecordCount`). That fixture is also what showed the sum-oracle's limit: a `DELETE` read as
+  an `ADD` kept the trace and the contribution in perfect agreement, because both come from one
+  walk, and only the writer's figures caught it. Still unreached by any real table: `REPLACED`
+  (an `ADD` over a file still live — needs an overwrite) and `REMOVED_ABSENT` (a `DELETE` of a
+  file the base never listed — needs a re-applied or rolled-back commit). Both stay as constructed
+  snapshots, which is the right level for a rule this repository owns.
 
 ---
 

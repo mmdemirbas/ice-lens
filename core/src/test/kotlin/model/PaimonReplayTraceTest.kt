@@ -19,34 +19,59 @@ import kotlin.test.assertTrue
  * own contribution are two readings of one walk, so **the trace must sum to the contribution** — on
  * every manifest, for files, records and bytes at once. A trace computed separately would pass its
  * own unit tests and drift from the number it explains, which is the failure this rules out.
+ *
+ * It rules out only that. Two readings of one walk move together, so a walk that reads `DELETE`
+ * wrong keeps them in perfect agreement — checked by making a `DELETE` behave as an `ADD`: every
+ * sum-oracle here and in `PaimonSnapshotDiffTest` still passed. What caught it was the `dv`
+ * fixture, whose figures are pinned against the snapshot's own `deltaRecordCount` and
+ * `totalRecordCount` — numbers the writer recorded and nothing here computed.
  */
 class PaimonReplayTraceTest {
 
     private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }
         .first { File(it, "settings.gradle.kts").isFile }
 
-    private fun model(): PaimonUnifiedTableModel {
-        val dir = File(repoRoot, "example/paimon/db.db/test")
+    private fun model(name: String): PaimonUnifiedTableModel {
+        val dir = File(repoRoot, "example/paimon/db.db/$name")
         assertTrue(dir.isDirectory, "the Paimon fixture should be checked in at $dir")
         return PaimonUnifiedTableModel(Paths.get(dir.absolutePath))
     }
 
-    private fun snapshots(): List<PaimonUnifiedSnapshot> = model().snapshots
+    /**
+     * Both checked-in Paimon tables. `test` is one Flink commit holding one ADD; `dv` is six Spark
+     * commits, three of them compactions, which is where a delta first removes something a base
+     * still lists — the case the replay exists for, and until `dv` one no real table reached.
+     */
+    private fun snapshots(): List<PaimonUnifiedSnapshot> =
+        listOf("test", "dv").flatMap { model(it).snapshots }
 
-    /** Every manifest of every snapshot, as (snapshot, manifest) pairs. */
+    /** Every manifest of every snapshot of every fixture, as (snapshot, manifest) pairs. */
     private fun everyManifest(): List<Pair<PaimonUnifiedSnapshot, PaimonUnifiedManifest>> =
         snapshots().flatMap { snapshot ->
             (snapshot.baseManifests + snapshot.deltaManifests).map { snapshot to it }
         }
 
+    private fun everyTraceRow(): List<PaimonEntryTrace> =
+        everyManifest().flatMap { (snapshot, manifest) ->
+            replayPaimonSnapshot(snapshot, traceFor = paimonManifestKey(manifest)).trace
+        }
+
+    /**
+     * The sweep below is only as strong as the effects the fixtures reach, so that is asserted
+     * rather than assumed: a regenerated `dv` whose compactions merged instead of lifting would
+     * leave every row `ADDED`, and every test here would pass having checked one branch.
+     */
     @Test
-    fun `the fixture reaches this code at all`() {
+    fun `the fixtures reach this code, and reach a real removal`() {
         val manifests = everyManifest()
-        assertTrue(manifests.isNotEmpty(), "no Paimon manifests in the fixture, so nothing below checks anything")
+        assertTrue(manifests.isNotEmpty(), "no Paimon manifests in the fixtures, so nothing below checks anything")
         assertTrue(
             manifests.any { (_, m) -> m.entries.isNotEmpty() },
-            "no Paimon manifest entries in the fixture",
+            "no Paimon manifest entries in the fixtures",
         )
+        val effects = everyTraceRow().map { it.effect }.toSet()
+        assertTrue(PaimonEntryEffect.ADDED in effects)
+        assertTrue(PaimonEntryEffect.REMOVED in effects, "no fixture removes a file the base lists: $effects")
     }
 
     /**
@@ -187,12 +212,91 @@ class PaimonReplayTraceTest {
         assertTrue(rows > 0, "no trace rows were produced, so this asserted nothing")
     }
 
-    // ── The three effects the checked-in fixture cannot reach ────────────────────────────────
+    // ── What the Spark-written table reaches, on the bytes it wrote ──────────────────────────
+
+    private val dv: PaimonUnifiedTableModel by lazy { model("dv") }
+
+    private fun deltaTrace(snapshotId: Long): Pair<PaimonReplay, PaimonUnifiedManifest> {
+        val snapshot = dv.snapshots.single { it.metadata.id == snapshotId }
+        val manifest = snapshot.deltaManifests.single()
+        return replayPaimonSnapshot(snapshot, traceFor = paimonManifestKey(manifest)) to manifest
+    }
+
+    /**
+     * A compaction that lifts a file to a higher level removes it and adds it back, and moves the
+     * table by nothing.
+     *
+     * This is what Paimon's LSM does to a level-0 file it decides not to rewrite: the delta
+     * manifest carries a `DELETE` of the file at level 0 and an `ADD` of the *same* file — same
+     * name, same rows, same bytes — at its new level. Read as a filter that pair is a file that
+     * left; read as the replay it is, the file is gone for exactly one entry and the manifest's
+     * contribution is zero on all three figures. The trace is the only place the reader can see
+     * that the commit did something at all, which is why the pair is pinned row by row rather
+     * than only through the sum.
+     */
+    @Test
+    fun `an upgrade compaction removes the file and adds it back at its new level, contributing nothing`() {
+        val (replay, manifest) = deltaTrace(snapshotId = 2)
+        assertEquals("COMPACT", dv.snapshots.single { it.metadata.id == 2L }.metadata.commitKind)
+
+        assertEquals(listOf(PaimonEntryEffect.REMOVED, PaimonEntryEffect.ADDED), replay.trace.map { it.effect })
+        val (removed, added) = replay.trace
+        assertEquals(removed.fileKey, added.fileKey, "one file, leaving and returning")
+        assertEquals(-1000L, removed.recordDelta)
+        assertEquals(1000L, added.recordDelta)
+        assertEquals(true, removed.wasLive, "the base listed it, so the removal found it")
+        assertEquals(false, added.wasLive, "and by the time the ADD applies the removal has run")
+
+        val levels = manifest.entries.map { it.metadata.kind to it.metadata.file?.level }
+        assertEquals(listOf(PaimonEntryKind.DELETE to 0, PaimonEntryKind.ADD to 5), levels, "level 0 out, level 5 in")
+
+        val contribution = replay.contributions.single { it.manifestPath == manifest.path.toString() }
+        assertEquals(0, contribution.delta.dataFileCount)
+        assertEquals(0L, contribution.delta.recordCount)
+        assertEquals(0L, contribution.delta.dataSizeBytes)
+        assertEquals(1, contribution.delta.deletedEntryCount, "the DELETE entry is still counted as one")
+        assertEquals(0, contribution.entriesSuppressedAsDuplicate, "the ADD met nothing live, so it is not a replacement")
+    }
+
+    /**
+     * The commit that wrote the deletion vector is a pure removal, and its contribution is
+     * negative — on bytes an engine wrote, which `a delta that only removes contributes a negative
+     * delta` below could only state as model objects.
+     *
+     * The three `-D` rows were compacted into a vector, so the level-0 file that carried them is
+     * removed and nothing is added in its place; the two files the vector marks are untouched and
+     * stay in the base. The snapshot's own `deltaRecordCount` says `-3`, which is the same figure
+     * from the writer's side.
+     */
+    @Test
+    fun `the vector's commit removes the delete-row file and contributes a negative delta`() {
+        val (replay, manifest) = deltaTrace(snapshotId = 6)
+        val snapshot = dv.snapshots.single { it.metadata.id == 6L }
+
+        assertEquals(listOf(PaimonEntryEffect.REMOVED), replay.trace.map { it.effect })
+        val removed = replay.trace.single()
+        assertEquals(3L, removed.previousRecordCount, "what the live set held for it")
+        assertEquals(-3L, removed.recordDelta)
+        assertEquals(-1, removed.liveFileDelta)
+
+        val contribution = replay.contributions.single { it.manifestPath == manifest.path.toString() }
+        assertEquals(-1, contribution.delta.dataFileCount)
+        assertEquals(-3L, contribution.delta.recordCount)
+        assertEquals(-removed.previousSizeBytes!!, contribution.delta.dataSizeBytes)
+        assertEquals(snapshot.metadata.deltaRecordCount, contribution.delta.recordCount, "the writer's own figure for this commit")
+
+        assertEquals(2, replay.liveFiles.size, "the two files the vector marks are still live")
+        assertEquals(1500L, replay.liveFiles.values.sumOf { it?.rowCount ?: 0L })
+        assertEquals(snapshot.metadata.totalRecordCount, replay.liveFiles.values.sumOf { it?.rowCount ?: 0L })
+    }
+
+    // ── The two effects no checked-in fixture reaches ────────────────────────────────────────
     //
-    // `example/paimon/db.db/test` is one snapshot with one manifest holding one ADD entry, so it
-    // exercises `ADDED` and nothing else. The other three need a delta applied over a base, which
-    // means a table with a compaction or an overwrite behind it — blocked on the Flink container
-    // the Paimon fixtures are generated from.
+    // `test` is one ADD; `dv` adds `REMOVED`, three times, but every one of its ADDs meets an
+    // empty slot — an upgrade compaction removes the file *before* re-adding it. So `REPLACED` (an
+    // ADD over a file still live) and `REMOVED_ABSENT` (a DELETE of a file the base never listed)
+    // have still not met real bytes; the first needs an overwrite, the second a re-applied or
+    // rolled-back commit.
     //
     // Built as model objects rather than as bytes on purpose, and the objection the project raises
     // about runtime-written Avro fixtures does not apply: those are not oracles because writer and

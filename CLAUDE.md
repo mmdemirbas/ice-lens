@@ -256,6 +256,13 @@ intellij/src/main/kotlin/plugin/
   file open but to avoid a replay per manifest at build time. **The oracle is that the trace sums
   to the contribution it explains**, on files, records and bytes at once, which is the same
   "two readings of one walk" rule `PaimonSnapshotDiffTest` holds the figures and the file set to.
+  **That oracle cannot see a wrong reading of `DELETE`** — both readings come from the one walk and
+  move together, and a mutation making `DELETE` behave as `ADD` passed every sum-oracle in both
+  classes. What catches it is `dv`: its compactions are the first real removals any Paimon fixture
+  reaches, and the tests pin the replay against the snapshot's own `deltaRecordCount` and
+  `totalRecordCount`, figures the writer recorded. An upgrade compaction there is `DELETE` at level
+  0 then `ADD` of the same file at level 5, so the trace shows `[REMOVED, ADDED]` and the
+  contribution is zero — a set comparison of the two snapshots sees nothing, correctly.
   The colour marks `REPLACED` and `REMOVED_ABSENT` only: adding and removing are both ordinary in a
   compaction, while a rewrite whose record delta is a *difference* and a removal that **found
   nothing to remove** are the two rows invisible in every figure above them
@@ -1110,7 +1117,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~813 tests across 87 files (593 in :core, 215 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~816 tests across 87 files (596 in :core, 215 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

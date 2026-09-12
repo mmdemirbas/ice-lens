@@ -28,26 +28,34 @@ class PaimonSnapshotDiffTest {
     private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }
         .first { File(it, "settings.gradle.kts").isFile }
 
-    private fun model(): PaimonUnifiedTableModel {
-        val dir = File(repoRoot, "example/paimon/db.db/test")
+    private fun model(name: String): PaimonUnifiedTableModel {
+        val dir = File(repoRoot, "example/paimon/db.db/$name")
         assertTrue(dir.isDirectory, "the Paimon fixture should be checked in at $dir")
         return PaimonUnifiedTableModel(Paths.get(dir.absolutePath))
     }
 
-    private fun snapshotNodes(): List<GraphNode.PaimonSnapshotNode> =
-        GraphLayoutService.layoutGraph(model(), showRows = false)
+    /**
+     * Both checked-in Paimon tables. `test` is one Flink commit; `dv` is six Spark commits whose
+     * compactions remove files the base still lists, which is the only case where "replay" and
+     * "sum the ADDs" give different answers — so the oracles below mean something only on `dv`.
+     */
+    private fun models(): List<PaimonUnifiedTableModel> = listOf("test", "dv").map { model(it) }
+
+    private fun snapshotNodes(model: PaimonUnifiedTableModel): List<GraphNode.PaimonSnapshotNode> =
+        GraphLayoutService.layoutGraph(model, showRows = false)
             .nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>()
 
     /** One walk, two readings: the file set and the figures folded from it must agree. */
     @Test
     fun `the live files at the latest snapshot are what the current figures count`() {
-        val m = model()
-        val current = PaimonGraphBuilder.buildTableSummary(m).current
-        val live = paimonLiveFilesOf(m.snapshots.lastOrNull())
+        models().forEach { m ->
+            val current = PaimonGraphBuilder.buildTableSummary(m).current
+            val live = paimonLiveFilesOf(m.snapshots.lastOrNull())
 
-        assertEquals(current.dataFileCount, live.size, "data file count")
-        assertEquals(current.recordCount, live.sumOf { it.recordCount }, "records")
-        assertEquals(current.dataSizeBytes, live.sumOf { it.sizeBytes }, "bytes")
+            assertEquals(current.dataFileCount, live.size, "data file count")
+            assertEquals(current.recordCount, live.sumOf { it.recordCount }, "records")
+            assertEquals(current.dataSizeBytes, live.sumOf { it.sizeBytes }, "bytes")
+        }
     }
 
     /**
@@ -59,57 +67,60 @@ class PaimonSnapshotDiffTest {
      */
     @Test
     fun `the replay's contributions and its file set describe the same walk`() {
-        val replay = replayPaimonSnapshot(model().snapshots.lastOrNull())
-        val folded = StatsDerivation(replay.contributions).total
+        models().forEach { m ->
+            m.snapshots.forEach { snapshot ->
+                val replay = replayPaimonSnapshot(snapshot)
+                val folded = StatsDerivation(replay.contributions).total
 
-        assertEquals(
-            folded.dataFileCount,
-            replay.liveFiles.size,
-            "the contributions add up to the number of files the walk ended holding",
-        )
-        assertEquals(
-            folded.recordCount,
-            replay.liveFiles.values.sumOf { it?.rowCount ?: 0L },
-            "and to the records in them",
-        )
+                assertEquals(
+                    folded.dataFileCount,
+                    replay.liveFiles.size,
+                    "at snapshot ${snapshot.metadata.id}: the contributions add up to the number of files the walk ended holding",
+                )
+                assertEquals(
+                    folded.recordCount,
+                    replay.liveFiles.values.sumOf { it?.rowCount ?: 0L },
+                    "at snapshot ${snapshot.metadata.id}: and to the records in them",
+                )
+            }
+        }
     }
 
     /** Paimon has no delete files by definition — a removal is an entry kind, not a file. */
     @Test
     fun `every live Paimon file is a data file`() {
-        val live = paimonLiveFilesOf(model().snapshots.lastOrNull())
-        assertTrue(live.isNotEmpty(), "the fixture should hold files")
-        assertTrue(
-            live.all { it.content == DataFileContent.DATA },
-            "Paimon records no positional or equality deletes, so no live file can be one",
-        )
+        models().forEach { m ->
+            val live = paimonLiveFilesOf(m.snapshots.lastOrNull())
+            assertTrue(live.isNotEmpty(), "the fixture should hold files")
+            assertTrue(
+                live.all { it.content == DataFileContent.DATA },
+                "Paimon records no positional or equality deletes, so no live file can be one",
+            )
+        }
     }
 
     /** The builder attaches the walk without performing it, same as the Iceberg side. */
     @Test
     fun `every Paimon snapshot node can be compared`() {
-        val nodes = snapshotNodes()
-        assertTrue(nodes.isNotEmpty(), "the fixture should draw snapshots")
-        assertTrue(nodes.all { it.canDiff }, "every Paimon snapshot should carry its live file set")
-        assertEquals(nodes.first().liveFiles, nodes.first().liveFiles, "a second ask gives the same answer")
+        models().forEach { m ->
+            val nodes = snapshotNodes(m)
+            assertTrue(nodes.isNotEmpty(), "the fixture should draw snapshots")
+            assertTrue(nodes.all { it.canDiff }, "every Paimon snapshot should carry its live file set")
+            assertEquals(nodes.first().liveFiles, nodes.first().liveFiles, "a second ask gives the same answer")
+        }
     }
 
     /**
      * Paimon's live files go through the shared `snapshotDiff`, against an empty other side.
      *
-     * **The two-snapshot case cannot be exercised here: the checked-in Paimon table has exactly
-     * one commit.** Writing a second one needs Flink in docker, which is the same gap that leaves
-     * the Paimon card heights unmeasured — see TODO. So this covers the seam with real Paimon
-     * data rather than pretending to cover the pair: every file is on one side, the figures match
-     * what the table's own summary counts, and the shared code path is genuinely run rather than
-     * compiled and left. An empty other side is a real comparison, not a synthetic one — it is
-     * what a table's first commit is compared against.
+     * An empty other side is a real comparison, not a synthetic one — it is what a table's first
+     * commit is compared against — and the Flink table has exactly that one commit. The pair is
+     * covered on the Spark table below.
      */
     @Test
     fun `Paimon live files go through the shared difference`() {
-        val nodes = snapshotNodes()
-        assertEquals(1, nodes.size, "if the fixture gained a commit, cover the real pair here instead")
-        val only = nodes.single()
+        val m = model("test")
+        val only = snapshotNodes(m).single()
         val live = requireNotNull(only.liveFiles)
         assertTrue(live.isNotEmpty(), "the fixture should hold files")
 
@@ -117,20 +128,70 @@ class PaimonSnapshotDiffTest {
         assertEquals(live.size, diff.added.size, "against nothing, every file is an addition")
         assertTrue(diff.removed.isEmpty() && diff.unchanged.isEmpty() && diff.contradictory.isEmpty())
 
-        val current = PaimonGraphBuilder.buildTableSummary(model()).current
+        val current = PaimonGraphBuilder.buildTableSummary(m).current
         assertEquals(current.dataFileCount, diff.addedStats.dataFileCount, "data files")
         assertEquals(current.recordCount, diff.addedStats.recordCount, "records")
         assertEquals(current.dataSizeBytes, diff.addedStats.dataSizeBytes, "bytes")
         assertEquals(current.dataFileCount, diff.netDataFileCount, "and the net is the whole of it")
     }
 
+    /**
+     * Two Paimon snapshots compared as sets, on a table with six commits behind it.
+     *
+     * Through the graph nodes rather than the model, because that is the panel's route. Each
+     * adjacent pair of `dv` is one outcome: an upgrade compaction leaves the set exactly as it
+     * was — the file left and came back inside one delta, and a set comparison cannot and should
+     * not see that — an append adds one file, and the vector's commit removes one. The pair
+     * across the whole history is the property the design note states: **the diff is not a replay
+     * of the commits between**, so the three-row file that arrived at commit 5 and left at commit
+     * 6 is in neither set and appears nowhere.
+     */
+    @Test
+    fun `two Paimon snapshots are compared as sets, and a file that came and went between them is in neither`() {
+        val byId = snapshotNodes(model("dv")).associateBy { it.commitId }
+        assertEquals(6, byId.size, "the fixture should draw six commits")
+        fun diff(from: Long, to: Long): SnapshotDiff {
+            val a = byId.getValue(from)
+            val b = byId.getValue(to)
+            return snapshotDiff(a.commitId, requireNotNull(a.liveFiles), b.commitId, requireNotNull(b.liveFiles))
+        }
+        fun shape(d: SnapshotDiff) = listOf(d.added.size, d.removed.size, d.unchanged.size, d.contradictory.size)
+
+        // 1 → 2, upgrade compaction: same one file, nothing else.
+        assertEquals(listOf(0, 0, 1, 0), shape(diff(1, 2)))
+        assertTrue(diff(1, 2).isEmpty)
+
+        // 2 → 3, append: the 500-row file arrives.
+        assertEquals(listOf(1, 0, 1, 0), shape(diff(2, 3)))
+        assertEquals(500L, diff(2, 3).addedStats.recordCount)
+        assertEquals(1, diff(2, 3).netDataFileCount)
+
+        // 5 → 6, the vector's commit: the 3-row delete file goes, both marked files stay.
+        assertEquals(listOf(0, 1, 2, 0), shape(diff(5, 6)))
+        assertEquals(3L, diff(5, 6).removedStats.recordCount)
+        assertEquals(-1, diff(5, 6).netDataFileCount)
+
+        // 1 → 6, across everything: one file added, none removed — the 3-row file is invisible.
+        val whole = diff(1, 6)
+        assertEquals(listOf(1, 0, 1, 0), shape(whole))
+        assertEquals(500L, whole.addedStats.recordCount)
+        assertTrue(whole.removed.isEmpty(), "a file that came and went between the two is in neither set")
+
+        // And the direction is the comparison's, not the table's.
+        val reversed = diff(6, 1)
+        assertEquals(listOf(0, 1, 1, 0), shape(reversed))
+        assertEquals(500L, reversed.removedStats.recordCount)
+    }
+
     /** A snapshot compared with itself differs in nothing, whichever format it is. */
     @Test
     fun `a Paimon snapshot compared with itself has no differences`() {
-        val live = paimonLiveFilesOf(model().snapshots.lastOrNull())
-        val diff = snapshotDiff(1L, live, 1L, live)
-        assertTrue(diff.isEmpty)
-        assertEquals(live.size, diff.unchanged.size)
+        models().forEach { m ->
+            val live = paimonLiveFilesOf(m.snapshots.lastOrNull())
+            val diff = snapshotDiff(1L, live, 1L, live)
+            assertTrue(diff.isEmpty)
+            assertEquals(live.size, diff.unchanged.size)
+        }
     }
 
     /**
@@ -141,7 +202,7 @@ class PaimonSnapshotDiffTest {
      */
     @Test
     fun `a Paimon snapshot reports no parent rather than guessing one`() {
-        val node = snapshotNodes().lastOrNull()
+        val node = snapshotNodes(model("dv")).lastOrNull()
         assertNotNull(node, "the fixture should draw a snapshot")
         assertEquals(null, node.parentCommitId)
         assertNotNull(node.commitId, "but it does have its own id")
