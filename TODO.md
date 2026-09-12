@@ -256,13 +256,11 @@ What is left:
 
 - **Snapshot compare exists, and its way in is selection.** `model/SnapshotDiff.kt` answers "what
   is different between these two" for any pair, and selecting two snapshots on the canvas opens
-  it. Two things are unfinished. Selection is the only route — there is no way to pin one snapshot
-  and step the other through history, which is what comparing a branch against successive points
-  on `main` wants. And the comparison is Iceberg-only: `PaimonSnapshotNode` has no
-  a second snapshot to compare against: `example/paimon/db.db/test` has exactly **one commit**, so
-  the two-snapshot path is exercised only against an empty other side and the real pair is
-  untested. Writing a second commit needs Flink in docker — the same blocker as the Paimon card
-  heights and the third-branch fixture.
+  it, for either format — `ComparableSnapshot` is the seam, and `PaimonSnapshotDiffTest` runs the
+  Paimon side over every multi-commit fixture, including a branch's snapshot against main's. One
+  thing is unfinished: selection is the only route — there is no way to pin one snapshot and step
+  the other through history, which is what comparing a branch against successive points on
+  `main` wants.
 
 - **Different layout algorithms — done, with one limit stated.** Layered left-to-right (default),
   layered top-to-bottom, tree and force-directed, from a toolbar menu, persisted.
