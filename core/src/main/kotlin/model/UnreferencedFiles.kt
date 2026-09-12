@@ -22,8 +22,10 @@ import java.nio.file.attribute.BasicFileAttributes
  * file reachable from `v3.metadata.json` but not from `v10` is reported as referenced here, because
  * a metadata file on disk names it; Iceberg's own `remove_orphan_files` reaches from the current
  * metadata only and can delete more than this reports. Paimon's reaches from every snapshot, as this
- * does — but also from tags and branches, which this does not read, so a file reachable only
- * through a tag is reported as unreferenced. Both are stated on the panel.
+ * does, and from tags, which this follows too: a tag is a snapshot copy under `tag/`, and after
+ * `expire_snapshots` it can be the only thing naming a data file — the `tg` fixture. Branches are
+ * a nested table layout under `branch/` and consumers are bookkeeping under `consumer/`; neither
+ * is read, so both directories are left out of the walk rather than reported. Stated on the panel.
  *
  * Hidden files (a leading `.`) are skipped: Hadoop's local filesystem writes a `.crc` beside every
  * file and macOS writes `.DS_Store`, and neither is the table's. The walk is the whole table
@@ -59,7 +61,11 @@ fun referencedFiles(model: FormatTableModel): Set<Path> = when (model) {
 fun findUnreferencedFiles(model: FormatTableModel): UnreferencedFilesReport {
     val referenced = referencedFiles(model)
     val problems = mutableListOf<String>()
-    val onDisk = walkTableFiles(model.path, problems)
+    val notWalked = when (model) {
+        is UnifiedTableModel -> emptySet()
+        is PaimonUnifiedTableModel -> setOf("branch", "consumer")
+    }
+    val onDisk = walkTableFiles(model.path, notWalked, problems)
     val unreferenced = onDisk
         .filterKeys { it !in referenced }
         .map { (path, size) -> UnreferencedFile(path, size) }
@@ -112,7 +118,8 @@ private fun paimonReferencedFiles(model: PaimonUnifiedTableModel): List<Path> {
     paths.add(root.resolve("snapshot").resolve("EARLIEST"))
     paths.add(root.resolve("snapshot").resolve("LATEST"))
     model.schemas.forEach { schema -> schema.id?.let { paths.add(root.resolve("schema").resolve("schema-$it")) } }
-    model.snapshots.forEach { snapshot ->
+    model.tags.forEach { paths.add(it.path) }
+    (model.snapshots + model.tags.map { it.snapshot }).forEach { snapshot ->
         paths.add(snapshot.path)
         val md = snapshot.metadata
         listOfNotNull(md.baseManifestList, md.deltaManifestList, md.changelogManifestList, md.indexManifest)
@@ -127,8 +134,11 @@ private fun paimonReferencedFiles(model: PaimonUnifiedTableModel): List<Path> {
     return paths
 }
 
-/** Every regular file under [root] that is not hidden, with its size; failures go to [problems]. */
-private fun walkTableFiles(root: Path, problems: MutableList<String>): Map<Path, Long> {
+/**
+ * Every regular file under [root] that is not hidden, with its size; failures go to [problems].
+ * [notWalked] names top-level directories the format keeps and this model does not read.
+ */
+private fun walkTableFiles(root: Path, notWalked: Set<String>, problems: MutableList<String>): Map<Path, Long> {
     val files = linkedMapOf<Path, Long>()
     if (!Files.isDirectory(root)) {
         problems += "$root is not a directory"
@@ -137,8 +147,12 @@ private fun walkTableFiles(root: Path, problems: MutableList<String>): Map<Path,
     Files.walkFileTree(
         root,
         object : SimpleFileVisitor<Path>() {
-            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult =
-                if (dir != root && dir.isHidden()) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
+            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult = when {
+                dir == root -> FileVisitResult.CONTINUE
+                dir.isHidden() -> FileVisitResult.SKIP_SUBTREE
+                dir.parent == root && dir.fileName.toString() in notWalked -> FileVisitResult.SKIP_SUBTREE
+                else -> FileVisitResult.CONTINUE
+            }
 
             override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
                 if (attrs.isRegularFile && !file.isHidden()) {

@@ -962,10 +962,34 @@ fun PaimonNodeCard(node: GraphNode, isSelected: Boolean = false) {
         CardColumn(padding = 6.dp) {
             when (node) {
                 is GraphNode.PaimonSnapshotNode -> {
-                    Text("PAIMON SNAP ${node.simpleId}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+                    Text(
+                        "PAIMON SNAP ${node.simpleId}" + if (node.retainedByTagOnly) " — TAG ONLY" else "",
+                        fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary(), maxLines = 1,
+                    )
                     Text(node.commitKind ?: "N/A", fontSize = TypeScale.small, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("ID: ${node.data.id ?: "?"}", fontSize = TypeScale.micro, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("Records: ${node.data.totalRecordCount?.let(::formatCount) ?: "?"}", fontSize = TypeScale.micro, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // The same chip as an Iceberg tag, for the same reason it is on the card: a tag
+                    // is why this snapshot's files are still here. One line; the node's height
+                    // grows by that line when it has any.
+                    if (node.tags.isNotEmpty()) {
+                        Spacer(Modifier.height(3.dp))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(3.dp), maxLines = 1) {
+                            node.tags.forEach { tag ->
+                                Text(
+                                    tag,
+                                    fontSize = TypeScale.micro,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = nodeCardTextSecondary(),
+                                    modifier = Modifier
+                                        .background(RefTagChip, RoundedCornerShape(3.dp))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                                )
+                            }
+                        }
+                    }
                 }
                 is GraphNode.PaimonSchemaNode -> {
                     Text("PAIMON SCHEMA ${node.simpleId}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())

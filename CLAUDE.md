@@ -314,9 +314,10 @@ intellij/src/main/kotlin/plugin/
   it should fail first. `cl` is the oracle for the other direction — the changelog file Paimon
   wrote for an overwrite and declined to commit. "Referenced" means named by *any* metadata version
   on disk, which is the literal reading and never produces a false orphan; Iceberg's
-  `remove_orphan_files` reaches from the current metadata only and can delete more, and Paimon's
-  follows tags and branches, which this does not read. Both are said on the panel, under the
-  answer. Hidden files are skipped — Hadoop's `.crc` sidecars and `.DS_Store` are the filesystem's.
+  `remove_orphan_files` reaches from the current metadata only and can delete more; Paimon's
+  follows tags, as this does, and branches, which this leaves out of the walk with `consumer/`.
+  Both are said on the panel, under the answer. Hidden files are skipped — Hadoop's `.crc`
+  sidecars and `.DS_Store` are the filesystem's.
   It is a `DeferredRead` on `TableNode` behind a click, because it is the one thing on the table
   panel that scales with the data rather than the metadata, and on a remote table it is a subtree
   listing. A `Path` is an `Iterable<Path>` of its own segments, so the referenced set is built with
@@ -1134,7 +1135,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~829 tests across 89 files (608 in :core, 216 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~834 tests across 90 files (613 in :core, 216 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1224,6 +1225,7 @@ container invocation and the traps in it:
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
+| `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
 starts a loopback-only MinIO and uploads `example/iceberg/default/mor` to `s3://warehouse/db/mor`;
@@ -1300,6 +1302,17 @@ also on the classpath.
   stated definition; and **an overwrite writes a changelog file and does not commit it** — Paimon
   logs "Overwrite mode currently does not commit any changelog" and leaves the file in the bucket
   unlisted, so the table has four `changelog-` files on disk and three in any manifest
+- **A tag is a snapshot file under `tag/`, read as one, and it is what keeps files on disk after
+  the snapshot is gone.** `PaimonUnifiedTableModel.tags` reads `tag/tag-<name>` through the same
+  reader and manifest cache as `snapshot/`; `tagOnlySnapshots` is the tagged snapshots `snapshot/`
+  no longer holds, and the builder draws them — `PaimonSnapshotNode.retainedByTagOnly`, with the
+  tag as a chip and the eyebrow saying `TAG ONLY`, because their files are the table's even though
+  no id under `snapshot/` reaches them. History walks them too. `tg` is the fixture: `retain_max
+  = 1` left snapshot 4, and snapshot 1's data file is on disk because `tag-first` names it — which
+  is why the referenced set follows tags, or that file is a false orphan in the direction that
+  gets a file deleted. **A tag retains data, not changelog**: expiry deleted the changelog manifest
+  list the tag still names, and the tag reads with exactly that one read error, drawn under it.
+  `branch/` (a nested table layout) and `consumer/` are not read and are left out of the walk
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

@@ -114,6 +114,7 @@ object GraphTree {
             "Snapshot id" to node.data.id.toString(),
             "Schema id" to node.data.schemaId.toString(),
             "Commit kind" to (node.data.commitKind ?: "—"),
+            "Tags" to node.tags.joinToString(", ").ifEmpty { "—" },
             "Base manifest list" to (node.data.baseManifestList ?: "—"),
             "Delta manifest list" to (node.data.deltaManifestList ?: "—"),
             "Changelog manifest list" to (node.data.changelogManifestList ?: "—"),

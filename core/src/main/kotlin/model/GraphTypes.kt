@@ -607,9 +607,17 @@ sealed class GraphNode(
         val indexFiles: List<PaimonIndexManifestEntry> = emptyList(),
         /** What an `ANALYZE` commit wrote — see [PaimonStatistics]. Null on every other kind. */
         val statistics: PaimonStatistics? = null,
+        /** The names of the tags under `tag/` that are copies of this snapshot. */
+        val tags: List<String> = emptyList(),
+        /**
+         * True when `snapshot/` no longer holds this snapshot and a tag is what keeps its files
+         * on disk. Such a snapshot is drawn because its files are the table's; it is not a commit
+         * a reader can time-travel to by id.
+         */
+        val retainedByTagOnly: Boolean = false,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 210.0, 66.0), ComparableSnapshot {
+    ) : GraphNode(id, initialX, initialY, 210.0, if (tags.isEmpty()) 66.0 else 83.0), ComparableSnapshot {
 
         override val nodeId: String get() = id
         override val displayNumber: Int get() = simpleId

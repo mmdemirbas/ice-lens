@@ -59,7 +59,7 @@ object GraphSearch {
         // A row is its values, which is the only thing about it a reader could know.
         is GraphNode.RowNode -> node.data.values.mapNotNull { it?.toString() }
 
-        is GraphNode.PaimonSnapshotNode -> listOfNotNull(
+        is GraphNode.PaimonSnapshotNode -> node.tags + listOfNotNull(
             node.data.id?.toString(),
             node.commitKind ?: node.data.commitKind,
             node.data.commitUser,

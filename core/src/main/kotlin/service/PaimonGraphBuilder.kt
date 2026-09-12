@@ -92,8 +92,13 @@ object PaimonGraphBuilder {
             }
         }
 
-        // Snapshot nodes
-        tableModel.snapshots.forEach { unifiedSnapshot ->
+        // Snapshot nodes: what snapshot/ holds, then what only a tag still holds — a snapshot
+        // expiry removed whose files a tag keeps on disk. Drawn in id order so the tagged one
+        // sits where it was committed rather than after everything.
+        val liveIds = tableModel.snapshots.mapNotNull { it.metadata.id }.toSet()
+        (tableModel.snapshots + tableModel.tagOnlySnapshots)
+            .sortedBy { it.metadata.id ?: Long.MAX_VALUE }
+            .forEach { unifiedSnapshot ->
             val snap = unifiedSnapshot.metadata
             val snapId = "psnap_${snap.id ?: nextSnapshotSimpleId}"
             val simpleId = nextSnapshotSimpleId++
@@ -110,6 +115,8 @@ object PaimonGraphBuilder {
                     liveFilesLoader = DeferredRead.of { paimonLiveFilesOf(unifiedSnapshot) },
                     indexFiles = unifiedSnapshot.indexFiles,
                     statistics = unifiedSnapshot.statistics,
+                    tags = snap.id?.let { tableModel.tagNamesBySnapshotId[it] }.orEmpty(),
+                    retainedByTagOnly = snap.id !in liveIds,
                 )
             }
 
@@ -306,7 +313,8 @@ object PaimonGraphBuilder {
         val seenFiles = mutableSetOf<String>()
         val historyContributions = mutableListOf<ManifestContribution>()
 
-        tableModel.snapshots.forEach { snapshot ->
+        // History is everything a retained snapshot reaches, and a tag retains one.
+        (tableModel.snapshots + tableModel.tagOnlySnapshots).forEach { snapshot ->
             val countedIn = snapshot.metadata.id?.let { "snapshot $it" }
                 ?: "snapshot file ${snapshot.path.fileName}"
             val allManifests = snapshot.baseManifests + snapshot.deltaManifests + snapshot.changelogManifests

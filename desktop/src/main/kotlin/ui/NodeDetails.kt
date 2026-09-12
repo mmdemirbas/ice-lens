@@ -2168,6 +2168,13 @@ fun NodeDetailsContent(
                         DetailTable {
                             DetailRow("Property", "Value", isHeader = true)
                             DetailRow("Snapshot ID", "${node.data.id ?: "N/A"}")
+                            // A tag is a copy of the snapshot file under tag/, and after an expiry
+                            // it can be the only copy — which is a different thing from a commit a
+                            // reader can time-travel to by id, so the panel says which it is.
+                            DetailRow("Tags", node.tags.joinToString(", ").ifEmpty { "none" })
+                            if (node.retainedByTagOnly) {
+                                DetailRow("Retained By", "its tag only — expired from snapshot/, files kept on disk by the tag")
+                            }
                             DetailRow("Version", "${node.data.version ?: "N/A"}")
                             DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
                             DetailRow("Commit Kind", node.commitKind ?: "N/A")
@@ -3240,8 +3247,8 @@ internal fun UnreferencedFilesSection(
         // who has not clicked needs one sentence, and one who has needs the number first.
         val caveat = "Referenced means named by any metadata version on disk, so Iceberg's " +
             "remove_orphan_files, which reaches from the current one only, can delete more than is " +
-            "listed here; Paimon tags and branches are not followed, so a file reachable only " +
-            "through one is listed."
+            "listed here. Paimon tags are followed; branch/ and consumer/ are not read and were " +
+            "not walked."
         when {
             !requested -> {
                 Text(

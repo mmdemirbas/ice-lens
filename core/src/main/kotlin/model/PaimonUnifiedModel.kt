@@ -15,11 +15,41 @@ data class PaimonUnifiedTableModel(
     override val path: Path,
     override val name: String,
     val schemas: List<PaimonSchema>,
+    /** What `snapshot/` holds, by id. A snapshot a tag retains after expiry is in [tags], not here. */
     val snapshots: List<PaimonUnifiedSnapshot>,
+    /** What `tag/` holds — see [PaimonUnifiedTag]. */
+    val tags: List<PaimonUnifiedTag> = emptyList(),
     override val readErrors: List<UnifiedReadError> = emptyList(),
 ) : FormatTableModel {
+    /** The tags naming a snapshot id, by id — a tag on a live snapshot and a tag on an expired one alike. */
+    val tagNamesBySnapshotId: Map<Long, List<String>> by lazy {
+        tags.groupBy({ it.snapshot.metadata.id }, { it.name })
+            .filterKeys { it != null }.mapKeys { it.key!! }
+    }
+
+    /** The tagged snapshots `snapshot/` no longer holds — retained by the tag alone. */
+    val tagOnlySnapshots: List<PaimonUnifiedSnapshot> by lazy {
+        val live = snapshots.mapNotNull { it.metadata.id }.toSet()
+        tags.filter { it.snapshot.metadata.id !in live }
+            .distinctBy { it.snapshot.metadata.id }
+            .map { it.snapshot }
+    }
     override val format get() = service.TableFormat.PAIMON
 }
+
+/**
+ * A Paimon tag: a snapshot file copied under `tag/` as `tag-<name>`, which is what keeps the
+ * snapshot's files alive after `expire_snapshots` has removed it from `snapshot/`.
+ *
+ * What a tag retains is the data, not the change stream. The `tg` fixture's tag names a changelog
+ * manifest list that expiry deleted, so reading it produces a read error on the tag — that is the
+ * format's behaviour, and the error is reported rather than hidden.
+ */
+data class PaimonUnifiedTag(
+    val name: String,
+    val path: Path,
+    val snapshot: PaimonUnifiedSnapshot,
+)
 
 /** A Paimon snapshot with its resolved manifest trees. */
 data class PaimonUnifiedSnapshot(
@@ -93,6 +123,14 @@ fun PaimonUnifiedTableModel(tablePath: Path): PaimonUnifiedTableModel {
         readPaimonSnapshot(tablePath, snapshotPath, schemasById, errors, manifestCache)
     }.sortedBy { it.metadata.id ?: Long.MAX_VALUE }
 
+    // 3. Tags: the same file shape as a snapshot, read the same way, through the same cache.
+    val tags = listTagFiles(tablePath.resolve("tag"), errors).mapNotNull { tagPath ->
+        readPaimonSnapshot(tablePath, tagPath, schemasById, errors, manifestCache)?.let { snapshot ->
+            PaimonUnifiedTag(name = tagPath.fileName.toString().removePrefix("tag-"), path = tagPath, snapshot = snapshot)
+        }
+    }.sortedBy { it.name }
+    if (tags.isNotEmpty()) logger.info("  Tags: {}", tags.map { it.name })
+
     val totalManifests = snapshots.sumOf { it.baseManifests.size + it.deltaManifests.size + it.changelogManifests.size }
     val totalDataFiles = snapshots.sumOf { s -> (s.baseManifests + s.deltaManifests + s.changelogManifests).sumOf { it.entries.size } }
     val allSnapshotErrors = snapshots.flatMap { it.readErrors }
@@ -111,8 +149,24 @@ fun PaimonUnifiedTableModel(tablePath: Path): PaimonUnifiedTableModel {
         name = tablePath.fileName.toString(),
         schemas = schemas,
         snapshots = snapshots,
+        tags = tags,
         readErrors = errors,
     )
+}
+
+/** `tag/tag-<name>`, or nothing: most tables have no `tag/` directory at all, which is not an error. */
+private fun listTagFiles(tagDir: Path, errors: MutableList<UnifiedReadError>): List<Path> {
+    if (!Files.isDirectory(tagDir)) return emptyList()
+    return runCatching {
+        Files.list(tagDir)
+            .asSequence()
+            .filter { Files.isRegularFile(it) }
+            .filter { it.fileName.toString().startsWith("tag-") }
+            .toList()
+    }.getOrElse { e ->
+        errors += toError("list-tag-files", tagDir.toString(), e)
+        emptyList()
+    }
 }
 
 private fun readSchemas(schemaDir: Path, errors: MutableList<UnifiedReadError>): List<PaimonSchema> {

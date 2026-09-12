@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Added
+- **Paimon tags are read and drawn.** A tag is a snapshot copy under `tag/`, and after
+  `expire_snapshots` it can be the only thing keeping a snapshot's files on disk — so a tagged
+  snapshot that is gone from `snapshot/` is drawn with its tag as a chip and marked `TAG ONLY`, its
+  manifests and files under it, and the file walk counts what it names as referenced rather than as
+  orphans. The new `tg` fixture is that table, and it settled that a tag keeps the data and not the
+  changelog: the changelog list it names was deleted, and reading the tag reports that.
 - **A table can say which files on disk nothing names.** "Walk the table directory" on the table
   panel lists every file under the root that no metadata version references, with its size — a
   write that failed after its files landed, or a file the format wrote and did not commit. On the

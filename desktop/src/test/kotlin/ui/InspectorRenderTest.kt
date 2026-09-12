@@ -741,6 +741,21 @@ class InspectorRenderTest {
             .firstOrNull { it.statistics != null }
         assertNotNull(analyzed, "the cl fixture should carry an ANALYZE snapshot with statistics")
         renderInspector(clGraph, analyzed.id, "paimon-snapshot-analyze", height = 2000)
+
+        // And a snapshot only a tag retains: the identity says so, and the read error for the
+        // changelog list the tag names and expiry deleted is on the same panel.
+        val tgGraph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/tg").absolutePath)),
+            showRows = false,
+        )
+        val tagged = tgGraph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().firstOrNull { it.retainedByTagOnly }
+        assertNotNull(tagged, "the tg fixture should carry a snapshot retained by its tag only")
+        renderInspector(tgGraph, tagged.id, "paimon-snapshot-tag", height = 1400)
+        renderScene("paimon-cards-tag", width = 700, height = 460) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                tgGraph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().sortedBy { it.data.id }.forEach { PaimonNodeCard(it) }
+            }
+        }
     }
 
     /**

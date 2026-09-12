@@ -60,11 +60,15 @@ class CardHeightTest {
         )
     }
 
-    /** Both Paimon tables: the Flink-written one, and the Spark-written one with a deletion vector. */
-    private fun paimonGraphs(): List<GraphModel> = listOf("test", "dv", "cl").map { name ->
+    /**
+     * Every Paimon table, each under its own name. The name is part of a card's key, and four
+     * tables all called `paimon` shared one key per node id — so the last `psnap_1` measured
+     * (the tagged one, a line taller) was compared against the other three's declared height.
+     */
+    private fun paimonGraphs(): List<Pair<String, GraphModel>> = listOf("test", "dv", "cl", "tg").map { name ->
         val tableDir = File(repoRoot, "example/paimon/db.db/$name")
         assertTrue(tableDir.isDirectory, "the Paimon fixture should be checked in: $tableDir")
-        GraphLayoutService.layoutGraph(
+        "paimon/$name" to GraphLayoutService.layoutGraph(
             PaimonUnifiedTableModel(Paths.get(tableDir.absolutePath)), showRows = true,
         )
     }
@@ -85,7 +89,7 @@ class CardHeightTest {
             icebergGraph("branched", pageSize = 1).nodes
                 .filterIsInstance<GraphNode.GroupNode>()
                 .forEach { node -> addAll(cardsFor("branched@1", node)) }
-            paimonGraphs().forEach { graph -> graph.nodes.forEach { node -> addAll(cardsFor("paimon", node)) } }
+            paimonGraphs().forEach { (name, graph) -> graph.nodes.forEach { node -> addAll(cardsFor(name, node)) } }
             // No fixture is broken, so nothing produces an ErrorNode — and its card was therefore
             // the one kind never measured. Built by hand rather than left uncovered, with the
             // longest strings the node can hold: a read error names a path, and a path is long.
@@ -126,8 +130,9 @@ class CardHeightTest {
                 icebergGraph(fixture).nodes.mapNotNull(::stressed)
                     .forEach { node -> addAll(cardsFor("$fixture!", node)) }
             }
-            paimonGraphs().flatMap { it.nodes }.mapNotNull(::stressed)
-                .forEach { node -> addAll(cardsFor("paimon!", node)) }
+            paimonGraphs().forEach { (name, graph) ->
+                graph.nodes.mapNotNull(::stressed).forEach { node -> addAll(cardsFor("$name!", node)) }
+            }
             // The chip-loaded snapshot: a long path *and* more refs than the two-line chip row
             // can hold, which is the taller of that card's two declared heights.
             icebergGraph("branched").nodes.filterIsInstance<GraphNode.SnapshotNode>().first()
