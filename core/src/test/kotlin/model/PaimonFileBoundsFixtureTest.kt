@@ -121,6 +121,7 @@ class PaimonFileBoundsFixtureTest {
         listOf("test", "dv", "cl", "tg", "pt").forEach { name ->
             val m = model(name)
             val keyNames = m.schemas.single().primaryKeys - m.schemas.single().partitionKeys.toSet()
+            assertTrue(keyNames.isNotEmpty(), "$name is a primary-key table; an append table's key is empty and is `ao`'s test")
             val keyFields = keyNames.map { key -> m.schemas.single().fields.single { it.name == key } }
             m.snapshots.flatMap { it.baseManifests + it.deltaManifests }.flatMap { it.entries }.forEach { entry ->
                 val stats = entry.metadata.file?.keyStats ?: return@forEach

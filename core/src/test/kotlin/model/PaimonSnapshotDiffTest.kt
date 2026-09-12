@@ -40,7 +40,7 @@ class PaimonSnapshotDiffTest {
      * all — the cases where "replay" and "sum the ADDs" give different answers, so the oracles
      * below mean something only on those two.
      */
-    private fun models(): List<PaimonUnifiedTableModel> = listOf("test", "dv", "cl", "tg", "pt").map { model(it) }
+    private fun models(): List<PaimonUnifiedTableModel> = listOf("test", "dv", "cl", "tg", "pt", "ao").map { model(it) }
 
     private fun snapshotNodes(model: PaimonUnifiedTableModel): List<GraphNode.PaimonSnapshotNode> =
         GraphLayoutService.layoutGraph(model, showRows = false)

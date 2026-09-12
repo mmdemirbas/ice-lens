@@ -1,0 +1,25 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "id",
+    "type" : "INT"
+  }, {
+    "id" : 1,
+    "name" : "dt",
+    "type" : "DATE"
+  }, {
+    "id" : 2,
+    "name" : "msg",
+    "type" : "STRING"
+  } ],
+  "highestFieldId" : 2,
+  "partitionKeys" : [ "dt" ],
+  "primaryKeys" : [ ],
+  "options" : {
+    "bucket" : "-1",
+    "owner" : "root"
+  },
+  "timeMillis" : 1789248682259
+}

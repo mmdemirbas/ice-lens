@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **An append-only Paimon table is a checked-in fixture.** `ao` has no primary key and
+  `bucket = -1`: its files carry no key range, every one lands in `bucket-0` under its partition,
+  and its `DELETE` is an `APPEND` commit with a negative delta that removes one file and adds it
+  back without the row. The Paimon sweeps run over six tables now.
 - **Scan pruning works on a Paimon table.** The filter form on the table panel now rules a
   Paimon manifest out by the partition range its manifest list records and a Paimon file by its
   own column bounds — the same two stages, the same verdicts and reasons, the same fade on the
