@@ -2491,7 +2491,14 @@ fun NodeDetailsContent(
                                     "From the entry's _VALUE_STATS: a per-column minimum, maximum and null " +
                                         "count over the rows in this file, two BinaryRows decoded against the " +
                                         "schema the manifest names. A string bound is the whole value, not a " +
-                                        "truncated prefix.",
+                                        "truncated prefix." +
+                                        // A subset is a decision the writer recorded — fields.<col>.stats-mode
+                                        // = none under the dense store — and the columns left out are the
+                                        // ones a scan cannot prune this file on.
+                                        (file?.valueStatsCols?.let {
+                                            " Recorded for the ${formatCount(it.size)} columns _VALUE_STATS_COLS names " +
+                                                "(${it.joinToString(", ")}); the rest of the schema has no statistics in this file."
+                                        } ?: " Recorded for every column of the schema, in schema order."),
                                     fontSize = TypeScale.small,
                                     color = colors.onSurfaceVariant,
                                     modifier = Modifier.padding(bottom = 4.dp),

@@ -1196,7 +1196,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~922 tests across 105 files (692 in :core, 225 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~924 tests across 106 files (694 in :core, 225 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1295,6 +1295,7 @@ container invocation and the traps in it:
 | `paimon/db.db/fi` | `PaimonFileIndexFixtureTest` | a bloom-filter file index both ways — a 599 KB `.index` beside the first data file, 117 bytes embedded in the second entry |
 | `paimon/db.db/ep` | `PaimonExternalPathFixtureTest` | `data-file.external-paths` — no bucket under the table, both files at `example/paimon/ep-files/bucket-0/` beside it, `_EXTERNAL_PATH` recorded |
 | `paimon/db.db/rt` | `PaimonRowTrackingFixtureTest` | `row-tracking.enabled` — two appends recording first ids 0 and 3, then a full compaction whose output records none and carries `_ROW_ID` per row |
+| `paimon/db.db/sm` | `PaimonStatsModeFixtureTest` | `fields.v.stats-mode = none` — `_VALUE_STATS` over two of three columns, named in `_VALUE_STATS_COLS`; the oracle for the subset decoding |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 

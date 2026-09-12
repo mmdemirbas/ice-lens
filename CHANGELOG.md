@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A Paimon file whose statistics cover a subset of the schema says so.** `fields.<col>.stats-mode
+  = none` shrinks `_VALUE_STATS` to the columns that have statistics, named in
+  `_VALUE_STATS_COLS`; the Column Bounds section now states which columns are covered and that
+  the rest have none. `sm` is the fixture, and the oracle for the subset decoding — a bound
+  attributed to the wrong column reads as an answer.
 - **A row-tracked Paimon file says where its row ids are, and its row cards carry them.** The
   file panel's `Row IDs` row states the range a recorded first id implies, or that a compaction's
   output carries each row's id in its `_ROW_ID` column, or that row tracking is off; a sample row
