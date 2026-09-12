@@ -40,7 +40,11 @@ object PaimonGraphBuilder {
         val tableNodeId = "table_root"
 
         val tableSummary = buildTableSummary(tableModel)
-        logicalNodes[tableNodeId] = GraphNode.TableNode(tableNodeId, tableSummary)
+        logicalNodes[tableNodeId] = GraphNode.TableNode(
+            tableNodeId,
+            tableSummary,
+            unreferencedFiles = DeferredRead.of { findUnreferencedFiles(tableModel) },
+        )
 
         var nextManifestSimpleId = 1
         var nextManifestListSimpleId = 1

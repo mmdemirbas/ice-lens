@@ -39,7 +39,11 @@ object IcebergGraphBuilder {
         val tableNodeId = "table_root"
 
         val tableSummary = buildTableSummary(tableModel)
-        logicalNodes[tableNodeId] = GraphNode.TableNode(tableNodeId, tableSummary)
+        logicalNodes[tableNodeId] = GraphNode.TableNode(
+            tableNodeId,
+            tableSummary,
+            unreferencedFiles = DeferredRead.of { findUnreferencedFiles(tableModel) },
+        )
 
         // Deletion vectors by the data file each one covers, built on first use rather than here:
         // the factories below close over this, and they run after the traversal has finished

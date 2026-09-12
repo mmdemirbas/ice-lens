@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Added
+- **A table can say which files on disk nothing names.** "Walk the table directory" on the table
+  panel lists every file under the root that no metadata version references, with its size — a
+  write that failed after its files landed, or a file the format wrote and did not commit. On the
+  new `cl` fixture that is the changelog file Paimon wrote for an overwrite and then refused to
+  commit; on every other checked-in table it is nothing, which is the assertion that makes the
+  list trustworthy. The panel says what "referenced" means here and where Iceberg's and Paimon's
+  own orphan-file procedures would differ.
 - **A Paimon `ANALYZE` commit's statistics are read and shown.** The snapshot named a file under
   `statistics/` and nothing opened it. Its merged row count is the figure the format records nowhere
   else — rows after the merge engine, where the snapshot's total sums file rows — and the panel leads

@@ -40,6 +40,7 @@ import kotlinx.coroutines.withContext
 import service.PositionalDeleteTally
 import service.SampleRowReader
 import model.DeleteCandidate
+import model.UnreferencedFilesReport
 import model.DeleteReachVerdict
 import model.deleteCandidatesFor
 import model.deleteKindOf
@@ -1029,6 +1030,8 @@ fun NodeDetailsContent(
                         currentGraph?.let { graph ->
                             ScanPruningSection(graph, scanFilter, onScanFilterChange)
                         }
+                        // The panel's other control, kept beside the first for the same reason.
+                        UnreferencedFilesSection(node)
 
                         // Folded, and out of the identity table above, because none of the three
                         // is identity and together they were the largest thing on the panel: each
@@ -3195,6 +3198,104 @@ private fun PaimonIndexFilesSection(node: GraphNode.PaimonSnapshotNode) {
                 )
             },
         )
+    }
+}
+
+/** Rows the unreferenced-file table lists before it says how many more there are — same cap as the diff. */
+private const val MAX_UNREFERENCED_ROWS = 500
+
+/**
+ * What is under the table root that no metadata names — [findUnreferencedFiles], behind a click.
+ *
+ * Behind a click because it is a walk of the whole table directory, which on a remote table is a
+ * subtree listing and on a large local one is the one thing here that scales with the data rather
+ * than the metadata. [startRequested] and [onSettled] follow `PositionalDeleteTargets`: the walk
+ * runs on `Dispatchers.IO` and a capture has to wait for it. The result is read through the node's
+ * `DeferredRead`, so a second look at the panel does not walk again.
+ */
+@Composable
+internal fun UnreferencedFilesSection(
+    node: GraphNode.TableNode,
+    startRequested: Boolean = false,
+    onSettled: () -> Unit = {},
+) {
+    val colors = MaterialTheme.colorScheme
+    if (!node.unreferencedFiles.isPresent) return
+
+    var requested by remember(node.id) { mutableStateOf(startRequested) }
+    val outcome by produceState<Result<UnreferencedFilesReport>?>(null, node.id, requested) {
+        value = null
+        if (requested) {
+            value = withContext(Dispatchers.IO) {
+                runCatching { requireNotNull(node.unreferencedFiles.value) { "no report" } }
+            }
+            onSettled()
+        }
+    }
+    val report = outcome?.getOrNull()
+    val title = if (report != null) "Unreferenced Files (${formatCount(report.unreferenced.size)})" else "Unreferenced Files"
+
+    Section(title) {
+        // The caveat about what "referenced" means goes under the answer, not above it: a reader
+        // who has not clicked needs one sentence, and one who has needs the number first.
+        val caveat = "Referenced means named by any metadata version on disk, so Iceberg's " +
+            "remove_orphan_files, which reaches from the current one only, can delete more than is " +
+            "listed here; Paimon tags and branches are not followed, so a file reachable only " +
+            "through one is listed."
+        when {
+            !requested -> {
+                Text(
+                    "Files under the table root that no metadata names — a write that failed after its " +
+                        "files landed, or a file the format wrote and did not commit. A walk of the whole " +
+                        "table directory.",
+                    fontSize = TypeScale.small,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                OutlinedButton(onClick = { requested = true }) {
+                    Text("Walk the table directory")
+                }
+            }
+            outcome == null -> Text("Walking the table directory…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            report == null -> Text(
+                "Could not walk the table directory: ${outcome?.exceptionOrNull()?.message ?: "unknown error"}",
+                fontSize = TypeScale.small,
+                color = colors.error,
+            )
+            else -> {
+                Text(
+                    if (report.unreferenced.isEmpty()) {
+                        "Every one of the ${formatCounted(report.filesOnDisk, "file")} on disk is named by the metadata."
+                    } else {
+                        "${formatCounted(report.unreferenced.size, "file")} (${formatBytes(report.unreferencedBytes)}) " +
+                            "that no metadata names, of ${formatCounted(report.filesOnDisk, "file")} on disk."
+                    },
+                    fontSize = TypeScale.small,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                report.problems.forEach { problem ->
+                    Text("Could not read: $problem", fontSize = TypeScale.small, color = colors.error)
+                }
+                if (report.unreferenced.isNotEmpty()) {
+                    WideTable(
+                        headers = listOf("Size", "File"),
+                        columnWidths = listOf(90.dp, 700.dp),
+                        rows = report.unreferenced.take(MAX_UNREFERENCED_ROWS).map { file ->
+                            listOf(formatBytes(file.sizeBytes), report.relativePathOf(file))
+                        },
+                    )
+                    if (report.unreferenced.size > MAX_UNREFERENCED_ROWS) {
+                        Text(
+                            "…and ${formatCount(report.unreferenced.size - MAX_UNREFERENCED_ROWS)} more.",
+                            fontSize = TypeScale.small,
+                            color = colors.onSurfaceVariant,
+                        )
+                    }
+                }
+                Text(caveat, fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
     }
 }
 

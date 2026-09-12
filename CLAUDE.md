@@ -304,6 +304,23 @@ intellij/src/main/kotlin/plugin/
   side by side rather than added, because the union of an in-process bitmap and a DuckDB aggregate
   is not something either of them can compute. On `mor` the answer is *1 of 6 rows deleted, 5 live*,
   which is the figure the table actually has and the first time this app could say it
+- **The one question asked from the directory rather than from the metadata is "what is here that
+  nothing names".** `model/UnreferencedFiles.kt` walks the table root and subtracts every path the
+  model resolved — manifest lists, manifests, data and delete files, Puffin vectors and statistics,
+  metadata versions and the ones `metadata-log` names, the version hint; Paimon's snapshot and
+  schema files, its three manifest lists, index manifests and index files, statistics, changelog
+  files. **The test that carries the weight is that twelve engine-written tables report nothing**:
+  a file kind missed by the referenced set is a false orphan on a checked-in table, which is where
+  it should fail first. `cl` is the oracle for the other direction — the changelog file Paimon
+  wrote for an overwrite and declined to commit. "Referenced" means named by *any* metadata version
+  on disk, which is the literal reading and never produces a false orphan; Iceberg's
+  `remove_orphan_files` reaches from the current metadata only and can delete more, and Paimon's
+  follows tags and branches, which this does not read. Both are said on the panel, under the
+  answer. Hidden files are skipped — Hadoop's `.crc` sidecars and `.DS_Store` are the filesystem's.
+  It is a `DeferredRead` on `TableNode` behind a click, because it is the one thing on the table
+  panel that scales with the data rather than the metadata, and on a remote table it is a subtree
+  listing. A `Path` is an `Iterable<Path>` of its own segments, so the referenced set is built with
+  `add`, never `+=`, which would append the segments and compile
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
@@ -1117,7 +1134,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~824 tests across 88 files (604 in :core, 215 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~829 tests across 89 files (608 in :core, 216 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

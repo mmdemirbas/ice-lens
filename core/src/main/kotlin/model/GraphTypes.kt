@@ -321,6 +321,11 @@ sealed class GraphNode(
     data class TableNode(
         override val id: String,
         val summary: TableSummary,
+        /**
+         * What is under the table root that no metadata names — see [findUnreferencedFiles]. A
+         * walk of the whole table directory, so deferred to a click rather than run at build.
+         */
+        val unreferencedFiles: DeferredRead<UnreferencedFilesReport> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 240.0, 96.0)

@@ -1218,6 +1218,37 @@ class InspectorRenderTest {
     }
 
     /**
+     * The one table with a file its metadata does not name, and the clean case beside it.
+     *
+     * Rendered against `cl`, whose overwrite left a changelog file Paimon declined to commit, so
+     * the table has one row and the line above it says what the row costs; and against `mor`, so
+     * the sentence for a table with nothing unreferenced is seen once. Both wait for the walk the
+     * same way the delete-file reads do.
+     */
+    @Test
+    fun `a table names the files on disk its metadata does not`() {
+        val cl = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/cl").absolutePath)),
+            showRows = false,
+        )
+        val clTable = cl.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("unreferenced-files", width = 1400, height = 460, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                UnreferencedFilesSection(clTable, startRequested = true) { settled.set(true) }
+            }
+        }
+
+        val morTable = graphFor("mor").nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val cleanSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("unreferenced-files-none", width = 1400, height = 260, ready = cleanSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                UnreferencedFilesSection(morTable, startRequested = true) { cleanSettled.set(true) }
+            }
+        }
+    }
+
+    /**
      * The same graph at two display scales, and the assertion that it is the same drawing.
      *
      * A scene twice as wide, twice as tall and at twice the density is the same window on a
