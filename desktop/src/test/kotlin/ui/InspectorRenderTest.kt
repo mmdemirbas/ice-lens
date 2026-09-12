@@ -850,7 +850,9 @@ class InspectorRenderTest {
         )
         val tagged = tgGraph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().firstOrNull { it.retainedByTagOnly }
         assertNotNull(tagged, "the tg fixture should carry a snapshot retained by its tag only")
-        renderInspector(tgGraph, tagged.id, "paimon-snapshot-tag", height = 1400)
+        // Tall enough for "Recorded Records" below the identity: the one NO in the corpus — the
+        // tag's changelog count against a changelog list expiry deleted — is what to look for.
+        renderInspector(tgGraph, tagged.id, "paimon-snapshot-tag", height = 2400)
         renderScene("paimon-cards-tag", width = 700, height = 460) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 tgGraph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().sortedBy { it.data.id }.forEach { PaimonNodeCard(it) }

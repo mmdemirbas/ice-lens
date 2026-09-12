@@ -624,6 +624,12 @@ sealed class GraphNode(
         val indexFiles: List<PaimonIndexManifestEntry> = emptyList(),
         /** What an `ANALYZE` commit wrote — see [PaimonStatistics]. Null on every other kind. */
         val statistics: PaimonStatistics? = null,
+        /**
+         * The snapshot file's three record counts against the manifests — see
+         * [paimonRecordTallies]. Deferred because the total is checked against the replay, which
+         * is the same walk [liveFiles] runs; the builder threads one deferred replay into both.
+         */
+        private val recordTalliesLoader: DeferredRead<List<CommitTally>> = DeferredRead.none(),
         /** The names of the tags under `tag/` that are copies of this snapshot. */
         val tags: List<String> = emptyList(),
         /**
@@ -655,6 +661,7 @@ sealed class GraphNode(
         override val commitTimeMs: Long? get() = data.timeMillis
         override val liveFiles: List<LiveFile>? get() = liveFilesLoader.value
         override val canDiff: Boolean get() = liveFilesLoader.isPresent
+        val recordTallies: List<CommitTally>? get() = recordTalliesLoader.value
     }
 
     /** Paimon schema node. */

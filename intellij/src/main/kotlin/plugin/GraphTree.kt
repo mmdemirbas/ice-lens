@@ -123,6 +123,8 @@ object GraphTree {
             "Delta manifest list" to (node.data.deltaManifestList ?: "—"),
             "Changelog manifest list" to (node.data.changelogManifestList ?: "—"),
             "Merged rows" to (node.statistics?.mergedRecordCount?.toString() ?: "—"),
+            "Total records" to (node.data.totalRecordCount?.toString() ?: "—"),
+            "Delta records" to (node.data.deltaRecordCount?.toString() ?: "—"),
         )
         is GraphNode.PaimonSchemaNode -> listOf(
             "Schema id" to node.data.id.toString(),

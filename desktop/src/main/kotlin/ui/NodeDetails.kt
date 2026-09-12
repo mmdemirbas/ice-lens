@@ -2247,9 +2247,7 @@ fun NodeDetailsContent(
                             DetailRow("Commit User", node.data.commitUser ?: "N/A", copyable = true)
                             DetailRow("Commit Identifier", "${node.data.commitIdentifier ?: "N/A"}")
                             DetailRow("Timestamp", ui.formatTimestamp(node.data.timeMillis))
-                            DetailRow("Total Records", "${node.data.totalRecordCount ?: "N/A"}")
-                            DetailRow("Delta Records", "${node.data.deltaRecordCount ?: "N/A"}")
-                            DetailRow("Changelog Records", "${node.data.changelogRecordCount ?: "N/A"}")
+                            // The three record counts are checked below, against the manifests.
                             DetailRow("Watermark", "${node.data.watermark ?: "N/A"}")
                             DetailRow("Base Manifest List", node.data.baseManifestList ?: "N/A", copyable = true)
                             DetailRow("Delta Manifest List", node.data.deltaManifestList ?: "N/A", copyable = true)
@@ -2260,6 +2258,7 @@ fun NodeDetailsContent(
                             // a different thing from a table that has produced no rows yet.
                             DetailRow("Next Row ID", "${node.data.nextRowId ?: "not recorded"}")
                         }
+                        PaimonRecordsSection(node)
                         PaimonIndexFilesSection(node)
                         PaimonStatisticsSection(node)
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
@@ -3311,6 +3310,55 @@ internal fun DeletedRowCount(
  * manifest at all is an answer, and a section that is simply absent cannot be told from one this
  * panel does not know how to render.
  */
+/**
+ * The snapshot file's three record counts against the manifests it names — `paimonRecordTallies`.
+ * The total is checked against the replay's live rows, which is the same walk the comparison
+ * runs; the delta the way the writer sums it, by entry; the changelog by its entries' rows. Read
+ * off the node's deferred tallies, so opening the panel twice replays once.
+ */
+@Composable
+private fun PaimonRecordsSection(node: GraphNode.PaimonSnapshotNode) {
+    val colors = MaterialTheme.colorScheme
+    val tallies = node.recordTallies.orEmpty()
+    val disagreeing = tallies.count { it.agrees == false }
+    val title = "Recorded Records" + if (disagreeing > 0) " — $disagreeing DISAGREE" else ""
+    Section(title) {
+        Text(
+            "The three record counts the snapshot file carries, beside the same figures read from the " +
+                "manifests it names: the total against the rows the replay ends holding, the delta as " +
+                "the writer sums it — rows added by the delta list's entries minus rows removed — and " +
+                "the changelog by its entries. A total that disagrees went wrong at an earlier commit " +
+                "and was carried forward; nothing on a read path checks it.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            headers = listOf("Agrees", "Figure", "In the manifests", "The snapshot said"),
+            columnWidths = listOf(110.dp, 170.dp, 140.dp, 150.dp),
+            rows = tallies.map { tally ->
+                listOf(
+                    when (tally.agrees) {
+                        true -> "yes"
+                        false -> "NO"
+                        null -> "not recorded"
+                    },
+                    tally.label,
+                    formatCount(tally.counted),
+                    tally.recorded?.let { formatCount(it) } ?: "not recorded",
+                )
+            },
+            leadCellColors = tallies.map { tally ->
+                when (tally.agrees) {
+                    true -> null
+                    false -> colors.error
+                    null -> verdictUnevaluatedColor()
+                }
+            },
+        )
+    }
+}
+
 @Composable
 private fun PaimonIndexFilesSection(node: GraphNode.PaimonSnapshotNode) {
     val colors = MaterialTheme.colorScheme

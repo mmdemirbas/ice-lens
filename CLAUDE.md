@@ -1196,7 +1196,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~901 tests across 100 files (672 in :core, 224 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~905 tests across 101 files (676 in :core, 224 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1388,6 +1388,17 @@ also on the classpath.
   `PaimonScanPruningTest` reads its expectations off the `pt` script — `dt = 2024-03-07` skips two
   manifests, leaves five files unreached and one skipped by its own bound — and holds the direction
   that matters over every key the script wrote: no file holding a matching row is ever pruned
+- **A Paimon snapshot's three record counts are checked against the manifests it names.**
+  `paimonRecordTallies` in `model/PaimonReplay.kt` puts `totalRecordCount` beside the rows the
+  replay ends holding, `deltaRecordCount` beside the delta list's entries summed the way the
+  writer sums them — `ADD` rows minus `DELETE` rows by the entry, whether or not a removed file
+  was there to remove, which is why the raw sum and not the replay's contribution is the counted
+  side — and `changelogRecordCount` beside the changelog list's rows. `PaimonSnapshotNode`
+  carries them as a `DeferredRead` threaded through the *same* deferred replay `liveFiles` uses,
+  so a panel that compared and then tallied walked once. `PaimonRecordTalliesTest` checks 72
+  recorded figures across seven tables and every branch; the corpus's one disagreement is the
+  format's own — `tg`'s tag records a changelog count of 3 against a changelog list expiry
+  deleted — and it is asserted as a NO beside its read error rather than filtered away
 - **A snapshot's `indexManifest` is read, and it is the only place two things are recorded.**
   The field was parsed into `PaimonSnapshot` and dropped — the same shape of gap Iceberg's
   `statistics` had, and invisible for the same reason: nothing rendered it, so nothing noticed it

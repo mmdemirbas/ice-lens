@@ -50,6 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A Paimon snapshot's record counts are checked against its manifests.** "Recorded Records" on
+  the Paimon snapshot panel puts `totalRecordCount`, `deltaRecordCount` and
+  `changelogRecordCount` beside the same figures read from the manifests the snapshot names —
+  the total against the replay's live rows, the delta as the writer sums it, the changelog by its
+  entries — with a verdict per row; the three identity rows that printed the figures unchecked are
+  gone. 72 recorded figures across seven tables agree, and the one that does not is a tag whose
+  changelog list expiry deleted, which the panel now says.
 - **A snapshot's running totals are checked against its closure.** "What this commit left" on
   the snapshot panel puts the six `total-*` figures the summary carries — data files, delete
   files, records, files size, position and equality deletes — beside the same figures folded

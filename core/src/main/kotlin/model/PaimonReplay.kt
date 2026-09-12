@@ -225,3 +225,33 @@ fun paimonLiveFilesOf(snapshot: PaimonUnifiedSnapshot?): List<LiveFile> =
             sizeBytes = meta?.fileSize ?: 0L,
         )
     }
+
+/**
+ * The three record counts a Paimon snapshot file records, each beside the same figure read from
+ * the manifests it names — the Paimon counterpart of [snapshotTotals] and [SnapshotChange.tallies]
+ * in one list, because a Paimon snapshot carries both kinds of figure in three fields.
+ *
+ * `totalRecordCount` is what the table holds *at* the snapshot and is checked against the
+ * replay's live set, [liveRecords] — the walk `current` and the comparison already run, handed in
+ * so a panel that has walked it once does not walk it again. `deltaRecordCount` is what the
+ * commit did and is checked the way the writer computes it: rows of the delta list's `ADD`
+ * entries minus rows of its `DELETE` entries, whether or not a removed file was there to remove
+ * — the writer subtracts by the entry, and a replay that finds nothing to remove contributes
+ * nothing, so the two readings are kept apart on purpose and the raw one is the writer's.
+ * `changelogRecordCount` is the rows of the changelog list's entries. A snapshot's total is the
+ * previous total plus its delta by arithmetic, so a total that disagrees with the replay is one
+ * that went wrong at an earlier commit and was carried forward — the same shape of fault the
+ * Iceberg totals check catches.
+ */
+fun paimonRecordTallies(snapshot: PaimonUnifiedSnapshot, liveRecords: Long): List<CommitTally> {
+    fun rows(manifests: List<PaimonUnifiedManifest>, signed: Boolean) = manifests.flatMap { it.entries }.sumOf { entry ->
+        val rows = entry.metadata.file?.rowCount ?: 0L
+        if (signed && (entry.metadata.kind ?: PaimonEntryKind.ADD) == PaimonEntryKind.DELETE) -rows else rows
+    }
+    val recorded = snapshot.metadata
+    return listOf(
+        CommitTally("Total records", recorded.totalRecordCount, liveRecords),
+        CommitTally("Delta records", recorded.deltaRecordCount, rows(snapshot.deltaManifests, signed = true)),
+        CommitTally("Changelog records", recorded.changelogRecordCount, rows(snapshot.changelogManifests, signed = false)),
+    )
+}
