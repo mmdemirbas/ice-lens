@@ -312,7 +312,13 @@ What is left:
   | `default/evolved` | three manifest schemas in one table — `int`→`long`, `float`→`double`, a column renamed then dropped, one added |
   | `default/respec` | two partition specs in one table — a dropped field, a rebucketed one, `days` replaced by `months` |
   | `default/branched` | a fork, four refs across five commits, one snapshot with two, and ten metadata versions |
-  | `paimon/db.db/test` | a real Flink/Paimon table |
+  | `default/stats` | a Puffin statistics file — four theta sketches, one per column |
+  | `default/branched3` | three branches forked at three points, plus a tag on the trunk's tip |
+  | `default/expired` | four commits, then `expire_snapshots(retain_last => 1)` — three expired snapshots the older metadata versions still list |
+  | `paimon/db.db/test` | a real Flink/Paimon table, with a `HASH` index |
+  | `paimon/db.db/dv` | a Spark-written primary-key table with a deletion vector |
+  | `paimon/db.db/cl` | `changelog-producer = input`: changelog files, an overwrite, an `ANALYZE` with statistics |
+  | `paimon/db.db/tg` | a tag, then `expire_snapshots` — a snapshot retained by its tag only |
 
   **Still missing:** both path layouts are built at runtime rather than checked in — the
   `write.metadata.path` one by `RecordedPathResolutionTest`, the data-outside-the-table one by
