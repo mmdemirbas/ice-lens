@@ -60,10 +60,11 @@ class CardHeightTest {
         )
     }
 
-    private fun paimonGraph(): GraphModel {
-        val tableDir = File(repoRoot, "example/paimon/db.db/test")
-        assertTrue(tableDir.isDirectory, "the Paimon fixture should be checked in")
-        return GraphLayoutService.layoutGraph(
+    /** Both Paimon tables: the Flink-written one, and the Spark-written one with a deletion vector. */
+    private fun paimonGraphs(): List<GraphModel> = listOf("test", "dv").map { name ->
+        val tableDir = File(repoRoot, "example/paimon/db.db/$name")
+        assertTrue(tableDir.isDirectory, "the Paimon fixture should be checked in: $tableDir")
+        GraphLayoutService.layoutGraph(
             PaimonUnifiedTableModel(Paths.get(tableDir.absolutePath)), showRows = true,
         )
     }
@@ -84,7 +85,7 @@ class CardHeightTest {
             icebergGraph("branched", pageSize = 1).nodes
                 .filterIsInstance<GraphNode.GroupNode>()
                 .forEach { node -> addAll(cardsFor("branched@1", node)) }
-            paimonGraph().nodes.forEach { node -> addAll(cardsFor("paimon", node)) }
+            paimonGraphs().forEach { graph -> graph.nodes.forEach { node -> addAll(cardsFor("paimon", node)) } }
             // No fixture is broken, so nothing produces an ErrorNode — and its card was therefore
             // the one kind never measured. Built by hand rather than left uncovered, with the
             // longest strings the node can hold: a read error names a path, and a path is long.
@@ -125,7 +126,7 @@ class CardHeightTest {
                 icebergGraph(fixture).nodes.mapNotNull(::stressed)
                     .forEach { node -> addAll(cardsFor("$fixture!", node)) }
             }
-            paimonGraph().nodes.mapNotNull(::stressed)
+            paimonGraphs().flatMap { it.nodes }.mapNotNull(::stressed)
                 .forEach { node -> addAll(cardsFor("paimon!", node)) }
             // The chip-loaded snapshot: a long path *and* more refs than the two-line chip row
             // can hold, which is the taller of that card's two declared heights.

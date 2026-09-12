@@ -1102,7 +1102,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~813 tests across 87 files (593 in :core, 215 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~817 tests across 87 files (597 in :core, 215 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1190,6 +1190,7 @@ container invocation and the traps in it:
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
+| `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
 starts a loopback-only MinIO and uploads `example/iceberg/default/mor` to `s3://warehouse/db/mor`;
@@ -1239,9 +1240,17 @@ also on the classpath.
   which data file has deleted rows and how many — a container with a blob per file, the same shape
   as Puffin, which is why a vector's length is not the index file's size. The field names come from
   the fixture's own Avro header rather than from prose, and they are not descriptive: the range
-  record's `f0`, `f1`, `f2` are the data file, the offset and the length. **Only the `HASH` branch
-  has an oracle** — the checked-in table has no deletion vectors, so that half is modelled from a
-  schema and drawn but unexercised
+  record's `f0`, `f1`, `f2` are the data file, the offset and the length. **Both branches have an
+  oracle**: the Flink-written `test` table carries a `HASH` index, and `dv` — written by Spark from
+  `docs/fixtures/paimon-dv.sql` — carries a `DELETION_VECTORS` index whose cardinalities were
+  written into the script before it ran. Getting a vector out of Paimon at all took three container
+  runs, and the mechanism is worth not rediscovering: a `DELETE` on a primary-key table writes `-D`
+  rows to level 0 and forces a lookup compaction, and **a vector is written only when the L0 row
+  shadows a key in a higher-level file the compaction leaves alone**. Four rows and two rows made
+  three runs of one size, universal compaction's size-ratio rule merged all of them, and the result
+  was a new file and no vector — a correct table that exercised nothing. A thousand rows and five
+  hundred against three is what makes the compaction stop at L0. The snapshot's `totalRecordCount`
+  still counts the marked rows, which is why the panel prints the live figure beside it
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

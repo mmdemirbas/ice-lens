@@ -74,13 +74,6 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   `docs/fixtures/stats.sql` cannot produce one and the three modelled fields are written from the
   spec with no oracle. Needs a newer Iceberg in the image, not a different statement.
 
-- **Paimon's deletion-vector index is drawn but unexercised.** A snapshot's index manifest is read
-  now (`PaimonIndexManifestEntry`), and the `HASH` branch is checked against the real Flink-written
-  fixture down to the index file's byte size. The `DELETION_VECTORS` branch is modelled from the
-  same Avro schema and rendered, and no checked-in table has one — so its ranges, cardinalities and
-  the panel column that shows them have never met real bytes. It needs a fixture written with
-  `deletion-vectors.enabled = true`, which is a container run rather than different code.
-
 ---
 
 ## Bugs

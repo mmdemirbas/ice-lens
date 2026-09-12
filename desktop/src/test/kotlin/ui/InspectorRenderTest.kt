@@ -717,6 +717,18 @@ class InspectorRenderTest {
             .firstOrNull { it.indexFiles.isNotEmpty() }
         assertNotNull(snapshot, "the paimon fixture should carry a snapshot with an index file")
         renderInspector(graph, snapshot.id, "paimon-snapshot-index", height = 1800)
+
+        // And the other kind, on the Spark-written table: a deletion-vector index whose
+        // "Deleted rows" column is the answer rather than a dash, plus the one line above the
+        // table that turns a total the format keeps into the number a scan returns.
+        val dvGraph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/dv").absolutePath)),
+            showRows = false,
+        )
+        val vectored = dvGraph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>()
+            .firstOrNull { node -> node.indexFiles.any { it.isDeletionVectorIndex } }
+        assertNotNull(vectored, "the dv fixture should carry a snapshot with a deletion-vector index")
+        renderInspector(dvGraph, vectored.id, "paimon-snapshot-vectors", height = 1800)
     }
 
     /**

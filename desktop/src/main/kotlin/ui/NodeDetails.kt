@@ -3150,6 +3150,23 @@ private fun PaimonIndexFilesSection(node: GraphNode.PaimonSnapshotNode) {
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
         )
+        // The one figure a reader wants before the table: how many rows the snapshot's own
+        // totalRecordCount still counts that a scan will never return. Paimon's total is a sum of
+        // file row counts, and a vector marks rows without changing any of them.
+        val ranges = files.flatMap { it.deletionVectorRanges?.filterNotNull().orEmpty() }
+        if (ranges.isNotEmpty()) {
+            val marked = ranges.sumOf { it.cardinality ?: 0L }
+            val total = node.data.totalRecordCount
+            Text(
+                "${formatCount(marked)} rows across ${formatCount(ranges.size.toLong())} data files " +
+                    "are marked deleted by vectors" +
+                    (total?.let { " — the snapshot's ${formatCount(it)} rows are ${formatCount(it - marked)} live" } ?: "") +
+                    ".",
+                fontSize = TypeScale.small,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
         WideTable(
             // Deleted rows before the file name: on a table with deletion vectors that column is
             // the answer, and a file name is the identifier the table decides — the one thing
