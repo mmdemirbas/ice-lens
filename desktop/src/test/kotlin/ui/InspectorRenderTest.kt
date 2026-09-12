@@ -303,12 +303,13 @@ class InspectorRenderTest {
     @Test
     fun `a file of a sorted table shows its claim beside the table's default`() {
         val graph = graphFor("sorted")
-        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().firstOrNull { it.defaultSortOrder?.orderId == 2 }
-        assertNotNull(file, "every file of the sorted fixture sees the table default to order 2")
+        // The compacted file: nine rows a sort rewrite put in the default order, claiming none.
+        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().firstOrNull { it.data.recordCount == 9L }
+        assertNotNull(file, "the sorted fixture's rewrite left one nine-row file")
         assertEquals(0L, file.data.sortOrderId)
         assertEquals("id DESC NULLS LAST, name ASC NULLS FIRST", file.defaultSortOrder?.describe { file.schema?.nameOf(it) })
         renderInspector(graph, file.id, "file-node-sorted", height = 1600)
-        val metadata = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().first { it.fileName == "v6.metadata.json" }
+        val metadata = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().first { it.fileName == "v7.metadata.json" }
         renderInspector(graph, metadata.id, "metadata-node-sorted", height = 3200)
     }
 

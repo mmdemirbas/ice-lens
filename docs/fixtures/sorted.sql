@@ -15,14 +15,16 @@
 --   4  INSERT   (6, 'zeta'), (4, 'delta'), (5, 'epsilon')               snapshot 2: one file, rows in name order, sort_order_id 0
 --   5  ALTER    WRITE ORDERED BY id DESC NULLS LAST, name               v5: order 2 = id DESC NULLS LAST, name ASC NULLS FIRST
 --   6  INSERT   (7, 'eta'), (9, 'iota'), (8, 'theta')                   snapshot 3: one file, rows in id DESC order, sort_order_id 0
+--   7  CALL     rewrite_data_files(strategy => 'sort')                    snapshot 4: the three files rewritten as one, nine rows in id DESC order, sort_order_id 0
 --
 -- Expected afterwards: metadata carries three sort orders and default-sort-order-id 2, and
 -- --master local[1] makes each INSERT one file. The rows inside files 2 and 3 are in the order
--- that was in force (delta, epsilon, zeta; 9, 8, 7) — and every data file still records
--- sort_order_id 0. That is not a mistake in the script: Spark's writer sorts through the write's
--- requested ordering and never passes the order to its file writer factory, so DataFiles.Builder
--- keeps SortOrder.unsorted().orderId(). The header first predicted 0, 1 and 2; the manifests
--- settled it.
+-- that was in force (delta, epsilon, zeta; 9, 8, 7), the compacted file holds all nine in
+-- id DESC — and every data file, the compacted one included, still records sort_order_id 0.
+-- That is not a mistake in the script: Spark's writer sorts through the write's requested
+-- ordering and never passes the order to its file writer factory, so DataFiles.Builder keeps
+-- SortOrder.unsorted().orderId(). The header first predicted 0, 1 and 2; the manifests settled
+-- it, and the rewrite was added to ask the one writer whose purpose is the order.
 --
 -- To regenerate (see docs/fixtures/parted.sql for why --entrypoint bash is required):
 --
@@ -58,3 +60,7 @@ INSERT INTO default.sorted VALUES (6, 'zeta'), (4, 'delta'), (5, 'epsilon');
 ALTER TABLE default.sorted WRITE ORDERED BY id DESC NULLS LAST, name;
 
 INSERT INTO default.sorted VALUES (7, 'eta'), (9, 'iota'), (8, 'theta');
+
+-- A sort compaction is the one write whose whole purpose is the order. min-input-files defaults
+-- to 5 and there are three files, so it is lowered; the target size is not, since nine rows fit.
+CALL system.rewrite_data_files(table => 'default.sorted', strategy => 'sort', options => map('min-input-files', '2'));

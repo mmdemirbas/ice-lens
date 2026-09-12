@@ -313,7 +313,7 @@ What is left:
   | `default/stats` | a Puffin statistics file — four theta sketches, one per column |
   | `default/branched3` | three branches forked at three points, plus a tag on the trunk's tip |
   | `default/extdata` | `write.data.path` outside the table — `metadata/` and no `data/`, two files beside the table; the engine-written shape the resolver's third rule was written against |
-  | `default/sorted` | `WRITE ORDERED BY` twice — three sort orders, `default-sort-order-id` 2, rows sorted inside the files written under an order, and `sort_order_id 0` on every data file, which is what Spark records |
+  | `default/sorted` | `WRITE ORDERED BY` twice, then `rewrite_data_files(strategy => 'sort')` — three sort orders, `default-sort-order-id` 2, rows sorted inside every file written under an order, and `sort_order_id 0` on every data file including the compacted one, which is what Spark records |
   | `default/expired` | four commits, then `expire_snapshots(retain_last => 1)` — three expired snapshots the older metadata versions still list |
   | `default/maint` | merge-on-read, then `rewrite_position_delete_files` (two dangling deletes dropped) and `rewrite_manifests` (created 2, kept 0) |
   | `default/v1` | format-version 1, upgraded to 2 in place — v1 manifests under v2 metadata, and a delete after the upgrade |

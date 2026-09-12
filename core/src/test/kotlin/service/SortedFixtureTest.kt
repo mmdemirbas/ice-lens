@@ -1,6 +1,7 @@
 package service
 
 import model.GraphNode
+import model.ManifestEntryStatus
 import model.UnifiedTableModel
 import model.describe
 import java.io.File
@@ -22,10 +23,11 @@ import kotlin.test.assertTrue
  *
  * What the engine then wrote is the thing this test pins, because the script's header predicted
  * otherwise: **every data file records `sort_order_id` 0, and the rows inside each file are in the
- * order that was in force.** Spark's writer sorts through the write's requested ordering and
- * builds its file writer factory without a data sort order, so `DataFiles.Builder` keeps
- * `SortOrder.unsorted().orderId()`. A file's 0 is therefore not a statement that its rows are
- * unordered, and the panel puts the table's default beside it for exactly that reason.
+ * order that was in force** — including the one file a `rewrite_data_files(strategy => 'sort')`
+ * left, whose whole purpose was the order. Spark's writer sorts through the write's requested
+ * ordering and builds its file writer factory without a data sort order, so `DataFiles.Builder`
+ * keeps `SortOrder.unsorted().orderId()`. A file's 0 is therefore not a statement that its rows
+ * are unordered, and the panel puts the table's default beside it for exactly that reason.
  */
 class SortedFixtureTest {
 
@@ -36,8 +38,10 @@ class SortedFixtureTest {
     private val model = UnifiedTableModel(tableDir)
     private val current = model.metadatas.last().metadata
 
-    /** The three commits oldest-first, each with the one manifest it wrote — later lists carry the earlier ones forward. */
-    private val commits = model.metadatas.last().snapshots.sortedBy { it.metadata.sequenceNumber }
+    private val snapshots = model.metadatas.last().snapshots.sortedBy { it.metadata.sequenceNumber }
+
+    /** The three appends oldest-first, each with the one manifest it wrote — later lists carry the earlier ones forward. */
+    private val appends = snapshots.take(3)
         .map { snapshot -> snapshot to snapshot.manifests.single { it.metadata.addedSnapshotId == snapshot.metadata.snapshotId } }
 
     @Test
@@ -53,13 +57,14 @@ class SortedFixtureTest {
         assertTrue(current.sortOrders.flatMap { it.fields }.all { it.transformName == "identity" })
         assertTrue(model.readErrors.isEmpty(), "${model.readErrors}")
         // The default moved with each ALTER: 0 at v1–v2, 1 at v3–v4, 2 from v5.
-        assertEquals(listOf(0, 0, 1, 1, 2, 2), model.metadatas.map { it.metadata.defaultSortOrderId })
+        assertEquals(listOf(0, 0, 1, 1, 2, 2, 2), model.metadatas.map { it.metadata.defaultSortOrderId })
+        assertEquals(listOf("append", "append", "append", "replace"), snapshots.map { it.metadata.summary["operation"] })
     }
 
     @Test
     fun `an order reads the way WRITE ORDERED BY stated it`() {
         // The manifest's own schema, the same one the file panel resolves against.
-        val schema = assertNotNull(commits.last().second.schema)
+        val schema = assertNotNull(appends.last().second.schema)
         val nameOf = { id: Int -> schema.nameOf(id) }
         assertEquals("unsorted", current.sortOrders[0].describe(nameOf))
         assertEquals("name ASC NULLS FIRST", current.sortOrders[1].describe(nameOf))
@@ -76,24 +81,46 @@ class SortedFixtureTest {
      */
     @Test
     fun `Spark sorts the rows and records sort order 0 on every file`() {
-        assertEquals(3, commits.size)
-        val files = commits.map { (_, manifest) -> manifest.dataFiles.single() }
+        assertEquals(3, appends.size)
+        val files = appends.map { (_, manifest) -> manifest.dataFiles.single() }
         assertEquals(listOf(0L, 0L, 0L), files.map { it.metadata.dataFile?.sortOrderId })
         assertEquals(listOf(3L, 3L, 3L), files.map { it.metadata.dataFile?.recordCount })
-        val rowsOf = { file: model.UnifiedDataFile ->
-            SampleRowReader.querySampleRows(file.path.toString()).map { (it["id"] as Number).toInt() to it["name"].toString() }
-        }
         assertEquals(listOf(3 to "gamma", 1 to "alpha", 2 to "beta"), rowsOf(files[0]), "no order in force: insertion order")
         assertEquals(listOf(4 to "delta", 5 to "epsilon", 6 to "zeta"), rowsOf(files[1]), "order 1: name ASC")
         assertEquals(listOf(9 to "iota", 8 to "theta", 7 to "eta"), rowsOf(files[2]), "order 2: id DESC")
     }
+
+    /**
+     * The sort compaction is the case a reader would most expect to record the order, and it does
+     * not either: nine rows in `id DESC` in one file, `sort_order_id` 0. The rewrite writes one
+     * manifest per source manifest holding that manifest's file as DELETED, plus one for the file
+     * it added — four manifests for a commit that touched four files.
+     */
+    @Test
+    fun `a sort compaction writes the rows in the default order and still records 0`() {
+        val rewrite = snapshots[3]
+        assertEquals("replace", rewrite.metadata.summary["operation"])
+        assertEquals("3", rewrite.metadata.summary["deleted-data-files"])
+        assertEquals("1", rewrite.metadata.summary["added-data-files"])
+        val own = rewrite.manifests.filter { it.metadata.addedSnapshotId == rewrite.metadata.snapshotId }
+        assertEquals(4, own.size)
+        val entries = own.flatMap { it.dataFiles }
+        assertEquals(listOf(1, 3), entries.groupingBy { it.metadata.status }.eachCount().toSortedMap().values.toList(), "one ADDED, three DELETED")
+        val added = entries.single { it.metadata.status == ManifestEntryStatus.ADDED }
+        assertEquals(9L, added.metadata.dataFile?.recordCount)
+        assertEquals(0L, added.metadata.dataFile?.sortOrderId)
+        assertEquals(listOf(9, 8, 7, 6, 5, 4, 3, 2, 1), rowsOf(added).map { it.first }, "order 2: id DESC across all nine rows")
+    }
+
+    private fun rowsOf(file: model.UnifiedDataFile): List<Pair<Int, String>> =
+        SampleRowReader.querySampleRows(file.path.toString()).map { (it["id"] as Number).toInt() to it["name"].toString() }
 
     /** The graph resolves both ids, and the panel needs nothing else to put one beside the other. */
     @Test
     fun `the file node carries the order it claims and the one the table defaults to`() {
         val graph = GraphLayoutService.layoutGraph(model, showRows = false)
         val fileNodes = graph.nodes.filterIsInstance<GraphNode.FileNode>()
-        assertEquals(3, fileNodes.size)
+        assertEquals(7, fileNodes.size, "one node per entry: three appended, the same three DELETED by the rewrite, one compacted")
         fileNodes.forEach { node ->
             assertEquals(0L, node.data.sortOrderId)
             assertEquals(current.sortOrders[0], node.sortOrder)
