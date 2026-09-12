@@ -65,7 +65,7 @@ class CardHeightTest {
      * tables all called `paimon` shared one key per node id — so the last `psnap_1` measured
      * (the tagged one, a line taller) was compared against the other three's declared height.
      */
-    private fun paimonGraphs(): List<Pair<String, GraphModel>> = listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs").map { name ->
+    private fun paimonGraphs(): List<Pair<String, GraphModel>> = listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi").map { name ->
         val tableDir = File(repoRoot, "example/paimon/db.db/$name")
         assertTrue(tableDir.isDirectory, "the Paimon fixture should be checked in: $tableDir")
         "paimon/$name" to GraphLayoutService.layoutGraph(

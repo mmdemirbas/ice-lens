@@ -1,0 +1,23 @@
+{
+  "version" : 3,
+  "id" : 1,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT NOT NULL"
+  }, {
+    "id" : 1,
+    "name" : "v",
+    "type" : "STRING"
+  } ],
+  "highestFieldId" : 1,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ "k" ],
+  "options" : {
+    "bucket" : "1",
+    "owner" : "root",
+    "file-index.bloom-filter.v.items" : "100",
+    "file-index.bloom-filter.columns" : "v"
+  },
+  "timeMillis" : 1789253734530
+}

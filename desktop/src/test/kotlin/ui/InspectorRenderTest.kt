@@ -898,6 +898,26 @@ class InspectorRenderTest {
     }
 
     /**
+     * A Paimon data file with a file index, both ways: the `File Index` row has to say where the
+     * index is — beside the file, named, or in the entry with its size — because a scan consults
+     * it before opening the file and an orphan scan that misses the one beside the file deletes it.
+     */
+    @Test
+    fun `a paimon file says where its file index lives`() {
+        val fiGraph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/fi").absolutePath)),
+            showRows = false,
+        )
+        val files = fiGraph.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
+        val beside = files.firstOrNull { !it.entry.file?.extraFiles.isNullOrEmpty() }
+        val embedded = files.firstOrNull { it.entry.file?.embeddedFileIndex != null }
+        assertNotNull(beside, "the fi fixture's first file should name its .index file")
+        assertNotNull(embedded, "and its second should carry the index in the entry")
+        renderInspector(fiGraph, beside.id, "paimon-file-node-index-beside", height = 1800)
+        renderInspector(fiGraph, embedded.id, "paimon-file-node-index-embedded", height = 1800)
+    }
+
+    /**
      * Focus on a copy button, which lives in a panel several screens tall.
      *
      * `KeyboardReachTest` settles that Tab arrives; the chrome capture above settles that a ring is

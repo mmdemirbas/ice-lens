@@ -50,6 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A Paimon file index is read, and the one beside the data file is no longer an orphan.** A
+  file index over `file-index.in-manifest-threshold` is `<file>.index` beside the data file and
+  named in the entry's `_EXTRA_FILES`; a smaller one is `_EMBEDDED_FILE_INDEX` in the entry.
+  The file panel's `File Index` row says which, and the referenced-files walk names the extra
+  files, where before a 599 KB index a scan consults was reported as unreferenced. `fi` is the
+  fixture, with both shapes.
 - **Paimon consumers are read and listed.** `consumer/consumer-<id>` is a streaming reader's
   bookmark — the next snapshot it will consume — and the reason `expire_snapshots` keeps more
   history than retention says: it will not expire that snapshot or anything after it. The table

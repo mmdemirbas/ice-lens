@@ -324,6 +324,7 @@ What is left:
   | `paimon/db.db/ao` | append-only, no primary key, `bucket = -1` — a DELETE rewrites the file as an `APPEND` with delta −1 |
   | `paimon/db.db/br` | two branches — one created from a tag and committed to, one created empty; main and `dev` share a snapshot id for two different commits |
   | `paimon/db.db/cs` | a consumer at snapshot 2 and an `expire_snapshots(retain_max = 1)` it held back — two snapshots left of three |
+  | `paimon/db.db/fi` | a bloom-filter file index both ways — a `.index` file beside the data file, and one embedded in the manifest entry |
 
   **Still missing:** the `write.metadata.path` layout is built at runtime by
   `RecordedPathResolutionTest`, a rearrangement of the minimal fixture rather than a table an

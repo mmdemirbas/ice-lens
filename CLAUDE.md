@@ -1196,7 +1196,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~909 tests across 102 files (680 in :core, 224 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~913 tests across 103 files (683 in :core, 225 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1292,6 +1292,7 @@ container invocation and the traps in it:
 | `paimon/db.db/ao` | `PaimonAppendOnlyFixtureTest` | an append-only table, no primary key, `bucket = -1` — no key range, everything in `bucket-0`, and a DELETE that rewrites a file as an `APPEND` with a negative delta |
 | `paimon/db.db/br` | `PaimonBranchFixtureTest` | two branches — one created from a tag and committed to, one created empty; main and `dev` both hold a `snapshot-2`, and `bucket-0` holds a file only the branch names |
 | `paimon/db.db/cs` | `PaimonConsumerFixtureTest` | a consumer standing on snapshot 2, and an `expire_snapshots(retain_max = 1)` that left snapshots 2 and 3 because of it |
+| `paimon/db.db/fi` | `PaimonFileIndexFixtureTest` | a bloom-filter file index both ways — a 599 KB `.index` beside the first data file, 117 bytes embedded in the second entry |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1447,6 +1448,14 @@ also on the classpath.
   is why the referenced set follows tags, or that file is a false orphan in the direction that
   gets a file deleted. **A tag retains data, not changelog**: expiry deleted the changelog manifest
   list the tag still names, and the tag reads with exactly that one read error, drawn under it.
+- **A file index lives in one of two places, and the one beside the data file is the table's.**
+  Where a Paimon file index goes is its size against `file-index.in-manifest-threshold` (500
+  bytes): larger is `<file>.index` beside the data file, named in the entry's `_EXTRA_FILES`;
+  smaller travels in the entry as `_EMBEDDED_FILE_INDEX`. The `fi` fixture has both — a bloom
+  filter over a million items is 599 KB and a file, over a hundred is 117 bytes and embedded —
+  and the referenced-files walk names the extra files beside their data file, or a scan's index
+  is reported as an orphan. The panel's `File Index` row says which, and "none" for a table with
+  no `file-index.*` property. The index bytes are not decoded
 - **A consumer is why an expiry stopped short, and it is one JSON file.** `consumer/consumer-<id>`
   holds `nextSnapshot`, the snapshot a streaming reader will consume next, and
   `expire_snapshots` keeps that snapshot and everything after it — the `cs` fixture asked for

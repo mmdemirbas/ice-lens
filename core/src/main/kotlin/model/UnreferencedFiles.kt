@@ -141,7 +141,12 @@ private fun paimonLineReferencedFiles(
         snapshot.indexFiles.forEach { index -> index.fileName?.let { paths.add(root.resolve("index").resolve(it)) } }
         (snapshot.baseManifests + snapshot.deltaManifests + snapshot.changelogManifests).forEach { manifest ->
             paths.add(manifest.path)
-            manifest.entries.forEach { paths.add(it.path) }
+            manifest.entries.forEach { entry ->
+                paths.add(entry.path)
+                // A file index too large to embed is `<file>.index` beside the data file, named
+                // in the entry — the `fi` fixture's, at 599 KB, read as an orphan until this.
+                entry.metadata.file?.extraFiles?.forEach { name -> paths.add(entry.path.resolveSibling(name)) }
+            }
         }
     }
     return paths

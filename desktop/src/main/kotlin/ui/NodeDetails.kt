@@ -2438,6 +2438,20 @@ fun NodeDetailsContent(
                             )
                             file?.externalPath?.let { DetailRow("External Path", it, copyable = true) }
                             file?.firstRowId?.let { DetailRow("First Row ID", "$it") }
+                            // Where the file index lives is decided by its size against
+                            // file-index.in-manifest-threshold: beside the data file and named in
+                            // _EXTRA_FILES, or carried in the entry. Both are stated, and "none" is
+                            // an answer — a table with no file-index.* property has none.
+                            val embedded = file?.embeddedFileIndex
+                            val indexFiles = file?.extraFiles.orEmpty().filter { it.endsWith(".index") }
+                            DetailRow(
+                                "File Index",
+                                when {
+                                    embedded != null -> "embedded in the manifest entry, ${formatBytesExact(embedded.size.toLong())}"
+                                    indexFiles.isNotEmpty() -> indexFiles.joinToString(", ") { "$it, beside the data file" }
+                                    else -> "none"
+                                },
+                            )
                             if (!file?.extraFiles.isNullOrEmpty()) DetailRow("Extra Files", file?.extraFiles.orEmpty().joinToString(", "))
                         }
                         // The file's own bounds, the same section the Iceberg data file has: a

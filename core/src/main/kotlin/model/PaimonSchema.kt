@@ -268,7 +268,19 @@ data class PaimonDataFileMeta(
     @SerialName("_VALUE_STATS_COLS") val valueStatsCols: List<String>? = null,
     @SerialName("_EXTERNAL_PATH") val externalPath: String? = null,
     @SerialName("_FIRST_ROW_ID") val firstRowId: Long? = null,
+    /**
+     * The file's index files — `<file name>.index` beside the data file, for a file index over
+     * `file-index.in-manifest-threshold` — and nothing else in the fixtures seen. Named by file
+     * name, in the data file's directory; the `fi` fixture's bloom filter over a million items is
+     * 599 KB and lands here.
+     */
     @SerialName("_EXTRA_FILES") val extraFiles: List<String>? = null,
+    /**
+     * A file index small enough to travel in the entry instead of beside the file — the same
+     * bloom filter over a hundred items is 60-odd bytes and lands here. Null when there is none;
+     * the bytes are Paimon's own index container and are not decoded.
+     */
+    @SerialName("_EMBEDDED_FILE_INDEX") val embeddedFileIndex: ByteArray? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -280,7 +292,8 @@ data class PaimonDataFileMeta(
             minSequenceNumber == other.minSequenceNumber && maxSequenceNumber == other.maxSequenceNumber &&
             creationTime == other.creationTime && deleteRowCount == other.deleteRowCount &&
             fileSource == other.fileSource && valueStatsCols == other.valueStatsCols &&
-            externalPath == other.externalPath && firstRowId == other.firstRowId && extraFiles == other.extraFiles
+            externalPath == other.externalPath && firstRowId == other.firstRowId && extraFiles == other.extraFiles &&
+            embeddedFileIndex.contentEquals(other.embeddedFileIndex)
     }
 
     override fun hashCode(): Int {
@@ -302,6 +315,7 @@ data class PaimonDataFileMeta(
         result = 31 * result + externalPath.hashCode()
         result = 31 * result + firstRowId.hashCode()
         result = 31 * result + extraFiles.hashCode()
+        result = 31 * result + embeddedFileIndex.contentHashCode()
         return result
     }
 }
