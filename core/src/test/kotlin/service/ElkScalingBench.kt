@@ -14,13 +14,22 @@ import org.eclipse.elk.core.options.SizeConstraint
 import org.eclipse.elk.core.util.BasicProgressMonitor
 import org.eclipse.elk.graph.ElkNode
 import org.eclipse.elk.graph.util.ElkGraphUtil
+import org.junit.jupiter.api.Tag
 import java.util.EnumSet
 import kotlin.test.Test
 
 /**
  * Throwaway scaling benchmark for ELK layered layout on a metadata-tree shape.
  * Not a regression test - prints timings only.
+ *
+ * Tagged out of `test` and run by `./gradlew :core:bench`. It lays out up to 64k nodes and
+ * catches `Throwable` per configuration so a heap or stack exhaustion prints as a result — which
+ * is the point of the benchmark and fatal to a shared test worker: an `OutOfMemoryError` lands on
+ * whichever thread allocates next, and when that is Gradle's, the worker dies and every class
+ * after it never runs. It killed the worker twice in a row on code that had just passed, with
+ * one, three and eight configurations reporting OOM across three runs of the same bytes.
  */
+@Tag("bench")
 class ElkScalingBench {
 
     init {

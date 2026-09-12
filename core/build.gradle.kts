@@ -40,7 +40,23 @@ kotlin {
 }
 
 tasks.test {
-    useJUnitPlatform()
+    // The print-only benchmarks exhaust the worker's heap on purpose; see `bench`.
+    useJUnitPlatform { excludeTags("bench") }
+}
+
+/**
+ * The benchmarks `test` leaves out: `@Tag("bench")` classes that print timings and catch
+ * `Throwable` per configuration. Run on their own JVM with a heap sized for what they build, so an
+ * `OutOfMemoryError` they provoke is theirs to report rather than the test worker's to die of.
+ */
+val bench by tasks.registering(Test::class) {
+    description = "Runs the print-only benchmarks that `test` excludes."
+    group = "verification"
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform { includeTags("bench") }
+    maxHeapSize = "4g"
+    testLogging.showStandardStreams = true
 }
 
 /**

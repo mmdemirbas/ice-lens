@@ -1057,7 +1057,15 @@ intellij/src/main/kotlin/plugin/
   the lock injects, and a *new* module fails with `Resolved '<module>' which is not part of the
   dependency lock state`
 - ProGuard is enabled for release builds with keep rules in `proguard-rules.pro`
-- Tests use JUnit 5 via `kotlin-test-junit5`; run with `./gradlew test`
+- Tests use JUnit 5 via `kotlin-test-junit5`; run with `./gradlew test`. **A `@Tag("bench")` class
+  is excluded from `test` and run by `./gradlew :core:bench`** on its own JVM with a 4 GB heap.
+  `ElkScalingBench` prints timings for up to 64k ELK nodes and catches `Throwable` per
+  configuration, which on the worker's default 512 MB heap meant provoking `OutOfMemoryError` inside
+  a JVM shared with every other class — an OOM lands on whichever thread allocates next, and when
+  that was Gradle's the worker died with 21 classes never run. It did so twice in a row on code
+  that had just passed, with one, three and eight configurations reporting OOM across three runs
+  of the same bytes; on 4 GB it reports none, so the "which placement strategy overflows" figures
+  it had been printing were figures about the heap it ran in
 
 ## Node ID conventions
 
@@ -1102,7 +1110,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~817 tests across 87 files (597 in :core, 215 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~813 tests across 87 files (593 in :core, 215 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
