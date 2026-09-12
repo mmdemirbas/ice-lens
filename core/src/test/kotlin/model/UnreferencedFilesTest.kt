@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
  * Files under the table root that no metadata names, checked in the direction that matters.
  *
  * The easy assertion is that the one known orphan is found. The one that carries the weight is
- * that **twelve engine-written tables report none**: the referenced set has to cover every kind
+ * that **thirteen engine-written tables report none**: the referenced set has to cover every kind
  * of file both formats write — manifest lists, manifests, data and delete files, Puffin vectors and
  * statistics, metadata versions, version hints, Paimon's snapshot and schema files, index
  * manifests and index files, changelog files, statistics — or a checked-in table shows a false
@@ -22,7 +22,7 @@ class UnreferencedFilesTest {
     private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }
         .first { File(it, "settings.gradle.kts").isFile }
 
-    private val icebergFixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "stats", "branched3")
+    private val icebergFixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "stats", "branched3", "expired")
 
     private fun iceberg(name: String) = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/$name").absolutePath))
     private fun paimon(name: String) = PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/$name").absolutePath))
@@ -30,7 +30,7 @@ class UnreferencedFilesTest {
     @Test
     fun `every engine-written table with no orphan reports none`() {
         val models: List<FormatTableModel> = icebergFixtures.map(::iceberg) + listOf("test", "dv").map(::paimon)
-        assertEquals(12, models.size)
+        assertEquals(13, models.size)
         models.forEach { model ->
             val report = findUnreferencedFiles(model)
             assertTrue(report.problems.isEmpty(), "${model.name}: ${report.problems}")

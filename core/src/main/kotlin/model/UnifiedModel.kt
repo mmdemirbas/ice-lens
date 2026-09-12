@@ -43,6 +43,18 @@ internal fun toError(stage: String, path: String, throwable: Throwable): Unified
     )
 }
 
+/**
+ * Oldest first: by the version in the file name, then by the timestamp the file records, then by
+ * its modification time, then by name — so `v10` follows `v9` and a file with no version sorts last.
+ */
+private val metadataOrder: Comparator<Pair<Path, TableMetadata>> = compareBy(
+    { (path, _) -> metadataVersionFromFileName(path.fileName.toString()) == null },
+    { (path, _) -> metadataVersionFromFileName(path.fileName.toString()) ?: Int.MAX_VALUE },
+    { (_, metadata) -> metadata.lastUpdatedMs ?: Long.MAX_VALUE },
+    { (path, _) -> runCatching { Files.getLastModifiedTime(path).toMillis() }.getOrDefault(Long.MAX_VALUE) },
+    { (path, _) -> path.fileName.toString() },
+)
+
 fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
     logger.info("Loading Iceberg table: {}", tablePath)
     val metadataDir = tablePath.resolve("metadata")
@@ -71,6 +83,13 @@ fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
         }
     }
 
+    // The snapshots the current metadata still lists. A snapshot an older version lists whose
+    // manifest list is gone was expired, and is read as such rather than as a read error — see
+    // [UnifiedSnapshot.expired]. "Current" is decided the way the versions are ordered below.
+    val currentSnapshotIds = parsedMetadata
+        .maxWithOrNull(metadataOrder)?.second?.snapshots?.mapNotNull { it.snapshotId }?.toSet()
+        .orEmpty()
+
     // Parse snapshots once to avoid duplicate parsing of the same snapshots, and share one
     // manifest cache across all of them — see [ManifestCache].
     val manifestCache = ManifestCache()
@@ -81,12 +100,24 @@ fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
         .distinctBy { it.snapshotId }
         .associate { snapshot ->
             val (listPath, listResolution) = resolveRecordedOrRelative(metadataDir, snapshot.manifestList)
-            snapshot.snapshotId to UnifiedSnapshot(
-                listPath,
-                snapshot,
-                manifestCache,
-                listResolution,
-            )
+            val expired = snapshot.snapshotId !in currentSnapshotIds &&
+                !runCatching { Files.exists(listPath) }.getOrDefault(false)
+            snapshot.snapshotId to if (expired) {
+                UnifiedSnapshot(
+                    path = listPath,
+                    metadata = snapshot,
+                    manifests = emptyList(),
+                    pathResolution = listResolution,
+                    expired = true,
+                )
+            } else {
+                UnifiedSnapshot(
+                    listPath,
+                    snapshot,
+                    manifestCache,
+                    listResolution,
+                )
+            }
         }
 
     // version-hint.text is written only by HadoopCatalog / HadoopTables. A table managed by a
@@ -114,15 +145,7 @@ fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
                     .mapNotNull { parsedSnapshots[it.snapshotId] }
                     .sortedBy { it.metadata.timestampMs },
             )
-        }.sortedWith(
-            compareBy<UnifiedMetadata>(
-                { metadataVersionFromFileName(it.path.fileName.toString()) == null },
-                { metadataVersionFromFileName(it.path.fileName.toString()) ?: Int.MAX_VALUE },
-                { it.metadata.lastUpdatedMs ?: Long.MAX_VALUE },
-                { runCatching { Files.getLastModifiedTime(it.path).toMillis() }.getOrDefault(Long.MAX_VALUE) },
-                { it.path.fileName.toString() },
-            )
-        )
+        }.sortedWith(compareBy(metadataOrder) { it.path to it.metadata })
 
     val totalSnapshots = orderedMetadatas.sumOf { it.snapshots.size }
     logger.info("  Iceberg table loaded: {} metadata files, {} snapshots, {} errors",
@@ -374,6 +397,14 @@ data class UnifiedSnapshot(
      * path was actually looked at.
      */
     val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
+    /**
+     * True when this snapshot's manifest list is gone **and** the current metadata no longer
+     * lists the snapshot — the state `expire_snapshots` leaves behind, which an older metadata
+     * version kept on disk by `write.metadata.previous-versions-max` still describes. Not a read
+     * error: only a file that exists and cannot be read is one. The two conditions are both
+     * required, because a listed snapshot whose manifest list is missing is a broken table.
+     */
+    val expired: Boolean = false,
 )
 
 data class UnifiedManifest(

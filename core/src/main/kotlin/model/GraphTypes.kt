@@ -366,6 +366,8 @@ sealed class GraphNode(
          * was actually looked at.
          */
         val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
+        /** See [UnifiedSnapshot.expired]: listed by an older metadata version, gone from the current one. */
+        val expired: Boolean = false,
         /**
          * Branch and tag names from `refs` that point at this snapshot, `main` first.
          *

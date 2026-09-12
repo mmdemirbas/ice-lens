@@ -542,6 +542,18 @@ intellij/src/main/kotlin/plugin/
   to a data file is decided by comparing these two numbers
 - Spec constants live in `IcebergSchema.kt` (`ManifestContent`, `ManifestEntryStatus`,
   `DataFileContent`) and `PaimonSchema.kt` (`PaimonEntryKind`). Prefer them over 0/1/2 literals
+- **An expired snapshot is a state, not a read error, and the rule needs both of its halves.**
+  `expire_snapshots` deletes the dropped snapshots' manifest lists and rewrites `metadata.json`
+  without them, but the older versions stay on disk (`write.metadata.previous-versions-max`, a
+  hundred by default) and still list them — so every production table opens with snapshots whose
+  manifest list is gone, and this drew a `SNAPSHOT READ ERROR` for each. `UnifiedSnapshot.expired`
+  is true when the manifest list is missing **and** the *current* metadata — the highest version,
+  by the same order `metadatas` is sorted in — no longer lists the snapshot. Both conditions,
+  because a snapshot the current metadata lists with no manifest list behind it is a broken table,
+  and `ExpiredSnapshotsFixtureTest` deletes the surviving list from a copy to keep that an error.
+  An expired snapshot carries no manifests, so the builder gives it no `change`, no diff and no
+  delete-reach: its summary is all the writer left of it, and the card and panel say so. The
+  precedent is the version hint below — absence that the format defines is not a failure to read
 - `versionHint` is nullable — `version-hint.text` exists only for HadoopCatalog/HadoopTables
   tables, so absence is normal and must not be reported as a read error
 - **Nothing leaves the graph silently.** `GraphAggregation` draws the first
@@ -1135,7 +1147,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~834 tests across 90 files (613 in :core, 216 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~842 tests across 91 files (620 in :core, 217 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1222,6 +1234,7 @@ container invocation and the traps in it:
 | `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
+| `default/expired` | `ExpiredSnapshotsFixtureTest` | snapshots dropped by `expire_snapshots` — the older metadata versions still list them, and they are drawn as expired, not as read errors |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |

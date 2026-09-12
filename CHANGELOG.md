@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Added
+- **An expired Iceberg snapshot is drawn as expired, not as a read error.** After
+  `expire_snapshots` the older metadata versions still on disk list snapshots whose manifest lists
+  are gone, and every one of them was a `SNAPSHOT READ ERROR` node — on a healthy table, which is
+  what every production table is. A snapshot the current metadata no longer lists and whose list is
+  missing is now marked `EXPIRED` on its card and in the inspector and IDE tree, with the writer's
+  summary and nothing under it; a snapshot the current metadata *does* list stays an error when its
+  list is missing, because that table is broken. The new `expired` fixture is a four-commit table
+  after `expire_snapshots(retain_last => 1)`.
 - **Paimon tags are read and drawn.** A tag is a snapshot copy under `tag/`, and after
   `expire_snapshots` it can be the only thing keeping a snapshot's files on disk — so a tagged
   snapshot that is gone from `snapshot/` is drawn with its tag as a chip and marked `TAG ONLY`, its

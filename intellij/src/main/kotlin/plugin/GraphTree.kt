@@ -88,6 +88,7 @@ object GraphTree {
         )
         is GraphNode.SnapshotNode -> listOf(
             "Snapshot id" to node.data.snapshotId.toString(),
+            "Expired" to if (node.expired) "yes — gone from the current metadata" else "no",
             "Parent" to (node.data.parentSnapshotId?.toString() ?: "none"),
             "Sequence number" to (node.data.sequenceNumber?.toString() ?: "—"),
             "Operation" to (node.data.summary?.get("operation") ?: "—"),

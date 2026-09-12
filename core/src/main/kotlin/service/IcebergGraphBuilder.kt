@@ -175,14 +175,17 @@ object IcebergGraphBuilder {
                         simpleId = simpleSnapshotId,
                         localPath = snapshot.path.toString(),
                         pathResolution = snapshot.pathResolution,
+                        expired = snapshot.expired,
                         refs = snap.snapshotId?.let { currentRefs[it] }.orEmpty(),
-                        change = snapshotChangeOf(snapshot),
+                        // An expired snapshot has no manifests to read a change from, compare,
+                        // or pair deletes across; its summary is all that is left of it.
+                        change = if (snapshot.expired) null else snapshotChangeOf(snapshot),
                         // Deferred, not computed: this walks the snapshot's whole manifest
                         // closure, and only two snapshots in a table are ever compared.
-                        liveFilesLoader = DeferredRead.of { liveFilesOf(snapshot) },
+                        liveFilesLoader = if (snapshot.expired) DeferredRead.none() else DeferredRead.of { liveFilesOf(snapshot) },
                         // Deferred for the same reason, and it costs that walk again: the pairing
                         // is a question about one commit, asked of one panel.
-                        deleteReachLoader = DeferredRead.of { deleteReach(snapshot) },
+                        deleteReachLoader = if (snapshot.expired) DeferredRead.none() else DeferredRead.of { deleteReach(snapshot) },
                     )
                 }
                 snapshot.readErrors.forEach { error ->

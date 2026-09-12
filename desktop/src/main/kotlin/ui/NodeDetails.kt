@@ -1491,6 +1491,14 @@ fun NodeDetailsContent(
                         DetailTable {
                             DetailRow("Property", "Value", isHeader = true)
                             DetailRow("Snapshot ID", "${node.data.snapshotId}")
+                            if (node.expired) {
+                                DetailRow(
+                                    "Expired",
+                                    "yes — its manifest list is gone and the current metadata no longer " +
+                                        "lists it; this older metadata version still does. The summary " +
+                                        "below is what the writer recorded; nothing under it can be read.",
+                                )
+                            }
                             // "None" is the root commit; a parent id with no snapshot behind it
                             // means the parent has been expired away, and the two are different
                             // facts about the table's history.

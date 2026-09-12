@@ -679,7 +679,10 @@ fun SnapshotCard(node: GraphNode.SnapshotNode, isSelected: Boolean = false) {
         .background(getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface)), RoundedCornerShape(8.dp))
         .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(8.dp))) {
         CardColumn(padding = 8.dp) {
-            Text("SNAPSHOT ${node.simpleId}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
+            Text(
+                "SNAPSHOT ${node.simpleId}" + if (node.expired) " — EXPIRED" else "",
+                fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary(), maxLines = 1,
+            )
             Text(
                 fileName,
                 fontSize = TypeScale.micro,

@@ -31,13 +31,18 @@ class SnapshotChangeTest {
         return UnifiedTableModel(Paths.get(dir.absolutePath))
     }
 
-    /** Every snapshot of a table, deduplicated — each is re-listed by every later metadata file. */
+    /**
+     * Every snapshot of a table, deduplicated — each is re-listed by every later metadata file —
+     * minus the expired ones, whose manifests are gone: their summary is all that is left, and
+     * there is nothing to count against it.
+     */
     private fun snapshotsOf(model: UnifiedTableModel): List<UnifiedSnapshot> =
         model.metadatas.flatMap { it.snapshots }
             .distinctBy { it.metadata.snapshotId }
+            .filterNot { it.expired }
             .sortedBy { it.metadata.timestampMs }
 
-    private val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched")
+    private val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "expired")
 
     /**
      * The whole point, across every checked-in table: what the manifests say a commit did has to

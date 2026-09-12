@@ -37,6 +37,7 @@ import java.io.File
 import java.nio.file.Paths
 import javax.imageio.ImageIO
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import model.GraphModel
@@ -211,6 +212,28 @@ class InspectorRenderTest {
             .firstOrNull { it.change?.removed?.isNotEmpty() == true }
         assertNotNull(compaction, "the merge-on-read fixture should carry a commit that removes files")
         renderInspector(graph, compaction.id, "snapshot-node-compaction", height = 3600)
+    }
+
+    /**
+     * A snapshot expiry dropped, drawn as what it is rather than as a read error.
+     *
+     * The card says so in its eyebrow and the panel says so in an identity row, above a summary
+     * that is the writer's and below which there is nothing to read. Three expired cards next to
+     * the retained one, because the word has to be findable against cards that do not carry it.
+     */
+    @Test
+    fun `an expired snapshot renders as a state, not an error`() {
+        val graph = graphFor("expired")
+        val snapshots = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().sortedBy { it.data.sequenceNumber }
+        assertEquals(listOf(true, true, true, false), snapshots.map { it.expired })
+        assertTrue(graph.nodes.none { it is GraphNode.ErrorNode }, "expiry is not an error")
+
+        renderScene("snapshot-cards-expired", width = 700, height = 920) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                snapshots.forEach { SnapshotCard(it) }
+            }
+        }
+        renderInspector(graph, snapshots.first().id, "snapshot-node-expired", height = 1400)
     }
 
     /**
