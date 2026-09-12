@@ -446,6 +446,14 @@ object PaimonGraphBuilder {
                     readErrorCount = branch.readErrors.size + branch.snapshots.sumOf { it.readErrors.size },
                 )
             },
+            consumers = tableModel.consumers.map { consumer ->
+                ConsumerSummary(
+                    name = consumer.name,
+                    path = runCatching { tableModel.path.relativize(consumer.path).toString() }.getOrDefault(consumer.path.toString()),
+                    nextSnapshot = consumer.metadata.nextSnapshot,
+                    nextSnapshotPresent = consumer.metadata.nextSnapshot?.let { next -> tableModel.snapshots.any { it.metadata.id == next } } ?: false,
+                )
+            },
         )
     }
 }

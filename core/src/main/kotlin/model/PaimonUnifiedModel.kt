@@ -21,6 +21,8 @@ data class PaimonUnifiedTableModel(
     val tags: List<PaimonUnifiedTag> = emptyList(),
     /** What `branch/` holds, by name — see [PaimonUnifiedBranch]. Main's own commits are [snapshots]. */
     val branches: List<PaimonUnifiedBranch> = emptyList(),
+    /** What `consumer/` holds, by id — see [PaimonUnifiedConsumer]. */
+    val consumers: List<PaimonUnifiedConsumer> = emptyList(),
     override val readErrors: List<UnifiedReadError> = emptyList(),
 ) : FormatTableModel {
     /** The tags naming a snapshot id, by id — a tag on a live snapshot and a tag on an expired one alike. */
@@ -54,6 +56,18 @@ data class PaimonUnifiedBranch(
     val tagNamesBySnapshotId: Map<Long, List<String>> by lazy { tagNamesBySnapshotId(tags) }
     val tagOnlySnapshots: List<PaimonUnifiedSnapshot> by lazy { tagOnlySnapshots(snapshots, tags) }
 }
+
+/**
+ * A Paimon consumer: `consumer/consumer-<id>`, a streaming reader's bookmark — see [PaimonConsumer].
+ * It is what holds an expiry back: `expire_snapshots` keeps every snapshot from the reader's next
+ * one on, so a table whose expiry stops short of what its retention says is usually a table with
+ * a consumer standing on an old snapshot.
+ */
+data class PaimonUnifiedConsumer(
+    val name: String,
+    val path: Path,
+    val metadata: PaimonConsumer,
+)
 
 private fun tagNamesBySnapshotId(tags: List<PaimonUnifiedTag>): Map<Long, List<String>> =
     tags.groupBy({ it.snapshot.metadata.id }, { it.name })
@@ -167,6 +181,14 @@ fun PaimonUnifiedTableModel(tablePath: Path): PaimonUnifiedTableModel {
     }.sortedBy { it.name }
     if (branches.isNotEmpty()) logger.info("  Branches: {}", branches.map { it.name })
 
+    val consumers = listConsumerFiles(tablePath.resolve("consumer"), errors).mapNotNull { consumerPath ->
+        runCatching { PaimonReader.readConsumer(consumerPath.toString()) }
+            .onFailure { e -> errors += toError("read-consumer", consumerPath.toString(), e) }
+            .getOrNull()
+            ?.let { PaimonUnifiedConsumer(name = consumerPath.fileName.toString().removePrefix("consumer-"), path = consumerPath, metadata = it) }
+    }.sortedBy { it.name }
+    if (consumers.isNotEmpty()) logger.info("  Consumers: {}", consumers.map { "${it.name} -> ${it.metadata.nextSnapshot}" })
+
     val snapshots = main.snapshots
     val totalManifests = snapshots.sumOf { it.baseManifests.size + it.deltaManifests.size + it.changelogManifests.size }
     val totalDataFiles = snapshots.sumOf { s -> (s.baseManifests + s.deltaManifests + s.changelogManifests).sumOf { it.entries.size } }
@@ -188,8 +210,24 @@ fun PaimonUnifiedTableModel(tablePath: Path): PaimonUnifiedTableModel {
         snapshots = snapshots,
         tags = main.tags,
         branches = branches,
+        consumers = consumers,
         readErrors = errors,
     )
+}
+
+/** `consumer/consumer-<id>`, or nothing: most tables have no `consumer/` directory at all, which is not an error. */
+private fun listConsumerFiles(consumerDir: Path, errors: MutableList<UnifiedReadError>): List<Path> {
+    if (!Files.isDirectory(consumerDir)) return emptyList()
+    return runCatching {
+        Files.list(consumerDir)
+            .asSequence()
+            .filter { Files.isRegularFile(it) }
+            .filter { it.fileName.toString().startsWith("consumer-") }
+            .toList()
+    }.getOrElse { e ->
+        errors += toError("list-consumer-files", consumerDir.toString(), e)
+        emptyList()
+    }
 }
 
 /** Paimon's name for the table's own line of commits — the one `snapshot/` at the root holds. */

@@ -50,6 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **Paimon consumers are read and listed.** `consumer/consumer-<id>` is a streaming reader's
+  bookmark — the next snapshot it will consume — and the reason `expire_snapshots` keeps more
+  history than retention says: it will not expire that snapshot or anything after it. The table
+  panel lists each consumer with its next snapshot and whether `snapshot/` still holds it, and
+  the referenced-files walk no longer skips the directory. `cs` is the fixture: `retain_max = 1`
+  on three commits, two snapshots left.
 - **A Paimon snapshot's record counts are checked against its manifests.** "Recorded Records" on
   the Paimon snapshot panel puts `totalRecordCount`, `deltaRecordCount` and
   `changelogRecordCount` beside the same figures read from the manifests the snapshot names —

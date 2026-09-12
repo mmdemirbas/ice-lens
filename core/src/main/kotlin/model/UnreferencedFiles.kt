@@ -26,9 +26,8 @@ import java.nio.file.attribute.BasicFileAttributes
  * `expire_snapshots` it can be the only thing naming a data file — the `tg` fixture. Branches are
  * followed too, and have to be: a branch keeps only its snapshot, schema and tag files under
  * `branch/`, and writes its manifests and data files beside main's, so a walk that reads main
- * alone reports every file a branch committed as an orphan — the `br` fixture. Consumers are
- * bookkeeping under `consumer/` that nothing here reads, so that directory is left out of the walk
- * rather than reported. Stated on the panel.
+ * alone reports every file a branch committed as an orphan — the `br` fixture. A consumer's file
+ * under `consumer/` is named by the model that read it, so the whole table directory is walked.
  *
  * Hidden files (a leading `.`) are skipped: Hadoop's local filesystem writes a `.crc` beside every
  * file and macOS writes `.DS_Store`, and neither is the table's. The walk is the whole table
@@ -64,11 +63,7 @@ fun referencedFiles(model: FormatTableModel): Set<Path> = when (model) {
 fun findUnreferencedFiles(model: FormatTableModel): UnreferencedFilesReport {
     val referenced = referencedFiles(model)
     val problems = mutableListOf<String>()
-    val notWalked = when (model) {
-        is UnifiedTableModel -> emptySet()
-        is PaimonUnifiedTableModel -> setOf("consumer")
-    }
-    val onDisk = walkTableFiles(model.path, notWalked, problems)
+    val onDisk = walkTableFiles(model.path, problems)
     val unreferenced = onDisk
         .filterKeys { it !in referenced }
         .map { (path, size) -> UnreferencedFile(path, size) }
@@ -115,7 +110,8 @@ private fun icebergReferencedFiles(model: UnifiedTableModel): List<Path> {
 
 private fun paimonReferencedFiles(model: PaimonUnifiedTableModel): List<Path> =
     paimonLineReferencedFiles(model.path, model.path, model.schemas, model.snapshots, model.tags) +
-        model.branches.flatMap { paimonLineReferencedFiles(model.path, it.path, it.schemas, it.snapshots, it.tags) }
+        model.branches.flatMap { paimonLineReferencedFiles(model.path, it.path, it.schemas, it.snapshots, it.tags) } +
+        model.consumers.map { it.path }
 
 /**
  * What one line of commits names: its own snapshot, schema and tag files under [metadataRoot],
@@ -151,11 +147,8 @@ private fun paimonLineReferencedFiles(
     return paths
 }
 
-/**
- * Every regular file under [root] that is not hidden, with its size; failures go to [problems].
- * [notWalked] names top-level directories the format keeps and this model does not read.
- */
-private fun walkTableFiles(root: Path, notWalked: Set<String>, problems: MutableList<String>): Map<Path, Long> {
+/** Every regular file under [root] that is not hidden, with its size; failures go to [problems]. */
+private fun walkTableFiles(root: Path, problems: MutableList<String>): Map<Path, Long> {
     val files = linkedMapOf<Path, Long>()
     if (!Files.isDirectory(root)) {
         problems += "$root is not a directory"
@@ -167,7 +160,6 @@ private fun walkTableFiles(root: Path, notWalked: Set<String>, problems: Mutable
             override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult = when {
                 dir == root -> FileVisitResult.CONTINUE
                 dir.isHidden() -> FileVisitResult.SKIP_SUBTREE
-                dir.parent == root && dir.fileName.toString() in notWalked -> FileVisitResult.SKIP_SUBTREE
                 else -> FileVisitResult.CONTINUE
             }
 

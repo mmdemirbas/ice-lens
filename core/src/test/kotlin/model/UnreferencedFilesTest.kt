@@ -29,8 +29,8 @@ class UnreferencedFilesTest {
 
     @Test
     fun `every engine-written table with no orphan reports none`() {
-        val models: List<FormatTableModel> = icebergFixtures.map(::iceberg) + listOf("test", "dv", "pt", "ao", "br").map(::paimon)
-        assertEquals(19, models.size)
+        val models: List<FormatTableModel> = icebergFixtures.map(::iceberg) + listOf("test", "dv", "pt", "ao", "br", "cs").map(::paimon)
+        assertEquals(20, models.size)
         models.forEach { model ->
             val report = findUnreferencedFiles(model)
             assertTrue(report.problems.isEmpty(), "${model.name}: ${report.problems}")

@@ -1055,6 +1055,39 @@ fun NodeDetailsContent(
                             }
                         }
 
+                        // A consumer is a streaming reader's bookmark, and the reason an expiry
+                        // stops short: expire_snapshots keeps every snapshot from the reader's
+                        // next one on. Null on Iceberg, which has no such thing.
+                        summary.consumers?.let { consumers ->
+                            CountedSection("Consumers", consumers.size, "consumers — no streaming reader has left a bookmark under consumer/") {
+                                Text(
+                                    "Each is a streaming reader's bookmark: the snapshot it will consume next, " +
+                                        "which expire_snapshots will not expire, nor anything after it. A reader " +
+                                        "standing on an old snapshot is why a table keeps more history than its " +
+                                        "retention says.",
+                                    fontSize = TypeScale.small,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp),
+                                )
+                                // The exception leads: a bookmark whose snapshot is gone is a
+                                // reader that will fail on its next read, and it is the one row
+                                // that has to be findable without reading the others.
+                                WideTable(
+                                    headers = listOf("Next in snapshot/", "Consumer", "Next Snapshot", "Path"),
+                                    rows = consumers.map { consumer ->
+                                        listOf(
+                                            if (consumer.nextSnapshotPresent) "yes" else "NO — expired from under the reader",
+                                            consumer.name,
+                                            consumer.nextSnapshot?.toString() ?: "not recorded",
+                                            consumer.path,
+                                        )
+                                    },
+                                    columnWidths = listOf(240.dp, 120.dp, 120.dp, 220.dp),
+                                    leadCellColors = consumers.map { if (it.nextSnapshotPresent) null else MaterialTheme.colorScheme.error },
+                                )
+                            }
+                        }
+
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 
                         // Directly under the table's identity, because it is the only control on
@@ -3469,8 +3502,7 @@ internal fun UnreferencedFilesSection(
         // who has not clicked needs one sentence, and one who has needs the number first.
         val caveat = "Referenced means named by any metadata version on disk, so Iceberg's " +
             "remove_orphan_files, which reaches from the current one only, can delete more than is " +
-            "listed here. Paimon tags and branches are followed; consumer/ is not read and was " +
-            "not walked."
+            "listed here. Paimon tags, branches and consumers are followed."
         when {
             !requested -> {
                 Text(

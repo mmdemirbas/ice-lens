@@ -882,6 +882,14 @@ class InspectorRenderTest {
         renderInspector(brGraph, onBranch.id, "paimon-snapshot-branch", height = 1400)
         val table = brGraph.nodes.filterIsInstance<GraphNode.TableNode>().single()
         renderInspector(brGraph, table.id, "paimon-table-node-branches", height = 2200)
+        // And the consumer, on the table that has one: `Consumers (1)` under `Branches (0)`, the
+        // reader's next snapshot, and the one word saying it is still there.
+        val csGraph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/cs").absolutePath)),
+            showRows = false,
+        )
+        val csTable = csGraph.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        renderInspector(csGraph, csTable.id, "paimon-table-node-consumer", height = 2200)
         assertTrue(
             brGraph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().map { it.x }.distinct().size == 2,
             "main and dev should occupy two columns",

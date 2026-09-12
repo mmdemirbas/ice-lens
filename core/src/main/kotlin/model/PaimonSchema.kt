@@ -44,6 +44,17 @@ data class PaimonSnapshot(
  * On `dv`, `totalRecordCount` says 1500 for a table whose vector marks 3 of them deleted. [snapshotId] names the snapshot the figures were computed at,
  * which is the one *before* the `ANALYZE` commit that carries them.
  */
+/**
+ * `consumer/consumer-<id>`: a streaming reader's bookmark. [nextSnapshot] is the snapshot the
+ * reader will consume next, and `expire_snapshots` will not expire it or anything after it — the
+ * `cs` fixture's expiry with `retain_max = 1` left two snapshots, because a consumer stood at the
+ * older one. The id is the file name's, not a field.
+ */
+@Serializable
+data class PaimonConsumer(
+    val nextSnapshot: Long? = null,
+)
+
 @Serializable
 data class PaimonStatistics(
     val snapshotId: Long? = null,

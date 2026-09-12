@@ -637,7 +637,7 @@ class AppState(
         // would return whatever the first read produced, forever, and a remote table would never
         // reload. The cost of that honesty is a LIST per call, which is why the callers space these
         // out (REMOTE_POLL_INTERVAL_MS) rather than asking on the local table's three-second timer.
-        listOf("metadata", "snapshot", "schema", "tag", "branch").forEach { ObjectStorage.invalidate("$root/$it") }
+        listOf("metadata", "snapshot", "schema", "tag", "branch", "consumer").forEach { ObjectStorage.invalidate("$root/$it") }
         val names = runCatching {
             ObjectStorage.list("$root/metadata")
                 .filter { it.name.endsWith(".metadata.json") || it.name == "version-hint.text" }
@@ -649,7 +649,8 @@ class AppState(
                     ObjectStorage.list("$root/snapshot").filter { it.name.startsWith("snapshot-") }.map { it.name } +
                         ObjectStorage.list("$root/schema").filter { it.name.startsWith("schema-") }.map { it.name } +
                         ObjectStorage.glob("$root/tag/**").map { it.removePrefix("$root/") } +
-                        ObjectStorage.glob("$root/branch/**").map { it.removePrefix("$root/") }
+                        ObjectStorage.glob("$root/branch/**").map { it.removePrefix("$root/") } +
+                        ObjectStorage.glob("$root/consumer/**").map { it.removePrefix("$root/") }
                 }
                 .sorted()
         }.getOrElse { return "unreachable" }
@@ -667,8 +668,10 @@ class AppState(
     }
 
     /**
-     * What a Paimon commit, tag or branch touches: the table's own `snapshot/`, `schema/` and
-     * `tag/`, and the same three under every `branch/branch-<name>/`. A commit to a branch adds a
+     * What a Paimon commit, tag, consumer or branch touches: the table's own `snapshot/`,
+     * `schema/`, `tag/` and `consumer/`, and the same under every `branch/branch-<name>/` — a
+     * consumer file changes in place as the reader advances, which the size and mtime catch. A
+     * commit to a branch adds a
      * snapshot file there and nowhere else — its manifests and data land in directories this
      * deliberately does not stat — so without the branch directories a branch commit never
      * reloads the table.
@@ -680,7 +683,7 @@ class AppState(
             ?.sortedBy { it.name }
             .orEmpty()
         return (listOf(tableDir) + branchDirs).flatMap { root ->
-            listOf("snapshot" to "snapshot-", "schema" to "schema-", "tag" to "tag-").flatMap { (dir, prefix) ->
+            listOf("snapshot" to "snapshot-", "schema" to "schema-", "tag" to "tag-", "consumer" to "consumer-").flatMap { (dir, prefix) ->
                 File(root, dir).listFiles()
                     ?.filter { it.isFile && it.name.startsWith(prefix) }
                     ?.sortedBy { it.name }

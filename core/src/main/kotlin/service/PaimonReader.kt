@@ -2,6 +2,7 @@ package service
 
 import kotlinx.serialization.json.Json
 import model.PaimonIndexManifestEntry
+import model.PaimonConsumer
 import model.PaimonStatistics
 import model.PaimonManifestEntry
 import model.PaimonManifestFileMeta
@@ -39,6 +40,16 @@ object PaimonReader {
             throw IllegalArgumentException("File not found: $path")
         }
         return json.decodeFromString(PaimonStatistics.serializer(), Files.readString(location))
+    }
+
+    /** Reads the JSON file a consumer keeps under `consumer/`. */
+    fun readConsumer(path: String): PaimonConsumer {
+        logger.debug("Reading Paimon consumer: {}", path)
+        val location = StorageLocation.pathOf(path)
+        if (!Files.exists(location)) {
+            throw IllegalArgumentException("File not found: $path")
+        }
+        return json.decodeFromString(PaimonConsumer.serializer(), Files.readString(location))
     }
 
     /** Reads a Paimon schema JSON file. */

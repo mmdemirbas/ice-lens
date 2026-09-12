@@ -272,6 +272,8 @@ data class TableSummary(
      * the format keeps them here.
      */
     val branches: List<BranchSummary>? = null,
+    /** What `consumer/` holds on a Paimon table; null on Iceberg, which has no such thing. */
+    val consumers: List<ConsumerSummary>? = null,
 ) {
     /**
      * The table as it is now: the manifest closure of `current-snapshot-id`, live entries
@@ -876,6 +878,17 @@ data class BranchSummary(
     val schemaCount: Int,
     val tagCount: Int,
     val readErrorCount: Int,
+)
+
+/** One Paimon consumer as the table panel lists it — see [TableSummary.consumers]. */
+data class ConsumerSummary(
+    val name: String,
+    /** `consumer/consumer-<id>`, relative to the table root. */
+    val path: String,
+    /** The snapshot the reader consumes next; what expiry will not go past. */
+    val nextSnapshot: Long?,
+    /** Whether `snapshot/` still holds it — false is a reader that has fallen behind an expiry. */
+    val nextSnapshotPresent: Boolean,
 )
 
 data class SnapshotRefLabel(val name: String, val isBranch: Boolean) {

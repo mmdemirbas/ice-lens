@@ -1196,7 +1196,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~905 tests across 101 files (676 in :core, 224 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~909 tests across 102 files (680 in :core, 224 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1291,6 +1291,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest`, `PaimonFileBoundsFixtureTest`, `PaimonScanPruningTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
 | `paimon/db.db/ao` | `PaimonAppendOnlyFixtureTest` | an append-only table, no primary key, `bucket = -1` — no key range, everything in `bucket-0`, and a DELETE that rewrites a file as an `APPEND` with a negative delta |
 | `paimon/db.db/br` | `PaimonBranchFixtureTest` | two branches — one created from a tag and committed to, one created empty; main and `dev` both hold a `snapshot-2`, and `bucket-0` holds a file only the branch names |
+| `paimon/db.db/cs` | `PaimonConsumerFixtureTest` | a consumer standing on snapshot 2, and an `expire_snapshots(retain_max = 1)` that left snapshots 2 and 3 because of it |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1446,7 +1447,14 @@ also on the classpath.
   is why the referenced set follows tags, or that file is a false orphan in the direction that
   gets a file deleted. **A tag retains data, not changelog**: expiry deleted the changelog manifest
   list the tag still names, and the tag reads with exactly that one read error, drawn under it.
-  `consumer/` is not read and is left out of the walk.
+- **A consumer is why an expiry stopped short, and it is one JSON file.** `consumer/consumer-<id>`
+  holds `nextSnapshot`, the snapshot a streaming reader will consume next, and
+  `expire_snapshots` keeps that snapshot and everything after it — the `cs` fixture asked for
+  `retain_max = 1` on three commits and got two snapshots back. `PaimonUnifiedTableModel.consumers`
+  reads them, `TableSummary.consumers` lists them (null on Iceberg, empty on a Paimon table with
+  no `consumer/`) with whether `snapshot/` still holds the bookmarked snapshot — a reader that
+  has fallen behind an expiry is the row that leads — and the referenced-files walk covers the
+  whole table directory now that nothing under it is unread.
 - **A branch is another line of commits over the same manifests and data, not a nested table.**
   `branch/branch-<name>/` holds its own `snapshot/`, `schema/` and `tag/` and **no `manifest/`**:
   the `br` fixture settled that a commit to a branch writes its manifests into the table's
