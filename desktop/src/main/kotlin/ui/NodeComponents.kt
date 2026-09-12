@@ -488,6 +488,7 @@ fun NodeTooltip(node: GraphNode) {
                 }
                 is GraphNode.PaimonManifestListNode -> {
                     DetailRow("Kind", node.kind, isDark = true)
+                    DetailRow("Manifests", formatCount(node.manifestCount), isDark = true)
                 }
                 is GraphNode.PaimonManifestNode -> {
                     DetailRow("File", node.data.fileName ?: "N/A", isDark = true)
@@ -962,9 +963,9 @@ fun PaimonNodeCard(node: GraphNode, isSelected: Boolean = false) {
             when (node) {
                 is GraphNode.PaimonSnapshotNode -> {
                     Text("PAIMON SNAP ${node.simpleId}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
-                    Text(node.commitKind ?: "N/A", fontSize = TypeScale.small, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary())
-                    Text("ID: ${node.data.id ?: "?"}", fontSize = TypeScale.micro, color = nodeCardTextPrimary())
-                    Text("Records: ${node.data.totalRecordCount ?: "?"}", fontSize = TypeScale.micro, color = nodeCardTextSecondary())
+                    Text(node.commitKind ?: "N/A", fontSize = TypeScale.small, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("ID: ${node.data.id ?: "?"}", fontSize = TypeScale.micro, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("Records: ${node.data.totalRecordCount?.let(::formatCount) ?: "?"}", fontSize = TypeScale.micro, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 is GraphNode.PaimonSchemaNode -> {
                     Text("PAIMON SCHEMA ${node.simpleId}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
@@ -973,8 +974,10 @@ fun PaimonNodeCard(node: GraphNode, isSelected: Boolean = false) {
                     if (keys.isNotEmpty()) Text("PK: $keys", fontSize = TypeScale.micro, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 is GraphNode.PaimonManifestListNode -> {
-                    Text("PAIMON ${node.kind.uppercase()}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
-                    Text("Manifest List", fontSize = TypeScale.small, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary())
+                    // The noun is the eyebrow and the count is the value line — the same shape as
+                    // the group card, and for the same reason: a list's content is its length.
+                    Text("PAIMON ${node.kind.uppercase()} MANIFEST LIST", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(formatCounted(node.manifestCount, "manifest"), fontSize = TypeScale.small, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary(), maxLines = 1)
                 }
                 is GraphNode.PaimonManifestNode -> {
                     Text("PAIMON MANIFEST ${node.simpleId}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary())
@@ -987,7 +990,7 @@ fun PaimonNodeCard(node: GraphNode, isSelected: Boolean = false) {
                     Text(node.entry.file?.fileName ?: "N/A", fontSize = TypeScale.micro, maxLines = 2, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
                     val level = node.level
                     val rows = node.entry.file?.rowCount
-                    Text(rowCountLabel(rows) + if (level != null) " L$level" else "", fontSize = TypeScale.micro, color = nodeCardTextPrimary())
+                    Text(rowCountLabel(rows) + if (level != null) " L$level" else "", fontSize = TypeScale.micro, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 // PaimonNodeCard is only invoked from Paimon dispatch; non-Paimon types here would
                 // be a bug, so render the id but flag visibly with a "?" marker.

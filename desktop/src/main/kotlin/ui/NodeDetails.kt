@@ -2218,6 +2218,7 @@ fun NodeDetailsContent(
                         DetailTable {
                             DetailRow("Property", "Value", isHeader = true)
                             DetailRow("Kind", node.kind)
+                            DetailRow("Manifests", formatCount(node.manifestCount))
                             DetailRow("Path", node.localPath ?: "N/A", copyable = true)
                         }
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)

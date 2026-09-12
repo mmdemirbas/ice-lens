@@ -123,6 +123,7 @@ object GraphTree {
         )
         is GraphNode.PaimonManifestListNode -> listOf(
             "Kind" to node.kind,
+            "Manifests" to node.manifestCount.toString(),
             "Path" to (node.localPath ?: "—"),
         )
         is GraphNode.PaimonManifestNode -> listOf(

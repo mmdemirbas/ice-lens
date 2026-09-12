@@ -137,6 +137,26 @@ class PaimonGraphBuilderTest {
         assertTrue(mlNodes.any { it.kind == "delta" })
     }
 
+    /**
+     * A list's card states how many manifests it names, and that is every manifest — not the page
+     * the graph draws. Checked on the Spark-written table, where the base list of the last
+     * snapshot names five manifests carried forward and the delta names one.
+     */
+    @Test
+    fun `a manifest list node counts every manifest it names`() {
+        val repoRoot = generateSequence(java.io.File(".").absoluteFile) { it.parentFile }
+            .first { java.io.File(it, "settings.gradle.kts").isFile }
+        val model = PaimonUnifiedTableModel(Paths.get(java.io.File(repoRoot, "example/paimon/db.db/dv").absolutePath))
+        val result = PaimonGraphBuilder.buildGraph(model)
+
+        val last = model.snapshots.last()
+        val byKind = result.nodes.filterIsInstance<GraphNode.PaimonManifestListNode>()
+            .filter { it.id.startsWith("pml_${last.metadata.id}_") }
+            .associate { it.kind to it.manifestCount }
+        assertEquals(mapOf("base" to 5, "delta" to 1), byKind)
+        assertEquals(last.baseManifests.size, byKind.getValue("base"), "the model's own count")
+    }
+
     @Test
     fun `manifest entries create manifest and data file nodes`() {
         val dataFile = minimalDataFile("data-0.orc", kind = 0, bucket = 0, level = 1)

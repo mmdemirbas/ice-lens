@@ -141,6 +141,7 @@ object PaimonGraphBuilder {
                         id = mlId,
                         kind = kind,
                         simpleId = nextManifestListSimpleId++,
+                        manifestCount = manifests.size,
                         localPath = snap.let {
                             when (kind) {
                                 "base" -> it.baseManifestList

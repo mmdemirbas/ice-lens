@@ -180,15 +180,16 @@ What is left:
 
 ## UI / UX
 
-- **The Paimon cards still reserve more than they use.** Every card's height is now a bound rather
-  than a sample — each `Text` a table's content can lengthen is capped, and `CardHeightTest`'s
-  stress pass measures the capped worst — and the Iceberg kinds were tightened against it. The
-  Paimon ones were not: `PaimonManifestListNode` measures 38dp of a declared 80, `PaimonSchemaNode`
-  50 of 80, `PaimonManifestNode` 60 of 80, `PaimonSnapshotNode` 62 of 84. The reason for leaving
-  them is the fixture — there is exactly one Paimon table checked in, with one snapshot, so a
-  conditional line that never appears in it would be invisible to the measurement. A second Paimon
-  fixture (more snapshots, a changelog manifest list, an ANALYZE commit) settles it, and the
-  numbers are printed on every run either way.
+- **The Paimon cards are tightened — done, once a second fixture existed.** `CardHeightTest` now
+  sweeps `test` and `dv`, and the worst it measures is the same for both, so the heights were cut
+  to measured-plus-four like the Iceberg kinds: manifest list 80→42, schema 80→54, manifest 80→64,
+  snapshot 84→66. The manifest-list card also stopped printing the words "Manifest List" under an
+  eyebrow that already said `PAIMON DELTA`; the noun is the eyebrow and the value line is the
+  count of manifests the list names, which is on the node now (`manifestCount`) because the
+  children it draws may be a page. What no fixture still has: a changelog manifest list and an
+  `ANALYZE` commit. Neither adds a line to any card — the kind is a colour and the eyebrow, the
+  commit kind is one capped line — so the bound holds; the point is only that the two remain
+  unrendered.
 
 - **`TableNode` and `ErrorNode` have 11dp and 16dp of reserve.** Measured and bounded; left alone
   because neither is a repeated node — a graph draws one table root and, on a healthy table, no

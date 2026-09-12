@@ -602,7 +602,7 @@ sealed class GraphNode(
         val indexFiles: List<PaimonIndexManifestEntry> = emptyList(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 210.0, 84.0), ComparableSnapshot {
+    ) : GraphNode(id, initialX, initialY, 210.0, 66.0), ComparableSnapshot {
 
         override val nodeId: String get() = id
         override val displayNumber: Int get() = simpleId
@@ -627,17 +627,23 @@ sealed class GraphNode(
         val localPath: String? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 220.0, 80.0)
+    ) : GraphNode(id, initialX, initialY, 220.0, 54.0)
 
     /** Paimon manifest list node (base, delta, or changelog). */
     data class PaimonManifestListNode(
         override val id: String,
         val kind: String,                  // "base", "delta", "changelog"
         val simpleId: Int,
+        /**
+         * How many manifests the list names — every one, not the page the graph draws. The card
+         * states it because a list's only content is its length; the manifests under it may be
+         * folded into a group, and a count read off the drawn children would be the page size.
+         */
+        val manifestCount: Int,
         val localPath: String? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 220.0, 80.0)
+    ) : GraphNode(id, initialX, initialY, 220.0, 42.0)
 
     /** Paimon manifest node (references a single manifest file within a manifest list). */
     data class PaimonManifestNode(
@@ -661,7 +667,7 @@ sealed class GraphNode(
         val replayTrace: DeferredRead<List<PaimonEntryTrace>> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 200.0, 80.0)
+    ) : GraphNode(id, initialX, initialY, 200.0, 64.0)
 
     /** Paimon data file node. */
     data class PaimonDataFileNode(
