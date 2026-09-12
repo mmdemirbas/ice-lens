@@ -76,6 +76,7 @@ import model.ScanPredicate
 import model.TermEffect
 import model.evaluatePruning
 import model.SnapshotChange
+import model.snapshotTotals
 import model.FileChange
 import model.manifestTallies
 import model.MAIN_BRANCH
@@ -1569,6 +1570,8 @@ fun NodeDetailsContent(
 
                         node.change?.let { CommitSection(it) }
 
+                        TotalsSection(node)
+
                         DeleteReachSection(node, children)
 
                         if (node.data.summary.isNotEmpty()) {
@@ -1580,7 +1583,8 @@ fun NodeDetailsContent(
                                 Text(
                                     "Written by whatever engine made the commit, and read back verbatim — " +
                                         "nothing here recomputed them. \"What this commit did\" above checks " +
-                                        "the figures describing this commit against the manifests it wrote.",
+                                        "the figures describing this commit against the manifests it wrote, " +
+                                        "and \"What this commit left\" the running totals against its closure.",
                                     fontSize = TypeScale.small,
                                     color = colors.onSurfaceVariant,
                                     modifier = Modifier.padding(bottom = 4.dp)
@@ -3622,6 +3626,65 @@ private fun DeleteReachSection(node: GraphNode.SnapshotNode, children: List<Grap
                 fontSize = TypeScale.micro,
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The six `total-*` figures the summary records about the table at this commit, against the live
+ * set folded from the closure the commit names — `snapshotTotals`. The other half of the summary
+ * from what `CommitSection` checks: that one reads the manifests the commit wrote, this one the
+ * whole closure, which is the walk the two-snapshot comparison runs and is read off the node's
+ * deferred live set so a panel opened twice walks it once.
+ */
+@Composable
+private fun TotalsSection(node: GraphNode.SnapshotNode) {
+    val colors = MaterialTheme.colorScheme
+    val live = node.liveFiles
+    val tallies = live?.let { snapshotTotals(node.data.summary, it) }
+    val disagreeing = tallies?.count { it.agrees == false } ?: 0
+    val title = "What this commit left" + if (disagreeing > 0) " — $disagreeing DISAGREE" else ""
+    Section(title) {
+        Text(
+            "The running totals the summary carries — kept by the writer as the previous total " +
+                "plus what this commit added minus what it removed — beside the same figures folded " +
+                "from every manifest this snapshot lists. A total that disagrees has been wrong since " +
+                "some earlier commit and carried forward since; nothing on a read path checks it.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (tallies == null) {
+            Text(
+                "This snapshot's manifest list is gone with its expiry, so there is no closure to count " +
+                    "and the totals it recorded stand unchecked.",
+                fontSize = TypeScale.small,
+                color = verdictUnevaluatedColor(),
+            )
+        } else {
+            WideTable(
+                headers = listOf("Agrees", "Figure", "In the closure", "The commit said"),
+                columnWidths = listOf(110.dp, 170.dp, 140.dp, 140.dp),
+                rows = tallies.map { tally ->
+                    listOf(
+                        when (tally.agrees) {
+                            true -> "yes"
+                            false -> "NO"
+                            null -> "not recorded"
+                        },
+                        tally.label,
+                        formatCount(tally.counted),
+                        tally.recorded?.let { formatCount(it) } ?: "not recorded",
+                    )
+                },
+                leadCellColors = tallies.map { tally ->
+                    when (tally.agrees) {
+                        true -> null
+                        false -> colors.error
+                        null -> verdictUnevaluatedColor()
+                    }
+                },
             )
         }
     }

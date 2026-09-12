@@ -236,6 +236,17 @@ intellij/src/main/kotlin/plugin/
   deletion vector's `content_size_in_bytes`, not its Puffin file's size** — one container holds a
   blob per data file it covers, so charging the container once per vector counts the same bytes
   repeatedly
+- **What a commit left is checked against its closure, which is the other half of the summary.**
+  `model/SnapshotTotals.kt` puts the six `total-*` figures — data files, delete files, records,
+  files size, position and equality deletes — beside the same figures folded from `liveFilesOf`,
+  the walk the table's `current` figures and the two-snapshot comparison already run, so it is a
+  third reading of one walk and not a second implementation. The writer keeps a total by
+  arithmetic, previous plus added minus removed, so a total that disagrees has been wrong since
+  some earlier commit; nothing on a read path checks it. `total-files-size` charges a deletion
+  vector at its `content_size_in_bytes` — `EntryContribution.chargedSizeBytes`, beside the file
+  size that is on disk — which the `v3` fixture settles: charging the Puffin container instead
+  disagrees with the writer by exactly the container-minus-blob difference. `SnapshotTotalsTest`
+  checks 336 such pairs across fourteen tables, the same oracle shape as `SnapshotChangeTest`
 - **Two snapshots are compared as sets, never as a replay of the commits between them.**
   `model/SnapshotDiff.kt` answers "what is different between these two", which is not the question
   `SnapshotChange` answers and cannot be built out of it: `SnapshotChange` is defined only against
@@ -1185,7 +1196,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~899 tests across 99 files (670 in :core, 224 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~901 tests across 100 files (672 in :core, 224 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

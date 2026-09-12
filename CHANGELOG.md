@@ -50,6 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A snapshot's running totals are checked against its closure.** "What this commit left" on
+  the snapshot panel puts the six `total-*` figures the summary carries — data files, delete
+  files, records, files size, position and equality deletes — beside the same figures folded
+  from every manifest the snapshot lists, with a verdict per row. A total that disagrees has
+  been carried forward wrong since some earlier commit, and nothing on a read path checks it.
+  A deletion vector is charged at its blob size, the way the writer charges it. 336 recorded
+  figures across fourteen checked-in tables agree.
 - **Paimon branches are read and drawn.** `branch/branch-<name>/` was skipped; now each branch
   is another line of commits under the table root, in a column of its own with its name over it
   — the same drawing an Iceberg fork gets — with the branch as a chip on its cards and a `Branch`

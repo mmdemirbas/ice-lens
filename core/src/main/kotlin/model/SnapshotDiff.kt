@@ -13,6 +13,8 @@ data class LiveFile(
     val content: Int,
     val recordCount: Long,
     val sizeBytes: Long,
+    /** What a snapshot summary charges the file at — see [EntryContribution.chargedSizeBytes]. */
+    val chargedSizeBytes: Long = sizeBytes,
 )
 
 /**
@@ -120,6 +122,7 @@ fun liveFilesOf(snapshot: UnifiedSnapshot): List<LiveFile> {
                     content = entry.content,
                     recordCount = entry.recordCount,
                     sizeBytes = entry.sizeBytes,
+                    chargedSizeBytes = entry.chargedSizeBytes,
                 )
             }
     }

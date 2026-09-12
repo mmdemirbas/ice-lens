@@ -34,6 +34,12 @@ data class EntryContribution(
      */
     val recordCount: Long,
     val sizeBytes: Long,
+    /**
+     * What a snapshot summary charges the file at: `content_size_in_bytes` for a v3 deletion
+     * vector, whose Puffin container holds a blob per data file it covers, and the file's own
+     * size for everything else. [sizeBytes] stays the file's size, which is what is on disk.
+     */
+    val chargedSizeBytes: Long,
     val fate: EntryFate,
     val delta: ContentStats,
 )
@@ -68,6 +74,7 @@ fun manifestLedger(
 
     val rows = entry.dataFile?.recordCount ?: 0L
     val bytes = entry.dataFile?.fileSizeInBytes ?: 0L
+    val charged = entry.dataFile?.contentSizeInBytes ?: bytes
 
     fun contribution(fate: EntryFate, added: ContentStats = ContentStats()) = EntryContribution(
         fileKey = entry.fileKey,
@@ -76,6 +83,7 @@ fun manifestLedger(
         content = content,
         recordCount = rows,
         sizeBytes = bytes,
+        chargedSizeBytes = charged,
         fate = fate,
         delta = seat + added,
     )
