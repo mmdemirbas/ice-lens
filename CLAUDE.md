@@ -1196,7 +1196,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~918 tests across 104 files (688 in :core, 225 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~922 tests across 105 files (692 in :core, 225 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1294,6 +1294,7 @@ container invocation and the traps in it:
 | `paimon/db.db/cs` | `PaimonConsumerFixtureTest` | a consumer standing on snapshot 2, and an `expire_snapshots(retain_max = 1)` that left snapshots 2 and 3 because of it |
 | `paimon/db.db/fi` | `PaimonFileIndexFixtureTest` | a bloom-filter file index both ways — a 599 KB `.index` beside the first data file, 117 bytes embedded in the second entry |
 | `paimon/db.db/ep` | `PaimonExternalPathFixtureTest` | `data-file.external-paths` — no bucket under the table, both files at `example/paimon/ep-files/bucket-0/` beside it, `_EXTERNAL_PATH` recorded |
+| `paimon/db.db/rt` | `PaimonRowTrackingFixtureTest` | `row-tracking.enabled` — two appends recording first ids 0 and 3, then a full compaction whose output records none and carries `_ROW_ID` per row |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1461,6 +1462,18 @@ also on the classpath.
   first and existence-gated, because it is a search (`EXTERNAL_REROOTED`); and a file at neither
   place is reported at the layout path it is not at (`EXTERNAL_MISSING`). A path the table recorded
   outside itself skips the traversal check, the same rule as Iceberg's `RECORDED`
+- **A row-tracked file keeps its ids in one of two places, and a compaction moves them.** Under
+  `row-tracking.enabled` a file a commit wrote records `_FIRST_ROW_ID` and its rows take
+  consecutive ids in file order, and the snapshot records `nextRowId`; a compaction's output
+  records **no** first id and carries every row's id in a `_ROW_ID` column of the file, beside a
+  `_SEQUENCE_NUMBER` column holding the writing commit's sequence — the `rt` fixture's compaction
+  also reordered the rows, which is why the id has to travel with the row. The Paimon builder
+  derives `_ROW_ID` for the first shape (`first + file_row_number`) and reads it as a cell for the
+  second, so a row card carries the id either way, and the file panel's `Row IDs` row says which
+  shape it is — or that row tracking is off, which is what an `APPEND` file with no first id means.
+  `nextRowId` is not checked as a tally: once a compaction's inputs leave the base, nothing listed
+  accounts for the ids that were handed out, so the invariant `PaimonRowTrackingFixtureTest`
+  sweeps is one-sided — no file claims an id at or past the next one, and the next never goes back
 - **A file index lives in one of two places, and the one beside the data file is the table's.**
   Where a Paimon file index goes is its size against `file-index.in-manifest-threshold` (500
   bytes): larger is `<file>.index` beside the data file, named in the entry's `_EXTRA_FILES`;

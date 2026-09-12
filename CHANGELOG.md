@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A row-tracked Paimon file says where its row ids are, and its row cards carry them.** The
+  file panel's `Row IDs` row states the range a recorded first id implies, or that a compaction's
+  output carries each row's id in its `_ROW_ID` column, or that row tracking is off; a sample row
+  shows its `_ROW_ID` either way, derived from the first id or read from the column. `rt` is the
+  fixture — two appends and a full compaction that reordered the rows.
 - **A Paimon file index is read, and the one beside the data file is no longer an orphan.** A
   file index over `file-index.in-manifest-threshold` is `<file>.index` beside the data file and
   named in the entry's `_EXTRA_FILES`; a smaller one is `_EMBEDDED_FILE_INDEX` in the entry.

@@ -326,6 +326,7 @@ What is left:
   | `paimon/db.db/cs` | a consumer at snapshot 2 and an `expire_snapshots(retain_max = 1)` it held back — two snapshots left of three |
   | `paimon/db.db/fi` | a bloom-filter file index both ways — a `.index` file beside the data file, and one embedded in the manifest entry |
   | `paimon/db.db/ep` | `data-file.external-paths` — the data files beside the table under `ep-files/`, `_EXTERNAL_PATH` recorded, no bucket under the table |
+  | `paimon/db.db/rt` | `row-tracking.enabled` — first ids on appended files, `_ROW_ID` inside a compaction's output, `nextRowId` on every snapshot |
 
   **Still missing:** the `write.metadata.path` layout is built at runtime by
   `RecordedPathResolutionTest`, a rearrangement of the minimal fixture rather than a table an

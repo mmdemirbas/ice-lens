@@ -22,6 +22,9 @@ object PaimonGraphBuilder {
     /** Max sample rows created per data file. */
     private const val MAX_ROWS_PER_FILE = 5
 
+    /** The column a row-tracked compaction writes each row's id under, and the key a derived id is put under. */
+    const val ROW_ID_COLUMN = "_ROW_ID"
+
     /**
      * Builds graph nodes and edges for the given Paimon table model.
      *
@@ -324,6 +327,16 @@ object PaimonGraphBuilder {
                                 enriched["row_idx"] = rowIndex
                                 enriched["local_file_path"] = dataFile.path.toString()
                                 enriched.putAll(rowData.cells)
+                                // A row-tracked file written by a commit records only its first
+                                // row id, and the rest follow in file order; a compaction's
+                                // output carries every row's id in a _ROW_ID column instead and
+                                // records no first id. So the id is derived here for the first
+                                // shape and read as a cell for the second — one column either way.
+                                val firstRowId = dataFile.metadata.file?.firstRowId
+                                val position = (rowData.cells[SampleRowReader.FILE_ROW_NUMBER] as? Number)?.toLong()
+                                if (firstRowId != null && position != null && ROW_ID_COLUMN !in enriched) {
+                                    enriched[ROW_ID_COLUMN] = firstRowId + position
+                                }
                                 enriched
                             } else emptyMap()
                         } catch (e: Exception) {

@@ -1,0 +1,23 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT"
+  }, {
+    "id" : 1,
+    "name" : "v",
+    "type" : "STRING"
+  } ],
+  "highestFieldId" : 1,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ ],
+  "options" : {
+    "bucket" : "-1",
+    "owner" : "root",
+    "compaction.min.file-num" : "2",
+    "row-tracking.enabled" : "true"
+  },
+  "timeMillis" : 1789255330390
+}

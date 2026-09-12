@@ -927,6 +927,20 @@ class InspectorRenderTest {
             .firstOrNull { it.pathResolution == model.PaimonPathResolution.EXTERNAL_REROOTED }
         assertNotNull(external, "the ep fixture's files should be re-rooted under the local warehouse")
         renderInspector(epGraph, external.id, "paimon-file-node-external", height = 1800)
+
+        // And row tracking, both shapes: an appended file's `Row IDs` row states the range its
+        // first id implies, and a compaction's output says the ids are in the file.
+        val rtGraph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/rt").absolutePath)),
+            showRows = false,
+        )
+        val rtFiles = rtGraph.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
+        val tracked = rtFiles.firstOrNull { it.entry.file?.firstRowId == 3L && it.operationKind == model.PaimonEntryKind.ADD }
+        val compacted = rtFiles.firstOrNull { it.entry.file?.fileSource == model.PaimonFileSource.COMPACT }
+        assertNotNull(tracked, "the rt fixture's second append should record a first row id of 3")
+        assertNotNull(compacted, "and its compaction should have written a file with none")
+        renderInspector(rtGraph, tracked.id, "paimon-file-node-row-tracked", height = 1800)
+        renderInspector(rtGraph, compacted.id, "paimon-file-node-row-tracked-compacted", height = 1800)
     }
 
     /**

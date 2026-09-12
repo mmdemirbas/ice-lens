@@ -2449,7 +2449,23 @@ fun NodeDetailsContent(
                                 model.PaimonPathResolution.EXTERNAL_MISSING ->
                                     DetailRow("Resolved", "not found — the entry records an external path that is not on this machine, and nothing under the local warehouse matches its tail; the layout path above stands in")
                             }
-                            file?.firstRowId?.let { DetailRow("First Row ID", "$it") }
+                            // Row tracking: a file a commit wrote records its first id and the
+                            // rest follow in file order; a compaction's output records none and
+                            // carries each row's id in its _ROW_ID column. An APPEND file with no
+                            // first id is a table without row tracking.
+                            val firstRowId = file?.firstRowId
+                            DetailRow(
+                                "Row IDs",
+                                when {
+                                    firstRowId != null -> {
+                                        val last = firstRowId + (file?.rowCount ?: 1L) - 1L
+                                        "$firstRowId .. $last — first id recorded, the rest follow in file order"
+                                    }
+                                    file?.fileSource == PaimonFileSource.COMPACT ->
+                                        "carried per row in the file's _ROW_ID column — a compaction's output records no first id"
+                                    else -> "none — row tracking is not enabled"
+                                },
+                            )
                             // Where the file index lives is decided by its size against
                             // file-index.in-manifest-threshold: beside the data file and named in
                             // _EXTRA_FILES, or carried in the entry. Both are stated, and "none" is
