@@ -191,6 +191,7 @@ object PaimonGraphBuilder {
                                     simpleId = nextFileSimpleId++,
                                     entry = unifiedDataFile.metadata,
                                     localPath = unifiedDataFile.path.toString(),
+                                    partition = unifiedDataFile.partition,
                                 )
                             },
                             localPath = unifiedManifest.path.toString(),
@@ -229,6 +230,7 @@ object PaimonGraphBuilder {
                                     entry = entry,
                                     simpleId = fileSimpleId,
                                     bucket = entry.bucket,
+                                    partition = unifiedDataFile.partition,
                                     level = entry.file?.level,
                                     operationKind = entry.kind,
                                     localPath = unifiedDataFile.path.toString(),

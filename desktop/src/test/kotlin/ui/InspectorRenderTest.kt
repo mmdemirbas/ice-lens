@@ -236,6 +236,22 @@ class InspectorRenderTest {
     }
 
     /**
+     * A partitioned Paimon table's data file: the partition decoded from the entry beside the
+     * directory text Paimon wrote, which for a date is its epoch day rather than the date.
+     */
+    @Test
+    fun `a partitioned paimon file names its partition and the directory it is in`() {
+        val graph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pt").absolutePath)),
+            showRows = false,
+        )
+        val file = graph.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
+            .firstOrNull { it.partition?.values?.any { v -> v.value == "north-america" } == true }
+        assertNotNull(file, "the pt fixture should carry a file in the north-america partition")
+        renderInspector(graph, file.id, "paimon-file-node-partitioned", height = 1400)
+    }
+
+    /**
      * A v1-written manifest and one of its files, after the table's upgrade to v2.
      *
      * Neither records a sequence number and both panels have to say the number is 0 *and* why —

@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **A partitioned Paimon table opens with its files where they are.** A manifest entry names its
+  file by name only and its partition as a serialised `BinaryRow`, which was never decoded — so on
+  any partitioned table every data file resolved to a path under the table root that does not
+  exist: no rows, every file missing, and "walk the table directory" listing the whole table as
+  orphans. `_PARTITION` is decoded now (dates, strings inline and in the tail, integers, decimals,
+  timestamps, booleans) against the manifest's own schema, the file resolves under
+  `<key>=<value>/…/bucket-N/`, and the file panel, search and IDE tree show the partition beside the
+  directory text Paimon wrote — which for a date is its epoch day. The new `pt` fixture is a
+  Spark-written table over two dates and two regions.
 - **A v1 manifest's entries are at sequence number 0, as the spec reads them, not "N/A".** Every
   file under a manifest a v1 table wrote printed `N/A` and was left out of the delete-pairing rule
   as if its number were unknown; the format defines it as 0 and an upgrade to v2 leaves those

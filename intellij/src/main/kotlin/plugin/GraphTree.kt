@@ -138,6 +138,7 @@ object GraphTree {
         )
         is GraphNode.PaimonDataFileNode -> listOf(
             "File" to (node.entry.file?.fileName ?: "—"),
+            "Partition" to (node.partition?.display?.ifEmpty { "none" } ?: "not decoded"),
             "Level" to (node.entry.file?.level?.toString() ?: "—"),
             "Records" to (node.entry.file?.rowCount?.toString() ?: "—"),
             "Kind" to node.entry.kind.toString(),

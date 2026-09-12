@@ -299,6 +299,8 @@ data class PaimonManifestEntryView(
     val simpleId: Int,
     val entry: PaimonManifestEntry,
     val localPath: String,
+    /** The entry's `_PARTITION`, decoded — see [decodePaimonPartition]. Null when it could not be. */
+    val partition: DecodedPaimonPartition? = null,
 )
 
 /**
@@ -698,6 +700,8 @@ sealed class GraphNode(
         val entry: PaimonManifestEntry,
         val simpleId: Int,
         val bucket: Int? = null,
+        /** The partition the file is in, decoded from the entry — the directory half of [localPath]. */
+        val partition: DecodedPaimonPartition? = null,
         val level: Int? = null,
         val operationKind: Int? = null,     // 0=ADD, 1=DELETE
         val localPath: String? = null,

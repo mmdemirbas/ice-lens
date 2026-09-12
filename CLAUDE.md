@@ -1167,7 +1167,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~850 tests across 91 files (627 in :core, 218 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~864 tests across 93 files (640 in :core, 219 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1258,6 +1258,7 @@ container invocation and the traps in it:
 | `default/maint` | `MaintenanceFixtureTest` | `rewrite_position_delete_files` dropping two dangling deletes, then `rewrite_manifests` — the commit whose summary counts manifests |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
+| `paimon/db.db/pt` | `PaimonPartitionFixtureTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1299,6 +1300,23 @@ also on the classpath.
   stream, not the table's contents.
 - Paimon has no data/delete manifest split (every manifest carries both kinds of entry), so
   all manifests count as `dataManifestCount`.
+- **A partitioned table's file path comes from the entry's `_PARTITION`, and that is a
+  `BinaryRow` this decodes.** A manifest entry names its file by `_FILE_NAME` only; the file lives
+  under `<key>=<value>/…/bucket-N/`, so until `model/PaimonBinaryRow.kt` existed every data file of
+  a partitioned table resolved to `<table>/<file>`, read as missing, and the whole table read as
+  orphans — on the table shape that is the ordinary one. The row is little-endian behind a 4-byte
+  big-endian arity: a null-bit region whose first eight bits are the row kind, one 8-byte slot per
+  field, then a variable-length tail; a string of seven bytes or fewer sits *inline* in its slot
+  with the length in the last byte's low seven bits and that byte's top bit set, a longer one sits
+  in the tail behind `(offset shl 32) or length`. The `pt` fixture carries both (`eu`,
+  `north-america`) and a date, and **the directory layout is the oracle**: the partition decoded
+  from each entry has to be the directory its file is in. It is decoded against the schema the
+  manifest's `_SCHEMA_ID` names, the same rule as an Iceberg manifest and its spec. Two things
+  about the path: under the default `partition.legacy-name = true` a `DATE` is written as its
+  epoch day (`dt=19787`), so `PaimonPartitionValue` carries the decoded value *and* the path text;
+  and the resolver returns the partition path whether or not the file is there, because a missing
+  file should be reported where it was supposed to be. An entry whose partition cannot be decoded
+  — a type this does not read, the wrong arity — resolves the old way and says so in the panel
 - **A snapshot's `indexManifest` is read, and it is the only place two things are recorded.**
   The field was parsed into `PaimonSnapshot` and dropped — the same shape of gap Iceberg's
   `statistics` had, and invisible for the same reason: nothing rendered it, so nothing noticed it

@@ -2277,6 +2277,18 @@ fun NodeDetailsContent(
                             DetailRow("Property", "Value", isHeader = true)
                             DetailRow("File Name", file?.fileName ?: "N/A", copyable = true)
                             DetailRow("Kind", if (node.operationKind == 1) "DELETE" else "ADD")
+                            // Decoded from the entry's _PARTITION, and it is the directory the
+                            // file lives under: the value a reader wants beside the text Paimon
+                            // wrote in the path, which for a date is its epoch day.
+                            val partition = node.partition
+                            DetailRow(
+                                "Partition",
+                                when {
+                                    partition == null -> "not decoded — the entry's partition could not be read against the schema"
+                                    partition.values.isEmpty() -> "none — the table is unpartitioned"
+                                    else -> partition.display + " (${partition.path})"
+                                },
+                            )
                             DetailRow("Bucket", "${node.bucket ?: "N/A"}")
                             DetailRow("Total Buckets", "${node.entry.totalBuckets ?: "N/A"}")
                             DetailRow("LSM Level", "${node.level ?: "N/A"}")

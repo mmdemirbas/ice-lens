@@ -78,6 +78,7 @@ object GraphSearch {
         is GraphNode.PaimonDataFileNode -> listOfNotNull(
             node.entry.file?.fileName,
             node.localPath,
+            node.partition?.display?.takeIf { it.isNotEmpty() },
             node.level?.let { "level $it" },
             node.bucket?.let { "bucket $it" },
             paimonKindWord(node.operationKind),

@@ -156,15 +156,39 @@ object PaimonEntryKind {
     const val DELETE = 1
 }
 
-/** Paimon manifest entry (Avro), one record per data file ADD/DELETE operation. */
+/**
+ * Paimon manifest entry (Avro), one record per data file ADD/DELETE operation.
+ *
+ * [partition] is a serialised `BinaryRow` over the table's partition keys — see
+ * [decodePaimonPartition] — and it is where a partitioned table's file path comes from: the entry
+ * names the file by `_FILE_NAME` only, and the file lives under `<key>=<value>/…/bucket-N/`.
+ */
 @Serializable
 data class PaimonManifestEntry(
     @SerialName("_KIND") val kind: Int? = null,   // 0=ADD, 1=DELETE
+    @SerialName("_PARTITION") val partition: ByteArray? = null,
     @SerialName("_BUCKET") val bucket: Int? = null,
     @SerialName("_TOTAL_BUCKETS") val totalBuckets: Int? = null,
-    // _PARTITION is complex binary — skip for now
     @SerialName("_FILE") val file: PaimonDataFileMeta? = null,
-)
+) {
+    // A ByteArray compares by identity inside a data class; this entry sits in nodes that are
+    // compared across graph builds, so the bytes have to compare by content.
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is PaimonManifestEntry) return false
+        return kind == other.kind && bucket == other.bucket && totalBuckets == other.totalBuckets &&
+            file == other.file && partition.contentEquals(other.partition)
+    }
+
+    override fun hashCode(): Int {
+        var result = kind.hashCode()
+        result = 31 * result + partition.contentHashCode()
+        result = 31 * result + bucket.hashCode()
+        result = 31 * result + totalBuckets.hashCode()
+        result = 31 * result + file.hashCode()
+        return result
+    }
+}
 
 /** Metadata for a single Paimon data file, nested inside [PaimonManifestEntry]. */
 @Serializable

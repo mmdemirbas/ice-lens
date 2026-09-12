@@ -1,0 +1,29 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT NOT NULL"
+  }, {
+    "id" : 1,
+    "name" : "dt",
+    "type" : "DATE NOT NULL"
+  }, {
+    "id" : 2,
+    "name" : "region",
+    "type" : "STRING NOT NULL"
+  }, {
+    "id" : 3,
+    "name" : "v",
+    "type" : "STRING"
+  } ],
+  "highestFieldId" : 3,
+  "partitionKeys" : [ "dt", "region" ],
+  "primaryKeys" : [ "dt", "region", "k" ],
+  "options" : {
+    "bucket" : "1",
+    "owner" : "root"
+  },
+  "timeMillis" : 1789245988521
+}

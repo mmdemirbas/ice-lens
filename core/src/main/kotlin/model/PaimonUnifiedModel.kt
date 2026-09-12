@@ -87,6 +87,8 @@ data class PaimonUnifiedManifest(
 data class PaimonUnifiedDataFile(
     val path: Path,
     val metadata: PaimonManifestEntry,
+    /** The entry's `_PARTITION`, decoded against its manifest's schema; null when it could not be. */
+    val partition: DecodedPaimonPartition? = null,
     private val rowsLoader: () -> List<UnifiedRow> = {
         SampleRowReader.querySampleRows(path.toString()).map { UnifiedRow(it) }
     },
@@ -235,9 +237,9 @@ private fun readPaimonSnapshot(
     val schema = schemasById[snapshot.schemaId]
     val snapshotErrors = mutableListOf<UnifiedReadError>()
 
-    val baseManifests = readManifestList(tablePath, snapshot.baseManifestList, "base-manifest-list", snapshotErrors, manifestCache)
-    val deltaManifests = readManifestList(tablePath, snapshot.deltaManifestList, "delta-manifest-list", snapshotErrors, manifestCache)
-    val changelogManifests = readManifestList(tablePath, snapshot.changelogManifestList, "changelog-manifest-list", snapshotErrors, manifestCache)
+    val baseManifests = readManifestList(tablePath, snapshot.baseManifestList, "base-manifest-list", snapshotErrors, manifestCache, schemasById)
+    val deltaManifests = readManifestList(tablePath, snapshot.deltaManifestList, "delta-manifest-list", snapshotErrors, manifestCache, schemasById)
+    val changelogManifests = readManifestList(tablePath, snapshot.changelogManifestList, "changelog-manifest-list", snapshotErrors, manifestCache, schemasById)
 
     return PaimonUnifiedSnapshot(
         path = snapshotPath,
@@ -302,6 +304,7 @@ private fun readManifestList(
     stage: String,
     errors: MutableList<UnifiedReadError>,
     manifestCache: PaimonManifestCache,
+    schemasById: Map<Int?, PaimonSchema>,
 ): List<PaimonUnifiedManifest> {
     if (manifestListPath.isNullOrBlank()) return emptyList()
 
@@ -326,7 +329,7 @@ private fun readManifestList(
     }
 
     return result.entries.map { meta ->
-        manifestCache.manifestFor(meta) { readPaimonManifest(tablePath, meta, errors) }
+        manifestCache.manifestFor(meta) { readPaimonManifest(tablePath, meta, errors, schemasById) }
     }
 }
 
@@ -334,6 +337,7 @@ private fun readPaimonManifest(
     tablePath: Path,
     meta: PaimonManifestFileMeta,
     errors: MutableList<UnifiedReadError>,
+    schemasById: Map<Int?, PaimonSchema>,
 ): PaimonUnifiedManifest {
     val manifestPath = tablePath.resolve("manifest").resolve(meta.fileName ?: "unknown")
     val manifestErrors = mutableListOf<UnifiedReadError>()
@@ -351,8 +355,19 @@ private fun readPaimonManifest(
 
         val normalizedTableRoot = runCatching { tablePath.toAbsolutePath().normalize() }
             .getOrElse { tablePath.normalize() }
+        // The partition is decoded against the schema the manifest was written under — its
+        // `_SCHEMA_ID` — the same rule that decodes an Iceberg manifest against its own spec.
+        // Partition keys cannot change across a Paimon table's schemas, but their types name
+        // which decoding each slot gets, and a schema this table never had is not a guess worth
+        // making: the newest one stands in only when the manifest names none.
+        val schema = schemasById[meta.schemaId?.toInt()] ?: schemasById.values.maxByOrNull { it.id ?: -1 }
+        val partitionKeys = schema?.partitionKeys.orEmpty()
+        val partitionFields = partitionKeys.mapNotNull { key -> schema?.fields?.firstOrNull { it.name == key } }
         result.entries.map { entry ->
-            val dataFilePath = resolveDataFilePath(tablePath, entry)
+            val partition = entry.partition
+                ?.takeIf { partitionFields.size == partitionKeys.size }
+                ?.let { decodePaimonPartition(it, partitionFields, schema?.options.orEmpty()) }
+            val dataFilePath = resolveDataFilePath(tablePath, entry, partition)
             val normalizedResolved = runCatching { dataFilePath.toAbsolutePath().normalize() }
                 .getOrElse { dataFilePath.normalize() }
             if (!normalizedResolved.startsWith(normalizedTableRoot)) {
@@ -362,7 +377,7 @@ private fun readPaimonManifest(
                     message = "Data file path resolves outside the table directory: $normalizedResolved",
                 )
             }
-            PaimonUnifiedDataFile(path = dataFilePath, metadata = entry)
+            PaimonUnifiedDataFile(path = dataFilePath, metadata = entry, partition = partition)
         }
     } else {
         emptyList()
@@ -377,21 +392,26 @@ private fun readPaimonManifest(
 }
 
 /**
- * Resolves the full path for a Paimon data file.
- * Paimon manifest entries contain only the file name; the full path is
- * `tablePath / [partition=value] / bucket-N / fileName`.
- * Since we don't decode partition bytes, we search for the file or fall back to tablePath/fileName.
+ * Resolves the full path for a Paimon data file: `tablePath / <key>=<value>/… / bucket-N / fileName`.
+ *
+ * The manifest entry names the file by `_FILE_NAME` only; the partition directories come from
+ * its `_PARTITION`, decoded, and the bucket from `_BUCKET`. That path is *the* path — it is
+ * returned whether or not the file is there, because a file that is missing should be reported
+ * at the place it was supposed to be. Only an entry whose partition could not be decoded falls
+ * back to looking under `bucket-N` at the table root, which is where an unpartitioned table's
+ * files are anyway, and then to the table root itself.
  */
-private fun resolveDataFilePath(tablePath: Path, entry: PaimonManifestEntry): Path {
+private fun resolveDataFilePath(tablePath: Path, entry: PaimonManifestEntry, partition: DecodedPaimonPartition?): Path {
     val fileName = entry.file?.fileName ?: return tablePath
     val bucket = entry.bucket
-    // If we have a bucket number, try bucket-N directory
+    if (partition != null && bucket != null) {
+        val partitionDir = partition.values.fold(tablePath) { dir, value -> dir.resolve("${value.name}=${value.pathText}") }
+        return partitionDir.resolve("bucket-$bucket").resolve(fileName)
+    }
     if (bucket != null) {
-        val bucketDir = tablePath.resolve("bucket-$bucket")
-        val candidate = bucketDir.resolve(fileName)
+        val candidate = tablePath.resolve("bucket-$bucket").resolve(fileName)
         if (Files.exists(candidate)) return candidate
     }
-    // Fall back: resolve from table root
     logger.debug("Data file not found in bucket-{}, falling back to table root: {}", bucket, fileName)
     return tablePath.resolve(fileName)
 }

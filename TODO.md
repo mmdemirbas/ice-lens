@@ -321,6 +321,7 @@ What is left:
   | `paimon/db.db/dv` | a Spark-written primary-key table with a deletion vector |
   | `paimon/db.db/cl` | `changelog-producer = input`: changelog files, an overwrite, an `ANALYZE` with statistics |
   | `paimon/db.db/tg` | a tag, then `expire_snapshots` — a snapshot retained by its tag only |
+  | `paimon/db.db/pt` | partitioned by a date and a string — the `_PARTITION` decoder's oracle is the directory layout |
 
   **Still missing:** both path layouts are built at runtime rather than checked in — the
   `write.metadata.path` one by `RecordedPathResolutionTest`, the data-outside-the-table one by

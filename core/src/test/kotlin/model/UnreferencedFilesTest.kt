@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
  * Files under the table root that no metadata names, checked in the direction that matters.
  *
  * The easy assertion is that the one known orphan is found. The one that carries the weight is
- * that **fifteen engine-written tables report none**: the referenced set has to cover every kind
+ * that **sixteen engine-written tables report none**: the referenced set has to cover every kind
  * of file both formats write — manifest lists, manifests, data and delete files, Puffin vectors and
  * statistics, metadata versions, version hints, Paimon's snapshot and schema files, index
  * manifests and index files, changelog files, statistics — or a checked-in table shows a false
@@ -29,8 +29,8 @@ class UnreferencedFilesTest {
 
     @Test
     fun `every engine-written table with no orphan reports none`() {
-        val models: List<FormatTableModel> = icebergFixtures.map(::iceberg) + listOf("test", "dv").map(::paimon)
-        assertEquals(15, models.size)
+        val models: List<FormatTableModel> = icebergFixtures.map(::iceberg) + listOf("test", "dv", "pt").map(::paimon)
+        assertEquals(16, models.size)
         models.forEach { model ->
             val report = findUnreferencedFiles(model)
             assertTrue(report.problems.isEmpty(), "${model.name}: ${report.problems}")
