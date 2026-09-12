@@ -43,6 +43,7 @@ import kotlin.test.assertTrue
 import model.GraphModel
 import model.GraphSearch
 import model.GraphNode
+import model.describe
 import model.ManifestEntryStatus
 import model.PaimonUnifiedTableModel
 import model.PredicateOp
@@ -289,6 +290,26 @@ class InspectorRenderTest {
             .firstOrNull { it.pathResolution == model.PathResolution.REBUILT_BESIDE_TABLE }
         assertNotNull(file, "the extdata fixture's files should be re-rooted beside the table")
         renderInspector(graph, file.id, "file-node-external-data", height = 1600)
+    }
+
+    /**
+     * A data file of a table with `WRITE ORDERED BY`, and the metadata that defines three orders.
+     * The file panel has to show two rows, not one: the order the file claims (0, unsorted — what
+     * Spark records on every file it writes) and the table's default beside it, as
+     * `WRITE ORDERED BY` stated it, because a bare `0` reads as "unordered rows" and is not. The
+     * metadata panel's table has to name the column beside the source id, because a reader does
+     * not carry field ids in their head.
+     */
+    @Test
+    fun `a file of a sorted table shows its claim beside the table's default`() {
+        val graph = graphFor("sorted")
+        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().firstOrNull { it.defaultSortOrder?.orderId == 2 }
+        assertNotNull(file, "every file of the sorted fixture sees the table default to order 2")
+        assertEquals(0L, file.data.sortOrderId)
+        assertEquals("id DESC NULLS LAST, name ASC NULLS FIRST", file.defaultSortOrder?.describe { file.schema?.nameOf(it) })
+        renderInspector(graph, file.id, "file-node-sorted", height = 1600)
+        val metadata = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().first { it.fileName == "v6.metadata.json" }
+        renderInspector(graph, metadata.id, "metadata-node-sorted", height = 3200)
     }
 
     /**

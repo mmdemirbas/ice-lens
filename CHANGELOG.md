@@ -56,6 +56,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A data file's sort order is named, and the table's default is put beside it.** The file panel
+  printed `Sort Order ID: 0` with nothing to resolve it against; it now reads the order the way
+  `WRITE ORDERED BY` stated it, and when the table's default is a different order, a second row
+  says which order that is and whose. The metadata panel's sort-order tables gain a `Column`
+  column resolved through the current schema, print the transform unquoted, and mark the default
+  order on its heading. `sorted` is the fixture, and what it settled is why the second row exists:
+  Spark sorts the rows inside every file it writes under `WRITE ORDERED BY` and records
+  `sort_order_id 0` on all of them, so a file's 0 does not mean its rows are unordered.
 - **A Paimon file whose statistics cover a subset of the schema says so.** `fields.<col>.stats-mode
   = none` shrinks `_VALUE_STATS` to the columns that have statistics, named in
   `_VALUE_STATS_COLS`; the Column Bounds section now states which columns are covered and that

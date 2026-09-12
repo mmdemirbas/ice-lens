@@ -230,7 +230,7 @@ class CardHeightTest {
     private companion object {
         /** Every checked-in Iceberg table. A kind's worst case is not in any one of them. */
         val ICEBERG_FIXTURES = listOf(
-            "test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "stats", "branched3", "expired", "maint", "v1", "extdata",
+            "test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "stats", "branched3", "expired", "maint", "v1", "extdata", "sorted",
         )
 
         /**

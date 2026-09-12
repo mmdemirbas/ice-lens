@@ -493,6 +493,19 @@ sealed class GraphNode(
         /** How [localPath] was arrived at — see [UnifiedDataFile.pathResolution]. */
         val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
         /**
+         * The sort order `sort_order_id` names, looked up in the newest metadata — orders only
+         * accumulate, so the newest list holds every id a file can carry. Null when the id names
+         * none, which is a fact about the table worth saying rather than smoothing over.
+         */
+        val sortOrder: SortOrder? = null,
+        /**
+         * The table's `default-sort-order-id` resolved the same way, so the panel can put the
+         * file's claim beside the table's. They differ on every Spark-written file of a table with
+         * `WRITE ORDERED BY`: the writer sorts the rows and records 0, so a file's 0 is not a
+         * statement that its rows are unordered — the `sorted` fixture.
+         */
+        val defaultSortOrder: SortOrder? = null,
+        /**
          * The sequence number of the manifest this entry came from, so the entry's own can be
          * inherited from it — see [effectiveSequenceNumber] for why a null entry value is not
          * "unknown". Carried on the node because the builder has it and the panel does not: the

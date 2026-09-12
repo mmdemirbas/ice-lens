@@ -39,6 +39,11 @@ object IcebergGraphBuilder {
         val tableNodeId = "table_root"
 
         val tableSummary = buildTableSummary(tableModel)
+        // Sort orders only accumulate, so the newest metadata's list holds every id a file can name.
+        val newestMetadata = tableModel.metadatas.lastOrNull()?.metadata
+        val sortOrdersById = newestMetadata?.sortOrders.orEmpty()
+            .mapNotNull { order -> order.orderId?.let { it to order } }.toMap()
+        val defaultSortOrder = newestMetadata?.defaultSortOrderId?.let { sortOrdersById[it] }
         logicalNodes[tableNodeId] = GraphNode.TableNode(
             tableNodeId,
             tableSummary,
@@ -259,6 +264,8 @@ object IcebergGraphBuilder {
                                         partition = unifiedDataFile.partition,
                                         localPath = unifiedDataFile.path.toString(),
                                         pathResolution = unifiedDataFile.pathResolution,
+                                        sortOrder = dataFile.sortOrderId?.let { sortOrdersById[it.toInt()] },
+                                        defaultSortOrder = defaultSortOrder,
                                         manifestSequenceNumber = unifiedManifest.metadata.sequenceNumber,
                                         deletionVectorLoader = deletionVectorLoader(dataFile, unifiedDataFile.path),
                                     )

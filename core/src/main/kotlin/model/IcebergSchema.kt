@@ -117,7 +117,26 @@ data class SortField(
     val transform: JsonElement? = null,
     val direction: String? = null,
     @SerialName("null-order") val nullOrder: String? = null,
-)
+) {
+    val transformName: String get() = (transform as? JsonPrimitive)?.contentOrNull.orEmpty()
+
+    /** `name ASC NULLS FIRST`, or `truncate[4](name) DESC NULLS LAST` — the way `WRITE ORDERED BY` is written. */
+    fun describe(nameOf: (Int) -> String?): String {
+        val column = sourceId?.let { nameOf(it) ?: "field $it" } ?: "field ?"
+        val term = if (transformName.isEmpty() || transformName == "identity") column else "$transformName($column)"
+        val dir = direction?.uppercase() ?: "ASC"
+        val nulls = nullOrder?.uppercase()?.replace('-', ' ') ?: "NULLS FIRST"
+        return "$term $dir $nulls"
+    }
+}
+
+/**
+ * The order as `WRITE ORDERED BY` would state it, with source ids resolved to names through
+ * [nameOf] — a file's own schema, or the metadata's current one. Order 0 is the unsorted order
+ * and reads as such rather than as an empty string.
+ */
+fun SortOrder.describe(nameOf: (Int) -> String?): String =
+    if (fields.isEmpty()) "unsorted" else fields.joinToString(", ") { it.describe(nameOf) }
 
 @Serializable
 data class SnapshotRef(

@@ -1,0 +1,140 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "b764f3b6-b060-4235-8777-13255ef96aa9",
+  "location" : "/wh/default/sorted",
+  "last-sequence-number" : 2,
+  "last-updated-ms" : 1789256247039,
+  "last-column-id" : 2,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 2,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  }, {
+    "order-id" : 1,
+    "fields" : [ {
+      "transform" : "identity",
+      "source-id" : 2,
+      "direction" : "asc",
+      "null-order" : "nulls-first"
+    } ]
+  }, {
+    "order-id" : 2,
+    "fields" : [ {
+      "transform" : "identity",
+      "source-id" : 1,
+      "direction" : "desc",
+      "null-order" : "nulls-last"
+    }, {
+      "transform" : "identity",
+      "source-id" : 2,
+      "direction" : "asc",
+      "null-order" : "nulls-first"
+    } ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.distribution-mode" : "range",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : 7572116100363838900,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 7572116100363838900,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 4841347967933430075,
+    "timestamp-ms" : 1789256245921,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1789256241749",
+      "added-data-files" : "1",
+      "added-records" : "3",
+      "added-files-size" : "676",
+      "changed-partition-count" : "1",
+      "total-records" : "3",
+      "total-files-size" : "676",
+      "total-data-files" : "1",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1789256241749",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/sorted/metadata/snap-4841347967933430075-1-6e55dcbe-fcff-4747-9e4c-ee446d057ab2.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 2,
+    "snapshot-id" : 7572116100363838900,
+    "parent-snapshot-id" : 4841347967933430075,
+    "timestamp-ms" : 1789256246994,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1789256241749",
+      "added-data-files" : "1",
+      "added-records" : "3",
+      "added-files-size" : "676",
+      "changed-partition-count" : "1",
+      "total-records" : "6",
+      "total-files-size" : "1352",
+      "total-data-files" : "2",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1789256241749",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/sorted/metadata/snap-7572116100363838900-1-a41ce91c-0a2b-4575-9639-fff12cd7f94b.avro",
+    "schema-id" : 0
+  } ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1789256245921,
+    "snapshot-id" : 4841347967933430075
+  }, {
+    "timestamp-ms" : 1789256246994,
+    "snapshot-id" : 7572116100363838900
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1789256243926,
+    "metadata-file" : "/wh/default/sorted/metadata/v1.metadata.json"
+  }, {
+    "timestamp-ms" : 1789256245921,
+    "metadata-file" : "/wh/default/sorted/metadata/v2.metadata.json"
+  }, {
+    "timestamp-ms" : 1789256246095,
+    "metadata-file" : "/wh/default/sorted/metadata/v3.metadata.json"
+  }, {
+    "timestamp-ms" : 1789256246994,
+    "metadata-file" : "/wh/default/sorted/metadata/v4.metadata.json"
+  } ]
+}

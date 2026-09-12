@@ -177,6 +177,20 @@ intellij/src/main/kotlin/plugin/
   escapes the local one. `extdata` is the engine-written oracle: the table holds `metadata/` and
   no `data/`, and its two files sit under `example/iceberg/extdata-files/` beside the table, the
   way they sat under `/wh`
+- **A data file's `sort_order_id` is the writer's claim, and the table's default is put beside
+  it because the two are not one fact.** `SortOrder.describe(nameOf)` renders an order the way
+  `WRITE ORDERED BY` states it (`id DESC NULLS LAST, name ASC NULLS FIRST`; order 0 is
+  `unsorted`), with source ids resolved through the schema the caller supplies — the manifest's
+  own for a file, the current one for the metadata panel. `FileNode.sortOrder` and
+  `.defaultSortOrder` are both looked up in the **newest** metadata's `sort-orders`, which is
+  right because orders only accumulate. The `sorted` fixture settled what the panel has to say:
+  three commits under three orders, the rows inside each file **in the order that was in force**,
+  and `sort_order_id 0` on every one of them — Spark's writer sorts through the write's requested
+  ordering and builds `SparkFileWriterFactory` without a `dataSortOrder`, so `DataFiles.Builder`
+  keeps `SortOrder.unsorted().orderId()`. So a file's 0 is not a statement that its rows are
+  unordered, only that the metadata does not claim an order; the `Table Default Order` row is
+  drawn when the two ids differ and says whose it is. The script's header first predicted 0, 1
+  and 2 — the manifests corrected it, which is the reason the fixture is an oracle
 - Workspace serialization uses `W|path` / `T|path` items joined by `;`. The path component
   percent-encodes `%`, `;`, and `|` so paths containing those characters round-trip safely.
 - `normalizeFilePath` handles `file:` URIs (including `file://host/path` authority,
@@ -1196,7 +1210,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~924 tests across 106 files (694 in :core, 225 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~929 tests across 107 files (698 in :core, 226 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1284,6 +1298,7 @@ container invocation and the traps in it:
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
 | `default/extdata` | `ExternalDataPathFixtureTest` | `write.data.path` outside the table — no `data/` under it, two files beside it under `example/iceberg/extdata-files/` |
+| `default/sorted` | `SortedFixtureTest` | three sort orders, three commits written under each — rows sorted inside every file, `sort_order_id 0` on every file |
 | `default/expired` | `ExpiredSnapshotsFixtureTest` | snapshots dropped by `expire_snapshots` — the older metadata versions still list them, and they are drawn as expired, not as read errors |
 | `default/maint` | `MaintenanceFixtureTest` | `rewrite_position_delete_files` dropping two dangling deletes, then `rewrite_manifests` — the commit whose summary counts manifests |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |

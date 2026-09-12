@@ -80,6 +80,7 @@ import model.snapshotTotals
 import model.FileChange
 import model.manifestTallies
 import model.MAIN_BRANCH
+import model.describe
 import model.PaimonFileSource
 import model.paimonManifestTallies
 import model.KeyValuePairLong
@@ -1337,22 +1338,31 @@ fun NodeDetailsContent(
                             node.data.sortOrders
                                 .sortedBy { it.orderId ?: Int.MAX_VALUE }
                                 .forEach { order ->
+                                    // Which one new writes take is a fact about the metadata, not
+                                    // about any order, so it is said on the heading of the one it names.
                                     Text(
-                                        "Order ${order.orderId ?: "Unknown"}",
+                                        "Order ${order.orderId ?: "Unknown"}" +
+                                            if (order.orderId != null && order.orderId == node.data.defaultSortOrderId) " (default)" else "",
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = TypeScale.body
                                     )
                                     Spacer(Modifier.height(4.dp))
+                                    // The column by name, resolved through this metadata's current
+                                    // schema, beside the id the order records; order 0 has no fields
+                                    // and is the unsorted order, which the one row says.
+                                    val currentSchema = node.data.schemas.firstOrNull { it.schemaId == node.data.currentSchemaId }
                                     WideTable(
-                                        headers = listOf("Source ID", "Transform", "Direction", "Null Order"),
-                                        rows = if (order.fields.isEmpty()) listOf(listOf("N/A", "N/A", "N/A", "N/A")) else order.fields.map { field ->
+                                        headers = listOf("Column", "Source ID", "Transform", "Direction", "Null Order"),
+                                        rows = if (order.fields.isEmpty()) listOf(listOf("unsorted", "N/A", "N/A", "N/A", "N/A")) else order.fields.map { field ->
                                             listOf(
+                                                currentSchema?.fields?.firstOrNull { it.id == field.sourceId }?.name ?: "field ${field.sourceId ?: "?"}",
                                                 "${field.sourceId ?: "N/A"}",
-                                                normalizeText(field.transform?.toString()),
+                                                field.transformName.ifEmpty { "N/A" },
                                                 field.direction ?: "N/A",
                                                 field.nullOrder ?: "N/A"
                                             )
-                                        }
+                                        },
+                                        columnWidths = listOf(140.dp, 90.dp, 110.dp, 90.dp, 110.dp),
                                     )
                                     Spacer(Modifier.height(12.dp))
                                 }
@@ -1979,7 +1989,25 @@ fun NodeDetailsContent(
                             DetailRow("File Format", "${node.data.fileFormat ?: "N/A"}")
                             DetailRow("Record Count", "${node.data.recordCount ?: 0}")
                             DetailRow("File Size", "${node.data.fileSizeInBytes ?: 0} bytes")
-                            DetailRow("Sort Order ID", "${node.data.sortOrderId ?: "N/A"}")
+                            // The id resolved to the order it names, the way WRITE ORDERED BY
+                            // states it, and the table's default beside it when the two differ:
+                            // a writer that sorts without recording the order writes 0, so the
+                            // file's claim and the table's are two facts, not one.
+                            val nameOf = { fieldId: Int -> node.schema?.nameOf(fieldId) }
+                            DetailRow(
+                                "Sort Order",
+                                node.data.sortOrderId?.let { id ->
+                                    node.sortOrder?.let { "$id — ${it.describe(nameOf)}" }
+                                        ?: "$id — not among the table's sort orders"
+                                } ?: "N/A",
+                            )
+                            val defaultOrder = node.defaultSortOrder
+                            if (defaultOrder != null && defaultOrder.orderId != node.data.sortOrderId?.toInt()) {
+                                DetailRow(
+                                    "Table Default Order",
+                                    "${defaultOrder.orderId} — ${defaultOrder.describe(nameOf)} — the table's, which this file does not claim",
+                                )
+                            }
                             DetailRow("Split Offsets", longs(node.data.splitOffsets))
                             DetailRow("Equality IDs", node.data.equalityIds?.joinToString(", ") ?: "N/A")
                             val filePath = node.data.filePath
