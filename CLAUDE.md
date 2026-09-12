@@ -587,7 +587,10 @@ intellij/src/main/kotlin/plugin/
   child of every snapshot carrying it forward; every departed node is attributed to exactly one
   group, so `sum(group.hiddenNodeCount)` equals what actually went; and an `ErrorNode` is never
   grouped, with errors inside a collapsed subtree counted in `hiddenErrorCount` and shown in red
-  on the card. Never add a cap that isn't visible in the UI
+  on the card. A fourth follows from the first: **a group whose parent is not kept is not
+  emitted** — it would reach ELK with no edge and land in the first column over the table root
+  (`mor` at page size 3) — and its members are attributed to whichever group hid the parent.
+  Never add a cap that isn't visible in the UI
 - **Expanding is per group; the inverse is per parent.** Opening every page of a node leaves no
   `GroupNode` beside it, so the affordance that expanded is gone and the reader has nothing left to
   click — which is why `Back to one page` hangs off the *parent* in the inspector's header row
@@ -1037,6 +1040,11 @@ intellij/src/main/kotlin/plugin/
   time**, so a missing provider compiles cleanly and fails in front of the reader —
   `GraphLayoutAlgorithmTest` lays a real table out under every entry for exactly that reason, and
   checks the direction took by asserting which axis a *layer* collapses onto
+- **Overlap prevention runs per column, and a column is not always one kind.** A Paimon schema is
+  a sibling of its snapshots, so ELK lays it out in the manifest lists' column; `preventOverlaps`
+  takes the two kinds as one layer, or a schema card sits under a list's (`dv`, `ao`).
+  `LayoutOverlapTest` checks both readings — per kind, which is where a group node goes wrong,
+  and per drawn column across kinds on every checked-in table, which is what a reader sees
 - **Layout post-processing runs ordering, then alignment, then ordering again.** Alignment moves
   a parent to its children's centre, which overrides the order the first pass set — so the
   vertical order of snapshots was decided by ELK's manifest placement until the second pass
@@ -1167,7 +1175,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~892 tests across 98 files (664 in :core, 223 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~894 tests across 98 files (666 in :core, 223 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

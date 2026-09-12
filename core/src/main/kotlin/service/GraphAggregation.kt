@@ -84,9 +84,15 @@ object GraphAggregation {
         if (pending.isEmpty()) return AggregationResult(nodes, edges)
 
         val kept = reachableNodeIds(nodes, containment, hiddenByParent)
-        val attribution = attributeHiddenNodes(pending, containment, kept, nodeById)
+        // A group stands beside the siblings it pages, under their parent. A parent that is
+        // itself not drawn — folded into a group of its own kind, or under one that was — leaves
+        // nothing for its groups to stand beside, and a group emitted anyway reaches ELK with no
+        // edge and lands in the first column, over the table root. Its members are still counted:
+        // the sweep below reaches them through whichever group hid the parent.
+        val drawn = pending.filter { it.parentId in kept }
+        val attribution = attributeHiddenNodes(drawn, containment, kept, nodeById)
 
-        val groupNodes = pending.map { group ->
+        val groupNodes = drawn.map { group ->
             val owned = attribution[group.id].orEmpty()
             GraphNode.GroupNode(
                 id = group.id,

@@ -695,10 +695,11 @@ object GraphLayoutService {
         preventOverlapsInLayer(layer(AggregationKind.MANIFEST))
         preventOverlapsInLayer(layer(AggregationKind.FILE), margin = 2.0)
         preventOverlapsInLayer(layer(AggregationKind.ROW), margin = 2.0)
-        // Paimon layers
+        // Paimon layers. A schema is a sibling of its snapshots, so ELK lays it out in the
+        // column after them — the manifest lists' column — and the two kinds are one layer for
+        // this pass, or a schema card sits under a manifest list's (`dv`, `ao`).
         preventOverlapsInLayer(layer(AggregationKind.PAIMON_SNAPSHOT))
-        preventOverlapsInLayer(layer(AggregationKind.PAIMON_SCHEMA))
-        preventOverlapsInLayer(layer(AggregationKind.PAIMON_MANIFEST_LIST))
+        preventOverlapsInLayer(layer(AggregationKind.PAIMON_SCHEMA) + layer(AggregationKind.PAIMON_MANIFEST_LIST))
         preventOverlapsInLayer(layer(AggregationKind.PAIMON_MANIFEST))
         preventOverlapsInLayer(layer(AggregationKind.PAIMON_FILE), margin = 2.0)
     }

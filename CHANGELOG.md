@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **A Paimon schema card no longer sits under a manifest-list card.** The schema is a sibling
+  of its snapshots, so ELK lays it out in the manifest lists' column, and overlap prevention
+  kept schemas apart from schemas and lists apart from lists — `pschema_0` was drawn over
+  `pml_2_delta` on `dv` and `pml_3_delta` on `ao`. The two kinds are one layer for that pass now,
+  and `LayoutOverlapTest` checks every column of every checked-in table across kinds.
+- **A group whose parent was itself folded away is no longer drawn over the table card.** At a
+  small page size on a table with many metadata versions (`mor` at 3), the snapshot group under a
+  hidden metadata version reached the layout with no edge and landed in the first column, on
+  top of the table root. Such a group is dropped; its members are counted under the group that
+  hid the parent, so the hidden-node figures still add up.
 - **A partitioned Paimon table opens with its files where they are.** A manifest entry names its
   file by name only and its partition as a serialised `BinaryRow`, which was never decoded — so on
   any partitioned table every data file resolved to a path under the table root that does not

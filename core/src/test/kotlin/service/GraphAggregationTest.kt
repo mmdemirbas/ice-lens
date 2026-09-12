@@ -331,6 +331,33 @@ class GraphAggregationTest {
         UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/mor").absolutePath))
 
     /**
+     * A group stands beside the siblings it pages, under their parent — so a parent that was
+     * itself folded away leaves nothing for its groups to stand beside. Such a group used to be
+     * emitted anyway: its edge came from a node no longer in the graph, ELK laid it out with no
+     * edge at all, and it landed in the first column over the table root. `mor` at page size 3
+     * is where it showed — eight metadata versions, so `meta_v7` is in the metadata group, and
+     * the snapshot group under `meta_v7` was drawn on top of the table card.
+     *
+     * The dropped group's members are not lost: they are counted under the group that hid the
+     * parent, which is the invariant the test above holds at every page size.
+     */
+    @Test
+    fun `a group under a parent that is not drawn is not drawn either`() {
+        val built = IcebergGraphBuilder.buildGraph(morModel())
+        val result = GraphAggregation.apply(built.nodes, built.edges, policy = policy(3))
+        val drawnIds = result.nodes.mapTo(mutableSetOf()) { it.id }
+        val orphaned = result.nodes.groups().filter { it.parentId !in drawnIds }
+        assertEquals(emptyList(), orphaned.map { it.id }, "groups whose parent is not in the graph")
+        assertTrue(result.edges.all { it.fromId in drawnIds && it.toId in drawnIds }, "every edge joins two drawn nodes")
+
+        // The case is real on this table: a metadata version was folded away, and it has
+        // enough snapshots to page.
+        val metadataGroup = result.nodes.groups().single { it.parentId == "table_root" }
+        val hiddenMetadata = metadataGroup.memberIds.mapNotNull { id -> built.nodes.find { it.id == id } as? GraphNode.MetadataNode }
+        assertTrue(hiddenMetadata.any { it.data.snapshots.size > 3 }, "a hidden metadata version with more snapshots than a page")
+    }
+
+    /**
      * The invariant, on a table Spark actually wrote: every node the builder produced is either
      * drawn or accounted for by exactly one group. Nothing is dropped, and nothing is counted
      * twice — which is what lets the canvas state a hidden-node figure without deriving it a

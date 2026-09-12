@@ -31,8 +31,8 @@ class LayoutOverlapTest {
     private fun iceberg(fixture: String): FormatTableModel =
         UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/$fixture").absolutePath))
 
-    private fun paimon(): FormatTableModel =
-        PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/test").absolutePath))
+    private fun paimon(fixture: String = "test"): FormatTableModel =
+        PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/$fixture").absolutePath))
 
     /** Pairs of node ids in one layer whose rectangles intersect. */
     private fun overlaps(model: FormatTableModel, pageSize: Int): List<String> {
@@ -65,6 +65,38 @@ class LayoutOverlapTest {
                 assertEquals(emptyList(), overlaps(iceberg(fixture), pageSize), "in $fixture")
             }
             assertEquals(emptyList(), overlaps(paimon(), pageSize), "in the Paimon fixture")
+        }
+    }
+
+    /**
+     * Nor may two cards ELK put in one column, whatever their kinds — which the per-layer check
+     * cannot see. A Paimon schema is a sibling of its snapshots, so ELK lays it out in the
+     * manifest-list column, and `preventOverlaps` keeping schemas apart from schemas and lists
+     * apart from lists left `pschema_0` under `pml_2_delta` on `dv` and under `pml_3_delta` on
+     * `ao`. The column is what a reader sees, so the column is what is checked: every pair of
+     * nodes whose x agrees, across every checked-in table of both formats.
+     */
+    @Test
+    fun `no two nodes in one column overlap, whatever their kinds`() {
+        val icebergFixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "stats", "branched3", "expired", "maint", "v1")
+        val paimonFixtures = listOf("test", "dv", "cl", "tg", "pt", "ao", "br")
+        val models = icebergFixtures.map(::iceberg) + paimonFixtures.map(::paimon)
+        listOf(3, 24).forEach { pageSize ->
+            models.forEach { model ->
+                val graph = GraphLayoutService.layoutGraph(model, showRows = false, policy = AggregationPolicy(pageSize = pageSize))
+                val found = mutableListOf<String>()
+                val columns = graph.nodes.groupBy { Math.round(graph.layoutPositions.getValue(it.id).x) }
+                columns.values.forEach { nodes ->
+                    nodes.forEachIndexed { index, a ->
+                        nodes.drop(index + 1).forEach { b ->
+                            val pa = graph.layoutPositions.getValue(a.id)
+                            val pb = graph.layoutPositions.getValue(b.id)
+                            if (pa.y < pb.y + b.height && pb.y < pa.y + a.height) found += "${a.id} over ${b.id}"
+                        }
+                    }
+                }
+                assertEquals(emptyList(), found, "in ${model.name} at page size $pageSize")
+            }
         }
     }
 }

@@ -79,12 +79,6 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 ## Bugs
 
 - **Pinch zoom not working** — trackpad two-finger pinch gesture doesn't fire on all platforms. Needs platform-specific testing.
-- **A Paimon schema card can sit under a manifest-list card.** The schema node is a sibling of
-  its snapshots, so ELK puts it in the manifest-list layer, and `preventOverlaps` keeps nodes of
-  one *kind* apart — `pschema_0` overlaps `pml_2_delta` on `dv`, `pml_3_delta` on `ao` and two
-  lists on `br` (found while rendering `graph-canvas-paimon-branched`; pre-existing on the other
-  two). `LayoutOverlapTest` groups by kind and cannot see it. Either give the schema its own
-  layer or run the overlap pass over every node at one x.
 
 ---
 
