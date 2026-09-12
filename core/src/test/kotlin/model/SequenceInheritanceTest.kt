@@ -56,7 +56,7 @@ class SequenceInheritanceTest {
      */
     @Test
     fun `no live entry in any fixture is left without a sequence number`() {
-        val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched")
+        val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "maint")
         val missing = fixtures.flatMap { name ->
             table(name).metadatas.last().snapshots.flatMap { snapshot ->
                 snapshot.manifests.flatMap { manifest ->

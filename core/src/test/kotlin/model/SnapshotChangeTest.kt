@@ -42,7 +42,7 @@ class SnapshotChangeTest {
             .filterNot { it.expired }
             .sortedBy { it.metadata.timestampMs }
 
-    private val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "expired")
+    private val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "expired", "maint")
 
     /**
      * The whole point, across every checked-in table: what the manifests say a commit did has to
@@ -71,7 +71,7 @@ class SnapshotChangeTest {
             }
         }
         // Without these the test passes on a version that finds no figures to compare at all.
-        // The corpus yields 81 comparisons; the bound is well under that so adding a fixture does
+        // The corpus yields 120 comparisons; the bound is well under that so adding a fixture does
         // not churn it, and the per-fixture check is the part that would catch a table dropping
         // out of the sweep entirely.
         assertTrue(

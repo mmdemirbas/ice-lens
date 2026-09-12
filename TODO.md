@@ -315,6 +315,7 @@ What is left:
   | `default/stats` | a Puffin statistics file — four theta sketches, one per column |
   | `default/branched3` | three branches forked at three points, plus a tag on the trunk's tip |
   | `default/expired` | four commits, then `expire_snapshots(retain_last => 1)` — three expired snapshots the older metadata versions still list |
+  | `default/maint` | merge-on-read, then `rewrite_position_delete_files` (two dangling deletes dropped) and `rewrite_manifests` (created 2, kept 0) |
   | `paimon/db.db/test` | a real Flink/Paimon table, with a `HASH` index |
   | `paimon/db.db/dv` | a Spark-written primary-key table with a deletion vector |
   | `paimon/db.db/cl` | `changelog-producer = input`: changelog files, an overwrite, an `ANALYZE` with statistics |

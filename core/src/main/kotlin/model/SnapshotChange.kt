@@ -26,6 +26,21 @@ data class ChangedFile(
 )
 
 /**
+ * One manifest a snapshot lists, and which commit wrote it.
+ *
+ * [writtenBy] is `manifest_file.added_snapshot_id`: the commit whose manifest this is, or null
+ * when the list omits the field and nothing can say. The snapshot *wrote* the manifests whose
+ * [writtenBy] is its own id and *carried* the rest forward — which is the split
+ * `rewrite_manifests` records as `manifests-created` and `manifests-kept`, and the one figure that
+ * checks the attribution rule itself rather than the entries read under it.
+ */
+data class CommitManifest(
+    val path: String,
+    val content: Int,
+    val writtenBy: Long?,
+)
+
+/**
  * One figure a snapshot's summary records about its own commit, beside the same figure counted
  * from the manifests that commit wrote.
  *
@@ -73,6 +88,18 @@ data class SnapshotChange(
     val operation: String?,
     val summary: Map<String, String> = emptyMap(),
     val files: List<ChangedFile> = emptyList(),
+    /** Every manifest the snapshot lists, with the commit that wrote it — see [CommitManifest]. */
+    val manifests: List<CommitManifest> = emptyList(),
+) {
+    val added: List<ChangedFile> get() = files.filter { it.change == FileChange.ADDED }
+    val removed: List<ChangedFile> get() = files.filter { it.change == FileChange.REMOVED }
+
+    /** The manifests this commit wrote: `added_snapshot_id` is its own. */
+    val manifestsWritten: Int get() = manifests.count { it.writtenBy == snapshotId }
+
+    /** The manifests it carried forward from an earlier commit, unchanged. */
+    val manifestsCarried: Int get() = manifests.count { it.writtenBy != null && it.writtenBy != snapshotId }
+
     /**
      * Manifests this snapshot lists whose `added_snapshot_id` is absent, so nothing can say which
      * commit wrote them.
@@ -82,10 +109,7 @@ data class SnapshotChange(
      * statement from "this commit changed nothing", and the inspector has to be able to tell the
      * reader which one it is looking at.
      */
-    val unattributedManifests: Int = 0,
-) {
-    val added: List<ChangedFile> get() = files.filter { it.change == FileChange.ADDED }
-    val removed: List<ChangedFile> get() = files.filter { it.change == FileChange.REMOVED }
+    val unattributedManifests: Int get() = manifests.count { it.writtenBy == null }
 
     /** The first commit on a table, or a branch's root — nothing to have changed *from*. */
     val isRoot: Boolean get() = parentSnapshotId == null
@@ -99,10 +123,35 @@ data class SnapshotChange(
      * `added-dvs = 1` and `added-position-deletes = 1` about it. Reading `added-dvs` as a v3
      * replacement and adding it to the total reports two delete files where one was written —
      * which is what this did until the fixture said otherwise.
+     *
+     * `added-position-deletes` and `added-equality-deletes` are **rows**, not files: a delete
+     * file's `record_count` is how many positions or key tuples it holds, and the writer sums
+     * them per kind. `rewrite_position_delete_files` is where that pair matters — it records
+     * three positions removed and one added on `maint`, which is the two dangling deletes and the
+     * live one going in, and only the live one coming out.
+     *
+     * `manifests-created` and `manifests-kept` are what `rewrite_manifests` says about the list
+     * it wrote, and they check the attribution rule itself: written is every manifest whose
+     * `added_snapshot_id` is this commit, kept is every other. Ordinary commits record neither.
      */
-    val tallies: List<CommitTally>
+    val tallies: List<CommitTally> get() = fileTallies + manifestTallies
+
+    private fun recorded(key: String): Long? = summary[key]?.toLongOrNull()
+
+    /**
+     * The two figures about the manifest list itself, kept apart from the file figures because
+     * the panel treats them differently: the split is stated in prose for every commit, so the
+     * rows are drawn only where a summary recorded something to check them against.
+     */
+    val manifestTallies: List<CommitTally>
+        get() = listOf(
+            CommitTally("Manifests written", recorded("manifests-created"), manifestsWritten.toLong()),
+            CommitTally("Manifests kept", recorded("manifests-kept"), manifestsCarried.toLong()),
+        )
+
+    /** The figures about files — what was put in and taken out, by count, rows and bytes. */
+    val fileTallies: List<CommitTally>
         get() {
-            fun recorded(key: String): Long? = summary[key]?.toLongOrNull()
 
             fun count(change: FileChange, predicate: (ChangedFile) -> Boolean): Long =
                 files.count { it.change == change && predicate(it) }.toLong()
@@ -115,6 +164,8 @@ data class SnapshotChange(
 
             val isData = { f: ChangedFile -> f.content == DataFileContent.DATA }
             val isDelete = { f: ChangedFile -> f.content != DataFileContent.DATA }
+            val isPositional = { f: ChangedFile -> f.content == DataFileContent.POSITION_DELETES }
+            val isEquality = { f: ChangedFile -> f.content == DataFileContent.EQUALITY_DELETES }
 
             return listOf(
                 CommitTally("Data files added", recorded("added-data-files"), count(FileChange.ADDED, isData)),
@@ -131,6 +182,10 @@ data class SnapshotChange(
                 ),
                 CommitTally("Records added", recorded("added-records"), rows(FileChange.ADDED, isData)),
                 CommitTally("Records removed", recorded("deleted-records"), rows(FileChange.REMOVED, isData)),
+                CommitTally("Position deletes added", recorded("added-position-deletes"), rows(FileChange.ADDED, isPositional)),
+                CommitTally("Position deletes removed", recorded("removed-position-deletes"), rows(FileChange.REMOVED, isPositional)),
+                CommitTally("Equality deletes added", recorded("added-equality-deletes"), rows(FileChange.ADDED, isEquality)),
+                CommitTally("Equality deletes removed", recorded("removed-equality-deletes"), rows(FileChange.REMOVED, isEquality)),
                 CommitTally("Bytes added", recorded("added-files-size"), bytes(FileChange.ADDED)),
                 CommitTally("Bytes removed", recorded("removed-files-size"), bytes(FileChange.REMOVED)),
             )
@@ -155,15 +210,16 @@ fun snapshotChangeOf(snapshot: UnifiedSnapshot): SnapshotChange {
         summary = snapshot.metadata.summary,
     )
 
-    var unattributed = 0
+    val manifests = snapshot.manifests.map { manifest ->
+        CommitManifest(
+            path = manifest.metadata.manifestPath.orEmpty(),
+            content = manifest.metadata.content ?: ManifestContent.DATA,
+            writtenBy = manifest.metadata.addedSnapshotId,
+        )
+    }
     val files = buildList {
         snapshot.manifests.forEach { manifest ->
-            val addedBy = manifest.metadata.addedSnapshotId
-            if (addedBy == null) {
-                unattributed++
-                return@forEach
-            }
-            if (addedBy != snapshotId) return@forEach
+            if (manifest.metadata.addedSnapshotId != snapshotId) return@forEach
 
             manifest.dataFiles.forEach { file ->
                 val entry = file.metadata
@@ -195,6 +251,6 @@ fun snapshotChangeOf(snapshot: UnifiedSnapshot): SnapshotChange {
         operation = snapshot.metadata.summary["operation"],
         summary = snapshot.metadata.summary,
         files = files,
-        unattributedManifests = unattributed,
+        manifests = manifests,
     )
 }

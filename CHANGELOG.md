@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Added
+- **"What this commit did" checks six more figures, and two of them are about manifests.** Rows in
+  delete files by kind (`added-position-deletes`, `added-equality-deletes` and their `removed-`
+  pairs) and the manifest list's split into written and carried (`manifests-created` /
+  `manifests-kept`, which `rewrite_manifests` records); every commit's panel now states how many
+  of its manifests it wrote and how many it carried forward. The new `maint` fixture is a
+  merge-on-read table after `rewrite_position_delete_files` and `rewrite_manifests`, and it is
+  where `deleteReach` meets its oracle from the other direction: two deletes proved dangling
+  before the rewrite, none after. 120 writer-recorded figures are now checked across ten tables.
 - **An expired Iceberg snapshot is drawn as expired, not as a read error.** After
   `expire_snapshots` the older metadata versions still on disk list snapshots whose manifest lists
   are gone, and every one of them was a `SNAPSHOT READ ERROR` node — on a healthy table, which is

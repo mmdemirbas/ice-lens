@@ -1,0 +1,84 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "3a8720fe-039a-48ef-adc7-707b1ec40018",
+  "location" : "/wh/default/maint",
+  "last-sequence-number" : 1,
+  "last-updated-ms" : 1789244730627,
+  "last-column-id" : 2,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.merge.mode" : "merge-on-read",
+    "write.update.mode" : "merge-on-read",
+    "write.delete.mode" : "merge-on-read",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : 3989895981533196559,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 3989895981533196559,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 3989895981533196559,
+    "timestamp-ms" : 1789244730627,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1789244726230",
+      "added-data-files" : "1",
+      "added-records" : "4",
+      "added-files-size" : "694",
+      "changed-partition-count" : "1",
+      "total-records" : "4",
+      "total-files-size" : "694",
+      "total-data-files" : "1",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1789244726230",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/maint/metadata/snap-3989895981533196559-1-818b7273-23b2-4a72-b280-08798e40aded.avro",
+    "schema-id" : 0
+  } ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1789244730627,
+    "snapshot-id" : 3989895981533196559
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1789244728429,
+    "metadata-file" : "/wh/default/maint/metadata/v1.metadata.json"
+  } ]
+}

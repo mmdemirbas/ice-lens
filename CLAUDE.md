@@ -207,9 +207,20 @@ intellij/src/main/kotlin/plugin/
   when commit 9 lists it. Counting statuses across the closure credits every commit with all of
   its ancestors' work. The figures are folded from `files`, never stored beside it, and
   `SnapshotChange.tallies` puts each one against the snapshot `summary` the engine wrote, which
-  is the same idea as `manifestTallies` a level up — `SnapshotChangeTest` checks 81 such pairs
-  across eight checked-in tables and is the suite's strongest oracle, because nothing here
-  produced any of the summaries. Two things the fixtures settled that a reading of the spec did
+  is the same idea as `manifestTallies` a level up — `SnapshotChangeTest` checks 120 such pairs
+  across ten checked-in tables and is the suite's strongest oracle, because nothing here
+  produced any of the summaries. Fourteen figures: files, rows and bytes in and out, **rows in
+  delete files by kind** (`added-position-deletes` and `added-equality-deletes` are positions and
+  key tuples, not files — `rewrite_position_delete_files` on `maint` records three positions out
+  and one in, the two dangling deletes and the live one), and **the manifest list's own split**
+  (`manifests-created` / `manifests-kept`, which only `rewrite_manifests` records and which check
+  the `added_snapshot_id` attribution rule itself rather than the entries read under it — kept
+  as `SnapshotChange.manifestTallies`, drawn only where recorded, since the split is stated in
+  prose on every commit). Two things `maint` settled: **the rewritten delete file keeps the
+  sequence number of the delete it replaces**, recorded explicitly on the entry — a delete
+  applies at or below its number, and taking the rewrite's would apply it to rows committed in
+  between — and **a manifest holding only `DELETED` entries is dropped from the very next
+  commit's list**, so a manifest rewrite finds four to replace where seven were written. Two things the fixtures settled that a reading of the spec did
   not: **`added-dvs` is a breakdown of `added-delete-files`, not a v3 replacement for it** (one
   vector records both as 1, so summing them double-counts), and **`added-files-size` counts a
   deletion vector's `content_size_in_bytes`, not its Puffin file's size** — one container holds a
@@ -1147,7 +1158,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~842 tests across 91 files (620 in :core, 217 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~850 tests across 91 files (627 in :core, 218 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1235,6 +1246,7 @@ container invocation and the traps in it:
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
 | `default/expired` | `ExpiredSnapshotsFixtureTest` | snapshots dropped by `expire_snapshots` — the older metadata versions still list them, and they are drawn as expired, not as read errors |
+| `default/maint` | `MaintenanceFixtureTest` | `rewrite_position_delete_files` dropping two dangling deletes, then `rewrite_manifests` — the commit whose summary counts manifests |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |

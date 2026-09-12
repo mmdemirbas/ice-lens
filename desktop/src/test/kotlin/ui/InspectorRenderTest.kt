@@ -215,6 +215,27 @@ class InspectorRenderTest {
     }
 
     /**
+     * The two maintenance commits, which are the two shapes "what this commit did" had never drawn.
+     *
+     * The delete rewrite removes three delete files and adds one, so the file table has more
+     * removals than additions and the position-delete rows appear beside the file rows; the
+     * manifest rewrite changes no file at all, and what it did is the manifest line and the two
+     * manifest tallies — a panel that has to read as "this commit did something" with an empty
+     * file list under it.
+     */
+    @Test
+    fun `maintenance commits render what they rewrote`() {
+        val graph = graphFor("maint")
+        val snapshots = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().sortedBy { it.data.sequenceNumber }
+        val deleteRewrite = snapshots.single { it.change?.tallies?.any { t -> t.label == "Position deletes removed" && t.recorded == 3L } == true }
+        val manifestRewrite = snapshots.single { it.change?.tallies?.any { t -> t.label == "Manifests written" && t.recorded != null } == true }
+        assertTrue(manifestRewrite.change?.files.orEmpty().isEmpty(), "a manifest rewrite changes no file")
+
+        renderInspector(graph, deleteRewrite.id, "snapshot-node-delete-rewrite", height = 3200)
+        renderInspector(graph, manifestRewrite.id, "snapshot-node-manifest-rewrite", height = 2600)
+    }
+
+    /**
      * A snapshot expiry dropped, drawn as what it is rather than as a read error.
      *
      * The card says so in its eyebrow and the panel says so in an identity row, above a summary

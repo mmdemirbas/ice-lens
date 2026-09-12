@@ -3472,7 +3472,11 @@ private fun CommitSection(change: SnapshotChange) {
     // of the eight, and the other five would each draw a row reading "0 / not recorded / nothing
     // to check" — six rows of the unevaluated colour, wrapped to two lines, above the two rows
     // carrying the answer. A verdict column spends its emphasis on whatever it marks most often.
-    val tallies = change.tallies.filter { it.recorded != null || it.counted != 0L }
+    // The manifest split is in the sentence above for every commit, so its two rows appear only
+    // where the summary recorded the figures — a rewrite_manifests — rather than as two amber
+    // "nothing to check" rows on every panel.
+    val tallies = change.fileTallies.filter { it.recorded != null || it.counted != 0L } +
+        change.manifestTallies.filter { it.recorded != null }
     val disagreeing = change.disagreements.size
 
     val title = "What this commit did" + if (disagreeing > 0) " — $disagreeing DISAGREE" else ""
@@ -3488,6 +3492,13 @@ private fun CommitSection(change: SnapshotChange) {
                             "commit's work rather than its ancestors'."
                     },
                 )
+                // The split the counts below rest on, stated for every commit: a rewrite_manifests
+                // changes no file and this line is the whole of what it did.
+                append(
+                    " It wrote ${formatCount(change.manifestsWritten)} of the " +
+                        "${formatCount(change.manifests.size)} manifests it lists and carried " +
+                        "${formatCount(change.manifestsCarried)} forward unchanged.",
+                )
                 if (change.unattributedManifests > 0) {
                     append(
                         " ${formatCount(change.unattributedManifests)} of the manifests it lists " +
@@ -3502,7 +3513,7 @@ private fun CommitSection(change: SnapshotChange) {
         )
         Text(
             "Figures neither the commit nor its manifests say anything about are left out — a " +
-                "plain append states three of the eight.",
+                "plain append states three of the fourteen.",
             fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
