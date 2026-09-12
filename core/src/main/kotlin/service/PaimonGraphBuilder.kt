@@ -105,6 +105,7 @@ object PaimonGraphBuilder {
                     // asks for, and it asks about two of them.
                     liveFilesLoader = DeferredRead.of { paimonLiveFilesOf(unifiedSnapshot) },
                     indexFiles = unifiedSnapshot.indexFiles,
+                    statistics = unifiedSnapshot.statistics,
                 )
             }
 

@@ -38,12 +38,13 @@ class PaimonReplayTraceTest {
     }
 
     /**
-     * Both checked-in Paimon tables. `test` is one Flink commit holding one ADD; `dv` is six Spark
+     * Every checked-in Paimon table. `test` is one Flink commit holding one ADD; `dv` is six Spark
      * commits, three of them compactions, which is where a delta first removes something a base
-     * still lists — the case the replay exists for, and until `dv` one no real table reached.
+     * still lists — the case the replay exists for, and until `dv` one no real table reached; `cl`
+     * adds an overwrite, which removes everything the base lists in one delta.
      */
     private fun snapshots(): List<PaimonUnifiedSnapshot> =
-        listOf("test", "dv").flatMap { model(it).snapshots }
+        listOf("test", "dv", "cl").flatMap { model(it).snapshots }
 
     /** Every manifest of every snapshot of every fixture, as (snapshot, manifest) pairs. */
     private fun everyManifest(): List<Pair<PaimonUnifiedSnapshot, PaimonUnifiedManifest>> =

@@ -2179,11 +2179,13 @@ fun NodeDetailsContent(
                             DetailRow("Delta Manifest List", node.data.deltaManifestList ?: "N/A", copyable = true)
                             DetailRow("Changelog Manifest List", node.data.changelogManifestList ?: "N/A", copyable = true)
                             DetailRow("Index Manifest", node.data.indexManifest ?: "N/A", copyable = true)
+                            DetailRow("Statistics File", node.data.statistics ?: "N/A", copyable = true)
                             // Written from snapshot version 3. Absent on an older table, which is
                             // a different thing from a table that has produced no rows yet.
                             DetailRow("Next Row ID", "${node.data.nextRowId ?: "not recorded"}")
                         }
                         PaimonIndexFilesSection(node)
+                        PaimonStatisticsSection(node)
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
                     }
                     is GraphNode.PaimonSchemaNode -> {
@@ -3190,6 +3192,81 @@ private fun PaimonIndexFilesSection(node: GraphNode.PaimonSnapshotNode) {
                         }
                     },
                     file.fileName ?: "N/A",
+                )
+            },
+        )
+    }
+}
+
+/**
+ * What an `ANALYZE TABLE` commit wrote, on the snapshot that names it.
+ *
+ * The merged record count leads because it is the one figure the format records nowhere else: a
+ * snapshot's `totalRecordCount` sums file rows, so an updated key counts once per version it still
+ * has and a `-D` row counts as a row, while this is the count after the merge engine — what a scan
+ * returns. Drawn on every snapshot, most of which name nothing, for the same reason the index
+ * section is: only an `ANALYZE` commit writes one, and a section that is absent cannot be told from
+ * one this panel does not know how to render.
+ */
+@Composable
+private fun PaimonStatisticsSection(node: GraphNode.PaimonSnapshotNode) {
+    val colors = MaterialTheme.colorScheme
+    val stats = node.statistics
+    val columns = stats?.colStats.orEmpty()
+    CountedSection("Statistics", columns.size, "column statistics") {
+        if (stats == null) {
+            Text(
+                if (node.data.statistics.isNullOrBlank()) {
+                    "This snapshot names no statistics file. Only an ANALYZE TABLE commit writes one, " +
+                        "and it names the snapshot it measured."
+                } else {
+                    "This snapshot names a statistics file that could not be read — see the read errors."
+                },
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+            )
+            return@CountedSection
+        }
+        val merged = stats.mergedRecordCount
+        val total = node.data.totalRecordCount
+        Text(
+            buildString {
+                append(merged?.let { "${formatCount(it)} rows after the merge engine" } ?: "No merged row count")
+                stats.mergedRecordSize?.let { append(" (${formatBytes(it)})") }
+                stats.snapshotId?.let { append(", measured at snapshot $it") }
+                if (merged != null && total != null) {
+                    append(
+                        if (merged == total) " — the same as the snapshot's file-row total"
+                        else " — the snapshot's file-row total is ${formatCount(total)}",
+                    )
+                }
+                append(".")
+            },
+            fontSize = TypeScale.small,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (columns.isEmpty()) {
+            Text(
+                "No column statistics: the statement did not say FOR ALL COLUMNS or name any.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+            )
+            return@CountedSection
+        }
+        WideTable(
+            headers = listOf("Column", "Distinct Values", "Nulls", "Min", "Max", "Avg Length", "Max Length"),
+            columnWidths = listOf(140.dp, 120.dp, 80.dp, 160.dp, 160.dp, 90.dp, 90.dp),
+            rows = columns.entries.sortedBy { it.value.colId ?: Int.MAX_VALUE }.map { (name, col) ->
+                listOf(
+                    name,
+                    col.distinctCount?.let { formatCount(it) } ?: "N/A",
+                    col.nullCount?.let { formatCount(it) } ?: "N/A",
+                    // Absent for a string column, which is how Paimon writes it rather than a gap.
+                    col.min ?: "—",
+                    col.max ?: "—",
+                    col.avgLen?.let { formatCount(it) } ?: "N/A",
+                    col.maxLen?.let { formatCount(it) } ?: "N/A",
                 )
             },
         )

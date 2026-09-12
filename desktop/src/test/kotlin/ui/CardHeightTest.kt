@@ -61,7 +61,7 @@ class CardHeightTest {
     }
 
     /** Both Paimon tables: the Flink-written one, and the Spark-written one with a deletion vector. */
-    private fun paimonGraphs(): List<GraphModel> = listOf("test", "dv").map { name ->
+    private fun paimonGraphs(): List<GraphModel> = listOf("test", "dv", "cl").map { name ->
         val tableDir = File(repoRoot, "example/paimon/db.db/$name")
         assertTrue(tableDir.isDirectory, "the Paimon fixture should be checked in: $tableDir")
         GraphLayoutService.layoutGraph(

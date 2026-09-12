@@ -2,6 +2,7 @@ package service
 
 import kotlinx.serialization.json.Json
 import model.PaimonIndexManifestEntry
+import model.PaimonStatistics
 import model.PaimonManifestEntry
 import model.PaimonManifestFileMeta
 import model.PaimonSchema
@@ -28,6 +29,16 @@ object PaimonReader {
         val snapshot = json.decodeFromString(PaimonSnapshot.serializer(), Files.readString(location))
         logger.debug("Paimon snapshot read: id={}, schemaId={}, commitKind={}", snapshot.id, snapshot.schemaId, snapshot.commitKind)
         return snapshot
+    }
+
+    /** Reads the JSON file an `ANALYZE` commit names under `statistics/`. */
+    fun readStatistics(path: String): PaimonStatistics {
+        logger.debug("Reading Paimon statistics: {}", path)
+        val location = StorageLocation.pathOf(path)
+        if (!Files.exists(location)) {
+            throw IllegalArgumentException("File not found: $path")
+        }
+        return json.decodeFromString(PaimonStatistics.serializer(), Files.readString(location))
     }
 
     /** Reads a Paimon schema JSON file. */

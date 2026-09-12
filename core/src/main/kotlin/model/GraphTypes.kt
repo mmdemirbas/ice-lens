@@ -600,6 +600,8 @@ sealed class GraphNode(
          * data file and is not read until asked for.
          */
         val indexFiles: List<PaimonIndexManifestEntry> = emptyList(),
+        /** What an `ANALYZE` commit wrote — see [PaimonStatistics]. Null on every other kind. */
+        val statistics: PaimonStatistics? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 210.0, 66.0), ComparableSnapshot {

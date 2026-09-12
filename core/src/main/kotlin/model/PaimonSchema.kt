@@ -24,6 +24,50 @@ data class PaimonSnapshot(
     val watermark: Long? = null,
     /** Paimon's row lineage counter, written from snapshot version 3. Absent on older tables. */
     val nextRowId: Long? = null,
+    /**
+     * The file under `statistics/` an `ANALYZE` commit names, and nothing else does. Parsed and
+     * dropped until the `cl` fixture existed — the same shape of gap [indexManifest] was.
+     */
+    val statistics: String? = null,
+    /** The byte size of each manifest list file, recorded so a planner can budget without a stat. */
+    val baseManifestListSize: Long? = null,
+    val deltaManifestListSize: Long? = null,
+    val changelogManifestListSize: Long? = null,
+)
+
+/**
+ * What an `ANALYZE TABLE` commit writes under `statistics/`, as Paimon's `Statistics` serialises it.
+ *
+ * [mergedRecordCount] is the figure a reader usually wants and the one nothing else in the format
+ * records: the row count *after* the merge engine, where a snapshot's `totalRecordCount` sums the
+ * rows of every file and so counts an updated key once per version it has and a `-D` row as a row.
+ * On `dv`, `totalRecordCount` says 1500 for a table whose vector marks 3 of them deleted. [snapshotId] names the snapshot the figures were computed at,
+ * which is the one *before* the `ANALYZE` commit that carries them.
+ */
+@Serializable
+data class PaimonStatistics(
+    val snapshotId: Long? = null,
+    val schemaId: Long? = null,
+    val mergedRecordCount: Long? = null,
+    val mergedRecordSize: Long? = null,
+    /** Keyed by column name; empty unless the statement said `FOR ALL COLUMNS` or named some. */
+    val colStats: Map<String, PaimonColStats> = emptyMap(),
+)
+
+/**
+ * One column's statistics. [min] and [max] are strings whatever the column's type — Paimon
+ * serialises them through its own string form — and are absent for a string column, which the
+ * `cl` fixture's `v` shows: a distinct count and lengths, and no bounds.
+ */
+@Serializable
+data class PaimonColStats(
+    val colId: Int? = null,
+    val distinctCount: Long? = null,
+    val min: String? = null,
+    val max: String? = null,
+    val nullCount: Long? = null,
+    val avgLen: Long? = null,
+    val maxLen: Long? = null,
 )
 
 /**

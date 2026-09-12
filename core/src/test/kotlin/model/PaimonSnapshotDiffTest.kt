@@ -35,11 +35,12 @@ class PaimonSnapshotDiffTest {
     }
 
     /**
-     * Both checked-in Paimon tables. `test` is one Flink commit; `dv` is six Spark commits whose
-     * compactions remove files the base still lists, which is the only case where "replay" and
-     * "sum the ADDs" give different answers — so the oracles below mean something only on `dv`.
+     * Every checked-in Paimon table. `test` is one Flink commit; `dv` is six Spark commits whose
+     * compactions remove files the base still lists, and `cl` has an overwrite that removes them
+     * all — the cases where "replay" and "sum the ADDs" give different answers, so the oracles
+     * below mean something only on those two.
      */
-    private fun models(): List<PaimonUnifiedTableModel> = listOf("test", "dv").map { model(it) }
+    private fun models(): List<PaimonUnifiedTableModel> = listOf("test", "dv", "cl").map { model(it) }
 
     private fun snapshotNodes(model: PaimonUnifiedTableModel): List<GraphNode.PaimonSnapshotNode> =
         GraphLayoutService.layoutGraph(model, showRows = false)

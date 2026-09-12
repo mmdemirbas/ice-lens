@@ -37,6 +37,11 @@ data class PaimonUnifiedSnapshot(
      * Avro file per snapshot, where a data-file read is one per file.
      */
     val indexFiles: List<PaimonIndexManifestEntry> = emptyList(),
+    /**
+     * The statistics an `ANALYZE` commit wrote, on the snapshot that names them — null on every
+     * other kind. One small JSON file per such snapshot, so read eagerly like the index manifest.
+     */
+    val statistics: PaimonStatistics? = null,
     val readErrors: List<UnifiedReadError> = emptyList(),
 )
 
@@ -188,8 +193,24 @@ private fun readPaimonSnapshot(
         deltaManifests = deltaManifests,
         changelogManifests = changelogManifests,
         indexFiles = readIndexManifest(tablePath, snapshot.indexManifest, snapshotErrors),
+        statistics = readStatistics(tablePath, snapshot.statistics, snapshotErrors),
         readErrors = snapshotErrors,
     )
+}
+
+/** The statistics file a snapshot names under `statistics/`, or null when it names none. */
+private fun readStatistics(
+    tablePath: Path,
+    statisticsName: String?,
+    errors: MutableList<UnifiedReadError>,
+): PaimonStatistics? {
+    if (statisticsName.isNullOrBlank()) return null
+    val resolved = tablePath.resolve("statistics").resolve(statisticsName)
+    return runCatching { PaimonReader.readStatistics(resolved.toString()) }
+        .getOrElse { e ->
+            errors += toError("statistics", resolved.toString(), e)
+            null
+        }
 }
 
 /**

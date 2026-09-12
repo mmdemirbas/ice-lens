@@ -729,6 +729,18 @@ class InspectorRenderTest {
             .firstOrNull { node -> node.indexFiles.any { it.isDeletionVectorIndex } }
         assertNotNull(vectored, "the dv fixture should carry a snapshot with a deletion-vector index")
         renderInspector(dvGraph, vectored.id, "paimon-snapshot-vectors", height = 1800)
+
+        // And the statistics an ANALYZE commit wrote, on the one snapshot of the changelog table
+        // that names them: the merged row count leads, and the column table has a string column
+        // with no bounds beside an int column with both.
+        val clGraph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/cl").absolutePath)),
+            showRows = false,
+        )
+        val analyzed = clGraph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>()
+            .firstOrNull { it.statistics != null }
+        assertNotNull(analyzed, "the cl fixture should carry an ANALYZE snapshot with statistics")
+        renderInspector(clGraph, analyzed.id, "paimon-snapshot-analyze", height = 2000)
     }
 
     /**

@@ -116,6 +116,8 @@ object GraphTree {
             "Commit kind" to (node.data.commitKind ?: "—"),
             "Base manifest list" to (node.data.baseManifestList ?: "—"),
             "Delta manifest list" to (node.data.deltaManifestList ?: "—"),
+            "Changelog manifest list" to (node.data.changelogManifestList ?: "—"),
+            "Merged rows" to (node.statistics?.mergedRecordCount?.toString() ?: "—"),
         )
         is GraphNode.PaimonSchemaNode -> listOf(
             "Schema id" to node.data.id.toString(),

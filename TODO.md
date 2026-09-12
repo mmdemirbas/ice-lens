@@ -186,10 +186,8 @@ What is left:
   snapshot 84→66. The manifest-list card also stopped printing the words "Manifest List" under an
   eyebrow that already said `PAIMON DELTA`; the noun is the eyebrow and the value line is the
   count of manifests the list names, which is on the node now (`manifestCount`) because the
-  children it draws may be a page. What no fixture still has: a changelog manifest list and an
-  `ANALYZE` commit. Neither adds a line to any card — the kind is a colour and the eyebrow, the
-  commit kind is one capped line — so the bound holds; the point is only that the two remain
-  unrendered.
+  children it draws may be a page. `cl` has since added a changelog manifest list, an `OVERWRITE`
+  and an `ANALYZE` commit, and the sweep measures the same worst on all three fixtures.
 
 - **`TableNode` and `ErrorNode` have 11dp and 16dp of reserve.** Measured and bounded; left alone
   because neither is a repeated node — a graph draws one table root and, on a healthy table, no

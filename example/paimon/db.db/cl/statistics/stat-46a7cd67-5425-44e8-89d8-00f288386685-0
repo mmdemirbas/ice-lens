@@ -1,0 +1,24 @@
+{
+  "snapshotId" : 4,
+  "schemaId" : 0,
+  "mergedRecordCount" : 2,
+  "mergedRecordSize" : 1164,
+  "colStats" : {
+    "v" : {
+      "colId" : 1,
+      "distinctCount" : 2,
+      "nullCount" : 0,
+      "avgLen" : 1,
+      "maxLen" : 1
+    },
+    "k" : {
+      "colId" : 0,
+      "distinctCount" : 2,
+      "min" : "10",
+      "max" : "11",
+      "nullCount" : 0,
+      "avgLen" : 4,
+      "maxLen" : 4
+    }
+  }
+}

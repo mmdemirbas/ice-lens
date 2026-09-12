@@ -1117,7 +1117,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~817 tests across 87 files (597 in :core, 215 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~824 tests across 88 files (604 in :core, 215 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1206,6 +1206,7 @@ container invocation and the traps in it:
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
+| `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
 starts a loopback-only MinIO and uploads `example/iceberg/default/mor` to `s3://warehouse/db/mor`;
@@ -1266,6 +1267,22 @@ also on the classpath.
   was a new file and no vector — a correct table that exercised nothing. A thousand rows and five
   hundred against three is what makes the compaction stop at L0. The snapshot's `totalRecordCount`
   still counts the marked rows, which is why the panel prints the live figure beside it
+- **An `ANALYZE` commit names a statistics file, and it is the only place the merged row count
+  exists.** `PaimonSnapshot.statistics` was parsed and dropped like `indexManifest` before it;
+  `model/PaimonSchema.kt` now reads the JSON under `statistics/` as `PaimonStatistics`, eagerly, one
+  small file per such snapshot. `mergedRecordCount` is the row count *after* the merge engine — what
+  a scan returns — where `totalRecordCount` sums file rows and so counts an updated key once per
+  version and a `-D` row as a row; the panel leads with it and puts the file-row total beside it.
+  `snapshotId` names the snapshot the figures were computed at, which is the one **before** the
+  `ANALYZE` commit that carries them (`cl`'s statistics say 4 on snapshot 5). Column stats come only
+  with `FOR ALL COLUMNS`, `min`/`max` are strings whatever the type, and a string column gets none.
+  Three more findings from `cl`, each pinned in `PaimonChangelogFixtureTest`: a snapshot records the
+  **byte size of each manifest list** (`baseManifestListSize` and siblings, checked against the
+  files); the changelog list is excluded from `current` but **counted in `history`**, because the
+  changelog files are reachable and retained until their snapshot expires, which is `history`'s
+  stated definition; and **an overwrite writes a changelog file and does not commit it** — Paimon
+  logs "Overwrite mode currently does not commit any changelog" and leaves the file in the bucket
+  unlisted, so the table has four `changelog-` files on disk and three in any manifest
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.
