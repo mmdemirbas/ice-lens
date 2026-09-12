@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **A table whose data sits outside its directory opens with its files found.** A
+  `write.data.path` layout records absolute data paths that share nothing with the table below
+  the warehouse, and the sub-path rule rebuilt them under the table root, where nothing is —
+  every file reported missing. Such a path is now re-rooted from the recorded warehouse to its
+  local counterpart, found by the trailing segments the recorded and local table directories
+  share, and the file panel says so as a third `Resolved` outcome. `extdata` is the engine-written
+  fixture, checked in beside its table the way it sat under `/wh`.
 - **A Paimon schema card no longer sits under a manifest-list card.** The schema is a sibling
   of its snapshots, so ELK lays it out in the manifest lists' column, and overlap prevention
   kept schemas apart from schemas and lists apart from lists — `pschema_0` was drawn over

@@ -314,6 +314,7 @@ What is left:
   | `default/branched` | a fork, four refs across five commits, one snapshot with two, and ten metadata versions |
   | `default/stats` | a Puffin statistics file — four theta sketches, one per column |
   | `default/branched3` | three branches forked at three points, plus a tag on the trunk's tip |
+  | `default/extdata` | `write.data.path` outside the table — `metadata/` and no `data/`, two files beside the table; the engine-written shape the resolver's third rule was written against |
   | `default/expired` | four commits, then `expire_snapshots(retain_last => 1)` — three expired snapshots the older metadata versions still list |
   | `default/maint` | merge-on-read, then `rewrite_position_delete_files` (two dangling deletes dropped) and `rewrite_manifests` (created 2, kept 0) |
   | `default/v1` | format-version 1, upgraded to 2 in place — v1 manifests under v2 metadata, and a delete after the upgrade |
@@ -325,12 +326,10 @@ What is left:
   | `paimon/db.db/ao` | append-only, no primary key, `bucket = -1` — a DELETE rewrites the file as an `APPEND` with delta −1 |
   | `paimon/db.db/br` | two branches — one created from a tag and committed to, one created empty; main and `dev` share a snapshot id for two different commits |
 
-  **Still missing:** both path layouts are built at runtime rather than checked in — the
-  `write.metadata.path` one by `RecordedPathResolutionTest`, the data-outside-the-table one by
-  `PathResolutionTest` — since each is a rearrangement of the minimal fixture rather than a new
-  table. The data-file one is synthetic in a way the metadata one is not: its manifest is written
-  by `avro4k` rather than by an engine, so it proves the resolver and not the shape a real
-  `write.data.path` table has.
+  **Still missing:** the `write.metadata.path` layout is built at runtime by
+  `RecordedPathResolutionTest`, a rearrangement of the minimal fixture rather than a table an
+  engine wrote that way — a HadoopCatalog table keeps its metadata under the table whatever the
+  property says, so producing one needs a different catalog in the image.
 
 - **The rendered inspector is mostly checked by eye; one invariant is now a number.** Every
   `WideTable`'s leading column is asserted to fit the panel it is drawn in, over the 28 tables the

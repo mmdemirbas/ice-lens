@@ -170,6 +170,15 @@ enum class PathResolution {
 
     /** The recorded directory was discarded and the file name resolved against the local dir. */
     FORCED_RELATIVE,
+
+    /**
+     * The recorded path sits outside the table's own directory — a `write.data.path` layout, or
+     * data registered from elsewhere — so there was no sub-path under the table to rebuild. It
+     * was rebuilt under the local counterpart of the directory the table's *own* recorded path
+     * sits in: the recorded table directory and the local one agree on their last few segments,
+     * and what is above those is the warehouse in each world. See [rebuildBesideTable].
+     */
+    REBUILT_BESIDE_TABLE,
 }
 
 /**
@@ -200,7 +209,11 @@ fun resolveRecordedOrRelative(start: Path, recorded: String?): Pair<Path, PathRe
  * file's sub-path is rebuilt under the table root. Two callers, one rule about the recorded path,
  * and the fallback is the only thing that differs, so the fallback is the parameter.
  */
-fun resolveRecordedOr(recorded: String?, fallback: () -> Path): Pair<Path, PathResolution> {
+fun resolveRecordedOr(recorded: String?, fallback: () -> Path): Pair<Path, PathResolution> =
+    resolveRecordedOrRebuilt(recorded) { fallback() to PathResolution.FORCED_RELATIVE }
+
+/** [resolveRecordedOr] for a fallback that has more than one way of rebuilding, and says which it took. */
+fun resolveRecordedOrRebuilt(recorded: String?, fallback: () -> Pair<Path, PathResolution>): Pair<Path, PathResolution> {
     val asRecorded = recorded
         ?.takeIf { it.isNotBlank() }
         ?.let(::normalizeFilePath)
@@ -209,8 +222,44 @@ fun resolveRecordedOr(recorded: String?, fallback: () -> Path): Pair<Path, PathR
     return if (asRecorded != null) {
         asRecorded to PathResolution.RECORDED
     } else {
-        fallback() to PathResolution.FORCED_RELATIVE
+        fallback()
     }
+}
+
+/**
+ * Where a recorded path that sits *outside* the table lands on this machine, or null when nothing
+ * can be said.
+ *
+ * A data file under the table rebuilds by its sub-path — `data/name=alpha/…` under the local
+ * table root — and a `write.data.path` file has no such sub-path: `/wh/extdata-files/x.parquet`
+ * shares nothing with `/wh/default/extdata` below the warehouse. What it does share is the
+ * warehouse, and the warehouse has a local counterpart whenever the table was copied down with
+ * its surroundings: [recordedTableDir] and [localTableDir] agree on their last segments
+ * (`default/extdata`), and the directory above those is `/wh` in one world and
+ * `…/example/iceberg` in the other. The recorded path is then re-rooted from the one to the
+ * other. Null when the two table directories share no trailing segment, or the recorded path
+ * is not under the recorded warehouse either, or the re-rooted path escapes the local warehouse
+ * — each of which is "nothing can be said", and the caller's older rule runs instead.
+ */
+internal fun rebuildBesideTable(recorded: String, recordedTableDir: String, localTableDir: Path): Path? {
+    val recordedSegments = recordedTableDir.trimEnd('/').split('/')
+    val localRoot = runCatching { localTableDir.toAbsolutePath().normalize() }.getOrElse { localTableDir.normalize() }
+    val localSegments = localRoot.map { it.toString() }
+    var shared = 0
+    while (shared < recordedSegments.size && shared < localSegments.size &&
+        recordedSegments[recordedSegments.size - 1 - shared] == localSegments[localSegments.size - 1 - shared]
+    ) shared++
+    if (shared == 0) return null
+
+    val recordedWarehouse = recordedSegments.dropLast(shared).joinToString("/")
+    if (recordedWarehouse.isEmpty()) return null
+    val relative = recorded.removePrefix("$recordedWarehouse/")
+    if (relative == recorded || relative.isEmpty()) return null
+
+    var localWarehouse: Path = localRoot
+    repeat(shared) { localWarehouse = localWarehouse.parent ?: return null }
+    val rebuilt = localWarehouse.resolve(relative).normalize()
+    return rebuilt.takeIf { it.startsWith(localWarehouse) }
 }
 
 fun resolveForceRelative(start: Path, pathToTakeOnlyLastPart: String?): Path {
@@ -331,12 +380,19 @@ fun UnifiedManifest(
             val dataFilePathInFile = dataFile.dataFile?.filePath.orEmpty()
 
             // Same rule as the manifests above: the path the table recorded, when the file is
-            // actually there. A table whose data sits outside its own directory — a
-            // `write.data.path` layout, or one registered against data written elsewhere — is
-            // otherwise rebuilt under the table root and reported missing.
-            val (dataFilePathResolved, resolution) = resolveRecordedOr(dataFilePathInFile) {
+            // actually there. Otherwise a file under the table is rebuilt by its sub-path under
+            // the local table root, and a file outside it — a `write.data.path` layout, or one
+            // registered against data written elsewhere — beside the table, under the local
+            // counterpart of the warehouse (`rebuildBesideTable`). The `extdata` fixture is the
+            // second: before that rule it was rebuilt under the table root, where nothing is,
+            // and every file reported missing.
+            val (dataFilePathResolved, resolution) = resolveRecordedOrRebuilt(dataFilePathInFile) {
                 val metadataDirPrefix = manifest.manifestPath.orEmpty().substringBeforeLast('/')
                 val tableDirPrefix = metadataDirPrefix.substringBeforeLast('/')
+                if (tableDirPrefix.isNotEmpty() && !dataFilePathInFile.startsWith("$tableDirPrefix/")) {
+                    rebuildBesideTable(dataFilePathInFile, tableDirPrefix, dataRoot)
+                        ?.let { return@resolveRecordedOrRebuilt it to PathResolution.REBUILT_BESIDE_TABLE }
+                }
                 val dataFilePathRelative =
                     dataFilePathInFile.removePrefix(tableDirPrefix).removePrefix("/")
                 val rebuilt = dataRoot.resolve(dataFilePathRelative)
@@ -353,7 +409,7 @@ fun UnifiedManifest(
                         message = "Data file path resolves outside the table directory: $normalizedResolved",
                     )
                 }
-                rebuilt
+                rebuilt to PathResolution.FORCED_RELATIVE
             }
 
             UnifiedDataFile(

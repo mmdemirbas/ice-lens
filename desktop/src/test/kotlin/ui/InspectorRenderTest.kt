@@ -277,6 +277,21 @@ class InspectorRenderTest {
     }
 
     /**
+     * A data file written outside its table, found by re-rooting the recorded path. The
+     * `Resolved` row is the one to read: it has to say the file sits outside the table by the
+     * table's own choice, and where it was looked for, because a reader told "found" about a
+     * path the table never mentioned needs to know which rule produced it.
+     */
+    @Test
+    fun `a write-data-path file says it was found beside the table`() {
+        val graph = graphFor("extdata")
+        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+            .firstOrNull { it.pathResolution == model.PathResolution.REBUILT_BESIDE_TABLE }
+        assertNotNull(file, "the extdata fixture's files should be re-rooted beside the table")
+        renderInspector(graph, file.id, "file-node-external-data", height = 1600)
+    }
+
+    /**
      * A snapshot expiry dropped, drawn as what it is rather than as a read error.
      *
      * The card says so in its eyebrow and the panel says so in an identity row, above a summary

@@ -519,6 +519,8 @@ private fun pathResolutionLabel(resolution: model.PathResolution): String = when
     model.PathResolution.RECORDED -> "as recorded in the table"
     model.PathResolution.FORCED_RELATIVE ->
         "by file name, against the local metadata directory (the recorded path is not present here)"
+    model.PathResolution.REBUILT_BESIDE_TABLE ->
+        "by re-rooting the recorded path from the recorded warehouse to the local one (the recorded path is not present here)"
 }
 
 /**
@@ -530,6 +532,11 @@ private fun dataFileResolutionLabel(resolution: model.PathResolution): String = 
     model.PathResolution.RECORDED -> "as recorded in the table"
     model.PathResolution.FORCED_RELATIVE ->
         "by rebuilding the path under the local table directory (the recorded path is not present here)"
+    // The third outcome is a data file's alone: a write.data.path file has no sub-path under the
+    // table to rebuild, so it is re-rooted from the recorded warehouse to the local one.
+    model.PathResolution.REBUILT_BESIDE_TABLE ->
+        "by re-rooting the recorded path beside the table — it sits outside the table directory " +
+            "(write.data.path), so it was placed under the local counterpart of the warehouse the table is in"
 }
 
 private fun deltaCell(value: Long): String = when {

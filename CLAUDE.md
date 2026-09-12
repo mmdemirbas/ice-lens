@@ -166,7 +166,17 @@ intellij/src/main/kotlin/plugin/
   under the local table root, so `data/name=alpha/…` survives. The traversal check applies to that
   rebuilt branch only — a recorded path landing outside the table root is the table's own
   statement, and `UnifiedDataFile.pathResolution` / `FileNode.pathResolution` carry which rule ran
-  so the inspector can say it
+  so the inspector can say it. **A data file recorded outside the table has a third rule.** A
+  `write.data.path` file (`/wh/extdata-files/x.parquet` for a table at `/wh/default/extdata`) has
+  no sub-path under the table to rebuild, and the sub-path rule put it at `<table>/wh/…`, where
+  nothing is. `rebuildBesideTable` re-roots it instead: the recorded table directory and the local
+  one agree on their trailing segments (`default/extdata`), what is above those is the warehouse
+  in each world, and the recorded path is moved from the one to the other —
+  `PathResolution.REBUILT_BESIDE_TABLE`. It stands down (null, and the older rule runs) when no
+  trailing segment is shared, the recorded path is not under the recorded warehouse, or the result
+  escapes the local one. `extdata` is the engine-written oracle: the table holds `metadata/` and
+  no `data/`, and its two files sit under `example/iceberg/extdata-files/` beside the table, the
+  way they sat under `/wh`
 - Workspace serialization uses `W|path` / `T|path` items joined by `;`. The path component
   percent-encodes `%`, `;`, and `|` so paths containing those characters round-trip safely.
 - `normalizeFilePath` handles `file:` URIs (including `file://host/path` authority,
@@ -1175,7 +1185,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~894 tests across 98 files (666 in :core, 223 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~899 tests across 99 files (670 in :core, 224 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1262,6 +1272,7 @@ container invocation and the traps in it:
 | `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
+| `default/extdata` | `ExternalDataPathFixtureTest` | `write.data.path` outside the table — no `data/` under it, two files beside it under `example/iceberg/extdata-files/` |
 | `default/expired` | `ExpiredSnapshotsFixtureTest` | snapshots dropped by `expire_snapshots` — the older metadata versions still list them, and they are drawn as expired, not as read errors |
 | `default/maint` | `MaintenanceFixtureTest` | `rewrite_position_delete_files` dropping two dangling deletes, then `rewrite_manifests` — the commit whose summary counts manifests |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
