@@ -1196,7 +1196,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~913 tests across 103 files (683 in :core, 225 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~918 tests across 104 files (688 in :core, 225 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1293,6 +1293,7 @@ container invocation and the traps in it:
 | `paimon/db.db/br` | `PaimonBranchFixtureTest` | two branches — one created from a tag and committed to, one created empty; main and `dev` both hold a `snapshot-2`, and `bucket-0` holds a file only the branch names |
 | `paimon/db.db/cs` | `PaimonConsumerFixtureTest` | a consumer standing on snapshot 2, and an `expire_snapshots(retain_max = 1)` that left snapshots 2 and 3 because of it |
 | `paimon/db.db/fi` | `PaimonFileIndexFixtureTest` | a bloom-filter file index both ways — a 599 KB `.index` beside the first data file, 117 bytes embedded in the second entry |
+| `paimon/db.db/ep` | `PaimonExternalPathFixtureTest` | `data-file.external-paths` — no bucket under the table, both files at `example/paimon/ep-files/bucket-0/` beside it, `_EXTERNAL_PATH` recorded |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1448,6 +1449,18 @@ also on the classpath.
   is why the referenced set follows tags, or that file is a false orphan in the direction that
   gets a file deleted. **A tag retains data, not changelog**: expiry deleted the changelog manifest
   list the tag still names, and the tag reads with exactly that one read error, drawn under it.
+- **A Paimon file written outside the table records where, and that is the one path with
+  something to resolve.** The format records no path for a file in its own layout —
+  `<table>/<partition>/bucket-N/<file>` is the rule — so `PaimonPathResolution.LAYOUT` says
+  nothing and the panel draws no row for it. `data-file.external-paths` is the exception: the
+  entry's `_EXTERNAL_PATH` is `file:/wh/ep-files/bucket-0/<file>` and the table directory holds no
+  bucket at all (`ep`). The recorded path wins when the file is there (`EXTERNAL_RECORDED`);
+  otherwise `rerootExternalPath` looks for the recorded path's tails under the local warehouse —
+  the table's grandparent when its parent is a `.db` directory, since a Paimon snapshot records no
+  table location to re-root against the way an Iceberg manifest's own path does — longest tail
+  first and existence-gated, because it is a search (`EXTERNAL_REROOTED`); and a file at neither
+  place is reported at the layout path it is not at (`EXTERNAL_MISSING`). A path the table recorded
+  outside itself skips the traversal check, the same rule as Iceberg's `RECORDED`
 - **A file index lives in one of two places, and the one beside the data file is the table's.**
   Where a Paimon file index goes is its size against `file-index.in-manifest-threshold` (500
   bytes): larger is `<file>.index` beside the data file, named in the entry's `_EXTRA_FILES`;

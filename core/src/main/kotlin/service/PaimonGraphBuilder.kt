@@ -247,6 +247,7 @@ object PaimonGraphBuilder {
                                     level = entry.file?.level,
                                     operationKind = entry.kind,
                                     localPath = unifiedDataFile.path.toString(),
+                                    pathResolution = unifiedDataFile.pathResolution,
                                 )
                             }
 

@@ -735,6 +735,8 @@ sealed class GraphNode(
         val level: Int? = null,
         val operationKind: Int? = null,     // 0=ADD, 1=DELETE
         val localPath: String? = null,
+        /** How [localPath] was arrived at — see [PaimonUnifiedDataFile.pathResolution]. */
+        val pathResolution: PaimonPathResolution = PaimonPathResolution.LAYOUT,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         // 64, not 60: the stress pass measured this card at exactly its declared height, which

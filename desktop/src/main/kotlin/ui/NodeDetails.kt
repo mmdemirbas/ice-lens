@@ -2437,6 +2437,18 @@ fun NodeDetailsContent(
                                 },
                             )
                             file?.externalPath?.let { DetailRow("External Path", it, copyable = true) }
+                            // Only worth a row where there was something to resolve: the layout is
+                            // the format's rule, and a file written to data-file.external-paths is
+                            // the one case where "not found" is about a path the table named.
+                            when (node.pathResolution) {
+                                model.PaimonPathResolution.LAYOUT -> Unit
+                                model.PaimonPathResolution.EXTERNAL_RECORDED ->
+                                    DetailRow("Resolved", "at the external path the entry records")
+                                model.PaimonPathResolution.EXTERNAL_REROOTED ->
+                                    DetailRow("Resolved", "by the recorded external path's tail under the local warehouse (the recorded path is not present here)")
+                                model.PaimonPathResolution.EXTERNAL_MISSING ->
+                                    DetailRow("Resolved", "not found — the entry records an external path that is not on this machine, and nothing under the local warehouse matches its tail; the layout path above stands in")
+                            }
                             file?.firstRowId?.let { DetailRow("First Row ID", "$it") }
                             // Where the file index lives is decided by its size against
                             // file-index.in-manifest-threshold: beside the data file and named in

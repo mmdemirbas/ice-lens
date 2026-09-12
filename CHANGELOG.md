@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **A Paimon table whose data was written to `data-file.external-paths` opens with its files
+  found.** The entry records the external location in `_EXTERNAL_PATH` and the resolver built
+  the path from the table root regardless, so every such file read as missing. The recorded
+  path is used when it is there, found by its tail under the local warehouse when the table was
+  copied down, and reported as recorded-elsewhere-and-absent otherwise — the file panel's
+  `Resolved` row says which. `ep` is the fixture.
 - **A table whose data sits outside its directory opens with its files found.** A
   `write.data.path` layout records absolute data paths that share nothing with the table below
   the warehouse, and the sub-path rule rebuilt them under the table root, where nothing is —

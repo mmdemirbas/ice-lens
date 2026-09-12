@@ -19,7 +19,7 @@ class PaimonRecordTalliesTest {
     private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }
         .first { File(it, "settings.gradle.kts").isFile }
 
-    private val fixtures = listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi")
+    private val fixtures = listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi", "ep")
 
     private fun model(name: String) =
         PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/$name").absolutePath))
@@ -44,7 +44,7 @@ class PaimonRecordTalliesTest {
             }
         }
         assertEquals(emptyList(), disagreements)
-        // The corpus yields 84 comparisons; the bound is under that so adding a fixture does not
+        // The corpus yields 90 comparisons; the bound is under that so adding a fixture does not
         // move it, and far enough above zero that a sweep reading nothing cannot pass.
         assertTrue(compared >= 60, "the corpus should yield dozens of comparisons, got $compared")
     }

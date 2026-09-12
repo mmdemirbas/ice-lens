@@ -130,10 +130,35 @@ data class PaimonUnifiedManifest(
     val partitionMax: DecodedPaimonPartition? = null,
 )
 
+/**
+ * How a Paimon data file's local path was arrived at. The format records no path for a file in
+ * the table's own layout, so there is nothing to prefer over the layout; a file written to
+ * `data-file.external-paths` records where in `_EXTERNAL_PATH`, and that is the one case with
+ * something to resolve — the Paimon counterpart of [PathResolution].
+ */
+enum class PaimonPathResolution {
+    /** `<table>/<partition>/bucket-N/<file>`, the layout the format defines. */
+    LAYOUT,
+
+    /** The entry's `_EXTERNAL_PATH`, used as written because the file is there. */
+    EXTERNAL_RECORDED,
+
+    /**
+     * `_EXTERNAL_PATH` is not present here, and the file was found by the recorded path's tail
+     * under the local warehouse — see [rerootExternalPath].
+     */
+    EXTERNAL_REROOTED,
+
+    /** `_EXTERNAL_PATH` is recorded and nothing matching it is on this machine; the layout path stands in, and is missing. */
+    EXTERNAL_MISSING,
+}
+
 /** A single Paimon data file entry from a manifest. */
 data class PaimonUnifiedDataFile(
     val path: Path,
     val metadata: PaimonManifestEntry,
+    /** How [path] was arrived at — see [PaimonPathResolution]. */
+    val pathResolution: PaimonPathResolution = PaimonPathResolution.LAYOUT,
     /** The entry's `_PARTITION`, decoded against its manifest's schema; null when it could not be. */
     val partition: DecodedPaimonPartition? = null,
     /** `_MIN_KEY` over the trimmed primary key — the primary keys that are not partition keys. Null when not decodable. */
@@ -514,7 +539,7 @@ private fun readPaimonManifest(
             val partition = entry.partition
                 ?.takeIf { partitionFields.size == partitionKeys.size }
                 ?.let { decodePaimonPartition(it, partitionFields, schema?.options.orEmpty()) }
-            val dataFilePath = resolveDataFilePath(tablePath, entry, partition)
+            val (dataFilePath, pathResolution) = resolveDataFilePath(tablePath, entry, partition)
             val file = entry.file
             val keysResolved = keyFields.size == keyNames.size && keyFields.isNotEmpty()
             val keyMin = file?.minKey?.takeIf { keysResolved }?.let { decodePaimonRow(it, keyFields) }
@@ -528,7 +553,11 @@ private fun readPaimonManifest(
                 ?.let { decodePaimonColumnBounds(it, statsFields) }
             val normalizedResolved = runCatching { dataFilePath.toAbsolutePath().normalize() }
                 .getOrElse { dataFilePath.normalize() }
-            if (!normalizedResolved.startsWith(normalizedTableRoot)) {
+            // A path the table recorded outside itself is the table's own statement and is not
+            // checked; the rebuilt ones are ours and must land under the table.
+            val recordedElsewhere = pathResolution == PaimonPathResolution.EXTERNAL_RECORDED ||
+                pathResolution == PaimonPathResolution.EXTERNAL_REROOTED
+            if (!recordedElsewhere && !normalizedResolved.startsWith(normalizedTableRoot)) {
                 manifestErrors += UnifiedReadError(
                     stage = "path-traversal-check",
                     path = entry.file?.fileName.orEmpty(),
@@ -538,6 +567,7 @@ private fun readPaimonManifest(
             PaimonUnifiedDataFile(
                 path = dataFilePath,
                 metadata = entry,
+                pathResolution = pathResolution,
                 partition = partition,
                 keyMin = keyMin,
                 keyMax = keyMax,
@@ -577,7 +607,25 @@ private fun readPaimonManifest(
  * back to looking under `bucket-N` at the table root, which is where an unpartitioned table's
  * files are anyway, and then to the table root itself.
  */
-private fun resolveDataFilePath(tablePath: Path, entry: PaimonManifestEntry, partition: DecodedPaimonPartition?): Path {
+/**
+ * Where a data file is: by the layout — partition directories, then `bucket-N`, then the file
+ * name — unless the entry records an `_EXTERNAL_PATH`, which is where `data-file.external-paths`
+ * put it. The recorded path wins when the file is there; a copy of the table on another machine
+ * finds it by the recorded path's tail under the local warehouse; and a file that is neither
+ * place is reported at the layout path it is not at, with a resolution that says so. The `ep`
+ * fixture is the external case: its table directory holds no bucket at all.
+ */
+private fun resolveDataFilePath(tablePath: Path, entry: PaimonManifestEntry, partition: DecodedPaimonPartition?): Pair<Path, PaimonPathResolution> {
+    val layout = layoutDataFilePath(tablePath, entry, partition)
+    val external = entry.file?.externalPath?.takeIf { it.isNotBlank() } ?: return layout to PaimonPathResolution.LAYOUT
+    val recorded = runCatching { service.StorageLocation.pathOf(normalizeFilePath(external)) }.getOrNull()
+        ?.takeIf { it.isAbsolute && runCatching { Files.isRegularFile(it) }.getOrDefault(false) }
+    if (recorded != null) return recorded to PaimonPathResolution.EXTERNAL_RECORDED
+    rerootExternalPath(external, tablePath)?.let { return it to PaimonPathResolution.EXTERNAL_REROOTED }
+    return layout to PaimonPathResolution.EXTERNAL_MISSING
+}
+
+private fun layoutDataFilePath(tablePath: Path, entry: PaimonManifestEntry, partition: DecodedPaimonPartition?): Path {
     val fileName = entry.file?.fileName ?: return tablePath
     val bucket = entry.bucket
     if (partition != null && bucket != null) {
@@ -590,4 +638,33 @@ private fun resolveDataFilePath(tablePath: Path, entry: PaimonManifestEntry, par
     }
     logger.debug("Data file not found in bucket-{}, falling back to table root: {}", bucket, fileName)
     return tablePath.resolve(fileName)
+}
+
+/**
+ * Where a recorded external path lands on this machine, or null when nothing under the local
+ * warehouse matches it.
+ *
+ * A Paimon snapshot records no table location to re-root against, the way an Iceberg manifest's
+ * own path lets [rebuildBesideTable] find the warehouse. What the format does fix is the layout
+ * above the table: `<warehouse>/<db>.db/<table>`, so the local warehouse is the table's
+ * grandparent when its parent is a `.db` directory, and its parent otherwise. The recorded path
+ * `/wh/ep-files/bucket-0/x.parquet` is then looked for by every tail of itself under that
+ * warehouse, longest first — `wh/ep-files/bucket-0/x.parquet`, `ep-files/bucket-0/x.parquet`,
+ * `bucket-0/x.parquet` — and the first that is a file wins. Existence-gated because it is a
+ * search rather than a derivation; a tail that escapes the warehouse is skipped.
+ */
+internal fun rerootExternalPath(external: String, tablePath: Path): Path? {
+    val normalized = normalizeFilePath(external)
+    val withoutScheme = normalized.substringAfter("://", normalized)
+    val segments = withoutScheme.split('/').filter { it.isNotEmpty() }
+    if (segments.size < 2) return null
+    val tableRoot = runCatching { tablePath.toAbsolutePath().normalize() }.getOrElse { tablePath.normalize() }
+    val parent = tableRoot.parent ?: return null
+    val warehouse = if (parent.fileName?.toString()?.endsWith(".db") == true) parent.parent ?: return null else parent
+    for (drop in 1 until segments.size) {
+        val candidate = warehouse.resolve(segments.drop(drop).joinToString("/")).normalize()
+        if (!candidate.startsWith(warehouse)) continue
+        if (runCatching { Files.isRegularFile(candidate) }.getOrDefault(false)) return candidate
+    }
+    return null
 }

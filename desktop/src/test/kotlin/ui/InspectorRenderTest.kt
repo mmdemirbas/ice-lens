@@ -915,6 +915,18 @@ class InspectorRenderTest {
         assertNotNull(embedded, "and its second should carry the index in the entry")
         renderInspector(fiGraph, beside.id, "paimon-file-node-index-beside", height = 1800)
         renderInspector(fiGraph, embedded.id, "paimon-file-node-index-embedded", height = 1800)
+
+        // And a file written outside the table: `External Path` as recorded, `Reading` where it
+        // was found, and `Resolved` saying it was the recorded path's tail under the local
+        // warehouse that found it.
+        val epGraph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/ep").absolutePath)),
+            showRows = false,
+        )
+        val external = epGraph.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
+            .firstOrNull { it.pathResolution == model.PaimonPathResolution.EXTERNAL_REROOTED }
+        assertNotNull(external, "the ep fixture's files should be re-rooted under the local warehouse")
+        renderInspector(epGraph, external.id, "paimon-file-node-external", height = 1800)
     }
 
     /**

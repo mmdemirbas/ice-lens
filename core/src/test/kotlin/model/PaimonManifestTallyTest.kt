@@ -37,7 +37,7 @@ class PaimonManifestTallyTest {
     fun `every recorded figure on every checked-in manifest agrees with its entries`() {
         val disagreements = mutableListOf<String>()
         var checked = 0
-        listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi").forEach { name ->
+        listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi", "ep").forEach { name ->
             val nodes = manifestNodes(name)
             assertTrue(nodes.isNotEmpty(), name)
             nodes.forEach { node ->
