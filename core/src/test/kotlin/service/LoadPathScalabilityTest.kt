@@ -11,7 +11,6 @@ import org.apache.avro.file.DataFileWriter
 import org.apache.avro.generic.GenericData
 import org.apache.avro.generic.GenericDatumWriter
 import java.io.File
-import kotlin.system.measureTimeMillis
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -45,36 +44,41 @@ class LoadPathScalabilityTest {
     }
 
     /**
-     * Ten manifests, each carried forward by every snapshot — ten physical manifest files no
-     * matter how many commits happened. Load time is measured at 4 snapshots and at 32.
+     * Ten manifests, each carried forward by every one of 32 snapshots — ten physical manifest
+     * files referenced 320 times. A loader that deduplicates parses each once and every snapshot
+     * holds the same ten instances; one that reads per (snapshot, manifest) pair holds 320.
      *
-     * If the loader deduplicates, the two are within noise of each other: the same ten files
-     * are read either way. If it reads per (snapshot, manifest) pair, the 32-snapshot table
-     * costs roughly 8x the 4-snapshot one while containing exactly the same data.
+     * Asserted on identity, the same way the Paimon half is. The first version timed a
+     * 4-snapshot table against a 32-snapshot one and required the ratio under 3x: both loads
+     * take tens of milliseconds, so the ratio was a quotient of two numbers dominated by
+     * scheduling noise, and on unchanged code it came out at 0.8x, 2.2x, 4.4x and 1.4x across
+     * four runs at high load — failing on the machine, never on the loader. The table's shape is
+     * the same as before; only the observation changed from a clock to the thing the clock was
+     * standing in for.
      */
     @Test
-    fun `load time tracks distinct manifests, not the number of snapshots carrying them`() {
-        val small = buildTable(File(tmpDir, "small"), snapshotCount = 4, manifestCount = 10, entriesPerManifest = 200)
-        val large = buildTable(File(tmpDir, "large"), snapshotCount = 32, manifestCount = 10, entriesPerManifest = 200)
+    fun `each manifest is parsed once regardless of how many snapshots carry it`() {
+        val manifestCount = 10
+        val snapshotCount = 32
+        val table = buildTable(File(tmpDir, "shared"), snapshotCount, manifestCount, entriesPerManifest = 200)
 
-        // Warm the JIT and the page cache so the comparison is about read count, not first touch.
-        repeat(2) { UnifiedTableModel(small.toPath()); UnifiedTableModel(large.toPath()) }
-
-        val smallMs = medianOf(3) { measureTimeMillis { UnifiedTableModel(small.toPath()) } }
-        val largeMs = medianOf(3) { measureTimeMillis { UnifiedTableModel(large.toPath()) } }
-
-        val ratio = largeMs.toDouble() / smallMs.coerceAtLeast(1).toDouble()
-        println(
-            "load-path scalability: 4 snapshots = ${smallMs}ms, 32 snapshots = ${largeMs}ms, " +
-                "ratio = ${"%.1f".format(ratio)}x for identical table contents (10 manifests, 2000 entries)"
+        val model = UnifiedTableModel(table.toPath())
+        val snapshots = model.metadatas.single().snapshots
+        assertTrue(snapshots.size == snapshotCount, "expected $snapshotCount snapshots, got ${snapshots.size}")
+        assertTrue(
+            snapshots.all { it.manifests.size == manifestCount },
+            "every snapshot should list all $manifestCount manifests: ${snapshots.map { it.manifests.size }}",
         )
 
-        // 8x the snapshots over the same ten manifests. A deduplicating loader stays near 1x;
-        // the bound is generous so this fails on the scaling law, not on machine noise.
+        val references = snapshots.sumOf { it.manifests.size }
+        val distinctInstances = snapshots.flatMap { it.manifests }
+            .distinctBy { System.identityHashCode(it) }
+            .size
+        println("iceberg manifest reuse: $references references across $snapshotCount snapshots -> $distinctInstances parsed manifest instance(s)")
         assertTrue(
-            ratio < 3.0,
-            "Load time grew ${"%.1f".format(ratio)}x when snapshot count grew 8x over identical " +
-                "manifests — the loader is re-reading shared manifests once per referencing snapshot.",
+            distinctInstances == manifestCount,
+            "$references references to $manifestCount manifests produced $distinctInstances parsed " +
+                "instances — the loader is re-reading shared manifests once per referencing snapshot.",
         )
     }
 
@@ -164,9 +168,6 @@ class LoadPathScalabilityTest {
             }
         }
     }
-
-    private fun medianOf(runs: Int, block: () -> Long): Long =
-        (1..runs).map { block() }.sorted()[runs / 2]
 
     /**
      * Writes a table where every snapshot's manifest list references the same [manifestCount]
