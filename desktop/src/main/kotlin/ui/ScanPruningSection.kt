@@ -74,7 +74,7 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
 
     Section("Scan Pruning") {
         Text(
-            "Iceberg prunes twice: a manifest is ruled out by the partition bounds its list records, " +
+            "A scan prunes twice: a manifest is ruled out by the partition bounds its list records, " +
                 "then a file by the column bounds it records about itself. A query reports how many " +
                 "files it read and never which it skipped. Enter the filter and this says which — " +
                 "and which term did it.",
@@ -168,9 +168,29 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
 
         val plan = remember(graph, filter) { evaluateScan(graph, filter) }
         val results = plan.manifests
-        val manifests = remember(graph) { graph.nodes.filterIsInstance<GraphNode.ManifestNode>() }
-        val files = remember(graph) { graph.nodes.filterIsInstance<GraphNode.FileNode>() }
-        val unevaluated = manifests.count { results[it.id]?.isUnevaluated == true }
+        // Either format's manifests and files, by id and label: the plan is keyed by node id and
+        // the verdicts are format-agnostic, so the rows need nothing else from the node.
+        val manifests = remember(graph) {
+            graph.nodes.mapNotNull { node ->
+                when (node) {
+                    is GraphNode.ManifestNode -> node.id to "MANIFEST ${node.simpleId}"
+                    // The same label as the Iceberg row: one table is one format, and the
+                    // column is sized to "MANIFEST 12", not to a format prefix.
+                    is GraphNode.PaimonManifestNode -> node.id to "MANIFEST ${node.simpleId}"
+                    else -> null
+                }
+            }
+        }
+        val files = remember(graph) {
+            graph.nodes.mapNotNull { node ->
+                when (node) {
+                    is GraphNode.FileNode -> node.id to "FILE ${node.simpleId}"
+                    is GraphNode.PaimonDataFileNode -> node.id to "FILE ${node.simpleId}"
+                    else -> null
+                }
+            }
+        }
+        val unevaluated = manifests.count { (id, _) -> results[id]?.isUnevaluated == true }
 
         Spacer(Modifier.height(8.dp))
         // The file line first: it is the number the reader came for. A scan reports how many files
@@ -207,8 +227,8 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
         Spacer(Modifier.height(10.dp))
         Text("Manifests", fontSize = TypeScale.body, fontWeight = FontWeight.Bold)
         Text(
-            "Ruled out by the partition summaries the manifest list records, before the manifest " +
-                "is opened.",
+            "Ruled out by the partition range the manifest list records — Iceberg's partition " +
+                "summaries, Paimon's partition statistics — before the manifest is opened.",
             fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
@@ -219,8 +239,8 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
             // payload only reachable by dragging a horizontal scrollbar is a payload most readers
             // never see. The two identifier columns are sized to their longest value and no more.
             columnWidths = listOf(100.dp, 100.dp, 400.dp),
-            rows = manifests.map { manifest ->
-                val result = results[manifest.id]
+            rows = manifests.map { (id, label) ->
+                val result = results[id]
                 listOf(
                     when {
                         result == null -> "would be read"
@@ -228,12 +248,12 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
                         result.isUnevaluated -> "not evaluated"
                         else -> "would be read"
                     },
-                    "MANIFEST ${manifest.simpleId}",
+                    label,
                     result.summarise(),
                 )
             },
-            leadCellColors = manifests.map { manifest ->
-                val result = results[manifest.id]
+            leadCellColors = manifests.map { (id, _) ->
+                val result = results[id]
                 when {
                     result?.isSkipped == true -> skippedColor
                     result?.isUnevaluated == true -> unevaluatedColor
@@ -257,8 +277,8 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
         WideTable(
             headers = listOf("Verdict", "File", "Because"),
             columnWidths = listOf(110.dp, 90.dp, 400.dp),
-            rows = files.map { file ->
-                val result = plan.files[file.id]
+            rows = files.map { (id, label) ->
+                val result = plan.files[id]
                 listOf(
                     when (result?.fate) {
                         FileFate.SKIPPED -> "SKIPPED"
@@ -266,12 +286,12 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
                         FileFate.UNEVALUATED -> "not evaluated"
                         else -> "would be read"
                     },
-                    "FILE ${file.simpleId}",
+                    label,
                     result.summarise(),
                 )
             },
-            leadCellColors = files.map { file ->
-                when (plan.files[file.id]?.fate) {
+            leadCellColors = files.map { (id, _) ->
+                when (plan.files[id]?.fate) {
                     FileFate.SKIPPED -> skippedColor
                     // Dimmer than the others on purpose: it is not this file's verdict. The row
                     // is here so the count adds up, not because anything was decided about it.

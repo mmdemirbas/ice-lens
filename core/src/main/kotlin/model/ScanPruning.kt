@@ -958,24 +958,38 @@ fun evaluateScan(graph: GraphModel, predicates: List<ScanPredicate>): ScanPlan =
 fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
     if (filter.isEmpty()) return ScanPlan(emptyMap(), emptyMap())
 
+    // Both formats, through one rule: a manifest is ruled out by the partition range its list
+    // records, a file by the bounds it records about its own columns. Paimon's are read through
+    // the bridge in PaimonPruningBridge.kt, which puts them in the vocabulary the rules use.
     val manifests = graph.nodes.asSequence()
-        .filterIsInstance<GraphNode.ManifestNode>()
-        .associate { it.id to evaluatePruning(it.partitionSummaries, filter) }
+        .mapNotNull { node ->
+            when (node) {
+                is GraphNode.ManifestNode -> node.id to evaluatePruning(node.partitionSummaries, filter)
+                is GraphNode.PaimonManifestNode -> node.id to evaluatePruning(paimonPartitionSummaries(node), filter)
+                else -> null
+            }
+        }
+        .toMap()
 
     // Which manifest holds which file, from the edges rather than from the id: a file id encodes
     // its manifest today and that is a naming convention, not a contract.
     val manifestOf = graph.edges.asSequence()
         .filter { it.isStructural }
-        .filter { graph.nodeById[it.fromId] is GraphNode.ManifestNode }
+        .filter { graph.nodeById[it.fromId].let { n -> n is GraphNode.ManifestNode || n is GraphNode.PaimonManifestNode } }
         .associate { it.toId to it.fromId }
 
     val files = graph.nodes.asSequence()
-        .filterIsInstance<GraphNode.FileNode>()
-        .associate { file ->
-            val manifestSkipped = manifestOf[file.id]?.let { manifests[it]?.isSkipped } == true
-            val own = evaluateFilePruning(file.columnStats, filter)
-            file.id to if (manifestSkipped) own.copy(fate = FileFate.NOT_REACHED) else own
+        .mapNotNull { node ->
+            val stats = when (node) {
+                is GraphNode.FileNode -> node.columnStats
+                is GraphNode.PaimonDataFileNode -> paimonColumnStats(node)
+                else -> return@mapNotNull null
+            }
+            val manifestSkipped = manifestOf[node.id]?.let { manifests[it]?.isSkipped } == true
+            val own = evaluateFilePruning(stats, filter)
+            node.id to if (manifestSkipped) own.copy(fate = FileFate.NOT_REACHED) else own
         }
+        .toMap()
 
     return ScanPlan(manifests, files)
 }
@@ -1031,8 +1045,13 @@ data class PrunableColumn(
 fun prunableColumns(graph: GraphModel): List<PrunableColumn> {
     val transformsByColumn = LinkedHashMap<String, MutableList<PartitionSummary>>()
     graph.nodes.asSequence()
-        .filterIsInstance<GraphNode.ManifestNode>()
-        .flatMap { it.partitionSummaries.asSequence() }
+        .flatMap { node ->
+            when (node) {
+                is GraphNode.ManifestNode -> node.partitionSummaries.asSequence()
+                is GraphNode.PaimonManifestNode -> paimonPartitionSummaries(node).asSequence()
+                else -> emptySequence()
+            }
+        }
         .forEach { summary ->
             val name = summary.sourceName ?: return@forEach
             transformsByColumn.getOrPut(name) { mutableListOf() }.add(summary)
@@ -1040,8 +1059,13 @@ fun prunableColumns(graph: GraphModel): List<PrunableColumn> {
 
     val boundedByColumn = LinkedHashMap<String, IcebergType>()
     graph.nodes.asSequence()
-        .filterIsInstance<GraphNode.FileNode>()
-        .flatMap { it.columnStats.asSequence() }
+        .flatMap { node ->
+            when (node) {
+                is GraphNode.FileNode -> node.columnStats.asSequence()
+                is GraphNode.PaimonDataFileNode -> paimonColumnStats(node).asSequence()
+                else -> emptySequence()
+            }
+        }
         .forEach { stats ->
             val name = stats.columnName ?: return@forEach
             val type = stats.type ?: return@forEach

@@ -148,6 +148,8 @@ data class PaimonColumnBounds(
     val max: Any?,
     val nullCount: Long?,
     val decoded: Boolean,
+    /** The schema field's id, for anything keyed by one. */
+    val fieldId: Int? = null,
 )
 
 /**
@@ -166,6 +168,7 @@ fun decodePaimonColumnBounds(stats: PaimonSimpleStats, fields: List<PaimonField>
             max = maxes[index].value,
             nullCount = stats.nullCounts?.getOrNull(index),
             decoded = mins[index].decoded && maxes[index].decoded,
+            fieldId = fields[index].id,
         )
     }
 }

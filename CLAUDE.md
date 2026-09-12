@@ -1167,7 +1167,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~872 tests across 95 files (647 in :core, 220 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~879 tests across 96 files (653 in :core, 221 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1258,7 +1258,7 @@ container invocation and the traps in it:
 | `default/maint` | `MaintenanceFixtureTest` | `rewrite_position_delete_files` dropping two dangling deletes, then `rewrite_manifests` — the commit whose summary counts manifests |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
-| `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest`, `PaimonFileBoundsFixtureTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
+| `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest`, `PaimonFileBoundsFixtureTest`, `PaimonScanPruningTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1343,6 +1343,19 @@ also on the classpath.
   over a thousand rows, `v1001..v2` over three), and **`_DELETE_ROW_COUNT` counts the `-D` rows
   inside a file**, not the rows a deletion vector marks — 3 on `dv`'s level-0 delete file, 0 on
   the two files its vector covers
+- **Scan pruning answers for Paimon through a bridge, not a second evaluator.**
+  `model/PaimonPruningBridge.kt` puts what a Paimon manifest and file record into the vocabulary
+  the pruning rules are written in: a manifest's per-column partition range becomes one identity
+  `PartitionSummary` per key, a file's column bounds become `ColumnStats` with the file's row
+  count as the value count (Paimon records no per-column value count, and every row holds one
+  value per column, so the two are one figure), and `paimonTypeAsIceberg` decides which Iceberg
+  type each Paimon type's literal is read in — the one place a literal can be read wrong, and a
+  type it cannot compare is left out rather than mapped to something plausible. `evaluateScan` and
+  `prunableColumns` then take both node kinds and `ScanPruningSection` lists rows by id and label,
+  so the pruned fade on the canvas and the verdict tables need nothing format-specific.
+  `PaimonScanPruningTest` reads its expectations off the `pt` script — `dt = 2024-03-07` skips two
+  manifests, leaves five files unreached and one skipped by its own bound — and holds the direction
+  that matters over every key the script wrote: no file holding a matching row is ever pruned
 - **A snapshot's `indexManifest` is read, and it is the only place two things are recorded.**
   The field was parsed into `PaimonSnapshot` and dropped — the same shape of gap Iceberg's
   `statistics` had, and invisible for the same reason: nothing rendered it, so nothing noticed it

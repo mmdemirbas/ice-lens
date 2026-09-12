@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **Scan pruning works on a Paimon table.** The filter form on the table panel now rules a
+  Paimon manifest out by the partition range its manifest list records and a Paimon file by its
+  own column bounds — the same two stages, the same verdicts and reasons, the same fade on the
+  canvas — where before it saw no manifests and no files and every row said "would be read".
 - **A Paimon data file shows its key range and column bounds.** `_MIN_KEY` / `_MAX_KEY` over the
   trimmed primary key and `_VALUE_STATS` over every column — the figures a scan prunes files with
   and the answer to "which file holds key 42" — are decoded and drawn on the file panel, with

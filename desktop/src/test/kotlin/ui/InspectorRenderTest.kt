@@ -1065,6 +1065,30 @@ class InspectorRenderTest {
     }
 
     /**
+     * The same section over a Paimon table, where until the bridge existed every row said "would
+     * be read" because it saw no manifests and no files.
+     *
+     * `dt = 2024-03-07` is the filter the fixture was built to answer: two manifests skipped by
+     * their partition range, five files never reached, one file skipped by its own bound inside
+     * the manifest that survives, one read — all three verdicts on one screen.
+     */
+    @Test
+    fun `the scan pruning section renders a paimon table's verdicts`() {
+        val graph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pt").absolutePath)),
+            showRows = false,
+        )
+        val table = graph.nodes.filterIsInstance<GraphNode.TableNode>().first()
+        renderScene("scan-pruning-paimon", width = 1400, height = 3000) {
+            NodeDetailsContent(
+                graph,
+                setOf(table.id),
+                scanFilter = model.ScanFilter.of(listOf(ScanPredicate("dt", PredicateOp.EQ, "2024-03-07"))),
+            )
+        }
+    }
+
+    /**
      * The clause editor, in the three states that matter: a filter the rows cannot express, one
      * that does not parse, and the sugar.
      *
