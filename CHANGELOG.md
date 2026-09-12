@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A Paimon manifest's recorded figures are checked against its entries.** The manifest list's
+  entry counts, bucket and level ranges, and partition statistics — a per-column minimum and
+  maximum with null counts, two more `BinaryRow`s — sit beside the same figures folded from the
+  manifest's entries in a "Recorded Summary" section, the way the Iceberg manifest's do; the IDE
+  tree shows the ranges. The `pt` fixture gained a commit whose manifest minimum is a partition
+  none of its entries has, which is what settles that the minimum is per column.
 - **"What this commit did" checks six more figures, and two of them are about manifests.** Rows in
   delete files by kind (`added-position-deletes`, `added-equality-deletes` and their `removed-`
   pairs) and the manifest list's split into written and carried (`manifests-created` /

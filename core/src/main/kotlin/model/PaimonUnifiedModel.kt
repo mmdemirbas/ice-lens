@@ -81,6 +81,10 @@ data class PaimonUnifiedManifest(
     val metadata: PaimonManifestFileMeta,
     val entries: List<PaimonUnifiedDataFile>,
     val readErrors: List<UnifiedReadError> = emptyList(),
+    /** `_PARTITION_STATS` minimums, decoded against the same schema as the entries. Null when not decodable. */
+    val partitionMin: DecodedPaimonPartition? = null,
+    /** `_PARTITION_STATS` maximums, likewise. */
+    val partitionMax: DecodedPaimonPartition? = null,
 )
 
 /** A single Paimon data file entry from a manifest. */
@@ -383,11 +387,22 @@ private fun readPaimonManifest(
         emptyList()
     }
 
+    // Decoded here rather than in the entries loop because the schema is the manifest's, not an
+    // entry's; a schema whose partition keys do not all resolve to fields decodes nothing.
+    val statsSchema = schemasById[meta.schemaId?.toInt()] ?: schemasById.values.maxByOrNull { it.id ?: -1 }
+    val statsKeys = statsSchema?.partitionKeys.orEmpty()
+    val statsFields = statsKeys.mapNotNull { key -> statsSchema?.fields?.firstOrNull { it.name == key } }
+    val decodeStats: (ByteArray?) -> DecodedPaimonPartition? = { bytes ->
+        bytes?.takeIf { statsFields.size == statsKeys.size }
+            ?.let { decodePaimonPartition(it, statsFields, statsSchema?.options.orEmpty()) }
+    }
     return PaimonUnifiedManifest(
         path = manifestPath,
         metadata = meta,
         entries = entries,
         readErrors = manifestErrors,
+        partitionMin = decodeStats(meta.partitionStats?.minValues),
+        partitionMax = decodeStats(meta.partitionStats?.maxValues),
     )
 }
 

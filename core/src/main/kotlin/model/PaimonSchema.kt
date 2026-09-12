@@ -136,15 +136,47 @@ data class PaimonField(
     val type: String? = null,   // Paimon encodes types as strings like "INT NOT NULL"
 )
 
-/** Paimon manifest list entry (Avro), one record per manifest file reference. */
+/**
+ * Paimon's column-wise statistics over a set of rows: a `BinaryRow` of per-field minimums, one
+ * of per-field maximums, and a null count per field. On a manifest list entry the rows are the
+ * partitions of the manifest's entries, and the minimum is **per column** — a partition no entry
+ * has, when the lowest date and the lowest region sit in different entries. The `pt` fixture's
+ * third commit is exactly that and `PaimonManifestTallyTest` pins it.
+ */
+@Serializable
+data class PaimonSimpleStats(
+    @SerialName("_MIN_VALUES") val minValues: ByteArray? = null,
+    @SerialName("_MAX_VALUES") val maxValues: ByteArray? = null,
+    @SerialName("_NULL_COUNTS") val nullCounts: List<Long?>? = null,
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is PaimonSimpleStats) return false
+        return minValues.contentEquals(other.minValues) && maxValues.contentEquals(other.maxValues) && nullCounts == other.nullCounts
+    }
+
+    override fun hashCode(): Int = 31 * (31 * minValues.contentHashCode() + maxValues.contentHashCode()) + nullCounts.hashCode()
+}
+
+/**
+ * Paimon manifest list entry (Avro), one record per manifest file reference.
+ *
+ * Everything after the file's own name and size is what a scan plans with without opening the
+ * manifest — the added and deleted entry counts, the bucket and level ranges, and the partition
+ * statistics — and nothing on the read path checks any of it. `paimonManifestTallies` does.
+ */
 @Serializable
 data class PaimonManifestFileMeta(
     @SerialName("_FILE_NAME") val fileName: String? = null,
     @SerialName("_FILE_SIZE") val fileSize: Long? = null,
     @SerialName("_NUM_ADDED_FILES") val numAddedFiles: Long? = null,
     @SerialName("_NUM_DELETED_FILES") val numDeletedFiles: Long? = null,
+    @SerialName("_PARTITION_STATS") val partitionStats: PaimonSimpleStats? = null,
     @SerialName("_SCHEMA_ID") val schemaId: Long? = null,
-    // _PARTITION_STATS is complex binary — skip for now
+    @SerialName("_MIN_BUCKET") val minBucket: Int? = null,
+    @SerialName("_MAX_BUCKET") val maxBucket: Int? = null,
+    @SerialName("_MIN_LEVEL") val minLevel: Int? = null,
+    @SerialName("_MAX_LEVEL") val maxLevel: Int? = null,
 )
 
 /**

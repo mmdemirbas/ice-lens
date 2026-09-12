@@ -78,6 +78,7 @@ import model.evaluatePruning
 import model.SnapshotChange
 import model.FileChange
 import model.manifestTallies
+import model.paimonManifestTallies
 import model.KeyValuePairLong
 import model.MetadataLogEntry
 import model.SnapshotLogEntry
@@ -2267,6 +2268,45 @@ fun NodeDetailsContent(
                             DetailRow("Added Files", "${node.data.numAddedFiles ?: "N/A"}")
                             DetailRow("Deleted Files", "${node.data.numDeletedFiles ?: "N/A"}")
                             DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
+                        }
+                        // The same section the Iceberg manifest has, for the same reason: a scan
+                        // plans against these without opening the manifest, and nothing on the
+                        // read path checks them. Paimon records ranges as well as counts, and the
+                        // partition minimum is per column — see paimonManifestTallies.
+                        Section("Recorded Summary") {
+                            Text(
+                                "The manifest list carries these so a scan can plan without opening this " +
+                                    "manifest — the entry counts, the bucket and level ranges, and a per-column " +
+                                    "minimum and maximum over the entries' partitions. Each sits beside the same " +
+                                    "figure folded from the entries.",
+                                fontSize = TypeScale.small,
+                                color = colors.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            )
+                            val tallies = paimonManifestTallies(node.data, node.entries, node.partitionMin, node.partitionMax)
+                            WideTable(
+                                headers = listOf("Agrees", "Figure", "In the entries", "Recorded"),
+                                columnWidths = listOf(110.dp, 170.dp, 160.dp, 160.dp),
+                                rows = tallies.map { tally ->
+                                    listOf(
+                                        when (tally.agrees) {
+                                            true -> "yes"
+                                            false -> "NO"
+                                            null -> "nothing to check"
+                                        },
+                                        tally.label,
+                                        tally.counted ?: "no entries",
+                                        tally.recorded ?: "not recorded",
+                                    )
+                                },
+                                leadCellColors = tallies.map { tally ->
+                                    when (tally.agrees) {
+                                        true -> null
+                                        false -> colors.error
+                                        null -> verdictUnevaluatedColor()
+                                    }
+                                },
+                            )
                         }
                         PaimonReplayTraceSection(node)
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)

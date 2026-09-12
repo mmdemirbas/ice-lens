@@ -184,6 +184,8 @@ object PaimonGraphBuilder {
                             id = manId,
                             data = unifiedManifest.metadata,
                             simpleId = manSimpleId,
+                            partitionMin = unifiedManifest.partitionMin,
+                            partitionMax = unifiedManifest.partitionMax,
                             // Numbered for every entry, not just the ones the graph draws, so
                             // the inspector can list the whole manifest.
                             entries = unifiedManifest.entries.map { unifiedDataFile ->

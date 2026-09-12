@@ -21,6 +21,11 @@
 --   2  INSERT   six rows over 2024-03-05 × {eu, north-america} and 2024-03-06 × {eu, north-america}
 --               — four partitions, one file each
 --   3  INSERT   two more rows into 2024-03-06 / eu — a second file in one partition
+--   4  INSERT   one row into 2024-03-07 / eu and one into 2024-03-05 / north-america, in one
+--               commit — so the manifest's `_PARTITION_STATS` has to say whether its minimum is
+--               a *row* (2024-03-05, north-america: the lexicographically first entry) or a
+--               *column-wise* minimum (2024-03-05, eu: a partition no entry of it has). The
+--               first two inserts cannot tell the two apart
 --
 -- To regenerate (see docs/fixtures/parted.sql for why --entrypoint bash is required, and why
 -- the shell must be `bash -c` rather than `bash -lc`). The jar is a local build from lakelab;
@@ -61,3 +66,7 @@ INSERT INTO db.pt VALUES
 INSERT INTO db.pt VALUES
   (7, DATE'2024-03-06', 'eu',            'golf'),
   (8, DATE'2024-03-06', 'eu',            'hotel');
+
+INSERT INTO db.pt VALUES
+  (9,  DATE'2024-03-07', 'eu',            'india'),
+  (10, DATE'2024-03-05', 'north-america', 'juliet');

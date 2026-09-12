@@ -1,6 +1,7 @@
 package plugin
 
 import javax.swing.tree.DefaultMutableTreeNode
+import model.DecodedPaimonPartition
 import model.GraphModel
 import model.GraphNode
 import model.displayLabel
@@ -135,6 +136,9 @@ object GraphTree {
             "Entries" to node.entries.size.toString(),
             "Added" to node.data.numAddedFiles.toString(),
             "Deleted" to node.data.numDeletedFiles.toString(),
+            "Buckets" to rangeText(node.data.minBucket, node.data.maxBucket),
+            "Levels" to rangeText(node.data.minLevel, node.data.maxLevel),
+            "Partitions" to partitionRangeText(node.partitionMin, node.partitionMax),
         )
         is GraphNode.PaimonDataFileNode -> listOf(
             "File" to (node.entry.file?.fileName ?: "—"),
@@ -153,4 +157,15 @@ object GraphTree {
 
     /** What an absent optional field looks like. One rendering, so a column of them scans. */
     const val ABSENT = "\u2014"
+
+    /** `0..3`, or the absent mark when the manifest list recorded no range. */
+    private fun rangeText(low: Int?, high: Int?): String =
+        if (low == null || high == null) ABSENT else "$low..$high"
+
+    /** The per-column partition range a manifest list records, or `none` for an unpartitioned table. */
+    private fun partitionRangeText(min: DecodedPaimonPartition?, max: DecodedPaimonPartition?): String = when {
+        min == null || max == null -> ABSENT
+        min.values.isEmpty() -> "none"
+        else -> "${min.display} .. ${max.display}"
+    }
 }

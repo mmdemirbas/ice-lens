@@ -675,6 +675,9 @@ sealed class GraphNode(
         override val id: String,
         val data: PaimonManifestFileMeta,
         val simpleId: Int,
+        /** The manifest list's per-column partition minimums and maximums, decoded — see [PaimonSimpleStats]. */
+        val partitionMin: DecodedPaimonPartition? = null,
+        val partitionMax: DecodedPaimonPartition? = null,
         /** Every entry in this manifest — see [ManifestNode.entries] for why all of them. */
         val entries: List<PaimonManifestEntryView> = emptyList(),
         val localPath: String? = null,

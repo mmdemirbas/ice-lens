@@ -19,9 +19,9 @@ import kotlin.test.assertTrue
  * layout Paimon wrote: the partition read out of each entry has to be the directory its file is
  * in, and the file has to be there.
  *
- * The expected values come from `docs/fixtures/paimon-pt.sql`: two dates, two regions (one
- * string short enough to be stored inline, one long enough for the variable-length tail), four
- * partitions, five files.
+ * The expected values come from `docs/fixtures/paimon-pt.sql`: three dates, two regions (one
+ * string short enough to be stored inline, one long enough for the variable-length tail), five
+ * partitions, seven files.
  */
 class PaimonPartitionFixtureTest {
 
@@ -39,7 +39,7 @@ class PaimonPartitionFixtureTest {
         assertEquals(emptyList(), model.readErrors)
         assertEquals(emptyList(), model.snapshots.flatMap { it.readErrors })
         assertEquals(listOf("dt", "region"), model.schemas.single().partitionKeys)
-        assertEquals(5, entries.size, "four partitions, one of them written twice")
+        assertEquals(7, entries.size, "five partitions, two of them written twice")
         entries.forEach { entry ->
             assertNotNull(entry.partition, "${entry.metadata.file?.fileName}")
             assertEquals(listOf("dt", "region"), entry.partition.values.map { it.name })
@@ -75,8 +75,8 @@ class PaimonPartitionFixtureTest {
     fun `a date partition decodes to the date and paths as its epoch day`() {
         val byFile = entries.associateBy { it.metadata.file?.fileName }
         val dates = entries.map { it.partition!!.values[0] }
-        assertEquals(setOf(LocalDate.of(2024, 3, 5), LocalDate.of(2024, 3, 6)), dates.map { it.value }.toSet())
-        assertEquals(setOf("19787", "19788"), dates.map { it.pathText }.toSet())
+        assertEquals(setOf(LocalDate.of(2024, 3, 5), LocalDate.of(2024, 3, 6), LocalDate.of(2024, 3, 7)), dates.map { it.value }.toSet())
+        assertEquals(setOf("19787", "19788", "19789"), dates.map { it.pathText }.toSet())
         assertTrue(dates.all { it.type.startsWith("DATE") }, dates.map { it.type }.toString())
         // The directory on disk says the same, which is the whole claim.
         byFile.values.forEach { entry ->
@@ -85,7 +85,7 @@ class PaimonPartitionFixtureTest {
         }
     }
 
-    /** Row counts per partition, from the script: 2 + 1 + (1 + 2) + 2. */
+    /** Row counts per partition, from the script: (2, 1 + 1, 1 + 2, 2, 1). */
     @Test
     fun `the rows land in the partitions the script wrote them to`() {
         val rowsByPartition = entries.groupBy { it.partition!!.display }
@@ -93,13 +93,15 @@ class PaimonPartitionFixtureTest {
         assertEquals(
             mapOf(
                 "dt=2024-03-05, region=eu" to 2L,
-                "dt=2024-03-05, region=north-america" to 1L,
+                "dt=2024-03-05, region=north-america" to 2L,
                 "dt=2024-03-06, region=eu" to 3L,
                 "dt=2024-03-06, region=north-america" to 2L,
+                "dt=2024-03-07, region=eu" to 1L,
             ),
             rowsByPartition,
         )
         assertEquals(2, entries.count { it.partition!!.display == "dt=2024-03-06, region=eu" }, "written twice, two files")
+        assertEquals(2, entries.count { it.partition!!.display == "dt=2024-03-05, region=north-america" }, "written twice, two files")
     }
 
     /** With the paths right, nothing on disk is an orphan — which was every data file before. */
@@ -109,7 +111,7 @@ class PaimonPartitionFixtureTest {
         assertEquals(emptyList(), report.problems)
         assertEquals(emptyList(), report.unreferenced.map { it.path.toString() })
         assertEquals(report.filesOnDisk, report.referencedOnDisk)
-        assertTrue(report.filesOnDisk >= 15, "five data files and the metadata: ${report.filesOnDisk}")
+        assertTrue(report.filesOnDisk >= 20, "seven data files and the metadata: ${report.filesOnDisk}")
     }
 
     /** The unpartitioned fixtures decode to an empty partition, not to a failure. */

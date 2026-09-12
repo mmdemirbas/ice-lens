@@ -1167,7 +1167,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~864 tests across 93 files (640 in :core, 219 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~868 tests across 94 files (643 in :core, 220 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1258,7 +1258,7 @@ container invocation and the traps in it:
 | `default/maint` | `MaintenanceFixtureTest` | `rewrite_position_delete_files` dropping two dangling deletes, then `rewrite_manifests` — the commit whose summary counts manifests |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
-| `paimon/db.db/pt` | `PaimonPartitionFixtureTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date |
+| `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1317,6 +1317,19 @@ also on the classpath.
   and the resolver returns the partition path whether or not the file is there, because a missing
   file should be reported where it was supposed to be. An entry whose partition cannot be decoded
   — a type this does not read, the wrong arity — resolves the old way and says so in the panel
+- **A Paimon manifest list's figures are shown against the entries too, and its partition minimum
+  is per column.** `paimonManifestTallies` in `model/PaimonManifestTally.kt` is `manifestTallies`
+  for this format: the entry counts, the `_MIN_BUCKET`/`_MAX_BUCKET` and `_MIN_LEVEL`/`_MAX_LEVEL`
+  ranges, and `_PARTITION_STATS` — a `SimpleStats` record of a per-field minimum `BinaryRow`, a
+  per-field maximum and null counts, decoded by the same `decodePaimonPartition`. **Per field**,
+  not the lowest entry: `pt`'s third commit holds `(2024-03-07, eu)` and `(2024-03-05,
+  north-america)` in one manifest and Paimon recorded `(2024-03-05, eu)` as its minimum, a
+  partition no entry has; a fold over entries as rows would disagree with a correct manifest list
+  on exactly that manifest, and the fixture was regenerated to hold it because the first two
+  commits could not tell the two readings apart. The ranges cover every entry, `_KIND` 1
+  included — folding additions only puts `dv`'s lowest level at 5 where the list says 0 — which
+  is a fact the fixtures settled and not one a document did. Both sides are text, because a range
+  of dates is not a `Long`, and the panel draws them the way the Iceberg manifest's section does
 - **A snapshot's `indexManifest` is read, and it is the only place two things are recorded.**
   The field was parsed into `PaimonSnapshot` and dropped — the same shape of gap Iceberg's
   `statistics` had, and invisible for the same reason: nothing rendered it, so nothing noticed it
