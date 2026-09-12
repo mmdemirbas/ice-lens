@@ -90,7 +90,7 @@ object GraphTree {
             "Snapshot id" to node.data.snapshotId.toString(),
             "Expired" to if (node.expired) "yes — gone from the current metadata" else "no",
             "Parent" to (node.data.parentSnapshotId?.toString() ?: "none"),
-            "Sequence number" to (node.data.sequenceNumber?.toString() ?: "—"),
+            "Sequence number" to (node.data.sequenceNumber?.toString() ?: "0 (v1 — none recorded)"),
             "Operation" to (node.data.summary?.get("operation") ?: "—"),
             "Manifest list" to (node.data.manifestList ?: "—"),
         )

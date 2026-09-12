@@ -2,6 +2,8 @@ package service
 
 import model.AggregationKind
 import model.GraphNode
+import model.effectiveMinSequenceNumber
+import model.effectiveSequenceNumber
 
 /**
  * The order siblings of one kind are read in.
@@ -38,7 +40,7 @@ internal object SiblingOrder {
         val sb = (b as? GraphNode.SnapshotNode)?.data
         compareValuesBy(sa, sb,
             { it?.timestampMs ?: Long.MAX_VALUE },
-            { it?.sequenceNumber ?: Long.MAX_VALUE },
+            { it?.effectiveSequenceNumber ?: Long.MAX_VALUE },
             { it?.snapshotId ?: Long.MAX_VALUE }
         )
     }
@@ -46,9 +48,10 @@ internal object SiblingOrder {
     val MANIFEST: Comparator<GraphNode> = Comparator { a, b ->
         val ma = (a as? GraphNode.ManifestNode)?.data
         val mb = (b as? GraphNode.ManifestNode)?.data
+        // A v1 manifest records no number and is at 0 — the oldest, not the last.
         compareValuesBy(ma, mb,
-            { it?.sequenceNumber ?: Long.MAX_VALUE },
-            { it?.minSequenceNumber ?: Long.MAX_VALUE },
+            { it?.effectiveSequenceNumber ?: Long.MAX_VALUE },
+            { it?.effectiveMinSequenceNumber ?: Long.MAX_VALUE },
             { it?.addedSnapshotId ?: Long.MAX_VALUE },
             { IcebergGraphBuilder.manifestContentRank(it?.content) },
             { it?.manifestPath ?: "" }
@@ -59,7 +62,7 @@ internal object SiblingOrder {
         val fa = a as? GraphNode.FileNode
         val fb = b as? GraphNode.FileNode
         compareValuesBy(fa, fb,
-            { it?.data?.dataSequenceNumber ?: it?.entry?.sequenceNumber ?: Long.MAX_VALUE },
+            { it?.data?.dataSequenceNumber ?: it?.sequenceNumber ?: Long.MAX_VALUE },
             { it?.entry?.fileSequenceNumber ?: Long.MAX_VALUE },
             { IcebergGraphBuilder.contentRank(it?.data?.content) },
             { it?.entry?.status ?: Int.MAX_VALUE },

@@ -47,6 +47,7 @@ import model.deleteKindOf
 import model.deleteTargetsOf
 import model.DeleteFileKind
 import model.ManifestContent
+import model.effectiveMinSequenceNumber
 import model.effectiveSequenceNumber
 import model.DataFile
 import model.statisticsRows
@@ -1321,7 +1322,7 @@ fun NodeDetailsContent(
                                     listOf(
                                         "${snapshot.snapshotId ?: "N/A"}",
                                         "${snapshot.parentSnapshotId ?: "None"}",
-                                        "${snapshot.sequenceNumber ?: "N/A"}",
+                                        snapshot.sequenceNumber?.toString() ?: "0 (v1)",
                                         "${snapshot.schemaId ?: "N/A"}",
                                         formatTimestampShort(snapshot.timestampMs),
                                         normalizeText(snapshot.manifestList),
@@ -1516,7 +1517,11 @@ fun NodeDetailsContent(
                                 node.refs.takeIf { it.isNotEmpty() }?.joinToString(", ") { it.display }
                                     ?: "None — kept only by a metadata version, not by a branch or tag",
                             )
-                            DetailRow("Sequence Number", "${node.data.sequenceNumber ?: "N/A"}")
+                            DetailRow(
+                                "Sequence Number",
+                                node.data.sequenceNumber?.toString()
+                                    ?: "0 — a v1 snapshot records none, and the format reads it as 0",
+                            )
                             DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
                             DetailRow("Timestamp", formatTimestamp(node.data.timestampMs))
                             val manifestList = node.data.manifestList
@@ -1558,8 +1563,8 @@ fun NodeDetailsContent(
                             .filterIsInstance<GraphNode.ManifestNode>()
                             .sortedWith(
                                 compareBy(
-                                    { it.data.sequenceNumber ?: Int.MAX_VALUE },
-                                    { it.data.minSequenceNumber ?: Int.MAX_VALUE },
+                                    { it.data.effectiveSequenceNumber },
+                                    { it.data.effectiveMinSequenceNumber },
                                     { manifestContentRank(it.data.content) },
                                     { it.data.manifestPath ?: "" }
                                 )
@@ -1611,7 +1616,7 @@ fun NodeDetailsContent(
                                             if (manifest.content == 1) "Deletes (1)" else "Data (0)",
                                             "${manifest.manifestLength ?: "N/A"}",
                                             "${manifest.partitionSpecId ?: "N/A"}",
-                                            "${manifest.sequenceNumber ?: "N/A"}",
+                                            manifest.sequenceNumber?.toString() ?: "0 (v1)",
                                             "${manifest.minSequenceNumber ?: "N/A"}",
                                             "${manifest.addedSnapshotId ?: "N/A"}",
                                             "${manifest.addedFilesCount ?: 0}",
@@ -1636,8 +1641,15 @@ fun NodeDetailsContent(
                             }
                             DetailRow("Property", "Value", isHeader = true)
                             DetailRow("Content Type", contentType)
-                            DetailRow("Sequence Num.", "${node.data.sequenceNumber ?: "N/A"}")
-                            DetailRow("Min Sequence Num.", "${node.data.minSequenceNumber ?: "N/A"}")
+                            // A v1 manifest list records neither; the format reads both as 0.
+                            DetailRow(
+                                "Sequence Num.",
+                                node.data.sequenceNumber?.toString() ?: "0 — a v1 manifest list records none, read as 0",
+                            )
+                            DetailRow(
+                                "Min Sequence Num.",
+                                node.data.minSequenceNumber?.toString() ?: "0 — a v1 manifest list records none, read as 0",
+                            )
                             DetailRow("Partition Spec ID", "${node.data.partitionSpecId ?: "N/A"}")
                             DetailRow("Added Snapshot", "${node.data.addedSnapshotId ?: "N/A"}")
                             DetailRow("Manifest Length", "${node.data.manifestLength ?: 0} bytes")
@@ -1837,7 +1849,7 @@ fun NodeDetailsContent(
                                             status,
                                             content,
                                             "${view.entry.snapshotId ?: "N/A"}",
-                                            "${effectiveSequenceNumber(view.entry, node.data.sequenceNumber) ?: "N/A"}",
+                                            "${effectiveSequenceNumber(view.entry, node.data.sequenceNumber)}",
                                             "${view.entry.fileSequenceNumber ?: "N/A"}",
                                             normalizeText(data.filePath),
                                             data.fileFormat ?: "N/A",
@@ -1881,11 +1893,15 @@ fun NodeDetailsContent(
                             DetailRow("Snapshot ID", "${node.entry.snapshotId ?: "N/A"}")
                             // Inherited from the manifest when the entry records none, which is
                             // the ordinary case — and said out loud, because a number the file did
-                            // not write is a different fact from one it did.
+                            // not write is a different fact from one it did. A v1 manifest has no
+                            // number to inherit, and the format reads that as 0.
                             DetailRow(
                                 "Sequence Num.",
-                                "${node.sequenceNumber ?: "N/A"}" +
-                                    if (node.sequenceInherited) " (inherited from the manifest)" else "",
+                                "${node.sequenceNumber}" + when {
+                                    node.sequenceDefaulted -> " (v1 manifest — none recorded, read as 0)"
+                                    node.sequenceInherited -> " (inherited from the manifest)"
+                                    else -> ""
+                                },
                             )
                             DetailRow("File Seq. Num.", "${node.entry.fileSequenceNumber ?: "N/A"}")
                             DetailRow("File Format", "${node.data.fileFormat ?: "N/A"}")
@@ -3009,7 +3025,7 @@ private fun DeletesReachingSection(node: GraphNode.FileNode, graph: GraphModel) 
                         DeleteFileKind.POSITIONAL -> "positional"
                         DeleteFileKind.EQUALITY -> "equality"
                     },
-                    "${candidate.delete.sequenceNumber ?: "N/A"}",
+                    "${candidate.delete.sequenceNumber}",
                 )
             },
         )
@@ -3440,7 +3456,7 @@ private fun DeleteReachSection(node: GraphNode.SnapshotNode, children: List<Grap
                         DeleteFileKind.POSITIONAL -> "positional"
                         DeleteFileKind.EQUALITY -> "equality"
                     },
-                    "${file.sequenceNumber ?: "N/A"}",
+                    "${file.sequenceNumber}",
                     formatCount(file.recordCount ?: 0L),
                     file.targets.onlyPath?.let { "names ${fileNameFromPath(it)}" }
                         ?: file.targets.low?.let { low ->

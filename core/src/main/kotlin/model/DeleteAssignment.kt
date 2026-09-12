@@ -37,7 +37,7 @@ package model
 data class DeleteReach(
     val deletePath: String,
     val kind: DeleteFileKind,
-    val sequenceNumber: Long?,
+    val sequenceNumber: Long,
     val recordCount: Long?,
     /** The data files this delete file is proved to reach, by path. */
     val reaches: List<String>,
@@ -89,8 +89,8 @@ fun deleteReach(snapshot: UnifiedSnapshot): List<DeleteReach> {
     val live = liveFilesOf(snapshot)
     val livePaths = live.map { normalizeFilePath(it.path) }.toSet()
 
-    val data = mutableListOf<Pair<String, Long?>>()
-    val deletes = mutableListOf<Triple<ManifestEntry, Long?, DataFile>>()
+    val data = mutableListOf<Pair<String, Long>>()
+    val deletes = mutableListOf<Triple<ManifestEntry, Long, DataFile>>()
     val seen = mutableSetOf<String>()
     snapshot.manifests.forEach { manifest ->
         manifest.dataFiles.forEach { unified ->
@@ -211,21 +211,22 @@ fun deleteTargetsOf(file: DataFile): DeleteTargets = DeleteTargets(
  */
 fun reachVerdict(
     kind: DeleteFileKind,
-    deleteSequence: Long?,
+    deleteSequence: Long,
     targets: DeleteTargets,
     dataPath: String,
-    dataSequence: Long?,
+    dataSequence: Long,
 ): DeleteReachVerdict {
-    if (deleteSequence != null && dataSequence != null) {
-        val ordered = when (kind) {
-            // An equality delete must not touch rows a later commit adds, so it applies strictly
-            // below its own number. A positional delete addresses rows by position in a file that
-            // already exists, so it may be written in the same commit as the data it deletes from.
-            DeleteFileKind.EQUALITY -> deleteSequence > dataSequence
-            else -> deleteSequence >= dataSequence
-        }
-        if (!ordered) return DeleteReachVerdict.RULED_OUT_BY_SEQUENCE
+    // Both numbers always exist: an entry inherits its manifest's, and a v1 manifest's is 0 by
+    // the spec — see [effectiveSequenceNumber]. A delete written after a v1 table's upgrade
+    // therefore reaches every file the table had, which is the rule and not a gap in it.
+    val ordered = when (kind) {
+        // An equality delete must not touch rows a later commit adds, so it applies strictly
+        // below its own number. A positional delete addresses rows by position in a file that
+        // already exists, so it may be written in the same commit as the data it deletes from.
+        DeleteFileKind.EQUALITY -> deleteSequence > dataSequence
+        else -> deleteSequence >= dataSequence
     }
+    if (!ordered) return DeleteReachVerdict.RULED_OUT_BY_SEQUENCE
 
     targets.onlyPath?.let { only ->
         return if (normalizeFilePath(only) == dataPath) DeleteReachVerdict.REACHES

@@ -209,7 +209,7 @@ object IcebergGraphBuilder {
                     val manifest = unifiedManifest.metadata
                     val rawManPath = manifest.manifestPath ?: "unknown_${UUID.randomUUID()}"
                     val manId = manifestPathToId.getOrPut(rawManPath) { "man_${manifestPathToId.size + 1}" }
-                    val fallbackSeq = manifest.sequenceNumber ?: Long.MAX_VALUE
+                    val fallbackSeq = manifest.effectiveSequenceNumber
                     val unifiedDataFiles = unifiedManifest.dataFiles.sortedWith(unifiedDataFileComparator(fallbackSeq))
                     if (!logicalNodes.containsKey(manId)) {
                         val simpleManifestId = nextManifestSimpleId++

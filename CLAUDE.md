@@ -550,7 +550,16 @@ intellij/src/main/kotlin/plugin/
   of `mor`'s four files until it existed. The manifest's number reaches the node from the *builder*
   rather than being looked up from a parent, because one file can hang under several manifests and
   the panel would have to pick one. It is not only a display fact: which delete files a scan applies
-  to a data file is decided by comparing these two numbers
+  to a data file is decided by comparing these two numbers. **And a manifest with no number is a
+  v1 manifest, whose entries are at 0** — the spec's own reading ("sequence numbers for all files
+  must default to 0"; "use 0 when reading v1 manifest lists"; a v1 snapshot's is 0 too), so
+  `effectiveSequenceNumber` returns a `Long`, never null, and `FileNode.sequenceDefaulted` says
+  when the 0 is the reader's rather than the writer's. `v1` is the fixture: upgrading rewrites
+  nothing, so its v1 manifests sit under v2 metadata, and a merge-on-read delete written after the
+  upgrade reaches a v1-written file *by the sequence rule* (2 ≥ 0) rather than by the rule being
+  skipped for a missing number — which gave the right answer for the wrong reason and no answer at
+  all for an equality delete. The same default orders the siblings: a v1 manifest draws first, not
+  last
 - Spec constants live in `IcebergSchema.kt` (`ManifestContent`, `ManifestEntryStatus`,
   `DataFileContent`) and `PaimonSchema.kt` (`PaimonEntryKind`). Prefer them over 0/1/2 literals
 - **An expired snapshot is a state, not a read error, and the rule needs both of its halves.**

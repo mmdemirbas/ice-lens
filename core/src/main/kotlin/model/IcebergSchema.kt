@@ -269,9 +269,30 @@ data class ManifestEntry(
  * of `mor`'s four files came to show `N/A` for a number the format defines exactly. It matters
  * beyond display: which delete files a scan applies to a data file is decided by comparing these
  * two numbers, so an entry read as having none is an entry no rule can be applied to.
+ *
+ * **A manifest with none is a v1 manifest, and its entries are at 0.** Sequence numbers arrived
+ * with v2; a v1 manifest has no column for them and a v1 manifest list records none for the
+ * manifest, and the spec says what to read then: "When reading v1 manifests with no sequence
+ * number column, sequence numbers for all files must default to 0." Upgrading a table rewrites
+ * nothing, so a v2 table keeps its v1-written manifests exactly so — the `v1` fixture is one —
+ * and a delete file written after the upgrade reaches those files because 0 is below its number,
+ * which is the answer a scan gives and the answer "unknown" cannot.
  */
-fun effectiveSequenceNumber(entry: ManifestEntry, manifestSequenceNumber: Long?): Long? =
-    entry.sequenceNumber ?: manifestSequenceNumber
+fun effectiveSequenceNumber(entry: ManifestEntry, manifestSequenceNumber: Long?): Long =
+    entry.sequenceNumber ?: manifestSequenceNumber ?: 0L
+
+/**
+ * `sequence-number`, or 0 for a snapshot a v1 table committed. The field is required from v2 and
+ * absent before it — "default to 0 when reading v1 metadata" — and an upgrade leaves the old
+ * snapshots as they were.
+ */
+val Snapshot.effectiveSequenceNumber: Long get() = sequenceNumber ?: 0L
+
+/** `manifest_file.sequence_number` (a [ManifestListEntry] here), or 0 from a v1 manifest list: "use 0 when reading v1 manifest lists". */
+val ManifestListEntry.effectiveSequenceNumber: Long get() = sequenceNumber ?: 0L
+
+/** `manifest_file.min_sequence_number`, under the same v1 rule. */
+val ManifestListEntry.effectiveMinSequenceNumber: Long get() = minSequenceNumber ?: 0L
 
 @Serializable
 data class DataFile(

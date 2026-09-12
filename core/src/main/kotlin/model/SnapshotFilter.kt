@@ -13,7 +13,7 @@ fun GraphNode.asSnapshotFilterOption(): SnapshotFilterOption? = when (this) {
     is GraphNode.SnapshotNode -> SnapshotFilterOption(
         nodeId = id,
         snapshotId = data.snapshotId,
-        sequenceNumber = data.sequenceNumber,
+        sequenceNumber = data.effectiveSequenceNumber,
         timestampMs = data.timestampMs,
     )
     is GraphNode.PaimonSnapshotNode -> SnapshotFilterOption(

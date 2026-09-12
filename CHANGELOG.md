@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   card says how many manifests it names instead of the words "Manifest List"; the count is on the
   node and in the inspector, tooltip and IDE tree too.
 
+### Fixed
+- **A v1 manifest's entries are at sequence number 0, as the spec reads them, not "N/A".** Every
+  file under a manifest a v1 table wrote printed `N/A` and was left out of the delete-pairing rule
+  as if its number were unknown; the format defines it as 0 and an upgrade to v2 leaves those
+  manifests exactly so. The panels now print the 0 and say it is the reader's default, and a v1
+  manifest orders first among its siblings rather than last. The new `v1` fixture is a v1 table
+  upgraded to v2 in place, with a merge-on-read delete written after the upgrade reaching a file
+  written before it.
+
 ### Added
 - **"What this commit did" checks six more figures, and two of them are about manifests.** Rows in
   delete files by kind (`added-position-deletes`, `added-equality-deletes` and their `removed-`

@@ -236,6 +236,24 @@ class InspectorRenderTest {
     }
 
     /**
+     * A v1-written manifest and one of its files, after the table's upgrade to v2.
+     *
+     * Neither records a sequence number and both panels have to say the number is 0 *and* why —
+     * "read as 0" beside a number the writer never wrote is a different fact from a recorded 0,
+     * and the row that used to print N/A is the one a reader would take for a broken file.
+     */
+    @Test
+    fun `a v1 manifest and its file say their sequence number is the default`() {
+        val graph = graphFor("v1")
+        val manifest = graph.nodes.filterIsInstance<GraphNode.ManifestNode>().firstOrNull { it.data.sequenceNumber == null }
+        assertNotNull(manifest, "the v1 fixture should carry a manifest with no sequence number")
+        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().firstOrNull { it.sequenceDefaulted }
+        assertNotNull(file, "and a file under it")
+        renderInspector(graph, manifest.id, "manifest-node-v1", height = 1600)
+        renderInspector(graph, file.id, "file-node-v1", height = 1600)
+    }
+
+    /**
      * A snapshot expiry dropped, drawn as what it is rather than as a read error.
      *
      * The card says so in its eyebrow and the panel says so in an identity row, above a summary

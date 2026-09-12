@@ -420,7 +420,7 @@ sealed class GraphNode(
         override val displayNumber: Int get() = simpleId
         override val commitId: Long? get() = data.snapshotId
         override val parentCommitId: Long? get() = data.parentSnapshotId
-        override val commitOrder: Long? get() = data.sequenceNumber
+        override val commitOrder: Long? get() = data.effectiveSequenceNumber
         override val commitTimeMs: Long? get() = data.timestampMs
 
         /**
@@ -517,10 +517,16 @@ sealed class GraphNode(
         val data: DataFile get() = entry.dataFile ?: DataFile(filePath = "unknown")
 
         /** This file's sequence number, inherited from its manifest when the entry records none. */
-        val sequenceNumber: Long? get() = effectiveSequenceNumber(entry, manifestSequenceNumber)
+        val sequenceNumber: Long get() = effectiveSequenceNumber(entry, manifestSequenceNumber)
 
         /** Whether [sequenceNumber] came from the manifest rather than from the entry. */
-        val sequenceInherited: Boolean get() = entry.sequenceNumber == null && sequenceNumber != null
+        val sequenceInherited: Boolean get() = entry.sequenceNumber == null && manifestSequenceNumber != null
+
+        /**
+         * Whether [sequenceNumber] is the v1 default: neither the entry nor its manifest records
+         * one, and the spec reads both as 0.
+         */
+        val sequenceDefaulted: Boolean get() = entry.sequenceNumber == null && manifestSequenceNumber == null
 
         /** Per-column statistics with bounds decoded against [schema]. */
         val columnStats: List<ColumnStats> by lazy { columnStatsFor(data, schema) }

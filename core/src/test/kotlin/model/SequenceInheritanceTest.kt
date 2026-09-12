@@ -49,25 +49,37 @@ class SequenceInheritanceTest {
     }
 
     /**
-     * The property across every checked-in table: nothing live is left without one.
+     * The property across every checked-in table: nothing live is left without one, and the only
+     * place the number is the spec's default rather than a recorded or inherited one is a v1
+     * manifest.
      *
-     * A file with no sequence number is a file no delete-application rule can be evaluated against,
-     * so "how many are there" is the question worth pinning — and the answer has to be zero.
+     * A file with no sequence number is a file no delete-application rule can be evaluated against.
+     * `effectiveSequenceNumber` now returns one for every entry by type, so what is left to pin is
+     * where the default was reached for: exactly the v1 fixture, whose manifests record none, and
+     * nowhere else — a v2 manifest list with a null number would be read as 0 and this is what
+     * would say so.
      */
     @Test
-    fun `no live entry in any fixture is left without a sequence number`() {
-        val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "maint")
-        val missing = fixtures.flatMap { name ->
-            table(name).metadatas.last().snapshots.flatMap { snapshot ->
-                snapshot.manifests.flatMap { manifest ->
-                    manifest.dataFiles.mapNotNull { file ->
-                        val effective = effectiveSequenceNumber(file.metadata, manifest.metadata.sequenceNumber)
-                        if (effective == null) "$name/${manifest.path.fileName}" else null
+    fun `only a v1 manifest leaves an entry at the default sequence number`() {
+        val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "maint", "v1")
+        val defaultedIn = fixtures.filter { name ->
+            table(name).metadatas.last().snapshots.flatMap { it.manifests }
+                .any { manifest -> manifest.metadata.sequenceNumber == null && manifest.dataFiles.isNotEmpty() }
+        }
+        assertEquals(listOf("v1"), defaultedIn, "fixtures with an entry at the v1 default")
+
+        fixtures.forEach { name ->
+            table(name).metadatas.last().snapshots.flatMap { it.manifests }.forEach { manifest ->
+                manifest.dataFiles.forEach { file ->
+                    val effective = effectiveSequenceNumber(file.metadata, manifest.metadata.sequenceNumber)
+                    if (manifest.metadata.sequenceNumber != null) {
+                        assertTrue(effective >= 1L, "$name/${manifest.path.fileName}: $effective")
+                    } else {
+                        assertEquals(0L, effective, "$name/${manifest.path.fileName}")
                     }
                 }
             }
         }
-        assertTrue(missing.isEmpty(), "entries with no sequence number: $missing")
     }
 
     /** The graph node answers it the same way, and says when the number was not its own. */
