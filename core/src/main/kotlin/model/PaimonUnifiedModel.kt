@@ -19,22 +19,51 @@ data class PaimonUnifiedTableModel(
     val snapshots: List<PaimonUnifiedSnapshot>,
     /** What `tag/` holds — see [PaimonUnifiedTag]. */
     val tags: List<PaimonUnifiedTag> = emptyList(),
+    /** What `branch/` holds, by name — see [PaimonUnifiedBranch]. Main's own commits are [snapshots]. */
+    val branches: List<PaimonUnifiedBranch> = emptyList(),
     override val readErrors: List<UnifiedReadError> = emptyList(),
 ) : FormatTableModel {
     /** The tags naming a snapshot id, by id — a tag on a live snapshot and a tag on an expired one alike. */
-    val tagNamesBySnapshotId: Map<Long, List<String>> by lazy {
-        tags.groupBy({ it.snapshot.metadata.id }, { it.name })
-            .filterKeys { it != null }.mapKeys { it.key!! }
-    }
+    val tagNamesBySnapshotId: Map<Long, List<String>> by lazy { tagNamesBySnapshotId(tags) }
 
     /** The tagged snapshots `snapshot/` no longer holds — retained by the tag alone. */
-    val tagOnlySnapshots: List<PaimonUnifiedSnapshot> by lazy {
-        val live = snapshots.mapNotNull { it.metadata.id }.toSet()
-        tags.filter { it.snapshot.metadata.id !in live }
-            .distinctBy { it.snapshot.metadata.id }
-            .map { it.snapshot }
-    }
+    val tagOnlySnapshots: List<PaimonUnifiedSnapshot> by lazy { tagOnlySnapshots(snapshots, tags) }
     override val format get() = service.TableFormat.PAIMON
+}
+
+/**
+ * A Paimon branch: `branch/branch-<name>/`, which holds its own `snapshot/`, `schema/` and `tag/`
+ * over the table's one `manifest/` and one set of data directories.
+ *
+ * That split is what the `br` fixture settled and the reason a branch is not a nested table: a
+ * commit to the branch writes its manifests into the table's `manifest/` and its data file into
+ * the same bucket directory main writes to, and only the snapshot file lands under `branch/`. So a
+ * reader of `snapshot/` alone sees the branch's data file as a file nothing names. Snapshot ids
+ * are per branch — a branch created from a tag starts with that snapshot copied verbatim, and its
+ * next commit takes the next id, which main may have used for a different commit. An empty branch
+ * (`create_branch` without a tag) holds a schema and no `snapshot/` at all, which is not an error.
+ */
+data class PaimonUnifiedBranch(
+    val name: String,
+    val path: Path,
+    val schemas: List<PaimonSchema>,
+    val snapshots: List<PaimonUnifiedSnapshot>,
+    val tags: List<PaimonUnifiedTag> = emptyList(),
+    val readErrors: List<UnifiedReadError> = emptyList(),
+) {
+    val tagNamesBySnapshotId: Map<Long, List<String>> by lazy { tagNamesBySnapshotId(tags) }
+    val tagOnlySnapshots: List<PaimonUnifiedSnapshot> by lazy { tagOnlySnapshots(snapshots, tags) }
+}
+
+private fun tagNamesBySnapshotId(tags: List<PaimonUnifiedTag>): Map<Long, List<String>> =
+    tags.groupBy({ it.snapshot.metadata.id }, { it.name })
+        .filterKeys { it != null }.mapKeys { it.key!! }
+
+private fun tagOnlySnapshots(snapshots: List<PaimonUnifiedSnapshot>, tags: List<PaimonUnifiedTag>): List<PaimonUnifiedSnapshot> {
+    val live = snapshots.mapNotNull { it.metadata.id }.toSet()
+    return tags.filter { it.snapshot.metadata.id !in live }
+        .distinctBy { it.snapshot.metadata.id }
+        .map { it.snapshot }
 }
 
 /**
@@ -109,40 +138,36 @@ data class PaimonUnifiedDataFile(
 /**
  * Reads a Paimon table directory and builds a [PaimonUnifiedTableModel].
  *
- * Reads all schemas from `schema/`, all snapshots from `snapshot/`,
- * then resolves each snapshot's manifest lists and manifest files.
+ * Reads all schemas from `schema/`, all snapshots from `snapshot/`, then resolves each
+ * snapshot's manifest lists and manifest files; then the same for every branch under `branch/`,
+ * whose snapshot, schema and tag directories are its own and whose manifests and data files are
+ * the table's.
  */
 fun PaimonUnifiedTableModel(tablePath: Path): PaimonUnifiedTableModel {
     logger.info("Loading Paimon table: {}", tablePath)
     val errors = mutableListOf<UnifiedReadError>()
 
-    // 1. Read all schemas
-    val schemaDir = tablePath.resolve("schema")
-    val schemas = readSchemas(schemaDir, errors)
-    val schemasById = schemas.associateBy { it.id }
-    logger.info("  Schemas loaded: {}", schemas.size)
-
-    // 2. Read all snapshots
-    val snapshotDir = tablePath.resolve("snapshot")
-    val snapshotFiles = listSnapshotFiles(snapshotDir, errors)
-    logger.info("  Snapshot files found: {}", snapshotFiles.size)
-
     // One cache for the whole load: a snapshot's base manifest list carries manifests forward
     // from earlier commits, so without it each shared manifest is re-parsed once per snapshot
-    // that references it. Same defect as the Iceberg side — see [ManifestCache].
+    // that references it — and a branch's first snapshot is a copy of the one it was created
+    // from, so the cache is what keeps a branch from re-reading main's manifests. Same defect as
+    // the Iceberg side — see [ManifestCache].
     val manifestCache = PaimonManifestCache()
-    val snapshots = snapshotFiles.mapNotNull { snapshotPath ->
-        readPaimonSnapshot(tablePath, snapshotPath, schemasById, errors, manifestCache)
-    }.sortedBy { it.metadata.id ?: Long.MAX_VALUE }
+    val main = readPaimonBranch(MAIN_BRANCH, tablePath, tablePath, manifestCache, mainBranch = true)
+    errors += main.readErrors
 
-    // 3. Tags: the same file shape as a snapshot, read the same way, through the same cache.
-    val tags = listTagFiles(tablePath.resolve("tag"), errors).mapNotNull { tagPath ->
-        readPaimonSnapshot(tablePath, tagPath, schemasById, errors, manifestCache)?.let { snapshot ->
-            PaimonUnifiedTag(name = tagPath.fileName.toString().removePrefix("tag-"), path = tagPath, snapshot = snapshot)
-        }
+    val branches = listBranchDirs(tablePath.resolve("branch"), errors).map { branchDir ->
+        readPaimonBranch(
+            name = branchDir.fileName.toString().removePrefix(BRANCH_DIR_PREFIX),
+            metadataRoot = branchDir,
+            tablePath = tablePath,
+            manifestCache = manifestCache,
+            mainBranch = false,
+        )
     }.sortedBy { it.name }
-    if (tags.isNotEmpty()) logger.info("  Tags: {}", tags.map { it.name })
+    if (branches.isNotEmpty()) logger.info("  Branches: {}", branches.map { it.name })
 
+    val snapshots = main.snapshots
     val totalManifests = snapshots.sumOf { it.baseManifests.size + it.deltaManifests.size + it.changelogManifests.size }
     val totalDataFiles = snapshots.sumOf { s -> (s.baseManifests + s.deltaManifests + s.changelogManifests).sumOf { it.entries.size } }
     val allSnapshotErrors = snapshots.flatMap { it.readErrors }
@@ -159,11 +184,80 @@ fun PaimonUnifiedTableModel(tablePath: Path): PaimonUnifiedTableModel {
     return PaimonUnifiedTableModel(
         path = tablePath,
         name = tablePath.fileName.toString(),
+        schemas = main.schemas,
+        snapshots = snapshots,
+        tags = main.tags,
+        branches = branches,
+        readErrors = errors,
+    )
+}
+
+/** Paimon's name for the table's own line of commits — the one `snapshot/` at the root holds. */
+const val MAIN_BRANCH = "main"
+
+/** `branch/branch-<name>/` — the prefix Paimon puts on every branch directory. */
+private const val BRANCH_DIR_PREFIX = "branch-"
+
+/**
+ * One line of commits — main's, or a branch's — read from [metadataRoot]'s `snapshot/`, `schema/`
+ * and `tag/`, with manifests and data resolved under [tablePath]. The two are the same directory
+ * for main and differ for a branch, which is the whole of what a branch is.
+ *
+ * A branch with no `snapshot/` was created empty and has nothing to read, so only main reports
+ * the directory missing — the format detector required it there.
+ */
+private fun readPaimonBranch(
+    name: String,
+    metadataRoot: Path,
+    tablePath: Path,
+    manifestCache: PaimonManifestCache,
+    mainBranch: Boolean,
+): PaimonUnifiedBranch {
+    val errors = mutableListOf<UnifiedReadError>()
+
+    val schemas = readSchemas(metadataRoot.resolve("schema"), errors)
+    val schemasById = schemas.associateBy { it.id }
+    logger.info("  [{}] Schemas loaded: {}", name, schemas.size)
+
+    val snapshotDir = metadataRoot.resolve("snapshot")
+    val snapshotFiles = if (mainBranch || Files.isDirectory(snapshotDir)) listSnapshotFiles(snapshotDir, errors) else emptyList()
+    logger.info("  [{}] Snapshot files found: {}", name, snapshotFiles.size)
+
+    val snapshots = snapshotFiles.mapNotNull { snapshotPath ->
+        readPaimonSnapshot(tablePath, snapshotPath, schemasById, errors, manifestCache)
+    }.sortedBy { it.metadata.id ?: Long.MAX_VALUE }
+
+    // Tags: the same file shape as a snapshot, read the same way, through the same cache.
+    val tags = listTagFiles(metadataRoot.resolve("tag"), errors).mapNotNull { tagPath ->
+        readPaimonSnapshot(tablePath, tagPath, schemasById, errors, manifestCache)?.let { snapshot ->
+            PaimonUnifiedTag(name = tagPath.fileName.toString().removePrefix("tag-"), path = tagPath, snapshot = snapshot)
+        }
+    }.sortedBy { it.name }
+    if (tags.isNotEmpty()) logger.info("  [{}] Tags: {}", name, tags.map { it.name })
+
+    return PaimonUnifiedBranch(
+        name = name,
+        path = metadataRoot,
         schemas = schemas,
         snapshots = snapshots,
         tags = tags,
         readErrors = errors,
     )
+}
+
+/** `branch/branch-<name>/`, or nothing: most tables have no `branch/` directory at all, which is not an error. */
+private fun listBranchDirs(branchDir: Path, errors: MutableList<UnifiedReadError>): List<Path> {
+    if (!Files.isDirectory(branchDir)) return emptyList()
+    return runCatching {
+        Files.list(branchDir)
+            .asSequence()
+            .filter { Files.isDirectory(it) }
+            .filter { it.fileName.toString().startsWith(BRANCH_DIR_PREFIX) }
+            .toList()
+    }.getOrElse { e ->
+        errors += toError("list-branch-dirs", branchDir.toString(), e)
+        emptyList()
+    }
 }
 
 /** `tag/tag-<name>`, or nothing: most tables have no `tag/` directory at all, which is not an error. */

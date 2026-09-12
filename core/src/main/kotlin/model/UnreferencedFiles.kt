@@ -24,8 +24,11 @@ import java.nio.file.attribute.BasicFileAttributes
  * metadata only and can delete more than this reports. Paimon's reaches from every snapshot, as this
  * does, and from tags, which this follows too: a tag is a snapshot copy under `tag/`, and after
  * `expire_snapshots` it can be the only thing naming a data file — the `tg` fixture. Branches are
- * a nested table layout under `branch/` and consumers are bookkeeping under `consumer/`; neither
- * is read, so both directories are left out of the walk rather than reported. Stated on the panel.
+ * followed too, and have to be: a branch keeps only its snapshot, schema and tag files under
+ * `branch/`, and writes its manifests and data files beside main's, so a walk that reads main
+ * alone reports every file a branch committed as an orphan — the `br` fixture. Consumers are
+ * bookkeeping under `consumer/` that nothing here reads, so that directory is left out of the walk
+ * rather than reported. Stated on the panel.
  *
  * Hidden files (a leading `.`) are skipped: Hadoop's local filesystem writes a `.crc` beside every
  * file and macOS writes `.DS_Store`, and neither is the table's. The walk is the whole table
@@ -63,7 +66,7 @@ fun findUnreferencedFiles(model: FormatTableModel): UnreferencedFilesReport {
     val problems = mutableListOf<String>()
     val notWalked = when (model) {
         is UnifiedTableModel -> emptySet()
-        is PaimonUnifiedTableModel -> setOf("branch", "consumer")
+        is PaimonUnifiedTableModel -> setOf("consumer")
     }
     val onDisk = walkTableFiles(model.path, notWalked, problems)
     val unreferenced = onDisk
@@ -110,16 +113,30 @@ private fun icebergReferencedFiles(model: UnifiedTableModel): List<Path> {
     return paths
 }
 
-private fun paimonReferencedFiles(model: PaimonUnifiedTableModel): List<Path> {
-    val root = model.path
+private fun paimonReferencedFiles(model: PaimonUnifiedTableModel): List<Path> =
+    paimonLineReferencedFiles(model.path, model.path, model.schemas, model.snapshots, model.tags) +
+        model.branches.flatMap { paimonLineReferencedFiles(model.path, it.path, it.schemas, it.snapshots, it.tags) }
+
+/**
+ * What one line of commits names: its own snapshot, schema and tag files under [metadataRoot],
+ * and the manifests, index, statistics and data files under the table's [root] — the same
+ * directory for main, a `branch/branch-<name>` for a branch.
+ */
+private fun paimonLineReferencedFiles(
+    root: Path,
+    metadataRoot: Path,
+    schemas: List<PaimonSchema>,
+    snapshots: List<PaimonUnifiedSnapshot>,
+    tags: List<PaimonUnifiedTag>,
+): List<Path> {
     val manifestDir = root.resolve("manifest")
     // add(), not +=: a Path is an Iterable<Path> of its own segments, and += would append those.
     val paths = mutableListOf<Path>()
-    paths.add(root.resolve("snapshot").resolve("EARLIEST"))
-    paths.add(root.resolve("snapshot").resolve("LATEST"))
-    model.schemas.forEach { schema -> schema.id?.let { paths.add(root.resolve("schema").resolve("schema-$it")) } }
-    model.tags.forEach { paths.add(it.path) }
-    (model.snapshots + model.tags.map { it.snapshot }).forEach { snapshot ->
+    paths.add(metadataRoot.resolve("snapshot").resolve("EARLIEST"))
+    paths.add(metadataRoot.resolve("snapshot").resolve("LATEST"))
+    schemas.forEach { schema -> schema.id?.let { paths.add(metadataRoot.resolve("schema").resolve("schema-$it")) } }
+    tags.forEach { paths.add(it.path) }
+    (snapshots + tags.map { it.snapshot }).forEach { snapshot ->
         paths.add(snapshot.path)
         val md = snapshot.metadata
         listOfNotNull(md.baseManifestList, md.deltaManifestList, md.changelogManifestList, md.indexManifest)

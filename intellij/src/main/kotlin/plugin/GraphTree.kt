@@ -115,6 +115,7 @@ object GraphTree {
         is GraphNode.ErrorNode -> listOf("Error" to node.title, "Detail" to node.message)
         is GraphNode.PaimonSnapshotNode -> listOf(
             "Snapshot id" to node.data.id.toString(),
+            "Branch" to (node.branch ?: "main"),
             "Schema id" to node.data.schemaId.toString(),
             "Commit kind" to (node.data.commitKind ?: "—"),
             "Tags" to node.tags.joinToString(", ").ifEmpty { "—" },

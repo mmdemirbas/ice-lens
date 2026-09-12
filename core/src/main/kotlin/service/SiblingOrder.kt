@@ -76,12 +76,18 @@ internal object SiblingOrder {
         ra.compareTo(rb)
     }
 
+    /**
+     * By commit time, then id, then branch with main first: a branch created from a tag starts
+     * with a copy of main's snapshot, identical in time and id, and the copy draws under the
+     * original rather than the original under the copy.
+     */
     val PAIMON_SNAPSHOT: Comparator<GraphNode> = Comparator { a, b ->
-        val sa = (a as? GraphNode.PaimonSnapshotNode)?.data
-        val sb = (b as? GraphNode.PaimonSnapshotNode)?.data
-        compareValuesBy(sa, sb,
-            { it?.timeMillis ?: Long.MAX_VALUE },
-            { it?.id ?: Long.MAX_VALUE }
+        val na = a as? GraphNode.PaimonSnapshotNode
+        val nb = b as? GraphNode.PaimonSnapshotNode
+        compareValuesBy(na, nb,
+            { it?.data?.timeMillis ?: Long.MAX_VALUE },
+            { it?.data?.id ?: Long.MAX_VALUE },
+            { it?.branch ?: "" }
         )
     }
 

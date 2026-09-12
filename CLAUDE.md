@@ -1145,8 +1145,8 @@ names. Both run between nodes of one layer, which is exactly why ELK must not se
 
 - `table_root` — the single table root node (shared with Iceberg)
 - `pschema_<id>` — Paimon schema nodes
-- `psnap_<id>` — Paimon snapshot nodes
-- `pml_<snapshotId>_<kind>` — manifest list nodes (kind = base/delta/changelog)
+- `psnap_<id>` — Paimon snapshot nodes on main; `psnap_<branch>_<id>` on a branch, because ids are per branch
+- `pml_<snapshotId>_<kind>` — manifest list nodes (kind = base/delta/changelog); `pml_<branch>_<snapshotId>_<kind>` on a branch
 - `pman_<n>` — manifest nodes (incrementing counter)
 - `pdf_<manId>_<simpleId>_<index>` — data file nodes
 - `row_<fId>_<index>` — reuses existing RowNode
@@ -1167,7 +1167,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~882 tests across 97 files (656 in :core, 221 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~892 tests across 98 files (664 in :core, 223 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1260,6 +1260,7 @@ container invocation and the traps in it:
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
 | `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest`, `PaimonFileBoundsFixtureTest`, `PaimonScanPruningTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
 | `paimon/db.db/ao` | `PaimonAppendOnlyFixtureTest` | an append-only table, no primary key, `bucket = -1` — no key range, everything in `bucket-0`, and a DELETE that rewrites a file as an `APPEND` with a negative delta |
+| `paimon/db.db/br` | `PaimonBranchFixtureTest` | two branches — one created from a tag and committed to, one created empty; main and `dev` both hold a `snapshot-2`, and `bucket-0` holds a file only the branch names |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1404,7 +1405,29 @@ also on the classpath.
   is why the referenced set follows tags, or that file is a false orphan in the direction that
   gets a file deleted. **A tag retains data, not changelog**: expiry deleted the changelog manifest
   list the tag still names, and the tag reads with exactly that one read error, drawn under it.
-  `branch/` (a nested table layout) and `consumer/` are not read and are left out of the walk
+  `consumer/` is not read and is left out of the walk.
+- **A branch is another line of commits over the same manifests and data, not a nested table.**
+  `branch/branch-<name>/` holds its own `snapshot/`, `schema/` and `tag/` and **no `manifest/`**:
+  the `br` fixture settled that a commit to a branch writes its manifests into the table's
+  `manifest/` and its data file into the same bucket directory main writes to, and only the
+  snapshot file lands under `branch/`. That is why `PaimonUnifiedBranch` is read by the same
+  `readPaimonBranch` main is — metadata root and table root are one directory for main and two
+  for a branch — through the one `PaimonManifestCache`, and why the referenced-files walk has to
+  follow branches: before it did, the branch's data file was the table's one "orphan", in the
+  direction that gets a file deleted. **Snapshot ids are per branch.** A branch created from a tag
+  starts with that snapshot (and the tag) copied verbatim and numbers on from it, so main and
+  `dev` both hold a `snapshot-2` that are different commits; the node ids carry the branch
+  (`psnap_dev_2`, `pml_dev_2_delta`) and main's stay unqualified, and the copied snapshot hangs
+  the *same* manifest node main's does because the cache keyed it by file name. A branch created
+  empty has a `schema/` and no `snapshot/` at all, which is its normal state and not a read
+  error. On the canvas each branch takes a column of its own through `paimonSnapshotTracks` —
+  main in track 0, branches in name order — under the same `spreadSnapshotBranches` shift the
+  Iceberg columns use, and `snapshotColumns` names the columns from `columnLabelsOf`: `main` for
+  the table's own `snapshot/`, because Paimon records no refs and a directory is the only branch
+  fact it has. `TableSummary.branches` is null on Iceberg (refs live on the metadata node) and an
+  empty list on a Paimon table with no `branch/`, so the panel says "no branches" only where the
+  format keeps them there. The change fingerprint stats every branch's three directories and
+  `tag/`, or a branch commit — which touches nothing at the table root — never reloads the table.
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

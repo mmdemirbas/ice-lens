@@ -33,6 +33,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **Paimon branches are read and drawn.** `branch/branch-<name>/` was skipped; now each branch
+  is another line of commits under the table root, in a column of its own with its name over it
+  — the same drawing an Iceberg fork gets — with the branch as a chip on its cards and a `Branch`
+  row on its panel, and the table panel lists every branch with its snapshot count, latest id,
+  schemas, tags and read errors. A branch's snapshot ids are its own, so its node ids carry the
+  branch name. The referenced-files walk follows branches too, which it had to: a branch writes
+  its manifests and data beside main's and only its snapshot file under `branch/`, so the file a
+  branch commit wrote was reported as an orphan. A commit to a branch, or a new tag, now reloads
+  the table. `br` is the fixture — a branch created from a tag and written to, and one created
+  empty.
 - **An append-only Paimon table is a checked-in fixture.** `ao` has no primary key and
   `bucket = -1`: its files carry no key range, every one lands in `bucket-0` under its partition,
   and its `DELETE` is an `APPEND` commit with a negative delta that removes one file and adds it

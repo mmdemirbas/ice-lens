@@ -844,6 +844,35 @@ class InspectorRenderTest {
     }
 
     /**
+     * A Paimon branch: the branch's commit, the table's branch list, and the canvas with the
+     * branch in a column of its own.
+     *
+     * What to look for on the snapshot panel: the `Branch` row saying `dev` beside a snapshot id
+     * main also has. On the table panel: `Branches (2)`, one written to and one created empty,
+     * with the empty one saying so rather than showing a blank. On the canvas: `main` over the
+     * left column of three commits, `dev` over the right column of two, the branch's first commit
+     * hanging its manifest list beside main's first — it is the same manifest — and the branch
+     * chip on the two right-hand cards.
+     */
+    @Test
+    fun `a paimon branch is a column, a chip and a row`() {
+        val brGraph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/br").absolutePath)),
+            showRows = false,
+        )
+        val onBranch = brGraph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().firstOrNull { it.branch == "dev" && it.data.id == 2L }
+        assertNotNull(onBranch, "the br fixture should carry dev's second snapshot")
+        renderInspector(brGraph, onBranch.id, "paimon-snapshot-branch", height = 1400)
+        val table = brGraph.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        renderInspector(brGraph, table.id, "paimon-table-node-branches", height = 2200)
+        assertTrue(
+            brGraph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().map { it.x }.distinct().size == 2,
+            "main and dev should occupy two columns",
+        )
+        renderCanvas("graph-canvas-paimon-branched", brGraph, pageSize = AggregationPolicy.DEFAULT_PAGE_SIZE)
+    }
+
+    /**
      * Focus on a copy button, which lives in a panel several screens tall.
      *
      * `KeyboardReachTest` settles that Tab arrives; the chrome capture above settles that a ring is

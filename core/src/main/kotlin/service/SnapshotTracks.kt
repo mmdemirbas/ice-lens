@@ -63,6 +63,35 @@ internal fun snapshotTracks(snapshots: List<GraphNode.SnapshotNode>): Map<String
 }
 
 /**
+ * Which column each Paimon snapshot draws in: main's in track 0, and each branch's in a track of
+ * its own, in name order.
+ *
+ * The Iceberg assignment above walks lineage, and Paimon records none — a snapshot has no parent
+ * field, and a branch's first snapshot is a *copy* of the one it was created from rather than a
+ * child of it. What the format does record is which `snapshot/` a file was read from, and that
+ * is the whole of what a column means here: one line of commits per directory, the way
+ * `branch/branch-<name>/` lays them out on disk. A table with no branch puts everything in track
+ * 0 and, as above, moves nothing.
+ */
+internal fun paimonSnapshotTracks(snapshots: List<GraphNode.PaimonSnapshotNode>): Map<String, Int> {
+    if (snapshots.size < 2) return emptyMap()
+    val branches = snapshots.mapNotNull { it.branch }.distinct().sorted()
+    if (branches.isEmpty()) return emptyMap()
+    return snapshots.associate { node -> node.id to (node.branch?.let { branches.indexOf(it) + 1 } ?: 0) }
+}
+
+/**
+ * The branch names a snapshot node carries for the column it sits in — an Iceberg snapshot's
+ * branch refs, or the Paimon branch whose directory the snapshot was read from, `main` for the
+ * table's own.
+ */
+fun columnLabelsOf(node: GraphNode): List<model.SnapshotRefLabel> = when (node) {
+    is GraphNode.SnapshotNode -> node.refs.filter { it.isBranch }
+    is GraphNode.PaimonSnapshotNode -> listOf(model.SnapshotRefLabel(node.branch ?: model.MAIN_BRANCH, isBranch = true))
+    else -> emptyList()
+}
+
+/**
  * One drawn column of snapshots, and the branch whose tip sits at the bottom of it.
  *
  * [x] and [topY] are where the column is, so a caller can put the name above it. [labels] is
@@ -98,11 +127,15 @@ data class SnapshotColumn(
  * [model.stepFrom] takes them: a reader who has dragged a snapshot has made the drawing, and the
  * label belongs over the column they are looking at.
  *
+ * A Paimon column is named by the branch its snapshots were read from — `main` for the table's
+ * own `snapshot/` — through [columnLabelsOf], because that is the only branch fact the format
+ * records: there are no refs, and no tag can sit on a tip to be mistaken for one.
+ *
  * Returns nothing for a single column. A linear history is one line, and a name floating over the
  * only column there is says nothing the graph did not already say.
  */
 fun snapshotColumns(
-    snapshots: List<GraphNode.SnapshotNode>,
+    snapshots: List<GraphNode>,
     positionOf: (String) -> model.Point,
 ): List<SnapshotColumn> {
     if (snapshots.size < 2) return emptyList()
@@ -116,7 +149,7 @@ fun snapshotColumns(
         SnapshotColumn(
             x = x.toDouble(),
             topY = column.minOf { positionOf(it.id).y.toDouble() },
-            labels = tip.refs.filter { it.isBranch },
+            labels = columnLabelsOf(tip),
         )
     }.sortedBy { it.x }
 }

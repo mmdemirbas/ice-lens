@@ -637,15 +637,21 @@ class AppState(
         // would return whatever the first read produced, forever, and a remote table would never
         // reload. The cost of that honesty is a LIST per call, which is why the callers space these
         // out (REMOTE_POLL_INTERVAL_MS) rather than asking on the local table's three-second timer.
-        listOf("metadata", "snapshot", "schema").forEach { ObjectStorage.invalidate("$root/$it") }
+        listOf("metadata", "snapshot", "schema", "tag", "branch").forEach { ObjectStorage.invalidate("$root/$it") }
         val names = runCatching {
             ObjectStorage.list("$root/metadata")
                 .filter { it.name.endsWith(".metadata.json") || it.name == "version-hint.text" }
+                .map { it.name }
                 .ifEmpty {
-                    ObjectStorage.list("$root/snapshot").filter { it.name.startsWith("snapshot-") } +
-                        ObjectStorage.list("$root/schema").filter { it.name.startsWith("schema-") }
+                    // The same directories the local fingerprint stats, and a branch commit lands
+                    // under branch/ alone; two subtree globs cover every branch's and every tag's
+                    // files in two requests rather than one per branch.
+                    ObjectStorage.list("$root/snapshot").filter { it.name.startsWith("snapshot-") }.map { it.name } +
+                        ObjectStorage.list("$root/schema").filter { it.name.startsWith("schema-") }.map { it.name } +
+                        ObjectStorage.glob("$root/tag/**").map { it.removePrefix("$root/") } +
+                        ObjectStorage.glob("$root/branch/**").map { it.removePrefix("$root/") }
                 }
-                .map { it.name }.sorted()
+                .sorted()
         }.getOrElse { return "unreachable" }
         if (names.isEmpty()) return "empty"
         return names.joinToString("|").hashCode().toString()
@@ -660,19 +666,27 @@ class AppState(
             .orEmpty()
     }
 
+    /**
+     * What a Paimon commit, tag or branch touches: the table's own `snapshot/`, `schema/` and
+     * `tag/`, and the same three under every `branch/branch-<name>/`. A commit to a branch adds a
+     * snapshot file there and nowhere else — its manifests and data land in directories this
+     * deliberately does not stat — so without the branch directories a branch commit never
+     * reloads the table.
+     */
     private fun paimonTrackedFiles(tableDir: File): List<File> {
-        val snapshotDir = File(tableDir, "snapshot")
-        val schemaDir = File(tableDir, "schema")
-        if (!snapshotDir.isDirectory && !schemaDir.isDirectory) return emptyList()
-        val snapshotFiles = snapshotDir.listFiles()
-            ?.filter { it.isFile && it.name.startsWith("snapshot-") }
+        if (!File(tableDir, "snapshot").isDirectory && !File(tableDir, "schema").isDirectory) return emptyList()
+        val branchDirs = File(tableDir, "branch").listFiles()
+            ?.filter { it.isDirectory && it.name.startsWith("branch-") }
             ?.sortedBy { it.name }
             .orEmpty()
-        val schemaFiles = schemaDir.listFiles()
-            ?.filter { it.isFile && it.name.startsWith("schema-") }
-            ?.sortedBy { it.name }
-            .orEmpty()
-        return snapshotFiles + schemaFiles
+        return (listOf(tableDir) + branchDirs).flatMap { root ->
+            listOf("snapshot" to "snapshot-", "schema" to "schema-", "tag" to "tag-").flatMap { (dir, prefix) ->
+                File(root, dir).listFiles()
+                    ?.filter { it.isFile && it.name.startsWith(prefix) }
+                    ?.sortedBy { it.name }
+                    .orEmpty()
+            }
+        }
     }
 
     fun updateShowRows(value: Boolean) {

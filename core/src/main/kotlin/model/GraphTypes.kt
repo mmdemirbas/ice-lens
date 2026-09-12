@@ -265,6 +265,13 @@ data class TableSummary(
     val manifestFileTimes: FileTimeRange,
     val dataFileTimes: FileTimeRange,
     val metadataVersions: List<MetadataVersionInfo> = emptyList(),
+    /**
+     * What `branch/` holds on a Paimon table, one entry per branch, empty when the directory is
+     * absent — and null on an Iceberg table, whose branches are refs on the metadata file and are
+     * listed there. Null and empty are kept apart so the panel can say "no branches" only where
+     * the format keeps them here.
+     */
+    val branches: List<BranchSummary>? = null,
 ) {
     /**
      * The table as it is now: the manifest closure of `current-snapshot-id`, live entries
@@ -625,9 +632,15 @@ sealed class GraphNode(
          * a reader can time-travel to by id.
          */
         val retainedByTagOnly: Boolean = false,
+        /**
+         * The branch whose `snapshot/` holds this file — null for main, whose snapshots sit at
+         * the table root. A branch's snapshot ids are its own, so two nodes with one `data.id`
+         * on two branches are two commits, and this is what tells them apart.
+         */
+        val branch: String? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
-    ) : GraphNode(id, initialX, initialY, 210.0, if (tags.isEmpty()) 66.0 else 83.0), ComparableSnapshot {
+    ) : GraphNode(id, initialX, initialY, 210.0, if (tags.isEmpty() && branch == null) 66.0 else 83.0), ComparableSnapshot {
 
         override val nodeId: String get() = id
         override val displayNumber: Int get() = simpleId
@@ -846,6 +859,18 @@ data class GraphEdge(
 /**
  * A branch or tag pointing at a snapshot. [isBranch] is false for a tag, which cannot move.
  */
+/** One Paimon branch as the table panel lists it — see [TableSummary.branches]. */
+data class BranchSummary(
+    val name: String,
+    /** `branch/branch-<name>`, relative to the table root. */
+    val path: String,
+    val snapshotCount: Int,
+    val latestSnapshotId: Long?,
+    val schemaCount: Int,
+    val tagCount: Int,
+    val readErrorCount: Int,
+)
+
 data class SnapshotRefLabel(val name: String, val isBranch: Boolean) {
     val display: String get() = if (isBranch) name else "$name (tag)"
 }
@@ -875,7 +900,7 @@ fun GraphNode.displayLabel(): String = when (this) {
     is GraphNode.FileNode -> "File $simpleId: ${data.filePath?.substringAfterLast("/")}"
     is GraphNode.RowNode -> "Row: ${resolvedData.values.firstOrNull() ?: "..."}"
     is GraphNode.ErrorNode -> "Error: $title"
-    is GraphNode.PaimonSnapshotNode -> "PSnap $simpleId: ${data.commitKind ?: ""}"
+    is GraphNode.PaimonSnapshotNode -> "PSnap $simpleId: ${data.commitKind ?: ""}" + (branch?.let { " ($it)" } ?: "")
     is GraphNode.PaimonSchemaNode -> "PSchema $simpleId"
     is GraphNode.PaimonManifestListNode -> "PManifestList: $kind"
     is GraphNode.PaimonManifestNode -> "PManifest $simpleId"

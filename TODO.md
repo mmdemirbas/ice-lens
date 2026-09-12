@@ -79,6 +79,12 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 ## Bugs
 
 - **Pinch zoom not working** — trackpad two-finger pinch gesture doesn't fire on all platforms. Needs platform-specific testing.
+- **A Paimon schema card can sit under a manifest-list card.** The schema node is a sibling of
+  its snapshots, so ELK puts it in the manifest-list layer, and `preventOverlaps` keeps nodes of
+  one *kind* apart — `pschema_0` overlaps `pml_2_delta` on `dv`, `pml_3_delta` on `ao` and two
+  lists on `br` (found while rendering `graph-canvas-paimon-branched`; pre-existing on the other
+  two). `LayoutOverlapTest` groups by kind and cannot see it. Either give the schema its own
+  layer or run the overlap pass over every node at one x.
 
 ---
 
@@ -323,6 +329,7 @@ What is left:
   | `paimon/db.db/tg` | a tag, then `expire_snapshots` — a snapshot retained by its tag only |
   | `paimon/db.db/pt` | partitioned by a date and a string — the `_PARTITION` decoder's oracle is the directory layout; one manifest's `_PARTITION_STATS` minimum is a partition none of its entries has; the script's rows are the pruning oracle |
   | `paimon/db.db/ao` | append-only, no primary key, `bucket = -1` — a DELETE rewrites the file as an `APPEND` with delta −1 |
+  | `paimon/db.db/br` | two branches — one created from a tag and committed to, one created empty; main and `dev` share a snapshot id for two different commits |
 
   **Still missing:** both path layouts are built at runtime rather than checked in — the
   `write.metadata.path` one by `RecordedPathResolutionTest`, the data-outside-the-table one by

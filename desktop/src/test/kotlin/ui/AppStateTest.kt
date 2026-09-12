@@ -654,6 +654,36 @@ class AppStateTest {
         }
     }
 
+    /**
+     * A commit to a branch writes a snapshot file under `branch/branch-<name>/snapshot/` and
+     * nothing under the table's own `snapshot/`; a tag writes under `tag/`. Both are drawn, so
+     * both have to reload the table.
+     */
+    @Test
+    fun `computeTableFingerprint changes on a branch commit and on a new tag`() {
+        val tmpDir = kotlin.io.path.createTempDirectory("fp-paimon-branch").toFile()
+        try {
+            File(tmpDir, "snapshot").apply { mkdirs() }.also { File(it, "snapshot-1").writeText("{}") }
+            File(tmpDir, "schema").apply { mkdirs() }.also { File(it, "schema-0").writeText("{}") }
+            val fp1 = state.computeTableFingerprint(tmpDir.absolutePath)
+
+            val branchSnapshots = File(tmpDir, "branch/branch-dev/snapshot").apply { mkdirs() }
+            File(branchSnapshots, "snapshot-1").writeText("{}")
+            val fp2 = state.computeTableFingerprint(tmpDir.absolutePath)
+            assertNotEquals(fp1, fp2, "a branch created")
+
+            File(branchSnapshots, "snapshot-2").writeText("{}")
+            val fp3 = state.computeTableFingerprint(tmpDir.absolutePath)
+            assertNotEquals(fp2, fp3, "a commit to the branch")
+
+            File(tmpDir, "tag").apply { mkdirs() }.also { File(it, "tag-base").writeText("{}") }
+            val fp4 = state.computeTableFingerprint(tmpDir.absolutePath)
+            assertNotEquals(fp3, fp4, "a tag created")
+        } finally {
+            tmpDir.deleteRecursively()
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  Show Rows Toggle
     // ═══════════════════════════════════════════════════════════════

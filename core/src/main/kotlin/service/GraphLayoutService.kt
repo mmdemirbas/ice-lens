@@ -719,8 +719,14 @@ object GraphLayoutService {
      * returns before touching a node.
      */
     private fun spreadSnapshotBranches(nodesById: Map<String, GraphNode>): Double {
-        val snapshots = nodesById.values.filterIsInstance<GraphNode.SnapshotNode>()
-        if (snapshots.size < 2) return 0.0
+        // One kind of snapshot per graph; the track rule differs by format and the shift does not.
+        val icebergSnapshots = nodesById.values.filterIsInstance<GraphNode.SnapshotNode>()
+        val paimonSnapshots = nodesById.values.filterIsInstance<GraphNode.PaimonSnapshotNode>()
+        val (snapshots, tracks) = when {
+            icebergSnapshots.size >= 2 -> icebergSnapshots to snapshotTracks(icebergSnapshots)
+            paimonSnapshots.size >= 2 -> paimonSnapshots to paimonSnapshotTracks(paimonSnapshots)
+            else -> return 0.0
+        }
 
         // One column for the layer is the assumption the shift rests on: lane zero is where the
         // layer sits, and every node to the right of it moves. A snapshot ELK put somewhere else
@@ -729,15 +735,15 @@ object GraphLayoutService {
         val layerX = snapshots.first().x
         if (snapshots.any { kotlin.math.abs(it.x - layerX) > 1.0 }) return 0.0
 
-        val tracks = snapshotTracks(snapshots)
         val widest = tracks.values.maxOrNull() ?: 0
         if (widest == 0) return 0.0
 
         val pitch = snapshots.maxOf { it.width } + SNAPSHOT_TRACK_GUTTER
         val spread = widest * pitch
+        val inLayer = snapshots.mapTo(mutableSetOf()) { it.id }
         nodesById.values.forEach { node ->
             when {
-                node is GraphNode.SnapshotNode -> node.x = layerX + (tracks[node.id] ?: 0) * pitch
+                node.id in inLayer -> node.x = layerX + (tracks[node.id] ?: 0) * pitch
                 node.x > layerX + 1.0 -> node.x += spread
             }
         }

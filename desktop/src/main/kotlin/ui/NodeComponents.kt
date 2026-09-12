@@ -972,12 +972,29 @@ fun PaimonNodeCard(node: GraphNode, isSelected: Boolean = false) {
                     Text(node.commitKind ?: "N/A", fontSize = TypeScale.small, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("ID: ${node.data.id ?: "?"}", fontSize = TypeScale.micro, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("Records: ${node.data.totalRecordCount?.let(::formatCount) ?: "?"}", fontSize = TypeScale.micro, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    // The same chip as an Iceberg tag, for the same reason it is on the card: a tag
-                    // is why this snapshot's files are still here. One line; the node's height
-                    // grows by that line when it has any.
-                    if (node.tags.isNotEmpty()) {
+                    // The same chips as an Iceberg snapshot's refs, for the same reasons they are
+                    // on the card: the branch is which line of commits this is, and a tag is why
+                    // this snapshot's files are still here. One line; the node's height grows by
+                    // that line when it has either. Main carries no chip — on a table with no
+                    // branch it would be a word on every card saying nothing, and on one with
+                    // branches the column is labelled.
+                    val branch = node.branch
+                    if (branch != null || node.tags.isNotEmpty()) {
                         Spacer(Modifier.height(3.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(3.dp), maxLines = 1) {
+                            if (branch != null) {
+                                Text(
+                                    branch,
+                                    fontSize = TypeScale.micro,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = nodeCardTextSecondary(),
+                                    modifier = Modifier
+                                        .background(RefBranchChip, RoundedCornerShape(3.dp))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                                )
+                            }
                             node.tags.forEach { tag ->
                                 Text(
                                     tag,

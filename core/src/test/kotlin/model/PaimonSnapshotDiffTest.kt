@@ -40,7 +40,7 @@ class PaimonSnapshotDiffTest {
      * all — the cases where "replay" and "sum the ADDs" give different answers, so the oracles
      * below mean something only on those two.
      */
-    private fun models(): List<PaimonUnifiedTableModel> = listOf("test", "dv", "cl", "tg", "pt", "ao").map { model(it) }
+    private fun models(): List<PaimonUnifiedTableModel> = listOf("test", "dv", "cl", "tg", "pt", "ao", "br").map { model(it) }
 
     private fun snapshotNodes(model: PaimonUnifiedTableModel): List<GraphNode.PaimonSnapshotNode> =
         GraphLayoutService.layoutGraph(model, showRows = false)
@@ -69,7 +69,7 @@ class PaimonSnapshotDiffTest {
     @Test
     fun `the replay's contributions and its file set describe the same walk`() {
         models().forEach { m ->
-            m.snapshots.forEach { snapshot ->
+            (m.snapshots + m.branches.flatMap { it.snapshots }).forEach { snapshot ->
                 val replay = replayPaimonSnapshot(snapshot)
                 val folded = StatsDerivation(replay.contributions).total
 

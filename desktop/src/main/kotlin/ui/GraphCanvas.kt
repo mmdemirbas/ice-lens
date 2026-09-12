@@ -713,7 +713,9 @@ fun GraphCanvas(
             // text is a smudge.
             // The list is hoisted, the positions are not: `positions.of` is the Compose-observable
             // read that has to happen in composition for a drag to move the label with its column.
-            val snapshotNodes = remember(graph) { graph.nodes.filterIsInstance<GraphNode.SnapshotNode>() }
+            val snapshotNodes = remember(graph) {
+                graph.nodes.filter { it is GraphNode.SnapshotNode || it is GraphNode.PaimonSnapshotNode }
+            }
             snapshotColumns(snapshotNodes) { id -> positions.of(id).let { Point(it.x, it.y) } }
                 .filter { it.labels.isNotEmpty() }
                 .forEach { column ->

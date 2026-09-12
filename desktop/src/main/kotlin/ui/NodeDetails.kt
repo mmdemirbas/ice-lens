@@ -78,6 +78,7 @@ import model.evaluatePruning
 import model.SnapshotChange
 import model.FileChange
 import model.manifestTallies
+import model.MAIN_BRANCH
 import model.PaimonFileSource
 import model.paimonManifestTallies
 import model.KeyValuePairLong
@@ -1019,6 +1020,31 @@ fun NodeDetailsContent(
                                 summary.versionHintText?.takeIf { it.isNotBlank() }
                                     ?: "Not present — normal unless the table is HadoopCatalog-managed"
                             )
+                        }
+
+                        // Only where the format keeps branches under the table: a Paimon branch is
+                        // a directory of its own snapshots over the table's data, and an Iceberg
+                        // branch is a ref on the metadata file, listed on that node. Null is the
+                        // second case; an empty list is a Paimon table with no branch/, which is
+                        // an answer.
+                        summary.branches?.let { branches ->
+                            CountedSection("Branches", branches.size, "branches — the table's own snapshot/ is $MAIN_BRANCH") {
+                                WideTable(
+                                    headers = listOf("Branch", "Snapshots", "Latest", "Schemas", "Tags", "Read Errors", "Path"),
+                                    rows = branches.map { branch ->
+                                        listOf(
+                                            branch.name,
+                                            "${branch.snapshotCount}",
+                                            branch.latestSnapshotId?.toString() ?: "none — created empty",
+                                            "${branch.schemaCount}",
+                                            "${branch.tagCount}",
+                                            "${branch.readErrorCount}",
+                                            branch.path,
+                                        )
+                                    },
+                                    columnWidths = listOf(110.dp, 80.dp, 200.dp, 70.dp, 60.dp, 90.dp, 220.dp),
+                                )
+                            }
                         }
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
@@ -2194,6 +2220,9 @@ fun NodeDetailsContent(
                         DetailTable {
                             DetailRow("Property", "Value", isHeader = true)
                             DetailRow("Snapshot ID", "${node.data.id ?: "N/A"}")
+                            // Which snapshot/ the file came from: a branch's ids are its own, so
+                            // this is the row that tells its snapshot 2 from main's.
+                            DetailRow("Branch", node.branch ?: "$MAIN_BRANCH — the table's own snapshot/")
                             // A tag is a copy of the snapshot file under tag/, and after an expiry
                             // it can be the only copy — which is a different thing from a commit a
                             // reader can time-travel to by id, so the panel says which it is.
@@ -3381,7 +3410,7 @@ internal fun UnreferencedFilesSection(
         // who has not clicked needs one sentence, and one who has needs the number first.
         val caveat = "Referenced means named by any metadata version on disk, so Iceberg's " +
             "remove_orphan_files, which reaches from the current one only, can delete more than is " +
-            "listed here. Paimon tags are followed; branch/ and consumer/ are not read and were " +
+            "listed here. Paimon tags and branches are followed; consumer/ is not read and was " +
             "not walked."
         when {
             !requested -> {

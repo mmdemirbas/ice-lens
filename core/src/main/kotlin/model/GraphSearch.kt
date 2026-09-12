@@ -60,6 +60,7 @@ object GraphSearch {
         is GraphNode.RowNode -> node.data.values.mapNotNull { it?.toString() }
 
         is GraphNode.PaimonSnapshotNode -> node.tags + listOfNotNull(
+            node.branch,
             node.data.id?.toString(),
             node.commitKind ?: node.data.commitKind,
             node.data.commitUser,

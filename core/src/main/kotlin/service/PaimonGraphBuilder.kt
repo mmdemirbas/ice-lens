@@ -92,15 +92,18 @@ object PaimonGraphBuilder {
             }
         }
 
-        // Snapshot nodes: what snapshot/ holds, then what only a tag still holds — a snapshot
-        // expiry removed whose files a tag keeps on disk. Drawn in id order so the tagged one
-        // sits where it was committed rather than after everything.
-        val liveIds = tableModel.snapshots.mapNotNull { it.metadata.id }.toSet()
-        (tableModel.snapshots + tableModel.tagOnlySnapshots)
-            .sortedBy { it.metadata.id ?: Long.MAX_VALUE }
-            .forEach { unifiedSnapshot ->
+        // One snapshot node with everything under it. The id carries the branch for a branch's
+        // snapshot and not for main's: a branch's ids are its own, so `psnap_2` and `psnap_dev_2`
+        // are two commits, while main's ids stay what every export and test has always read.
+        fun addSnapshot(
+            unifiedSnapshot: PaimonUnifiedSnapshot,
+            branch: String?,
+            tagNames: List<String>,
+            retainedByTagOnly: Boolean,
+        ) {
             val snap = unifiedSnapshot.metadata
-            val snapId = "psnap_${snap.id ?: nextSnapshotSimpleId}"
+            val idPrefix = if (branch == null) "" else "${branch}_"
+            val snapId = "psnap_$idPrefix${snap.id ?: nextSnapshotSimpleId}"
             val simpleId = nextSnapshotSimpleId++
 
             if (!logicalNodes.containsKey(snapId)) {
@@ -115,8 +118,9 @@ object PaimonGraphBuilder {
                     liveFilesLoader = DeferredRead.of { paimonLiveFilesOf(unifiedSnapshot) },
                     indexFiles = unifiedSnapshot.indexFiles,
                     statistics = unifiedSnapshot.statistics,
-                    tags = snap.id?.let { tableModel.tagNamesBySnapshotId[it] }.orEmpty(),
-                    retainedByTagOnly = snap.id !in liveIds,
+                    tags = tagNames,
+                    retainedByTagOnly = retainedByTagOnly,
+                    branch = branch,
                 )
             }
 
@@ -147,7 +151,7 @@ object PaimonGraphBuilder {
                 parentId: String,
             ) {
                 if (manifests.isEmpty()) return
-                val mlId = "pml_${snap.id ?: "?"}_$kind"
+                val mlId = "pml_$idPrefix${snap.id ?: "?"}_$kind"
                 if (!logicalNodes.containsKey(mlId)) {
                     logicalNodes[mlId] = GraphNode.PaimonManifestListNode(
                         id = mlId,
@@ -257,6 +261,32 @@ object PaimonGraphBuilder {
             addManifestList("changelog", unifiedSnapshot.changelogManifests, snapId)
         }
 
+        // Snapshot nodes: what snapshot/ holds, then what only a tag still holds — a snapshot
+        // expiry removed whose files a tag keeps on disk. Drawn in id order so the tagged one
+        // sits where it was committed rather than after everything.
+        val liveIds = tableModel.snapshots.mapNotNull { it.metadata.id }.toSet()
+        (tableModel.snapshots + tableModel.tagOnlySnapshots)
+            .sortedBy { it.metadata.id ?: Long.MAX_VALUE }
+            .forEach { unifiedSnapshot ->
+                val id = unifiedSnapshot.metadata.id
+                addSnapshot(unifiedSnapshot, null, id?.let { tableModel.tagNamesBySnapshotId[it] }.orEmpty(), id !in liveIds)
+            }
+
+        // Then each branch's, the same way and under the same table root: a branch is another
+        // line of commits over the same manifests and data, and the layout gives it a column of
+        // its own (see SnapshotTracks). A manifest a branch's snapshot shares with main's — the
+        // whole of a branch created from a tag, until its first commit — is one node under both.
+        tableModel.branches.forEach { branch ->
+            branch.readErrors.forEach { addErrorNode(tableNodeId, "BRANCH READ ERROR", it) }
+            val branchLiveIds = branch.snapshots.mapNotNull { it.metadata.id }.toSet()
+            (branch.snapshots + branch.tagOnlySnapshots)
+                .sortedBy { it.metadata.id ?: Long.MAX_VALUE }
+                .forEach { unifiedSnapshot ->
+                    val id = unifiedSnapshot.metadata.id
+                    addSnapshot(unifiedSnapshot, branch.name, id?.let { branch.tagNamesBySnapshotId[it] }.orEmpty(), id !in branchLiveIds)
+                }
+        }
+
         return GraphBuildResult(
             nodes = logicalNodes.values.toList(),
             edges = edges,
@@ -320,8 +350,12 @@ object PaimonGraphBuilder {
         val seenFiles = mutableSetOf<String>()
         val historyContributions = mutableListOf<ManifestContribution>()
 
-        // History is everything a retained snapshot reaches, and a tag retains one.
-        (tableModel.snapshots + tableModel.tagOnlySnapshots).forEach { snapshot ->
+        // History is everything a retained snapshot reaches: a tag retains one, and a branch
+        // retains its own line. A branch's copied first snapshot reaches main's manifests, which
+        // the deduplication credits to the snapshot that counted them first.
+        val retained = tableModel.snapshots + tableModel.tagOnlySnapshots +
+            tableModel.branches.flatMap { it.snapshots + it.tagOnlySnapshots }
+        retained.forEach { snapshot ->
             val countedIn = snapshot.metadata.id?.let { "snapshot $it" }
                 ?: "snapshot file ${snapshot.path.fileName}"
             val allManifests = snapshot.baseManifests + snapshot.deltaManifests + snapshot.changelogManifests
@@ -397,6 +431,17 @@ object PaimonGraphBuilder {
             snapshotManifestListFileTimes = FileTimeRange(),
             manifestFileTimes = FileTimeRange(),
             dataFileTimes = FileTimeRange(),
+            branches = tableModel.branches.map { branch ->
+                BranchSummary(
+                    name = branch.name,
+                    path = runCatching { tableModel.path.relativize(branch.path).toString() }.getOrDefault(branch.path.toString()),
+                    snapshotCount = branch.snapshots.size,
+                    latestSnapshotId = branch.snapshots.lastOrNull()?.metadata?.id,
+                    schemaCount = branch.schemas.size,
+                    tagCount = branch.tags.size,
+                    readErrorCount = branch.readErrors.size + branch.snapshots.sumOf { it.readErrors.size },
+                )
+            },
         )
     }
 }
