@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A sampled Iceberg row says whether a positional or equality delete removes it.** The row
   panel's `Delete Files` section asks the delete files a scan pairs with the row's file, behind
   a click — the panel's `Deleted` row could only answer for a v3 vector, and said *not by a
-  deletion vector* of a row a v2 positional delete had removed.
+  deletion vector* of a row a v2 positional delete had removed. It now says how many delete
+  files the pairing leaves for the file and that they are asked under `Delete Files`.
 - **A sampled Paimon record says what the merge engine does with it.** The row panel's `Merge`
   section runs the table's row lookup for the record's key, behind a click — superseded by the
   file holding the later write, a retraction, folded, live — with the key's other records under

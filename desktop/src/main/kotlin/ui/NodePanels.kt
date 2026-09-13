@@ -8,6 +8,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -335,6 +336,11 @@ internal fun ColumnScope.RowPanel(
     node: GraphNode.RowNode,
     currentGraph: GraphModel,
 ) {
+        // The delete files still open for a data row's file — what `RowDeletesSection` asks.
+        val rowDeletes = remember(node.id, currentGraph.nodes) {
+            if (node.content != 0) emptyList()
+            else rowParentFile(node, currentGraph)?.let { rowDeleteCandidates(it, currentGraph) }.orEmpty()
+        }
         DetailTable {
             val typeStr = when (node.content) {
                 1 -> "Position Delete Row"
@@ -350,14 +356,18 @@ internal fun ColumnScope.RowPanel(
             node.filePosition?.let { position ->
                 DetailRow("Position in file", position.toString())
                 // Only where the builder resolved the file's vector — on either format;
-                // a Paimon vector that could not be read leaves the row unresolved.
+                // a Paimon vector that could not be read leaves the row unresolved. A vector
+                // is the one delete decided at build time; where the pairing leaves a
+                // positional or equality delete for the file, the row says the question is
+                // still open and where it is asked, or it contradicts the section below it.
                 if (node.vectorsResolved) {
                     DetailRow(
                         "Deleted",
-                        if (node.isDeletedByVector) {
-                            "yes — a deletion vector marks this position"
-                        } else {
-                            "not by a deletion vector"
+                        when {
+                            node.isDeletedByVector -> "yes — a deletion vector marks this position"
+                            rowDeletes.isNotEmpty() -> "not by a deletion vector; ${formatCounted(rowDeletes.size, "delete file")} paired with this file " +
+                                (if (rowDeletes.size == 1) "is" else "are") + " asked under Delete Files below"
+                            else -> "not by a deletion vector"
                         },
                     )
                 }

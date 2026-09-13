@@ -539,7 +539,9 @@ intellij/src/main/kotlin/plugin/
   panel lists — and `RowLookup.fateOf`, the decision the lookup makes for a hit with the row's
   position and cells already in hand. The v2 merge-on-read shape Spark writes is the common one,
   and until this the panel's `Deleted` row said *not by a deletion vector* of a row a positional
-  delete had removed. `RowFateFixtureTest` holds `mor`'s id 7 to deleted under the compacted file
+  delete had removed — it now says how many delete files the pairing leaves for the file and that
+  they are asked under `Delete Files`, from the same `rowDeleteCandidates` the section draws from,
+  so the two lines cannot disagree. `RowFateFixtureTest` holds `mor`'s id 7 to deleted under the compacted file
   and live under the copy the compaction removed — the delete written after it does not reach
   that file — and `eqdel`'s 2 and 3 to their two kinds. `PaimonRowMergeSection` is the Paimon
   twin on the same panel: a record is a version of a row and its fate depends on the key's

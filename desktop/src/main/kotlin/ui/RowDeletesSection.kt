@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import model.DeleteCandidate
 import model.DeleteFileKind
 import model.DeleteReachVerdict
 import model.GraphModel
@@ -25,6 +26,18 @@ import model.asLookupDataFile
 import model.asLookupDeleteFile
 import model.deleteCandidatesFor
 import service.RowLookup
+
+/** The data file a sampled Iceberg row was read from, or null for a row of a delete file or of a Paimon file. */
+internal fun rowParentFile(node: GraphNode.RowNode, graph: GraphModel): GraphNode.FileNode? =
+    graph.edges.firstOrNull { it.toId == node.id }?.let { graph.nodeById[it.fromId] as? GraphNode.FileNode }
+
+/**
+ * The delete files the pairing did not rule out for [parent] among the files the graph draws —
+ * what the row's panel asks behind a click, and what its `Deleted` row says is still open.
+ */
+internal fun rowDeleteCandidates(parent: GraphNode.FileNode, graph: GraphModel): List<DeleteCandidate> =
+    deleteCandidatesFor(parent, graph.nodes.filterIsInstance<GraphNode.FileNode>())
+        .filter { it.verdict == DeleteReachVerdict.REACHES || it.verdict == DeleteReachVerdict.MAY_REACH }
 
 /**
  * Whether a sampled Iceberg row is one a read returns, decided against the delete files the
@@ -45,13 +58,8 @@ internal fun RowDeletesSection(
     onSettled: () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
-    val parent = remember(node.id, graph.nodes) {
-        graph.edges.firstOrNull { it.toId == node.id }?.let { graph.nodeById[it.fromId] as? GraphNode.FileNode }
-    } ?: return
-    val candidates = remember(parent.id, graph.nodes) {
-        deleteCandidatesFor(parent, graph.nodes.filterIsInstance<GraphNode.FileNode>())
-            .filter { it.verdict == DeleteReachVerdict.REACHES || it.verdict == DeleteReachVerdict.MAY_REACH }
-    }
+    val parent = remember(node.id, graph.nodes) { rowParentFile(node, graph) } ?: return
+    val candidates = remember(parent.id, graph.nodes) { rowDeleteCandidates(parent, graph) }
     if (candidates.isEmpty()) return
     val position = node.filePosition
 
