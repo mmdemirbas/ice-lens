@@ -50,6 +50,7 @@ import model.wapId
 import model.describe
 import model.metadataVersionFromFileName
 import model.ManifestEntryStatus
+import model.ScanFilter
 import model.snapshotAsOf
 import model.PaimonUnifiedTableModel
 import model.PredicateOp
@@ -1867,6 +1868,24 @@ class InspectorRenderTest {
         renderUntil("unreferenced-files-none", width = 1400, height = 260, ready = cleanSettled::get) {
             Column(Modifier.padding(16.dp)) {
                 UnreferencedFilesSection(morTable, startRequested = true) { cleanSettled.set(true) }
+            }
+        }
+    }
+
+    /**
+     * Rows looked up on `eqdel` under `id >= 1`: seven rows across two files, one deleted by
+     * position, two by equality, four live — every fate the lookup decides in one column, which
+     * is what a verdict column has to be judged against. Waits for the read like the others.
+     */
+    @Test
+    fun `a table looks rows up and says each one's fate`() {
+        val eqdel = graphFor("eqdel")
+        val table = eqdel.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val filter = ScanFilter.Term(model.ScanPredicate("id", model.PredicateOp.GTE, "1"))
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("row-lookup", width = 1400, height = 1000, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                RowLookupSection(table, eqdel, filter, startRequested = true) { settled.set(true) }
             }
         }
     }

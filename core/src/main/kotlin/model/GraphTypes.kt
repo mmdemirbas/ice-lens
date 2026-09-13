@@ -371,6 +371,8 @@ sealed class GraphNode(
          * [IntegrityReport]. Behind a click, because two of its checks walk a closure per snapshot.
          */
         val integrity: DeferredRead<IntegrityReport> = DeferredRead.none(),
+        /** What finding a row in the current snapshot takes — see [RowLookupInput]. Nothing on Paimon. */
+        val rowLookup: DeferredRead<RowLookupInput> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 240.0, 96.0)

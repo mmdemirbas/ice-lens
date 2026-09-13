@@ -112,6 +112,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Row lookup.** Under the scan filter on an Iceberg table panel, a click reads the files the
+  filter leaves and lists the matching rows with each one's fate — live, deleted by a vector, by a
+  positional delete or by an equality delete, naming the file that did it. Equality deletes are
+  evaluated for a looked-up row, which the metadata alone never could. Checked against the rows
+  the `mor`, `eqdel` and `v3` scripts left.
 - **Time travel resolved.** A typed time and the snapshot `TIMESTAMP AS OF` (Iceberg) or
   `scan.timestamp-millis` (Paimon) would land on, the way each engine resolves it — on a
   rolled-back table a time between the abandoned commit and the reset lands on the abandoned

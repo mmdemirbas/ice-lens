@@ -48,6 +48,7 @@ so and the inspector lists all of them.
 - **What a scan would skip**: a filter (`WHERE`-clause or form, with `AND` / `OR` / `NOT` / `IN` / `BETWEEN` / `LIKE`) evaluated against manifest partition summaries and file column bounds, with the term that proved each skip
 - **What a commit did** — folded from the manifests it wrote, checked against its own summary — and **what is different between any two snapshots**, on either format, with one side pinned and the other stepped through history
 - Delete files paired with the data files they reach, dangling deletes named, deletion vectors decoded to the rows they mark, and the live row count behind a click
+- **Row lookup**: the rows a filter matches, read from the files it leaves, each with its fate — live, or deleted by which vector, positional delete or equality delete
 - One click checks every figure the metadata records against the same figure counted — manifest counts, commit summaries, snapshot totals, Paimon record counts — over the whole table
 - A file's history on either format — the commit that added it, the one that removed it, and the retained snapshots that still list it live and so keep it on disk
 - Per-snapshot partition breakdown, largest first; per-partition and table statistics files opened and shown against their records
@@ -168,8 +169,9 @@ Stated plainly, because a tool you inspect internals with has to be honest about
 - **A v2 positional delete file is not mapped to rows.** Its targets are one per row and known
   only after reading the file, so the rows it removes are counted behind a click rather than
   marked on the cards; a v3 deletion vector is.
-- **Equality deletes are not evaluated.** They match by value, so nothing in the metadata links
-  one to a data file; the panel says which data files one *may* reach and leaves it at that.
+- **Equality deletes are evaluated only for a looked-up row.** They match by value, so nothing in
+  the metadata links one to a data file; the delete panel says which data files one *may* reach,
+  and only the row lookup, which reads the row, can say whether one removes it.
 - Sample rows are best-effort: they depend on the file being present and readable by DuckDB,
   and are capped at 50 rows per file, five drawn per data file.
 - Row loading may be slow for tables with many data files when "Show Rows" is enabled.

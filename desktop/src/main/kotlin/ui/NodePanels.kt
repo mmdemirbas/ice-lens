@@ -177,6 +177,7 @@ internal fun ColumnScope.TablePanel(
         // has. It costs about eighty dp here while no filter is entered.
         currentGraph.let { graph ->
             ScanPruningSection(graph, scanFilter, onScanFilterChange)
+            RowLookupSection(node, graph, scanFilter)
         }
         // The panel's other controls, kept beside the first for the same reason.
         IntegritySection(node)

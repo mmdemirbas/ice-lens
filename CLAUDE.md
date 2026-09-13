@@ -71,6 +71,8 @@ core/src/main/kotlin/
 │   ├── FileHistory.kt         # One file across the retained snapshots — added by, removed by, still listed live by — on either format
 │   ├── Integrity.kt           # Every recorded figure against the same figure counted, over the whole table at once — the panels' checks, run everywhere
 │   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
+│   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing
+│   ├── ScanFilterSql.kt       # A ScanFilter as DuckDB's WHERE clause, every literal bound and cast to its column's type
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
@@ -89,6 +91,7 @@ core/src/main/kotlin/
 │   ├── IcebergReader.kt       # Iceberg JSON/Avro reading (delegates Avro to AvroReader)
 │   ├── PaimonReader.kt        # Paimon JSON snapshot/schema + Avro manifest list/manifest reading
 │   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet, ORC, Avro — max 50)
+│   ├── RowLookup.kt           # The rows a filter matches, read through DuckDB, and each one's fate under the delete files paired with its file
 │   ├── StorageLocation.kt     # A location string → the Path that opens it. The one place a scheme is resolved
 │   ├── DuckDb.kt              # The shared DuckDB connection, and the object-store credentials configured on it
 │   ├── ObjectStorage.kt       # Listing and reading object storage through DuckDB, with the caches that make it viable
@@ -125,6 +128,7 @@ desktop/src/main/kotlin/
     ├── FileHistorySection.kt  # A file's life on both file panels: which commit removed it, and what still keeps it on disk
     ├── IntegritySection.kt    # The whole-table check behind a click on the table panel, and its findings
     ├── TimeTravelSection.kt   # A typed time and the snapshot it resolves to, on the metadata panel and the Paimon table panel
+    ├── RowLookupSection.kt    # The scan filter one step further: the matching rows read from the files it leaves, each with its fate
     ├── NodePanels.kt          # Table, row, error and group panels
     ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
     ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
@@ -400,6 +404,29 @@ intellij/src/main/kotlin/plugin/
   side by side rather than added, because the union of an in-process bitmap and a DuckDB aggregate
   is not something either of them can compute. On `mor` the answer is *1 of 6 rows deleted, 5 live*,
   which is the figure the table actually has and the first time this app could say it
+- **A row is found by reading the files the filter leaves, and its fate is decided by the delete
+  files paired with its file — the one question about a merge-on-read table the metadata cannot
+  settle.** `model/RowLookup.kt` reads what it takes off the current snapshot (`TableNode.rowLookup`,
+  a `DeferredRead` on Iceberg): every live data file with the path DuckDB opens it at, every
+  delete file with what deciding needs — a vector's blob offset and length, an equality delete's
+  `equality_ids` resolved to the current schema's names — and `deleteReach`'s pairing, sequence
+  rule included. `model/ScanFilterSql.kt` renders the same `ScanFilter` the pruning rules read
+  against bounds as DuckDB's `WHERE`, every literal bound as text and **cast to the column's
+  type** (`duckDbTypeOf`) — DuckDB compares a typed column with a text parameter only through a
+  cast, and the parser keeps literals as text for exactly the reason a cast is needed here. Then
+  `service/RowLookup.kt` opens each file the drawn graph's pruning did not rule out (`MAX_FILES`
+  64, `MAX_HITS_PER_FILE` 20, a file not drawn is read rather than guessed at) with
+  `file_row_number = true`, and puts every hit to its file's delete files in the order a scan
+  finds them decisive: a vector by the position's bit, a positional delete by `(file_path, pos)`
+  **with the path as the manifest recorded it** (the container's `/wh/…`, not the local one — a
+  lookup by the local path finds nothing and looks like a live row), an equality delete by the
+  row's own values in its columns, which is the one delete kind the metadata cannot resolve and
+  the bytes can. `RowLookupFixtureTest` is three delete kinds on three tables and one oracle:
+  the rows each script's final table holds, by id, are found live exactly and no others —
+  `mor` 1,3,4,5,6 (2 compacted away without a trace, 7 by position, 5 as `echo-updated`),
+  `eqdel` 1,4,5,7 (2 and 6 by equality across both files, 3 by position), `v3` 1,3,4,5 (2 by a
+  vector; 4 twice, the old row marked and `delta-updated` live). An ORC or Avro hit has no
+  position and its fate is `not decided`, said rather than guessed
 - **The one question asked from the directory rather than from the metadata is "what is here that
   nothing names".** `model/UnreferencedFiles.kt` walks the table root and subtracts every path the
   model resolved — manifest lists, manifests, data and delete files, Puffin vectors and statistics,
@@ -1625,7 +1652,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,090 tests across 137 files (826 in :core, 256 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,090 tests across 138 files (832 in :core, 257 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
