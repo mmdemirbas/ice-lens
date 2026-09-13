@@ -188,6 +188,8 @@ object GraphTree {
             "Kind" to node.entry.kind.toString(),
         ) + listOfNotNull(
             node.entry.file?.writeCols?.let { "Columns" to it.joinToString(", ") + " only — a partial-column file, stitched by row id on read" },
+            // From the index manifest, not the index file: the strip is drawn on selection, on the EDT.
+            node.vectorRange?.let { "Deleted rows" to "${it.cardinality ?: "?"} marked by the vector in ${it.indexFileName}" },
         )
         // A group is the one node that is not an artifact — it stands for the ones this drawing
         // left out, and saying how many is the whole of what it has to say.

@@ -28,7 +28,12 @@ data class PaimonLookupFile(
     val recordCount: Long?,
 )
 
-data class PaimonLookupVector(
+/**
+ * One `_DELETIONS_VECTORS_RANGES` entry with the index file it sits in — the coordinates
+ * [service.PaimonDeletionVectorReader] reads a vector by, and the two figures the manifest
+ * records without opening the file.
+ */
+data class PaimonVectorRange(
     val dataFileName: String,
     /** The index file holding it, where it is opened from. */
     val indexLocalPath: String,
@@ -47,11 +52,11 @@ data class PaimonRowLookupInput(
     /** `merge-engine`, `deduplicate` where unset. */
     val mergeEngine: String,
     val files: List<PaimonLookupFile>,
-    val vectors: List<PaimonLookupVector>,
+    val vectors: List<PaimonVectorRange>,
 ) {
     val hasPrimaryKey: Boolean get() = schema.primaryKeys.isNotEmpty()
 
-    fun vectorFor(fileName: String): PaimonLookupVector? = vectors.firstOrNull { it.dataFileName == fileName }
+    fun vectorFor(fileName: String): PaimonVectorRange? = vectors.firstOrNull { it.dataFileName == fileName }
 
     /** The live files sharing a file's partition and bucket — every file the key's later write could be in. */
     fun bucketOf(file: PaimonLookupFile): List<PaimonLookupFile> =
@@ -77,26 +82,35 @@ fun PaimonUnifiedTableModel.paimonRowLookupInput(): PaimonRowLookupInput? {
             recordCount = meta.rowCount,
         )
     }
-    val indexDir = path.resolve("index")
-    val vectors = snapshot.indexFiles.filter { it.isDeletionVectorIndex }.flatMap { index ->
-        val indexName = index.fileName ?: return@flatMap emptyList()
-        index.deletionVectorRanges.orEmpty().filterNotNull().mapNotNull { range ->
-            PaimonLookupVector(
-                dataFileName = range.dataFileName ?: return@mapNotNull null,
-                indexLocalPath = indexDir.resolve(indexName).toString(),
-                indexFileName = indexName,
-                offset = range.offset?.toLong() ?: return@mapNotNull null,
-                length = range.length?.toLong() ?: return@mapNotNull null,
-                cardinality = range.cardinality,
-            )
-        }
-    }
     return PaimonRowLookupInput(
         snapshotId = id,
         schema = schema,
         trimmedPrimaryKeys = schema.primaryKeys.filterNot { it in schema.partitionKeys },
         mergeEngine = schema.options["merge-engine"] ?: DEFAULT_PAIMON_MERGE_ENGINE,
         files = files,
-        vectors = vectors,
+        vectors = vectorRangesOf(path, listOf(snapshot)).values.toList(),
     )
+}
+
+/**
+ * The vector range each data file has as of the last of [snapshots] whose index manifest names
+ * it, by file name — a later snapshot's range replaces an earlier one's, since a second delete
+ * on the same file writes a new vector for it. Index files live under the table's `index/`
+ * whichever branch committed them, the same rule as manifests.
+ */
+fun vectorRangesOf(tableRoot: java.nio.file.Path, snapshots: List<PaimonUnifiedSnapshot>): Map<String, PaimonVectorRange> {
+    val indexDir = tableRoot.resolve("index")
+    val ranges = LinkedHashMap<String, PaimonVectorRange>()
+    snapshots.forEach { snapshot ->
+        snapshot.indexFiles.filter { it.isDeletionVectorIndex }.forEach { index ->
+            val indexName = index.fileName ?: return@forEach
+            index.deletionVectorRanges.orEmpty().filterNotNull().forEach { range ->
+                val dataFile = range.dataFileName ?: return@forEach
+                val offset = range.offset?.toLong() ?: return@forEach
+                val length = range.length?.toLong() ?: return@forEach
+                ranges[dataFile] = PaimonVectorRange(dataFile, indexDir.resolve(indexName).toString(), indexName, offset, length, range.cardinality)
+            }
+        }
+    }
+    return ranges
 }

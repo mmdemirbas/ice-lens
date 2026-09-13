@@ -136,6 +136,11 @@ class InspectorRenderTest {
         val rewritten = dv.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
             .first { n -> n.history.value?.snapshots?.any { it.event == model.FileEvent.REWRITTEN } == true }
         renderInspector(dv, rewritten.id, "paimon-file-node-history", height = 2600)
+        // The same table's 1000-row file, the one its vector marks one row of: the Deleted Rows
+        // section under the history, decoded from the index file.
+        val marked = dv.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
+            .first { n -> n.vectorRange != null && n.entry.file?.rowCount == 1000L }
+        renderInspector(dv, marked.id, "paimon-file-node-vector", height = 2600)
     }
 
     private fun graphFor(fixture: String): GraphModel {

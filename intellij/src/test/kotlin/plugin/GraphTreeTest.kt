@@ -9,10 +9,12 @@ import kotlin.test.assertTrue
 import model.GraphModel
 import model.GraphNode
 import model.displayLabel
+import model.PaimonUnifiedTableModel
 import model.UnifiedTableModel
 import service.AggregationPolicy
 import service.GraphAggregation
 import service.IcebergGraphBuilder
+import service.PaimonGraphBuilder
 
 /**
  * The tree the tool window draws, over the checked-in tables.
@@ -163,6 +165,20 @@ class GraphTreeTest {
         assertEquals(1, rolled.filter { it.first == "Rolled back" }.toSet().size, "one abandoned commit, listed under each metadata version naming it")
         val sorted = flatten(GraphTree.build(graphOf("sorted"))).flatMap { GraphTree.details(it) }
         assertTrue(sorted.none { it.first == "Sort order" }, "every file of the sorted table claims order 0, the unsorted one, and that is not listed")
+        val dv = flatten(GraphTree.build(paimonGraphOf("dv"))).flatMap { GraphTree.details(it) }
+        assertEquals(
+            setOf("1 marked by the vector in", "2 marked by the vector in"),
+            dv.filter { it.first == "Deleted rows" }.map { it.second.substringBefore(" index-") }.toSet(),
+            "the two files the DELETE touched, with the manifest's cardinalities; no other file lists the row",
+        )
+    }
+
+    private fun paimonGraphOf(name: String): GraphModel {
+        val dir = File(repoRoot, "example/paimon/db.db/$name")
+        assertTrue(dir.isDirectory, "fixture missing at $dir")
+        val built = PaimonGraphBuilder.buildGraph(PaimonUnifiedTableModel(Paths.get(dir.absolutePath)))
+        val aggregated = GraphAggregation.apply(built.nodes, built.edges, policy = AggregationPolicy.NONE)
+        return GraphModel(aggregated.nodes, aggregated.edges, 0.0, 0.0)
     }
 
     /**

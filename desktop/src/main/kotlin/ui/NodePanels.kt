@@ -349,8 +349,8 @@ internal fun ColumnScope.RowPanel(
             // the file's own, and it is the one a delete addresses.
             node.filePosition?.let { position ->
                 DetailRow("Position in file", position.toString())
-                // Only where the builder resolved the file's vector: a Paimon row
-                // has a position too, and its vector is not mapped to rows here.
+                // Only where the builder resolved the file's vector — on either format;
+                // a Paimon vector that could not be read leaves the row unresolved.
                 if (node.vectorsResolved) {
                     DetailRow(
                         "Deleted",

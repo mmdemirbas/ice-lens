@@ -660,11 +660,10 @@ sealed class GraphNode(
          */
         private val deletedPositions: Set<Long> = emptySet(),
         /**
-         * Whether [deletedPositions] is an answer at all. The Iceberg builder resolves a file's
-         * vector and passes its positions, so an empty set means "none marks this row"; the
-         * Paimon builder passes nothing, because a Paimon deletion vector lives in the index
-         * manifest and is not mapped to rows here — and "not by a deletion vector" would then be
-         * a claim nothing checked.
+         * Whether [deletedPositions] is an answer at all. Both builders resolve a file's vector
+         * and pass its positions, so an empty set means "none marks this row" — except where the
+         * vector exists and could not be read, when the Paimon builder passes false, because
+         * "not by a deletion vector" would then be a claim nothing checked.
          */
         val vectorsResolved: Boolean = true,
     ) : GraphNode(id, initialX, initialY, 200.0, 80.0) {
@@ -864,6 +863,14 @@ sealed class GraphNode(
         val pathResolution: PaimonPathResolution = PaimonPathResolution.LAYOUT,
         /** The file's life across the branch's retained snapshots — see [FileHistory]; deferred as the Iceberg node's is. */
         val history: DeferredRead<FileHistory> = DeferredRead.none(),
+        /**
+         * The deletion vector the latest index manifest naming this file records for it — the
+         * range's coordinates and cardinality, from the manifest, without opening the index file.
+         * Null where no snapshot's index manifest names the file.
+         */
+        val vectorRange: PaimonVectorRange? = null,
+        /** That vector decoded, on first use — see [service.PaimonDeletionVectorReader]. Nothing where [vectorRange] is null. */
+        val deletionVector: DeferredRead<DeletionVector> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         // 64, not 60: the stress pass measured this card at exactly its declared height, which

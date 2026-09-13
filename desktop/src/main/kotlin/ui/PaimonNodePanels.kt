@@ -297,6 +297,7 @@ internal fun ColumnScope.PaimonDataFilePanel(
             if (!file?.extraFiles.isNullOrEmpty()) DetailRow("Extra Files", file?.extraFiles.orEmpty().joinToString(", "))
         }
         FileHistorySection(node.history, currentGraph)
+        PaimonDeletionVectorSection(node)
         // The file's own bounds, the same section the Iceberg data file has: a
         // scan skips a file whose bounds exclude the predicate without opening it.
         val bounds = node.columnBounds

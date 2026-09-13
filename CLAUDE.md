@@ -1689,7 +1689,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,110 tests across 140 files (843 in :core, 258 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,110 tests across 141 files (847 in :core, 258 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1865,9 +1865,24 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   beginning with `_` **last**, because the file's physical order puts the three system columns
   first and a card of four lines would otherwise show none of the row's own. A Paimon row goes
   through the same `unifiedRowOf` as an Iceberg row, so its position is `UnifiedRow.position` and
-  not a `file_row_number` cell; and it is built with `vectorsResolved = false`, because a Paimon
-  vector lives in the index manifest and is not mapped to rows here — the panel prints the position
-  and no `Deleted` row, rather than "not by a deletion vector" of a row no vector was looked up for
+  not a `file_row_number` cell; and it is resolved against its file's vector the way an Iceberg
+  row is, with `vectorsResolved = false` only where a vector exists and could not be read — the
+  panel then prints the position and no `Deleted` row, rather than "not by a deletion vector" of
+  a row no vector was checked for
+- **A Paimon data file carries the vector its latest index manifest names for it, and the rows
+  are marked from it.** `vectorRangesOf` in `model/PaimonRowLookup.kt` folds every snapshot's
+  `_DELETIONS_VECTORS_RANGES` by file name, main's snapshots then each branch's, a later range
+  replacing an earlier — a second delete on a file writes a new vector for it — into one
+  `PaimonVectorRange` per file: the index file, offset, length and cardinality, from the manifest
+  alone. `PaimonDataFileNode.vectorRange` is that, and `.deletionVector` is it decoded through
+  `PaimonDeletionVectorReader` on first use, one `DeferredRead` shared between the node and its
+  row factory so the index file is opened once for both the panel's `Deleted Rows` section and
+  the row cards' strike. The section is `DeletionVectorBody`, the same composable the Iceberg
+  file panel draws, with the index file's coordinates as its first row; the IDE strip prints the
+  manifest's cardinality and the index file's name without decoding, since it is drawn on the
+  EDT. `PaimonVectorRowsTest` holds `dv` and `ad` to their scripts — k 2 and 1001, id 2 and 6
+  within the five rows drawn — and every row of `pc`, which has no index manifest, to resolved
+  and live
 - **A partitioned table's file path comes from the entry's `_PARTITION`, and that is a
   `BinaryRow` this decodes.** A manifest entry names its file by `_FILE_NAME` only; the file lives
   under `<key>=<value>/…/bucket-N/`, so until `model/PaimonBinaryRow.kt` existed every data file of

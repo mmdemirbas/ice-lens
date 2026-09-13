@@ -120,6 +120,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The IDE tool window's table row says what an expiry would remove** — `older_than = now` on
   Iceberg, a bare call on Paimon — the one maintenance line that needs no walk.
+- **A Paimon data file's deletion vector is decoded and its rows are marked.** The file panel's
+  `Deleted Rows` section — the Iceberg one, with the index file's coordinates as its first row —
+  shows the positions the vector the latest index manifest names for the file marks, against the
+  manifest's cardinality and the CRC; the row cards under the file draw a marked row struck and
+  faded, as an Iceberg row under a Puffin vector is; the IDE strip names the index file and the
+  count. Before this a Paimon row said nothing about its vector, because none was mapped to rows.
 - **Row lookup.** Under the scan filter on a table panel, a click reads the files the filter
   leaves and lists the matching rows with each one's fate. On Iceberg: live, deleted by a vector,
   by a positional delete or by an equality delete, naming the file that did it — equality deletes

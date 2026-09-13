@@ -35,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import service.PositionalDeleteTally
 import service.SampleRowReader
+import model.DeletionVector
 import model.DeleteCandidate
 import model.UnreferencedFilesReport
 import model.DeleteReachVerdict
@@ -1541,59 +1542,105 @@ internal fun DeletionVectorSection(node: GraphNode.FileNode) {
     }
 
     Section("Deleted Rows (${formatCount(vector.cardinality)})") {
-        DetailTable {
-            DetailRow("Property", "Value", isHeader = true)
-            DetailRow(
-                "Positions Decoded",
-                "${formatCount(vector.cardinality)} from the Roaring bitmap in the blob",
-            )
-            DetailRow(
-                "Recorded Cardinality",
-                when {
-                    vector.recordedCardinality == null -> "not recorded by the writer"
-                    vector.cardinalityAgrees -> "${formatCount(vector.recordedCardinality)} — agrees"
-                    else -> "${formatCount(vector.recordedCardinality)} — DISAGREES with the " +
-                        "${formatCount(vector.cardinality)} decoded"
-                },
-            )
-            DetailRow(
-                "Checksum",
-                if (vector.checksumMatches) {
-                    "the blob's CRC-32 agrees with its bytes"
-                } else {
-                    "FAILS — the blob's CRC-32 does not agree with its bytes"
-                },
-            )
-        }
-        // The caption belongs to the list below it, not to the table above it, so the gap above
-        // is the larger of the two. Equal gaps put it between two things and attached to neither.
-        Spacer(Modifier.height(12.dp))
-        Text(
-            if (vector.truncated) {
-                "The first ${formatCount(vector.positions.size)} of " +
-                    "${formatCount(vector.cardinality)} positions. Row positions are zero-based " +
-                    "and count from the start of the referenced data file."
-            } else {
-                "Row positions, zero-based, counting from the start of the referenced data file."
-            },
-            fontSize = TypeScale.small,
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 4.dp),
-        )
-        // Run-folded rather than one per line: a compaction leaves vectors that delete a
-        // contiguous block, and four hundred consecutive numbers down the panel say less than
-        // "0-399" does while taking four hundred times the room. In a surface of its own for the
-        // same reason every other value in this panel is: a bare `0` at the left margin reads as
-        // a stray character rather than as the answer the section exists to give.
-        DetailTable {
+        DeletionVectorBody(vector, "the referenced data file")
+    }
+}
+
+/**
+ * The Paimon twin: the vector the latest index manifest naming this file records for it, decoded
+ * from the index file on first use. The same figures and the same list as the Iceberg section,
+ * because it is the same answer — the rows a scan drops from this file without the file having
+ * changed — reached through a different container.
+ */
+@Composable
+internal fun PaimonDeletionVectorSection(node: GraphNode.PaimonDataFileNode) {
+    val range = node.vectorRange ?: return
+    val colors = MaterialTheme.colorScheme
+    val vector = node.deletionVector.value
+
+    if (vector == null) {
+        Section("Deleted Rows") {
             Text(
-                foldRuns(vector.positions),
+                "The index manifest records a vector for this file in ${range.indexFileName} " +
+                    "(${formatCount(range.cardinality ?: 0L)} rows), and it could not be read — " +
+                    "the index file may have moved since the manifest recorded it.",
                 fontSize = TypeScale.small,
-                fontFamily = FontFamily.Monospace,
-                color = colors.onSurface,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                color = colors.onSurfaceVariant,
             )
         }
+        return
+    }
+
+    Section("Deleted Rows (${formatCount(vector.cardinality)})") {
+        DeletionVectorBody(
+            vector, "this file",
+            leadingRows = listOf(
+                "Index File" to "${range.indexFileName}, at offset ${range.offset} for ${formatBytesExact(range.length)}",
+            ),
+        )
+    }
+}
+
+/**
+ * The decoded vector against the two things recorded about it, then its positions run-folded.
+ * [target] is what the positions count from, as the caption names it.
+ */
+@Composable
+private fun DeletionVectorBody(vector: DeletionVector, target: String, leadingRows: List<Pair<String, String>> = emptyList()) {
+    val colors = MaterialTheme.colorScheme
+    DetailTable {
+        DetailRow("Property", "Value", isHeader = true)
+        leadingRows.forEach { (key, value) -> DetailRow(key, value) }
+        DetailRow(
+            "Positions Decoded",
+            "${formatCount(vector.cardinality)} from the Roaring bitmap in the blob",
+        )
+        DetailRow(
+            "Recorded Cardinality",
+            when {
+                vector.recordedCardinality == null -> "not recorded by the writer"
+                vector.cardinalityAgrees -> "${formatCount(vector.recordedCardinality)} — agrees"
+                else -> "${formatCount(vector.recordedCardinality)} — DISAGREES with the " +
+                    "${formatCount(vector.cardinality)} decoded"
+            },
+        )
+        DetailRow(
+            "Checksum",
+            if (vector.checksumMatches) {
+                "the blob's CRC-32 agrees with its bytes"
+            } else {
+                "FAILS — the blob's CRC-32 does not agree with its bytes"
+            },
+        )
+    }
+    // The caption belongs to the list below it, not to the table above it, so the gap above
+    // is the larger of the two. Equal gaps put it between two things and attached to neither.
+    Spacer(Modifier.height(12.dp))
+    Text(
+        if (vector.truncated) {
+            "The first ${formatCount(vector.positions.size)} of " +
+                "${formatCount(vector.cardinality)} positions. Row positions are zero-based " +
+                "and count from the start of $target."
+        } else {
+            "Row positions, zero-based, counting from the start of $target."
+        },
+        fontSize = TypeScale.small,
+        color = colors.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 4.dp),
+    )
+    // Run-folded rather than one per line: a compaction leaves vectors that delete a
+    // contiguous block, and four hundred consecutive numbers down the panel say less than
+    // "0-399" does while taking four hundred times the room. In a surface of its own for the
+    // same reason every other value in this panel is: a bare `0` at the left margin reads as
+    // a stray character rather than as the answer the section exists to give.
+    DetailTable {
+        Text(
+            foldRuns(vector.positions),
+            fontSize = TypeScale.small,
+            fontFamily = FontFamily.Monospace,
+            color = colors.onSurface,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+        )
     }
 }
 

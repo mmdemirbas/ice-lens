@@ -3,6 +3,7 @@ package service
 import model.*
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
+import java.nio.file.Paths
 import java.util.UUID
 
 private val logger = LoggerFactory.getLogger(PaimonGraphBuilder::class.java)
@@ -55,6 +56,18 @@ object PaimonGraphBuilder {
                 PaimonMaintenanceInput(tableSummary.currentSnapshotId?.let { logicalNodes["psnap_$it"] as? GraphNode.PaimonSnapshotNode })
             },
         )
+
+        // Every data file's deletion vector as of the last index manifest naming it, main's
+        // snapshots first and each branch's after: the coordinates only, no index file opened.
+        val vectorRanges = vectorRangesOf(tableModel.path, tableModel.snapshots + tableModel.branches.flatMap { it.snapshots })
+        fun vectorLoader(range: PaimonVectorRange?): DeferredRead<DeletionVector> {
+            if (range == null) return DeferredRead.none()
+            return DeferredRead.of {
+                runCatching { PaimonDeletionVectorReader.read(Paths.get(range.indexLocalPath), range.offset, range.length, range.dataFileName, range.cardinality) }
+                    .onFailure { logger.warn("Could not read the deletion vector in {}: {}", range.indexLocalPath, it.message) }
+                    .getOrNull()
+            }
+        }
 
         var nextManifestSimpleId = 1
         var nextManifestListSimpleId = 1
@@ -248,6 +261,8 @@ object PaimonGraphBuilder {
                             val fileSimpleId = manifestEntryViews.getOrNull(fileIndex)?.simpleId ?: (fileIndex + 1)
                             val fId = "pdf_${manId}_${fileSimpleId}_$fileIndex"
 
+                            val vectorRange = entry.file?.fileName?.let { vectorRanges[it] }
+                            val vector = (logicalNodes[fId] as? GraphNode.PaimonDataFileNode)?.deletionVector ?: vectorLoader(vectorRange)
                             if (!logicalNodes.containsKey(fId)) {
                                 logicalNodes[fId] = GraphNode.PaimonDataFileNode(
                                     id = fId,
@@ -265,6 +280,8 @@ object PaimonGraphBuilder {
                                     // A changelog file is the change stream, not the table's contents; no snapshot lists it live.
                                     history = if (kind == "changelog") DeferredRead.none()
                                     else paimonDataFileKey(unifiedDataFile).let { key -> DeferredRead.of { tableModel.fileHistoryOf(key, branch) } },
+                                    vectorRange = vectorRange,
+                                    deletionVector = vector,
                                 )
                             }
 
@@ -272,7 +289,7 @@ object PaimonGraphBuilder {
                             edgeIds.add(fileEdgeId)
                             edges.add(GraphEdge(fileEdgeId, manId, fId))
 
-                            sampleRows[fId] = sampleRowFactory(fId, unifiedDataFile, fileSimpleId)
+                            sampleRows[fId] = sampleRowFactory(fId, unifiedDataFile, fileSimpleId, vector)
                         }
                     }
                 }
@@ -324,10 +341,19 @@ object PaimonGraphBuilder {
         fileNodeId: String,
         dataFile: PaimonUnifiedDataFile,
         simpleId: Int,
+        /** The file's vector, shared with its node so it is decoded once — see [GraphNode.PaimonDataFileNode.deletionVector]. */
+        vector: DeferredRead<DeletionVector>,
     ): () -> List<GraphNode.RowNode> = {
         if (!Files.exists(dataFile.path)) {
             emptyList()
         } else {
+            // Decoded here, at row-load time for a drawn file, the way the Iceberg builder resolves
+            // a vector: a sampled row is 50 deep at most and positions come out ascending, so the
+            // decoder's cap cannot hide one this set needs. A vector that could not be read leaves
+            // the rows unresolved rather than drawn live.
+            val decoded = if (vector.isPresent) vector.value else null
+            val deleted = decoded?.positions?.toSet().orEmpty()
+            val resolved = !vector.isPresent || decoded != null
             // As many nodes as the file has rows, up to the cap: the entry's _ROW_COUNT is known
             // before the file is opened, and a one-row file drew four empty cards.
             (0 until GraphNode.RowNode.countFor(dataFile.metadata.file?.rowCount)).map { rowIndex ->
@@ -335,7 +361,8 @@ object PaimonGraphBuilder {
                     id = "row_${fileNodeId}_$rowIndex",
                     data = mapOf("file_no" to simpleId, "row_idx" to rowIndex),
                     content = 0,
-                    vectorsResolved = false,
+                    deletedPositions = deleted,
+                    vectorsResolved = resolved,
                     dataLoader = {
                         try {
                             val rows = dataFile.rows
