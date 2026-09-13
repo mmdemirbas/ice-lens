@@ -140,6 +140,25 @@ object PaimonRowLookup {
         }
     }
 
+    /** The columns of a stitched row and where each came from — see [stitchedRowAt]. */
+    class StitchedRow(val cells: Map<String, Any?>, val sourceOf: Map<String, String>)
+
+    /**
+     * The row at [position] of [file] as a data-evolution read returns it — stitched with the
+     * other files of its split, each column from the freshest file holding it — or null where
+     * the file is read alone. What the row panel shows beside a whole file's own cells, whose
+     * values on a patched column are the ones a patch replaced.
+     */
+    fun stitchedRowAt(input: PaimonReadInput, file: PaimonLookupFile, position: Long): StitchedRow? {
+        val split = input.splitsOf(input.files).firstOrNull { s -> s.any { it.fileName == file.fileName } } ?: return null
+        if (split.size < 2) return null
+        val columns = input.schema.fields.mapNotNull { it.name }
+        val sources = columns.mapNotNull { c -> split.indexOfFirst { it.holds(c) }.takeIf { it >= 0 }?.let { c to it } }.toMap()
+        val rows = readSplit(split, columns, sources, "${SampleRowReader.FILE_ROW_NUMBER} = CAST(? AS BIGINT)", listOf(position.toString()))
+        val cells = rows.firstOrNull()?.minus(SampleRowReader.FILE_ROW_NUMBER) ?: return null
+        return StitchedRow(cells, sources.mapValues { (_, i) -> split[i].fileName })
+    }
+
     /**
      * A data-evolution split as one statement: the files joined on their row number — every file
      * of a split holds the same rows in the same order, which `DataEvolutionSplitRead` checks by

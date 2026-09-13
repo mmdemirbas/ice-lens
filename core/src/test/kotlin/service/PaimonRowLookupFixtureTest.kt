@@ -147,4 +147,18 @@ class PaimonRowLookupFixtureTest {
         assertEquals(0, result.filesRuledOut, "the ruled-out file holds the row's other columns and is opened for them")
         assertTrue(result.filesRead.any { it.filePath == whole.fileName })
     }
+
+    @Test
+    fun `the row at a position of a patched file reads stitched, and a whole file reads alone`() {
+        val input = input("de")
+        val stitched = input.splits.single { it.size == 2 }
+        val whole = stitched.last()
+        val row = assertNotNull(PaimonRowLookup.stitchedRowAt(input, whole, 0))
+        assertEquals(listOf(1, 11, 1), listOf("id", "b", "c").map { (row.cells[it] as Number).toInt() })
+        assertEquals(stitched.first().fileName, row.sourceOf["b"])
+        assertEquals(whole.fileName, row.sourceOf["id"])
+        val alone = input.splits.single { it.size == 1 }.single()
+        assertEquals(null, PaimonRowLookup.stitchedRowAt(input, alone, 0))
+        assertEquals(null, PaimonRowLookup.stitchedRowAt(input, whole, 99), "no row at that position")
+    }
 }

@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   section runs the table's row lookup for the record's key, behind a click — superseded by the
   file holding the later write, a retraction, folded, live — with the key's other records under
   it.
+- **A row of a patched data-evolution file says what a read returns for it.** The same section
+  reads the split at the row's position and prints the stitched row, each patched column with the
+  file it came from — the file's own cells hold the values the patch replaced.
 - **The IDE strip lists a file's history.** A `History` row under a data file on either format,
   drawn reading and filled off the EDT — which commit added the file, which removed it, how many
   retained snapshots still list it live.

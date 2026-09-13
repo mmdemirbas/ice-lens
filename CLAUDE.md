@@ -545,7 +545,10 @@ intellij/src/main/kotlin/plugin/
   twin on the same panel: a record is a version of a row and its fate depends on the key's
   other records in other files, so it runs the table's row lookup for the record's own key,
   leads with the record's line and lists the key's other records under it — `lk`'s superseded
-  record is the capture
+  record is the capture. On a data-evolution table the same section is `Read As`: an append
+  table merges nothing, but a whole file's cells on a patched column are the values a patch
+  replaced, so `PaimonRowLookup.stitchedRowAt` reads the split at the row's position and the
+  panel prints the row a read returns with each patched column's file named
 - **A deletion vector is decoded, and decoded lazily.** `service/PuffinReader.kt` reads the
   Puffin container and the `deletion-vector-v1` blob inside it — a 4-byte big-endian length, the
   magic `D1 D3 39 64`, a 64-bit "portable" Roaring bitmap, and a 4-byte big-endian **CRC-32**
@@ -1718,7 +1721,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,140 tests across 146 files (874 in :core, 260 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,140 tests across 146 files (875 in :core, 260 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

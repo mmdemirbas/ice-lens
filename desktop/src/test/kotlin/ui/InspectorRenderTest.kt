@@ -2054,6 +2054,21 @@ class InspectorRenderTest {
                 PaimonRowMergeSection(superseded, lkRows, startRequested = true) { mergeSettled.set(true) }
             }
         }
+        // And a row of `de`'s patched file: its own cells say b = 1, the read says 11.
+        val deRows = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/de").absolutePath)),
+            showRows = true,
+        )
+        val patchedRow = deRows.nodes.filterIsInstance<GraphNode.RowNode>().first { row ->
+            val parent = deRows.edges.first { it.toId == row.id }.let { deRows.nodeById[it.fromId] as GraphNode.PaimonDataFileNode }
+            !parent.partial && row.resolvedData["id"]?.toString() == "1"
+        }
+        val stitchSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-row-node-stitched", width = 1400, height = 420, ready = stitchSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                PaimonRowMergeSection(patchedRow, deRows, startRequested = true) { stitchSettled.set(true) }
+            }
+        }
         // And on `de`, data evolution: a filter on the patched value finds the row, stitched from
         // the patch and the file it patches, and the note names where `b` came from.
         val de = GraphLayoutService.layoutGraph(
