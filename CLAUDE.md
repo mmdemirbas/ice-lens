@@ -759,7 +759,14 @@ intellij/src/main/kotlin/plugin/
   snapshot's base carries what expired commits added, and a tag-only snapshot stands apart from
   the next retained one with the expired commits between (`cs`, `pea` each caught a stricter
   version). A snapshot the table no longer retains can be neither credited nor blamed, and the
-  panel says so under the table
+  panel says so under the table. **Under the line the panel says whether the expiry the table
+  panel plans would free the file** — `older_than = now` on Iceberg, `retain_min = 1` with
+  `older_than = now` on Paimon — from the same `planExpiryFiles` the `Expiry Files` sections
+  draw, and when not, which listed-live snapshot is kept and by what rule, or which tag holds
+  it. Only for a file that is not live now, since an expiry keeps the current snapshot, and not
+  on a Paimon branch, whose ids are its own (`FileHistory.branch`). `sweep` and `pe` hold the
+  history to the expiries that ran: a file the expiry deleted was not live now, and a file live
+  now was not deleted
 - **The table panel sums the maintenance procedures to a line each, and computes none of them.**
   `MaintenanceSection` in `ui/MaintenanceSections.kt` asks the four planners at the table's current
   snapshot — `planRewrite`, `planManifestMerge`, `planExpiry` with `planExpiryFiles` on Iceberg;
@@ -1562,7 +1569,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,070 tests across 134 files (812 in :core, 254 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,070 tests across 134 files (813 in :core, 254 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

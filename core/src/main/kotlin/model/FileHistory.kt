@@ -48,6 +48,8 @@ data class FileHistory(
     val snapshots: List<FileHistoryEntry>,
     /** How many retained snapshots there are, listing the file or not. */
     val retainedSnapshotCount: Int,
+    /** The Paimon branch the snapshots are numbered on; null for main and for Iceberg, whose ids are table-wide. */
+    val branch: String? = null,
 ) {
     val addedBy: FileHistoryEntry? get() = snapshots.firstOrNull { it.event == FileEvent.ADDED || it.event == FileEvent.REWRITTEN }
     val removedBy: FileHistoryEntry? get() = snapshots.lastOrNull { it.event == FileEvent.REMOVED }
@@ -117,7 +119,7 @@ fun UnifiedTableModel.fileHistoryOf(fileKey: String): FileHistory {
         if (!live && event == null) return@mapNotNull null
         FileHistoryEntry(id, s.metadata.timestampMs, s.metadata.summary["operation"], live, event, isCurrent = id == currentId)
     }
-    return FileHistory(fileKey, entries, retained.size)
+    return FileHistory(fileKey, entries, retained.size, branch = null)
 }
 
 /**
@@ -156,5 +158,5 @@ fun PaimonUnifiedTableModel.fileHistoryOf(fileKey: String, branch: String? = nul
         if (!live && event == null) return@mapNotNull null
         FileHistoryEntry(id, s.metadata.timeMillis, s.metadata.commitKind, live, event, isCurrent = id == currentId)
     }
-    return FileHistory(fileKey, entries, retained.size)
+    return FileHistory(fileKey, entries, retained.size, branch)
 }

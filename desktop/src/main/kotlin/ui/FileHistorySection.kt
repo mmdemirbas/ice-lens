@@ -4,12 +4,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import model.DeferredRead
+import model.ExpiryOptions
 import model.FileEvent
 import model.FileHistory
+import model.GraphModel
+import model.GraphNode
+import model.IcebergMaintenanceInput
+import model.PaimonExpiryOptions
+import model.planExpiry
+import model.planExpiryFiles
 
 /** The rows a file's history prints before it says how many more there are. */
 internal const val MAX_FILE_HISTORY_ROWS = 500
@@ -24,7 +32,7 @@ internal const val MAX_FILE_HISTORY_ROWS = 500
  * and the footer says how many of those there are not.
  */
 @Composable
-internal fun FileHistorySection(history: DeferredRead<FileHistory>) {
+internal fun FileHistorySection(history: DeferredRead<FileHistory>, graph: GraphModel) {
     val colors = MaterialTheme.colorScheme
     if (!history.isPresent) {
         Section("File History") {
@@ -58,6 +66,11 @@ internal fun FileHistorySection(history: DeferredRead<FileHistory>) {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(bottom = 6.dp),
         )
+        val nowMs = expiryClock()
+        val expiry = remember(h, nowMs) { expiryLineFor(h, graph, nowMs) }
+        if (expiry != null) {
+            Text(expiry, fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
+        }
         val shown = h.snapshots.take(MAX_FILE_HISTORY_ROWS)
         WideTable(
             headers = listOf("Verdict", "Snapshot", "Operation", "Time"),
@@ -88,4 +101,41 @@ internal fun FileHistorySection(history: DeferredRead<FileHistory>) {
             modifier = Modifier.padding(top = 4.dp),
         )
     }
+}
+
+/**
+ * Whether the expiry the table panel plans — `older_than = now` on Iceberg, `retain_min = 1`
+ * with `older_than = now` on Paimon — would free this file, from the same [planExpiryFiles] the
+ * `Expiry Files` sections draw. Only for a file that is not live now: an expiry keeps the current
+ * snapshot, so a live file is never freed. Null on a Paimon branch, whose snapshot ids are its
+ * own and not the ones main's expiry is planned over.
+ */
+private fun expiryLineFor(h: FileHistory, graph: GraphModel, nowMs: Long): String? {
+    if (h.liveNow || h.branch != null) return null
+    val table = graph.nodeById["table_root"] as? GraphNode.TableNode ?: return null
+    val paimonExpiry = table.summary.paimonExpiry
+    val call: String
+    val freed: Boolean
+    val kept: String?
+    if (paimonExpiry == null) {
+        val meta = (table.maintenance.value as? IcebergMaintenanceInput)?.metadata ?: return null
+        val plan = meta.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs))
+        val files = table.expiryFiles.value?.planExpiryFiles(plan.removed.toSet()) ?: return null
+        call = "expire_snapshots(older_than = now)"
+        freed = h.fileKey in files.paths
+        val retained = plan.snapshots.filter { it.retained }.associateBy { it.snapshotId }
+        kept = h.liveIn.firstNotNullOfOrNull { e -> retained[e.snapshotId]?.let { "snapshot ${e.snapshotId} lists it live and is kept — ${it.describeKeptBy()}" } }
+            ?: "the ${files.cleanup.label} cleanup still reaches it"
+    } else {
+        val plan = runCatching { paimonExpiry.planExpiry(PaimonExpiryOptions(nowMs = nowMs, retainMin = 1, olderThanMs = nowMs)) }.getOrNull() ?: return null
+        val files = table.paimonExpiryFiles.value?.planExpiryFiles(plan.removed.map { it.snapshotId }.toSet()) ?: return null
+        call = "expire_snapshots(retain_min = 1, older_than = now)"
+        freed = h.fileKey in files.names
+        val protecting = files.protectedByTag.firstOrNull { it.name == h.fileKey }
+        kept = when {
+            protecting != null -> "tag ${protecting.tag} (snapshot ${protecting.tagSnapshotId}) still holds it"
+            else -> "a snapshot that lists it live is kept"
+        }
+    }
+    return if (freed) "An $call run now would free it." else "An $call run now would not free it: $kept."
 }

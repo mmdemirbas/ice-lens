@@ -116,7 +116,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed it, and which retained snapshots still list it live — the line a missing-file error
   sends a reader looking for, and the reason a removed file is still on disk. Live agrees with the
   live-file walk on Iceberg and the replay on Paimon, on every fixture; a Paimon level upgrade
-  shows as re-added.
+  shows as re-added. Under it, whether the expiry the table panel plans would free the file, and
+  if not, which kept snapshot or tag still holds it.
 - **`Ctrl/Cmd + 1 / 2 / 3` shows or hides the Workspace, Structure and Inspector tool windows**, in the order the bars list them; the cheat sheet has a Tool Windows group.
 - **The Paimon table panel says which files an expiry would free, and which a tag holds.** An
   `Expiry Files` section plans the `retain_min = 1, older_than = now` call's removals the way

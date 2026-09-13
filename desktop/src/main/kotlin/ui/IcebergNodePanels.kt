@@ -1079,7 +1079,7 @@ internal fun ColumnScope.FilePanel(
             }
         }
 
-        FileHistorySection(node.history)
+        FileHistorySection(node.history, currentGraph)
 
         // What this delete file applies to. Asked of every delete file, and the
         // honest answer is different for each of the three kinds — including one

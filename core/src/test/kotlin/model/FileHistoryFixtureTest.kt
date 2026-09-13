@@ -102,6 +102,36 @@ class FileHistoryFixtureTest {
         }
     }
 
+    private fun namesOnDisk(dir: File): Set<String> = dir.walkTopDown().filter { it.isFile }.map { it.name }.toSet()
+
+    /**
+     * The history is what the panel's expiry line is read against, so the two have to agree
+     * with the expiries Iceberg and Paimon actually ran: a data file the expiry deleted was not
+     * live in the current snapshot, and a file live now is one no expiry deleted.
+     */
+    @Test
+    fun `a file the expiry freed was not live now, and a file live now was not freed`() {
+        val sweep = iceberg("sweep")
+        val gone = namesOnDisk(File(repoRoot, "example/iceberg/default/sweep/data")) - namesOnDisk(File(repoRoot, "example/iceberg/default/swept/data"))
+        assertTrue(gone.isNotEmpty(), "the Iceberg expiry should have deleted data files")
+        val keys = retainedIceberg(sweep).flatMap { s -> s.manifests.flatMap { m -> m.dataFiles.map { it.ledgerFileKey() } } }.toSet()
+        var freed = 0
+        keys.forEach { key ->
+            val h = sweep.fileHistoryOf(key)
+            if (key.substringAfterLast('/') in gone) { assertTrue(!h.liveNow, key); freed++ } else if (h.liveNow) assertTrue(key.substringAfterLast('/') !in gone, key)
+        }
+        assertEquals(gone.size, freed)
+
+        val pe = paimon("pe")
+        val goneP = namesOnDisk(File(repoRoot, "example/paimon/db.db/pe/bucket-0")) - namesOnDisk(File(repoRoot, "example/paimon/db.db/pea/bucket-0"))
+        val keysP = pe.snapshots.flatMap { s -> (s.baseManifests + s.deltaManifests).flatMap { mf -> mf.entries.map(::paimonDataFileKey) } }.toSet()
+        // The changelog files it deleted have no history — they are the change stream, not the table's contents.
+        val goneData = goneP.filter { it in keysP }
+        assertTrue(goneData.isNotEmpty(), "the Paimon expiry should have deleted data files")
+        goneData.forEach { name -> assertTrue(!pe.fileHistoryOf(name).liveNow, name) }
+        keysP.filter { pe.fileHistoryOf(it).liveNow }.forEach { assertTrue(it !in goneP, it) }
+    }
+
     private data class Line(val fixture: String, val branch: String?, val snapshots: List<PaimonUnifiedSnapshot>, val tagOnly: List<PaimonUnifiedSnapshot>)
 
     private fun lines(): List<Pair<PaimonUnifiedTableModel, Line>> = paimonFixtures().flatMap { fixture ->

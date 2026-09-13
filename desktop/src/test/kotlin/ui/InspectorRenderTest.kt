@@ -116,6 +116,12 @@ class InspectorRenderTest {
         val removed = mor.nodes.filterIsInstance<GraphNode.FileNode>()
             .first { it.entry.status == ManifestEntryStatus.DELETED && it.history.value?.removedBy != null }
         renderInspector(mor, removed.id, "file-node-history", height = 2600)
+        // The same shape where the expiry line says no: `sweepb`'s branch keeps the snapshot that
+        // lists the removed file live, so an expiry run now leaves it on disk.
+        val sweepb = graphFor("sweepb")
+        val kept = sweepb.nodes.filterIsInstance<GraphNode.FileNode>()
+            .first { it.entry.status == ManifestEntryStatus.DELETED && it.history.value?.removedBy != null }
+        renderInspector(sweepb, kept.id, "file-node-history-kept", height = 2600)
         val dv = GraphLayoutService.layoutGraph(
             PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/dv").absolutePath)),
             showRows = false,
