@@ -327,6 +327,20 @@ object IcebergGraphBuilder {
             }
         }
 
+        // A published write-audit-publish commit names the staged snapshot its files came from.
+        // Drawn like lineage — between two snapshots, withheld from ELK, dashed — because the
+        // parent edge says where the commit sits on main and this says where its files came from,
+        // and a reader of a WAP table came to see the second.
+        logicalNodes.values.filterIsInstance<GraphNode.SnapshotNode>().forEach { node ->
+            val sourceId = node.data.sourceSnapshotId ?: return@forEach
+            val sourceNodeId = "snap_$sourceId"
+            if (!logicalNodes.containsKey(sourceNodeId)) return@forEach
+            val edgeId = "e_source_${sourceId}_to_${node.data.snapshotId}"
+            if (edgeIds.add(edgeId)) {
+                edges.add(GraphEdge(id = edgeId, fromId = sourceNodeId, toId = node.id, affectsLayout = false))
+            }
+        }
+
         addDeletionVectorEdges(logicalNodes, edges, edgeIds)
 
         return GraphBuildResult(

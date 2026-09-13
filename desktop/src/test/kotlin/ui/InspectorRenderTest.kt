@@ -43,6 +43,8 @@ import kotlin.test.assertTrue
 import model.GraphModel
 import model.GraphSearch
 import model.GraphNode
+import model.publishedWapId
+import model.wapId
 import model.describe
 import model.ManifestEntryStatus
 import model.PaimonUnifiedTableModel
@@ -366,6 +368,24 @@ class InspectorRenderTest {
         val metadata = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().single { it.data.partitionStatistics.isNotEmpty() }
         assertEquals(3, metadata.partitionStatistics.value?.values?.single()?.rows?.size)
         renderInspector(graph, metadata.id, "metadata-node-partition-stats", height = 7200)
+    }
+
+    /**
+     * Write-audit-publish. What to look for on the canvas: the staged commit in a column of its
+     * own with no name over it, its lineage edge back to the commit it forked from, and a second
+     * dashed edge from it to the published commit at the bottom of `main` — the relationship the
+     * parent edge does not carry. In the panels: the staged commit's `Refs` row saying why it is
+     * on none, and the published commit's `Published From` naming the snapshot and the audit id.
+     */
+    @Test
+    fun `a write-audit-publish flow draws the source of a published commit`() {
+        val graph = graphFor("wap")
+        val staged = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().single { it.data.wapId == "audit-1" }
+        val published = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().single { it.data.publishedWapId == "audit-1" }
+        assertEquals(1, graph.edges.count { it.id.startsWith("e_source_") })
+        renderCanvas("graph-canvas-wap", graph, pageSize = AggregationPolicy.DEFAULT_PAGE_SIZE)
+        renderInspector(graph, staged.id, "snapshot-node-wap-staged", height = 1400)
+        renderInspector(graph, published.id, "snapshot-node-wap-published", height = 1400)
     }
 
     /**

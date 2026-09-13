@@ -320,6 +320,18 @@ fun effectiveSequenceNumber(entry: ManifestEntry, manifestSequenceNumber: Long?)
  */
 val Snapshot.effectiveSequenceNumber: Long get() = sequenceNumber ?: 0L
 
+/**
+ * Write-audit-publish, as the summary records it. A snapshot written under `spark.wap.id` is
+ * **staged**: it is in `snapshots` with [wapId] set, its parent is main's tip at the time, and no
+ * ref points at it. `publish_changes` / `cherrypick_snapshot` then commits a *new* snapshot on
+ * main whose [publishedWapId] and [sourceSnapshotId] name the staged one and whose files are
+ * the staged one's. The lineage edge says the published commit's parent is main's tip; only these
+ * say where its files came from.
+ */
+val Snapshot.wapId: String? get() = summary["wap.id"]
+val Snapshot.publishedWapId: String? get() = summary["published-wap-id"]
+val Snapshot.sourceSnapshotId: Long? get() = summary["source-snapshot-id"]?.toLongOrNull()
+
 /** `manifest_file.sequence_number` (a [ManifestListEntry] here), or 0 from a v1 manifest list: "use 0 when reading v1 manifest lists". */
 val ManifestListEntry.effectiveSequenceNumber: Long get() = sequenceNumber ?: 0L
 

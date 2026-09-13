@@ -80,6 +80,9 @@ import model.snapshotTotals
 import model.FileChange
 import model.manifestTallies
 import model.MAIN_BRANCH
+import model.sourceSnapshotId
+import model.publishedWapId
+import model.wapId
 import model.describe
 import model.PaimonFileSource
 import model.paimonManifestTallies
@@ -1662,8 +1665,25 @@ fun NodeDetailsContent(
                             DetailRow(
                                 "Refs",
                                 node.refs.takeIf { it.isNotEmpty() }?.joinToString(", ") { it.display }
-                                    ?: "None — kept only by a metadata version, not by a branch or tag",
+                                    ?: if (node.data.wapId != null) {
+                                        "None — staged by write-audit-publish (wap.id ${node.data.wapId}); on no branch until published"
+                                    } else {
+                                        "None — kept only by a metadata version, not by a branch or tag"
+                                    },
                             )
+                            // Write-audit-publish, from the summary: a staged write names its
+                            // audit id; a published commit names the staged snapshot its files
+                            // came from, which its parent edge does not say.
+                            if (node.data.wapId != null) DetailRow("WAP ID", node.data.wapId!!)
+                            if (node.data.sourceSnapshotId != null || node.data.publishedWapId != null) {
+                                DetailRow(
+                                    "Published From",
+                                    listOfNotNull(
+                                        node.data.sourceSnapshotId?.let { "snapshot $it" },
+                                        node.data.publishedWapId?.let { "wap.id $it" },
+                                    ).joinToString(", ") + " — cherry-picked: the files are the staged snapshot's, the parent is main's tip",
+                                )
+                            }
                             DetailRow(
                                 "Sequence Number",
                                 node.data.sequenceNumber?.toString()

@@ -73,6 +73,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A write-audit-publish flow is drawn as what it is.** A snapshot staged under `spark.wap.id`
+  sits on no branch, and its panel says so with the audit id instead of "kept only by a metadata
+  version"; the commit `publish_changes` writes on main names the staged snapshot in a
+  `Published From` row and is joined to it by a dashed `e_source_*` edge, since its parent edge
+  only says where it sits on main. The audit id is searchable from either end. `wap` is the fixture.
 - **A partition statistics file is read, and shown under its record.** The metadata panel listed
   the file's name, snapshot and claimed size; it now opens the Parquet and draws one row per
   partition — data records, files and bytes, delete records and files, last updated, last

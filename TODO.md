@@ -313,6 +313,7 @@ What is left:
   | `default/stats` | a Puffin statistics file — four theta sketches, one per column |
   | `default/pstats` | a partition statistics file from Iceberg 1.10's `compute_partition_stats` — three partitions, `eu` with a positional delete; the writer's `.partitions` output is in the script |
   | `default/branched3` | three branches forked at three points, plus a tag on the trunk's tip |
+  | `default/wap` | write-audit-publish — a snapshot staged under `spark.wap.id` with no ref, main moving past it, then `publish_changes` writing a new commit on main that names it in `source-snapshot-id` |
   | `default/extdata` | `write.data.path` outside the table — `metadata/` and no `data/`, two files beside the table; the engine-written shape the resolver's third rule was written against |
   | `default/sorted` | `WRITE ORDERED BY` twice, then `rewrite_data_files(strategy => 'sort')` — three sort orders, `default-sort-order-id` 2, rows sorted inside every file written under an order, and `sort_order_id 0` on every data file including the compacted one, which is what Spark records |
   | `default/expired` | four commits, then `expire_snapshots(retain_last => 1)` — three expired snapshots the older metadata versions still list |

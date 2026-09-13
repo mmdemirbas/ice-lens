@@ -1117,6 +1117,18 @@ intellij/src/main/kotlin/plugin/
   ELK sections. They are the one kind whose two ends can sit side by side, so drawn solid they
   are indistinguishable from the parent-child edges crossing the same gap — which is why a
   deletion vector's edge and a fork's only read as annotations once they are dashed
+- **A published write-audit-publish commit is drawn with two dashed edges, because it has two
+  origins.** A snapshot written under `spark.wap.id` is *staged*: in `snapshots` with `wap.id` in
+  its summary, parent main's tip at the time, no ref — so it draws in a column of its own with no
+  name over it, and its `Refs` row says why. `publish_changes` then writes a *new* snapshot on
+  main whose parent is main's current tip and whose summary carries `source-snapshot-id` and
+  `published-wap-id`; its files are the staged snapshot's, under a manifest of its own. The
+  parent edge says where the commit sits on main and `e_source_*` says where its files came
+  from — the relationship a reader of a WAP table came to see, and the one the lineage alone
+  cannot say. `Snapshot.wapId` / `.publishedWapId` / `.sourceSnapshotId` read the summary keys
+  (`IcebergSchema.kt`), the audit id is searchable from both ends, and `wap` is the fixture.
+  `trunkCommits` is what keeps the staged commit out of `main`'s column: it and main's next
+  commit are both children of one snapshot, and the staged one was written first
 - **Four layouts, and only one of them gets the refinements.** `GraphLayoutAlgorithm` offers
   layered left-to-right (the default, and the right shape for a containment hierarchy drawn as
   depth), layered top-to-bottom for a tall window, `mrtree` for following one branch down to its
@@ -1235,10 +1247,11 @@ intellij/src/main/kotlin/plugin/
 - `row_<fId>_<index>` — row nodes
 - `err_<seq>_<hash>_<hash>` — error nodes
 
-Edge IDs: `e_table_*`, `e_snap_*`, `e_man_*`, `e_file_*`, `e_row_*`, `e_err_*`, plus two that
+Edge IDs: `e_table_*`, `e_snap_*`, `e_man_*`, `e_file_*`, `e_row_*`, `e_err_*`, plus three that
 record a relationship without shaping the layout (`affectsLayout = false`): `e_lineage_*` between
-snapshots and `e_dv_*` from a v3 deletion vector to the data file its `referenced_data_file`
-names. Both run between nodes of one layer, which is exactly why ELK must not see them.
+snapshots, `e_source_*` from a staged write-audit-publish snapshot to the commit that published
+it, and `e_dv_*` from a v3 deletion vector to the data file its `referenced_data_file` names. All
+run between nodes of one layer, which is exactly why ELK must not see them.
 
 ### Paimon (`PaimonGraphBuilder`)
 
@@ -1266,7 +1279,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~952 tests across 111 files (718 in :core, 229 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~956 tests across 112 files (721 in :core, 230 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1356,6 +1369,7 @@ container invocation and the traps in it:
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
 | `default/pstats` | `PartitionStatsFixtureTest` | a partition statistics file, written by Iceberg 1.10 — three partitions, one with a positional delete, checked against the writer's `.partitions` and this app's own live-file walk |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
+| `default/wap` | `WapFixtureTest` | write-audit-publish — a staged snapshot on no ref, main moving past it, `publish_changes` cherry-picking it with `source-snapshot-id` and `published-wap-id` |
 | `default/extdata` | `ExternalDataPathFixtureTest` | `write.data.path` outside the table — no `data/` under it, two files beside it under `example/iceberg/extdata-files/` |
 | `default/sorted` | `SortedFixtureTest` | three sort orders, a commit under each, then a sort compaction — rows sorted inside every file, `sort_order_id 0` on every file |
 | `default/expired` | `ExpiredSnapshotsFixtureTest` | snapshots dropped by `expire_snapshots` — the older metadata versions still list them, and they are drawn as expired, not as read errors |

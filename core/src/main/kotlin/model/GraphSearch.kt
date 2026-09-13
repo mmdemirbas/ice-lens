@@ -40,6 +40,10 @@ object GraphSearch {
             node.data.summary["operation"],
             node.data.manifestList,
             node.localPath,
+            // A WAP id is the name a reader has for a staged write and for the commit that
+            // published it — both carry it.
+            node.data.wapId,
+            node.data.publishedWapId,
         ) + node.refs.map { it.name }
 
         is GraphNode.ManifestNode -> listOfNotNull(
