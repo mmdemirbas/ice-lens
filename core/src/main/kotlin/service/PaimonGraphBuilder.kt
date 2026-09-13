@@ -145,6 +145,7 @@ object PaimonGraphBuilder {
                         paimonRecordTallies(unifiedSnapshot, liveFiles.value.orEmpty().sumOf { it.recordCount })
                     },
                     bucketLsmsLoader = DeferredRead.of { replay.value?.let { paimonBucketLsms(it.liveEntries.values) } },
+                    readInput = DeferredRead.of { replay.value?.let { tableModel.paimonReadInputOf(unifiedSnapshot, it) } },
                     tableOptions = unifiedSnapshot.schema?.options.orEmpty(),
                     hasPrimaryKey = unifiedSnapshot.schema?.primaryKeys?.isNotEmpty() ?: true,
                     indexFiles = unifiedSnapshot.indexFiles,
@@ -277,6 +278,7 @@ object PaimonGraphBuilder {
                                     operationKind = entry.kind,
                                     localPath = unifiedDataFile.path.toString(),
                                     pathResolution = unifiedDataFile.pathResolution,
+                                    partial = unifiedDataFile.partial,
                                     // A changelog file is the change stream, not the table's contents; no snapshot lists it live.
                                     history = if (kind == "changelog") DeferredRead.none()
                                     else paimonDataFileKey(unifiedDataFile).let { key -> DeferredRead.of { tableModel.fileHistoryOf(key, branch) } },
@@ -426,9 +428,9 @@ object PaimonGraphBuilder {
     ) {
         val added = logicalNodes.values.filterIsInstance<GraphNode.PaimonDataFileNode>()
             .filter { it.operationKind == PaimonEntryKind.ADD && it.entry.file?.firstRowId != null }
-        val patches = added.filter { it.entry.file?.writeCols != null }
+        val patches = added.filter { it.partial }
         if (patches.isEmpty()) return
-        val wholeByRowId = added.filter { it.entry.file?.writeCols == null }
+        val wholeByRowId = added.filter { !it.partial }
             .groupBy { Triple(it.partition?.path, it.bucket, it.entry.file?.firstRowId) }
         patches.forEach { patch ->
             wholeByRowId[Triple(patch.partition?.path, patch.bucket, patch.entry.file?.firstRowId)].orEmpty().forEach { target ->

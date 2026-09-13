@@ -1,13 +1,13 @@
 package model
 
 /**
- * What finding a row in a Paimon table takes, read off the latest snapshot on `main`: every
- * live data file with where it is opened from and the bucket it belongs to, every deletion
- * vector the snapshot's index manifest names, the schema the filter's columns are typed by,
- * and the merge engine that decides which of a key's records is the row. The reading itself —
- * DuckDB over the files the filter leaves, the bucket's other files over each hit's key — is
- * `service/PaimonRowLookup.kt`; this is the part that needs no file opened, and it is a
- * `DeferredRead` on the table node because it replays the snapshot.
+ * What reading a Paimon snapshot takes, off its replay: every live data file with where it is
+ * opened from and the bucket it belongs to, every deletion vector the snapshot's index manifest
+ * names, the schema the columns are typed by, and the merge engine that decides which of a
+ * key's records is the row. Two readers share it — the row lookup (`service/PaimonRowLookup.kt`,
+ * the latest snapshot's, on the table node) and the merged row count
+ * (`service/PaimonMergedCount.kt`, any snapshot's, on its node) — and it is the part that needs
+ * no file opened, a `DeferredRead` because it replays the snapshot.
  *
  * The question is the same one the Iceberg lookup answers, "is this row live, and if not, what
  * removed it", and the format answers it differently. A primary-key file holds every write as
@@ -26,6 +26,8 @@ data class PaimonLookupFile(
     val bucket: Int,
     val level: Int?,
     val recordCount: Long?,
+    /** A data-evolution patch file (`_WRITE_COLS` set): columns of rows another file holds, no rows of its own. */
+    val partial: Boolean = false,
 )
 
 /**
@@ -44,7 +46,7 @@ data class PaimonVectorRange(
     val cardinality: Long?,
 )
 
-data class PaimonRowLookupInput(
+data class PaimonReadInput(
     val snapshotId: Long,
     val schema: PaimonSchema,
     /** The primary keys that are not partition keys, in primary-key order — the file's `_KEY_` columns. */
@@ -65,12 +67,14 @@ data class PaimonRowLookupInput(
 
 const val DEFAULT_PAIMON_MERGE_ENGINE = "deduplicate"
 
-/** The lookup input for the latest snapshot on `main`, or null when the table has none. */
-fun PaimonUnifiedTableModel.paimonRowLookupInput(): PaimonRowLookupInput? {
-    val snapshot = snapshots.lastOrNull() ?: return null
+/** The read input for the latest snapshot on `main`, or null when the table has none. */
+fun PaimonUnifiedTableModel.paimonRowLookupInput(): PaimonReadInput? =
+    snapshots.lastOrNull()?.let { paimonReadInputOf(it, replayPaimonSnapshot(it)) }
+
+/** The read input for one snapshot, from a replay already run — null where the snapshot names no id or schema. */
+fun PaimonUnifiedTableModel.paimonReadInputOf(snapshot: PaimonUnifiedSnapshot, replay: PaimonReplay): PaimonReadInput? {
     val id = snapshot.metadata.id ?: return null
     val schema = snapshot.schema ?: return null
-    val replay = replayPaimonSnapshot(snapshot)
     val files = replay.liveEntries.values.mapNotNull { entry ->
         val meta = entry.metadata.file ?: return@mapNotNull null
         PaimonLookupFile(
@@ -80,9 +84,10 @@ fun PaimonUnifiedTableModel.paimonRowLookupInput(): PaimonRowLookupInput? {
             bucket = entry.metadata.bucket ?: return@mapNotNull null,
             level = meta.level,
             recordCount = meta.rowCount,
+            partial = entry.partial,
         )
     }
-    return PaimonRowLookupInput(
+    return PaimonReadInput(
         snapshotId = id,
         schema = schema,
         trimmedPrimaryKeys = schema.primaryKeys.filterNot { it in schema.partitionKeys },

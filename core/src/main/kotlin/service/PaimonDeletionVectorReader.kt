@@ -6,6 +6,7 @@ import java.nio.ByteOrder
 import java.nio.channels.SeekableByteChannel
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.BitSet
 import java.util.zip.CRC32
 
 /**
@@ -39,9 +40,27 @@ object PaimonDeletionVectorReader {
      * coordinates. [dataFileName] and [recordedCardinality] are what the index manifest says
      * about it, carried onto the result rather than read here so a disagreement is visible.
      */
-    fun read(indexFile: Path, offset: Long, length: Long, dataFileName: String? = null, recordedCardinality: Long? = null): DeletionVector {
+    fun read(indexFile: Path, offset: Long, length: Long, dataFileName: String? = null, recordedCardinality: Long? = null): DeletionVector =
+        decode(readRange(indexFile, offset, length), dataFileName, recordedCardinality)
+
+    /**
+     * Every position the vector marks, as a bit set — for a count that has to be exact over a
+     * whole file, where [DeletionVector.positions] stops at [PuffinReader.MAX_POSITIONS]. A Paimon
+     * position is a row number in one file, so it fits an `Int`; one past that is refused rather
+     * than folded.
+     */
+    fun readPositions(indexFile: Path, offset: Long, length: Long): BitSet {
+        val bits = BitSet()
+        decodeInto(readRange(indexFile, offset, length)) { position ->
+            if (position < 0 || position > Int.MAX_VALUE) throw PaimonIndexFormatException("position $position is past what a bit set holds")
+            bits.set(position.toInt())
+        }
+        return bits
+    }
+
+    private fun readRange(indexFile: Path, offset: Long, length: Long): ByteArray {
         if (length < 8) throw PaimonIndexFormatException("a $length-byte range is too short to hold a vector")
-        val blob = Files.newByteChannel(indexFile).use { file ->
+        return Files.newByteChannel(indexFile).use { file ->
             val version = ByteBuffer.allocate(1).also { file.position(0); file.read(it) }.get(0)
             if (version != VERSION_V1) throw PaimonIndexFormatException("index file version $version is not the 1 this reads")
             // size + magic + bitmap + crc
@@ -52,10 +71,20 @@ object PaimonDeletionVectorReader {
             file.position(offset)
             file.readFully(whole.toInt())
         }
-        return decode(blob, dataFileName, recordedCardinality)
     }
 
     internal fun decode(blob: ByteArray, dataFileName: String? = null, recordedCardinality: Long? = null): DeletionVector {
+        val positions = mutableListOf<Long>()
+        var cardinality = 0L
+        val checksumMatches = decodeInto(blob) { position ->
+            cardinality++
+            if (positions.size < PuffinReader.MAX_POSITIONS) positions.add(position)
+        }
+        return DeletionVector(positions, cardinality, recordedCardinality, checksumMatches, dataFileName)
+    }
+
+    /** Emits every position in order and answers whether the CRC after the bitmap agrees with the bytes. */
+    private fun decodeInto(blob: ByteArray, emit: (Long) -> Unit): Boolean {
         val outer = ByteBuffer.wrap(blob).order(ByteOrder.BIG_ENDIAN)
         val size = outer.getInt()
         if (size < 4 || 4 + size + 4 > blob.size) {
@@ -63,23 +92,18 @@ object PaimonDeletionVectorReader {
         }
         val magicBigEndian = outer.getInt()
         val magicLittleEndian = ByteBuffer.wrap(blob, 4, 4).order(ByteOrder.LITTLE_ENDIAN).getInt()
-        return when {
-            magicBigEndian == MAGIC_BITMAP32 -> {
-                val checked = blob.copyOfRange(4, 4 + size)
-                val recordedCrc = ByteBuffer.wrap(blob, 4 + size, 4).order(ByteOrder.BIG_ENDIAN).getInt()
-                val computedCrc = CRC32().apply { update(checked) }.value.toInt()
-                val positions = mutableListOf<Long>()
-                var cardinality = 0L
-                PuffinReader.readRoaring32(ByteBuffer.wrap(blob, 8, size - 4).slice().order(ByteOrder.LITTLE_ENDIAN)) { position ->
-                    cardinality++
-                    if (positions.size < PuffinReader.MAX_POSITIONS) positions.add(position)
-                }
-                DeletionVector(positions, cardinality, recordedCardinality, recordedCrc == computedCrc, dataFileName)
-            }
-            // The whole range, size and CRC included, is exactly a Puffin `deletion-vector-v1` blob.
-            magicLittleEndian == MAGIC_BITMAP64 -> PuffinReader.decodeDeletionVector(blob, dataFileName, recordedCardinality)
+        val checked = blob.copyOfRange(4, 4 + size)
+        val recordedCrc = ByteBuffer.wrap(blob, 4 + size, 4).order(ByteOrder.BIG_ENDIAN).getInt()
+        val computedCrc = CRC32().apply { update(checked) }.value.toInt()
+        when {
+            magicBigEndian == MAGIC_BITMAP32 ->
+                PuffinReader.readRoaring32(ByteBuffer.wrap(blob, 8, size - 4).slice().order(ByteOrder.LITTLE_ENDIAN), emit)
+            // The whole range, size and CRC included, is exactly a Puffin `deletion-vector-v1` blob:
+            // the same outer fields in the same places, and the 64-bit bitmap inside.
+            magicLittleEndian == MAGIC_BITMAP64 -> PuffinReader.forEachPosition(blob.copyOfRange(8, 4 + size), emit)
             else -> throw PaimonIndexFormatException("0x${magicBigEndian.toUInt().toString(16)} is neither Paimon vector magic")
         }
+        return recordedCrc == computedCrc
     }
 
     private fun SeekableByteChannel.readFully(count: Int): ByteArray {

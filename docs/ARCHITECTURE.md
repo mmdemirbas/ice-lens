@@ -102,6 +102,7 @@ ice-lens is a single-module Kotlin Compose Desktop application. All code lives i
 │  MaintenanceSections.kt  The planners' sections: rewrite, manifest merge, expiry and its files, compaction, the table's summary
 │  FileHistorySection.kt   A file's life across the retained snapshots, and whether an expiry would free it
 │  IntegritySection.kt     The whole-table check behind a click: every recorded figure against the same figure counted
+│  PaimonMergedCountSection.kt  What a read of a Paimon snapshot returns — the merge over the bucket files, behind a click
 │  TimeTravelSection.kt    A typed time and the snapshot a read as of it lands on
 │  RowLookupSection.kt     The scan filter one step further: the matching rows read from the files it leaves, each with its fate, on either format
 │  NodePanels.kt       Table / row / error / group panels

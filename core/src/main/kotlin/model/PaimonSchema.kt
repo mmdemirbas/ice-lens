@@ -301,7 +301,10 @@ data class PaimonDataFileMeta(
      * a file of their own with the same [firstRowId] as the file holding the rest, and a read
      * stitches files sharing a first row id, the higher `_MAX_SEQUENCE_NUMBER` winning a column.
      * [valueStats] then covers these columns, not the schema's; the writer stores null here for a
-     * file carrying every column, so null means "the schema's".
+     * file carrying every column, so null means "the schema's". **Non-null does not mean
+     * partial**: a full compaction under `row-tracking.enabled` lists every column plus `_ROW_ID`
+     * and `_SEQUENCE_NUMBER` here (`rt`), and read as a patch file that had the table's rows at
+     * zero. [isPartialUnder] is the one reading.
      */
     @SerialName("_WRITE_COLS") val writeCols: List<String>? = null,
     /**
@@ -354,4 +357,15 @@ data class PaimonDataFileMeta(
         result = 31 * result + embeddedFileIndex.contentHashCode()
         return result
     }
+}
+
+/**
+ * Whether `_WRITE_COLS` leaves out a column the file's schema has — a data-evolution patch file,
+ * whose rows are columns of rows another file holds. A file listing every schema column, with or
+ * without system columns beside them, is whole; so is one recording nothing.
+ */
+fun PaimonDataFileMeta.isPartialUnder(schema: PaimonSchema?): Boolean {
+    val cols = writeCols ?: return false
+    val fields = schema?.fields?.mapNotNull { it.name }.orEmpty()
+    return fields.any { it !in cols }
 }

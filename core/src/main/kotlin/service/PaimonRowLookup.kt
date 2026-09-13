@@ -5,7 +5,7 @@ import model.DeletionVector
 import model.LookupFileOutcome
 import model.PaimonLookupFile
 import model.PaimonRowKind
-import model.PaimonRowLookupInput
+import model.PaimonReadInput
 import model.RowFate
 import model.RowHit
 import model.RowLookupResult
@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory
 import java.nio.file.Paths
 
 /**
- * Finding rows in a Paimon table and deciding their fate — see [PaimonRowLookupInput] for what
+ * Finding rows in a Paimon table and deciding their fate — see [PaimonReadInput] for what
  * it reads and why. The files the filter leaves are read the way the Iceberg lookup reads
  * them, one DuckDB statement each with every literal bound; what differs is what decides a hit.
  *
@@ -51,7 +51,7 @@ object PaimonRowLookup {
      * Reads the files the filter leaves — every live data file whose name is not in
      * [ruledOut] — and decides each hit.
      */
-    fun lookup(input: PaimonRowLookupInput, filter: ScanFilter, ruledOut: Set<String>): RowLookupResult {
+    fun lookup(input: PaimonReadInput, filter: ScanFilter, ruledOut: Set<String>): RowLookupResult {
         val candidates = input.files.filter { it.fileName !in ruledOut }
         val toRead = candidates.take(RowLookup.MAX_FILES)
         val predicate = filter.toSql { column -> input.schema.fields.firstOrNull { it.name == column }?.type?.let(::paimonTypeAsIceberg) }
@@ -104,7 +104,7 @@ object PaimonRowLookup {
      * as text and cast to the column's type, the same rule the filter's literals follow.
      */
     private fun keyStatesFor(
-        input: PaimonRowLookupInput,
+        input: PaimonReadInput,
         raws: List<Raw>,
         keyColumns: List<String>,
     ): Map<Pair<String, Int>, Map<List<String?>, KeyState>> {
@@ -127,16 +127,11 @@ object PaimonRowLookup {
         casts: List<String?>,
         keys: List<List<String?>>,
     ): Map<List<String?>, KeyState> {
-        val quoted = keyColumns.map(::quoteSqlIdentifier)
-        val keyList = quoted.joinToString(", ")
-        val branches = files.joinToString(" UNION ALL ") {
-            "SELECT $keyList, ${quoteSqlIdentifier(SEQUENCE_NUMBER)} AS s, ${quoteSqlIdentifier(PaimonRowKind.COLUMN)} AS kind, filename AS f " +
-                "FROM read_parquet(?, filename = true)"
-        }
+        val keyList = keyColumns.joinToString(", ", transform = ::quoteSqlIdentifier)
         val tuple = "(" + casts.joinToString(", ") { cast -> if (cast == null) "?" else "CAST(? AS $cast)" } + ")"
         val inList = keys.joinToString(", ") { tuple }
-        val sql = "SELECT $keyList, max(s), arg_max(f, s), arg_max(kind, s), count(*) FROM ($branches) " +
-            "WHERE ($keyList) IN ($inList) GROUP BY $keyList"
+        val sql = "SELECT $keyList, latest, holder, kind, records FROM (${latestPerKeySql(files, keyColumns)}) " +
+            "WHERE ($keyList) IN ($inList)"
         return DuckDb.withConnection { conn ->
             conn.prepareStatement(sql).use { pstmt ->
                 var i = 1
@@ -160,8 +155,24 @@ object PaimonRowLookup {
         }
     }
 
+    /**
+     * The merge a read runs over a bucket, as SQL: one row per key with its latest sequence
+     * number, the file and position holding that record, the record's kind, and how many records
+     * the key has — a `UNION ALL` over the bucket's files with one `?` per file, in [files] order.
+     * The key columns come first, then `latest`, `holder`, `kind`, `pos`, `records`.
+     */
+    internal fun latestPerKeySql(files: List<PaimonLookupFile>, keyColumns: List<String>): String {
+        val keyList = keyColumns.joinToString(", ", transform = ::quoteSqlIdentifier)
+        val branches = files.joinToString(" UNION ALL ") {
+            "SELECT $keyList, ${quoteSqlIdentifier(SEQUENCE_NUMBER)} AS s, ${quoteSqlIdentifier(PaimonRowKind.COLUMN)} AS k, " +
+                "filename AS f, ${SampleRowReader.FILE_ROW_NUMBER} AS p FROM read_parquet(?, filename = true, file_row_number = true)"
+        }
+        return "SELECT $keyList, max(s) AS latest, arg_max(f, s) AS holder, arg_max(k, s) AS kind, arg_max(p, s) AS pos, count(*) AS records " +
+            "FROM ($branches) GROUP BY $keyList"
+    }
+
     private fun decide(
-        input: PaimonRowLookupInput,
+        input: PaimonReadInput,
         raw: Raw,
         keyColumns: List<String>,
         bucketKeys: Map<List<String?>, KeyState>,

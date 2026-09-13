@@ -1896,6 +1896,38 @@ class InspectorRenderTest {
     }
 
     /**
+     * The merged row count on `dv`'s latest snapshot — 1,497 of 1,500, three keys marked by
+     * vectors, read from the bucket's files — and on `pt`, partitioned, where the per-bucket table
+     * is drawn; both wait for the merge. `ad`'s is the metadata's and needs no click.
+     */
+    @Test
+    fun `a Paimon snapshot says what a read of it returns`() {
+        fun latest(name: String): Pair<GraphModel, GraphNode.PaimonSnapshotNode> {
+            val graph = GraphLayoutService.layoutGraph(
+                PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/$name").absolutePath)),
+                showRows = false,
+            )
+            return graph to graph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().filter { it.branch == null }.maxBy { it.data.id ?: 0L }
+        }
+        listOf("dv" to 420, "pt" to 900).forEach { (name, height) ->
+            val (_, node) = latest(name)
+            val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+            renderUntil("paimon-merged-rows-$name", width = 1400, height = height, ready = settled::get) {
+                Column(Modifier.padding(16.dp)) {
+                    PaimonMergedCountSection(node, startRequested = true) { settled.set(true) }
+                }
+            }
+        }
+        val (_, ad) = latest("ad")
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-merged-rows-ad", width = 1400, height = 300, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                PaimonMergedCountSection(ad) { settled.set(true) }
+            }
+        }
+    }
+
+    /**
      * The Paimon lookup on `lk`, whose six records show every fate the format has at once: the
      * updated key's old record superseded by the file holding the new one, the deleted key's
      * record superseded by its `-D`, that `-D` as a retraction, and three live rows.

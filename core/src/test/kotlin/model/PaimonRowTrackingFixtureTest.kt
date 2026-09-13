@@ -100,4 +100,21 @@ class PaimonRowTrackingFixtureTest {
         }
         assertTrue(checked >= 5, "the rt fixture alone lists five row-tracked entries across its snapshots: $checked")
     }
+
+    /**
+     * The compaction's output lists every column plus `_ROW_ID` and `_SEQUENCE_NUMBER` in
+     * `_WRITE_COLS`, and a reading of non-null as "partial" had the table's rows at zero: five
+     * rows in one file, all of them "columns of rows other files hold". A whole file is whole.
+     */
+    @Test
+    fun `the compaction's output names every column and is not a partial file`() {
+        val compacted = model.snapshots.last().deltaManifests.flatMap { it.entries }
+            .single { it.metadata.kind == PaimonEntryKind.ADD }
+        assertEquals(listOf("k", "v", "_ROW_ID", "_SEQUENCE_NUMBER"), compacted.metadata.file?.writeCols)
+        assertTrue(!compacted.partial, "every schema column is listed")
+        val current = service.PaimonGraphBuilder.buildTableSummary(model).current
+        assertEquals(5L, current.recordCount)
+        assertEquals(0L, current.partialRecordCount)
+        assertEquals(5L, current.readRecordCount)
+    }
 }

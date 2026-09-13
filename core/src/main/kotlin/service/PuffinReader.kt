@@ -174,7 +174,7 @@ object PuffinReader {
      * A callback rather than a list because a deletion vector over a compacted file can hold
      * millions of positions, and the caller wants the count regardless of how many it keeps.
      */
-    private fun forEachPosition(vector: ByteArray, emit: (Long) -> Unit) {
+    internal fun forEachPosition(vector: ByteArray, emit: (Long) -> Unit) {
         val buffer = ByteBuffer.wrap(vector).order(ByteOrder.LITTLE_ENDIAN)
         val buckets = buffer.getLong()
         if (buckets < 0 || buckets > Int.MAX_VALUE) {

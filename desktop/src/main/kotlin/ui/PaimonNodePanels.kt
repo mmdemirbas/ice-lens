@@ -54,6 +54,7 @@ internal fun ColumnScope.PaimonSnapshotPanel(
             DetailRow("Next Row ID", "${node.data.nextRowId ?: "not recorded"}")
         }
         PaimonRecordsSection(node)
+        PaimonMergedCountSection(node)
         PartitionsSection(node)
         PaimonCompactionSection(node)
         PaimonIndexFilesSection(node)
@@ -256,7 +257,7 @@ internal fun ColumnScope.PaimonDataFilePanel(
             // same partition, bucket and first row id. Named from both ends,
             // because "this file holds only b" and "this file's b is elsewhere"
             // are each half of one read.
-            val writeCols = file?.writeCols
+            val writeCols = file?.writeCols?.takeIf { node.partial }
             val patchTargets = currentGraph.edges
                 .filter { it.id.startsWith("e_patch_") && it.fromId == node.id }
                 .mapNotNull { currentGraph.nodeById[it.toId] as? GraphNode.PaimonDataFileNode }
@@ -272,6 +273,10 @@ internal fun ColumnScope.PaimonDataFilePanel(
                             ?: "the file holding the same row ids") +
                         " by row id, the higher sequence number winning a column",
                 )
+            } else if (file?.writeCols != null) {
+                // Every schema column listed, the row-tracking system columns beside them: a full
+                // compaction under row-tracking.enabled writes this, and it is a whole file.
+                DetailRow("Columns", file.writeCols.orEmpty().joinToString(", ") + " — every column; recorded by the compaction that wrote the file")
             } else if (patchedBy.isNotEmpty()) {
                 DetailRow(
                     "Patched By",

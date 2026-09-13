@@ -72,7 +72,7 @@ core/src/main/kotlin/
 │   ├── Integrity.kt           # Every recorded figure against the same figure counted, over the whole table at once — the panels' checks, run everywhere
 │   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
 │   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing — and the fates a hit can have, both formats
-│   ├── PaimonRowLookup.kt     # The same off a Paimon table's latest snapshot: the live files by bucket, the index manifest's vectors, the merge engine
+│   ├── PaimonRowLookup.kt     # What reading a Paimon snapshot takes: the live files by bucket, the index manifest's vectors, the merge engine — for the row lookup and the merged count
 │   ├── ScanFilterSql.kt       # A ScanFilter as DuckDB's WHERE clause, every literal bound and cast to its column's type
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
@@ -94,6 +94,7 @@ core/src/main/kotlin/
 │   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet, ORC, Avro — max 50)
 │   ├── RowLookup.kt           # The rows a filter matches, read through DuckDB, and each one's fate under the delete files paired with its file
 │   ├── PaimonRowLookup.kt     # The same on Paimon: a record's fate under its file's vector, its own `_VALUE_KIND`, and the bucket's later writes for its key
+│   ├── PaimonMergedCount.kt   # What `SELECT count(*)` returns as of a Paimon snapshot: the merge over each bucket's files, less retractions and vector-marked keys
 │   ├── PaimonDeletionVectorReader.kt # A Paimon index file's vector at (offset, length) → the row positions it marks; v1 32-bit, v2 as Iceberg's blob
 │   ├── StorageLocation.kt     # A location string → the Path that opens it. The one place a scheme is resolved
 │   ├── DuckDb.kt              # The shared DuckDB connection, and the object-store credentials configured on it
@@ -130,6 +131,7 @@ desktop/src/main/kotlin/
     ├── MaintenanceSections.kt # The planners' sections — rewrite, manifest merge, expiry and its files, compaction, the table's summary line per procedure
     ├── FileHistorySection.kt  # A file's life on both file panels: which commit removed it, and what still keeps it on disk
     ├── IntegritySection.kt    # The whole-table check behind a click on the table panel, and its findings
+    ├── PaimonMergedCountSection.kt # The rows a read of a Paimon snapshot returns, behind a click on a primary-key table
     ├── TimeTravelSection.kt   # A typed time and the snapshot it resolves to, on the metadata panel and the Paimon table panel
     ├── RowLookupSection.kt    # The scan filter one step further: the matching rows read from the files it leaves, each with its fate — both formats
     ├── NodePanels.kt          # Table, row, error and group panels
@@ -1689,7 +1691,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,110 tests across 141 files (847 in :core, 258 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,120 tests across 142 files (854 in :core, 259 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2050,7 +2052,33 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   lead with `the snapshot's 5 rows read as 3`, the same shape as the vector note; the table's
   figures carry it too, as `ContentStats.partialRecordCount`, folded by the replay beside the
   `recordCount` it qualifies rather than computed a second time, so `readRecordCount` is a getter —
-  and `nextRowId` moves only by the not-matched row the merge inserted
+  and `nextRowId` moves only by the not-matched row the merge inserted. **`_WRITE_COLS` being set
+  is not what makes a file partial.** `rt`'s full compaction under `row-tracking.enabled` lists
+  every column plus `_ROW_ID` and `_SEQUENCE_NUMBER` there, and the reading "non-null means
+  partial" had the table's five rows as columns of rows other files hold — `readRecordCount` 0,
+  the file panel calling it a patch, the IDE strip too, on a table with no data evolution at all.
+  `PaimonDataFileMeta.isPartialUnder(schema)` is the one reading now — partial when a schema
+  column is missing from the list, decided against the schema the file's own `_SCHEMA_ID` names
+  where the entry is built (`PaimonUnifiedDataFile.partial`) and carried to the node — and every
+  site that asked `writeCols != null` asks it instead. `PaimonRowTrackingFixtureTest` pins `rt`
+  at five rows read
+- **What a read of a Paimon snapshot returns is counted, because nothing records it.**
+  `totalRecordCount` sums file rows — an updated key twice, a `-D` marker as a row — and an
+  `ANALYZE` writes `mergedRecordCount` once, for the snapshot it ran on. `service/PaimonMergedCount.kt`
+  answers for any snapshot from its `readInput` (`PaimonReadInput`, threaded through the node's
+  deferred replay): on a primary-key table under `deduplicate`, per bucket, the merge a read runs
+  as one DuckDB statement — `latestPerKeySql`, the same `UNION ALL` over the bucket's files the
+  row lookup asks a key's state with, `arg_max` by `_SEQUENCE_NUMBER` — counting the keys and the
+  keys whose latest record is a `-D` or `-U`; then, for a file with a vector, the latest records'
+  positions in it streamed back and tested against the vector's bit set, which
+  `PaimonDeletionVectorReader.readPositions` decodes whole so the count is exact past
+  `MAX_POSITIONS`. A merge engine that combines versions is reported and not applied; an append
+  table's count is the metadata's — file rows less vector cardinalities less patch-file rows — and
+  needs no click. `PaimonMergedCountFixtureTest` holds **every Paimon fixture's latest snapshot** to
+  the rows its script left (nineteen tables, `br`'s branch included) and `cl`'s analyzed snapshot to
+  the `mergedRecordCount` Paimon wrote, which is the one engine-written figure of its kind. The
+  snapshot panel's `Merged Rows` section sits under the recorded counts, behind a click on a
+  primary-key table, capped at `MAX_BUCKETS` and said so
 - **A file index lives in one of two places, and the one beside the data file is the table's.**
   Where a Paimon file index goes is its size against `file-index.in-manifest-threshold` (500
   bytes): larger is `<file>.index` beside the data file, named in the entry's `_EXTRA_FILES`;

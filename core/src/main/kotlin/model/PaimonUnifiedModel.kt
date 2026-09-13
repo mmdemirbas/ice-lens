@@ -167,6 +167,8 @@ data class PaimonUnifiedDataFile(
     val keyMax: List<PaimonRowValue>? = null,
     /** `_VALUE_STATS` per column, over every field of the schema, or `_WRITE_COLS`, or the ones `_VALUE_STATS_COLS` names. */
     val columnBounds: List<PaimonColumnBounds>? = null,
+    /** A data-evolution patch file — [PaimonDataFileMeta.isPartialUnder] the schema the file's own `_SCHEMA_ID` names. */
+    val partial: Boolean = false,
     private val rowsLoader: () -> List<UnifiedRow> = {
         SampleRowReader.querySampleRows(path.toString()).map(::unifiedRowOf)
     },
@@ -580,6 +582,7 @@ private fun readPaimonManifest(
                 keyMin = keyMin,
                 keyMax = keyMax,
                 columnBounds = columnBounds,
+                partial = file?.isPartialUnder(fileSchema) ?: false,
             )
         }
     } else {

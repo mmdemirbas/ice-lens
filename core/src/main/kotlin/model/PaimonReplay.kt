@@ -144,7 +144,8 @@ fun replayPaimonSnapshot(
                 // containsKey rather than the result of remove/put: the map's value type is itself
                 // nullable, so a null return cannot tell "absent" from "present, no metadata" and
                 // the running totals would drift on files with no meta block.
-                val previous = if (wasLive) liveFiles[fileKey]?.metadata?.file else null
+                val previousEntry = if (wasLive) liveFiles[fileKey] else null
+                val previous = previousEntry?.metadata?.file
                 val filesAtEntry = liveFiles.size
                 val recordsAtEntry = liveRecords
                 val bytesAtEntry = liveBytes
@@ -152,7 +153,7 @@ fun replayPaimonSnapshot(
                 if (wasLive) {
                     liveRecords -= previous?.rowCount ?: 0L
                     liveBytes -= previous?.fileSize ?: 0L
-                    if (previous?.writeCols != null) livePartialRecords -= previous.rowCount ?: 0L
+                    if (previousEntry?.partial == true) livePartialRecords -= previous?.rowCount ?: 0L
                 }
                 val kind = entry.metadata.kind ?: PaimonEntryKind.ADD
                 if (kind == PaimonEntryKind.DELETE) {
@@ -163,7 +164,7 @@ fun replayPaimonSnapshot(
                     liveFiles[fileKey] = entry
                     liveRecords += entry.metadata.file?.rowCount ?: 0L
                     liveBytes += entry.metadata.file?.fileSize ?: 0L
-                    if (entry.metadata.file?.writeCols != null) livePartialRecords += entry.metadata.file?.rowCount ?: 0L
+                    if (entry.partial) livePartialRecords += entry.metadata.file?.rowCount ?: 0L
                 }
 
                 if (tracing) {
@@ -235,7 +236,7 @@ fun paimonLiveFilesOf(replay: PaimonReplay): List<LiveFile> =
             content = DataFileContent.DATA,
             recordCount = meta?.rowCount ?: 0L,
             sizeBytes = meta?.fileSize ?: 0L,
-            partial = meta?.writeCols != null,
+            partial = entry.partial,
             // The decoded form, not the directory's: a DATE partitions as its epoch day on disk.
             partition = entry.partition?.display,
         )

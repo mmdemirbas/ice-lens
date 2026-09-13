@@ -373,8 +373,8 @@ sealed class GraphNode(
         val integrity: DeferredRead<IntegrityReport> = DeferredRead.none(),
         /** What finding a row in the current snapshot takes — see [RowLookupInput]. Nothing on Paimon. */
         val rowLookup: DeferredRead<RowLookupInput> = DeferredRead.none(),
-        /** The same for a Paimon table's latest snapshot — see [PaimonRowLookupInput]. Nothing on Iceberg. */
-        val paimonRowLookup: DeferredRead<PaimonRowLookupInput> = DeferredRead.none(),
+        /** The same for a Paimon table's latest snapshot — see [PaimonReadInput]. Nothing on Iceberg. */
+        val paimonRowLookup: DeferredRead<PaimonReadInput> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 240.0, 96.0)
@@ -751,6 +751,11 @@ sealed class GraphNode(
          * set grouped and ordered, and the compaction section is the only thing that asks.
          */
         private val bucketLsmsLoader: DeferredRead<List<PaimonBucketLsm>> = DeferredRead.none(),
+        /**
+         * What reading this snapshot takes — see [PaimonReadInput] — for the merged row count,
+         * threaded through the same deferred replay as [liveFiles].
+         */
+        val readInput: DeferredRead<PaimonReadInput> = DeferredRead.none(),
         /** The options of the schema this snapshot names — the ones its writer ran under. */
         val tableOptions: Map<String, String> = emptyMap(),
         /** False on an append table, which has no LSM tree and compacts only when asked. */
@@ -861,6 +866,8 @@ sealed class GraphNode(
         val localPath: String? = null,
         /** How [localPath] was arrived at — see [PaimonUnifiedDataFile.pathResolution]. */
         val pathResolution: PaimonPathResolution = PaimonPathResolution.LAYOUT,
+        /** A data-evolution patch file — see [PaimonUnifiedDataFile.partial]; `_WRITE_COLS` alone does not decide it. */
+        val partial: Boolean = false,
         /** The file's life across the branch's retained snapshots — see [FileHistory]; deferred as the Iceberg node's is. */
         val history: DeferredRead<FileHistory> = DeferredRead.none(),
         /**

@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **A Paimon file listing every column in `_WRITE_COLS` is not a partial-column file.** A full
+  compaction under `row-tracking.enabled` records every column plus `_ROW_ID` and
+  `_SEQUENCE_NUMBER` there, and the table's figures read its rows as columns of rows other files
+  hold — `rt` showed five rows read as zero, its file panel called the compacted file a patch, and
+  the IDE strip did too. A file is partial only when a schema column is missing from the list.
 - **A looked-up row whose delete file could not be read is `not decided`, not `live`.** The Iceberg
   lookup noted the unread delete and still reported the row live; a vector decoded past its cap
   read the same way.
@@ -120,6 +125,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The IDE tool window's table row says what an expiry would remove** — `older_than = now` on
   Iceberg, a bare call on Paimon — the one maintenance line that needs no walk.
+- **A Paimon snapshot says what `SELECT count(*)` returns.** `Merged Rows` on the snapshot panel:
+  the merge a read runs over each bucket's files — one record per key, less the keys whose latest
+  record is a `-D` or `-U`, less the keys whose latest record a deletion vector marks — behind a
+  click on a primary-key table, per bucket on a partitioned one; an append table's figure comes
+  from the metadata. Checked against the rows every Paimon fixture's script left, and against the
+  `mergedRecordCount` an `ANALYZE` wrote.
 - **A Paimon data file's deletion vector is decoded and its rows are marked.** The file panel's
   `Deleted Rows` section — the Iceberg one, with the index file's coordinates as its first row —
   shows the positions the vector the latest index manifest names for the file marks, against the
