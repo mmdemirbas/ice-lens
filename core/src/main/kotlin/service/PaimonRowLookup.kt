@@ -41,7 +41,8 @@ object PaimonRowLookup {
     const val KEY_PREFIX = "_KEY_"
     const val SEQUENCE_NUMBER = "_SEQUENCE_NUMBER"
 
-    private class Raw(val file: PaimonLookupFile, val position: Long?, val cells: Map<String, Any?>)
+    /** One matched record; [stitched] names the other files of its split that supplied columns, where a read stitches. */
+    private class Raw(val file: PaimonLookupFile, val position: Long?, val cells: Map<String, Any?>, val stitched: String? = null)
 
     /**
      * What the bucket's read files hold for a key: its latest sequence number, the file holding
@@ -69,24 +70,42 @@ object PaimonRowLookup {
      * [ruledOut] — and decides each hit.
      */
     fun lookup(input: PaimonReadInput, filter: ScanFilter, ruledOut: Set<String>): RowLookupResult {
-        val candidates = input.files.filter { it.fileName !in ruledOut }
-        val toRead = candidates.take(RowLookup.MAX_FILES)
+        // A split is read whole when any file of it is left: under data evolution the filter's
+        // columns may come from one file and the row's other columns from another, and a file the
+        // bounds ruled out is still the one holding those. Level-0 files a batch read skips are
+        // read too, alone, so a record in one is reported as skipped rather than absent.
+        val keptSplits = input.splitsOf(input.files).filter { split -> split.any { it.fileName !in ruledOut } }
+        val candidates = keptSplits.sumOf { it.size }
+        val toRead = mutableListOf<List<PaimonLookupFile>>()
+        var reading = 0
+        for (split in keptSplits) {
+            if (reading + split.size > RowLookup.MAX_FILES) break
+            toRead += split
+            reading += split.size
+        }
+        val columns = input.schema.fields.mapNotNull { it.name }
         val predicate = filter.toSql { column -> input.schema.fields.firstOrNull { it.name == column }?.type?.let(::paimonTypeAsIceberg) }
         val outcomes = mutableListOf<LookupFileOutcome>()
         val raws = mutableListOf<Raw>()
-        for (file in toRead) {
-            val rows = runCatching { readMatches(file, predicate.sql, predicate.params) }
+        for (split in toRead) {
+            val base = split.firstOrNull { !it.partial } ?: split.last()
+            val sources = if (split.size == 1) emptyMap() else columns.mapNotNull { c -> split.indexOfFirst { it.holds(c) }.takeIf { it >= 0 }?.let { c to it } }.toMap()
+            val stitched = sources.entries.filter { split[it.value] != base }.groupBy({ split[it.value] }, { it.key })
+                .entries.joinToString("; ") { (file, cols) -> "${cols.joinToString(", ")} from ${file.fileName}" }.ifEmpty { null }
+            val rows = runCatching {
+                if (split.size == 1) readMatches(base, predicate.sql, predicate.params) else readSplit(split, columns, sources, predicate.sql, predicate.params)
+            }
             val error = rows.exceptionOrNull()
             if (error != null) {
-                logger.warn("Could not read {}: {}", file.localPath, error.message)
-                outcomes += LookupFileOutcome(file.fileName, 0, error.message ?: error.toString())
+                logger.warn("Could not read {}: {}", split.map { it.localPath }, error.message)
+                split.forEach { outcomes += LookupFileOutcome(it.fileName, 0, error.message ?: error.toString()) }
                 continue
             }
             val matched = rows.getOrThrow()
-            outcomes += LookupFileOutcome(file.fileName, matched.size)
+            split.forEach { outcomes += LookupFileOutcome(it.fileName, matched.size) }
             matched.forEach { cells ->
                 val position = (cells[SampleRowReader.FILE_ROW_NUMBER] as? Number)?.toLong()
-                raws += Raw(file, position, cells - SampleRowReader.FILE_ROW_NUMBER)
+                raws += Raw(base, position, cells - SampleRowReader.FILE_ROW_NUMBER, stitched)
             }
         }
         val keyColumns = input.trimmedPrimaryKeys.map { KEY_PREFIX + it }
@@ -95,7 +114,7 @@ object PaimonRowLookup {
         val vectors = mutableMapOf<String, DeletionVector?>()
         val hits = raws.map { raw -> decide(input, raw, keyColumns, keyStates[raw.file.partition to raw.file.bucket].orEmpty(), vectors) }
         return RowLookupResult(
-            outcomes, input.files.size - candidates.size, candidates.size - toRead.size, hits,
+            outcomes, input.files.size - candidates, candidates - reading, hits,
             rule = if (input.hasPrimaryKey) input.rule.describe() else null,
             skippedFiles = input.skippedFiles.size,
             skippedRows = input.skippedFiles.sumOf { it.recordCount ?: 0L },
@@ -109,6 +128,44 @@ object PaimonRowLookup {
             conn.prepareStatement("SELECT * FROM $source WHERE $where LIMIT ${RowLookup.MAX_HITS_PER_FILE}").use { pstmt ->
                 pstmt.setString(1, safePath)
                 params.forEachIndexed { i, p -> pstmt.setString(i + 2, p) }
+                pstmt.executeQuery().use { rs ->
+                    val meta = rs.metaData
+                    val rows = mutableListOf<Map<String, Any?>>()
+                    while (rs.next()) rows += (1..meta.columnCount).associate { meta.getColumnName(it) to rs.getObject(it) }
+                    rows
+                }
+            }
+        }
+    }
+
+    /**
+     * A data-evolution split as one statement: the files joined on their row number — every file
+     * of a split holds the same rows in the same order, which `DataEvolutionSplitRead` checks by
+     * row count — with each column taken from the file [sources] names for it, freshest first,
+     * and a column no file holds as null. The filter runs over the stitched row, so a literal in
+     * a patch finds the row whose other columns are in the file it patches.
+     */
+    private fun readSplit(
+        split: List<PaimonLookupFile>,
+        columns: List<String>,
+        sources: Map<String, Int>,
+        where: String,
+        params: List<String>,
+    ): List<Map<String, Any?>> {
+        val paths = split.map { SampleRowReader.resolveForQuery(it.localPath) }
+        require(paths.all { it.second == "parquet" }) { "a split is stitched on row numbers, which DuckDB assigns in Parquet only" }
+        val rowNumber = SampleRowReader.FILE_ROW_NUMBER
+        val select = (listOf("f0.$rowNumber AS $rowNumber") + columns.map { c ->
+            val i = sources[c]
+            if (i == null) "NULL AS ${quoteSqlIdentifier(c)}" else "f$i.${quoteSqlIdentifier(c)} AS ${quoteSqlIdentifier(c)}"
+        }).joinToString(", ")
+        val from = split.indices.joinToString(" ") { i ->
+            if (i == 0) "read_parquet(?, file_row_number = true) f0" else "JOIN read_parquet(?, file_row_number = true) f$i ON f$i.$rowNumber = f0.$rowNumber"
+        }
+        return DuckDb.withConnection { conn ->
+            conn.prepareStatement("SELECT * FROM (SELECT $select FROM $from) s WHERE $where LIMIT ${RowLookup.MAX_HITS_PER_FILE}").use { pstmt ->
+                paths.forEachIndexed { i, (path, _) -> pstmt.setString(i + 1, path) }
+                params.forEachIndexed { i, p -> pstmt.setString(paths.size + i + 1, p) }
                 pstmt.executeQuery().use { rs ->
                     val meta = rs.metaData
                     val rows = mutableListOf<Map<String, Any?>>()
@@ -226,7 +283,7 @@ object PaimonRowLookup {
         val file = raw.file
         val cells = raw.cells
         val position = raw.position
-        var note: String? = null
+        var note: String? = raw.stitched
         val vectorRef = input.vectorFor(file.fileName)
         if (vectorRef != null) {
             if (position == null) return RowHit(file.fileName, null, cells, RowFate.UNKNOWN, note = "no position: DuckDB numbers rows in Parquet only")

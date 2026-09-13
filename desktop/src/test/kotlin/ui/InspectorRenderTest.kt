@@ -1589,6 +1589,19 @@ class InspectorRenderTest {
                 scanFilter = model.ScanFilter.of(listOf(ScanPredicate("dt", PredicateOp.EQ, "2024-03-07"))),
             )
         }
+        // And on `de`, where the file stage stands down: the reason once above the table, and
+        // every file "not evaluated" rather than skipped by a bound a patch replaced.
+        val de = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/de").absolutePath)),
+            showRows = false,
+        )
+        renderScene("scan-pruning-paimon-de", width = 1400, height = 5600) {
+            NodeDetailsContent(
+                de,
+                setOf(de.nodes.filterIsInstance<GraphNode.TableNode>().first().id),
+                scanFilter = model.ScanFilter.of(listOf(ScanPredicate("b", PredicateOp.EQ, "11"))),
+            )
+        }
     }
 
     /**
@@ -1989,6 +2002,19 @@ class InspectorRenderTest {
         renderUntil("paimon-row-lookup-pu", width = 1400, height = 1100, ready = puSettled::get) {
             Column(Modifier.padding(16.dp)) {
                 RowLookupSection(puTable, pu, ScanFilter.Term(model.ScanPredicate("k", model.PredicateOp.LTE, "3")), startRequested = true) { puSettled.set(true) }
+            }
+        }
+        // And on `de`, data evolution: a filter on the patched value finds the row, stitched from
+        // the patch and the file it patches, and the note names where `b` came from.
+        val de = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/de").absolutePath)),
+            showRows = false,
+        )
+        val deTable = de.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val deSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-row-lookup-de", width = 1400, height = 700, ready = deSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                RowLookupSection(deTable, de, ScanFilter.Term(model.ScanPredicate("b", model.PredicateOp.GTE, "11")), startRequested = true) { deSettled.set(true) }
             }
         }
     }

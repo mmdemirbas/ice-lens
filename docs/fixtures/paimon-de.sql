@@ -19,6 +19,14 @@
 --
 -- The last statement prints the merged rows the reader is expected to produce.
 --
+-- A filtered read of this table on the jar that wrote it does NOT stitch (re-run 2026-09-13 on
+-- a copy of the checked-in bytes, read-only): SELECT * prints (1, 11, 1), (2, 22, 2), (3, 33, 0),
+-- but WHERE b = 11 prints nothing, WHERE b = 1 prints (1, 1, 1) and WHERE c = 1 prints (1, 1, 1)
+-- — each file pruned by its own bounds before the split is assembled, so the whole file is read
+-- alone or not at all. Paimon 1.3.0 and later disable the stats filter on a data-evolution table
+-- (DataEvolutionFileStoreScan, #6443, 2025-10-21); this 1.3-SNAPSHOT (built 2025-06-12) predates
+-- it. The app's lookup and pruning answer the way 1.3.0+ reads.
+--
 -- To regenerate (see docs/fixtures/parted.sql for why --entrypoint bash is required):
 --
 --   WH=$(mktemp -d)

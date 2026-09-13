@@ -104,4 +104,47 @@ class PaimonRowLookupFixtureTest {
         assertEquals(all.size - 1, result.filesRuledOut)
         assertEquals(0, result.filesLeft)
     }
+
+    /**
+     * `de` is read stitched: `SELECT *` on the table prints `(1, 11, 1)`, `(2, 22, 2)`, `(3, 33, 0)`
+     * (`docs/fixtures/paimon-de.sql`; re-run 2026-09-13 on a copy of the checked-in bytes), the
+     * `b` of rows 0..1 coming from the patch file and every other column from the file it
+     * patches. A filter on the patched value has to find the row whose other columns are in the
+     * other file, and a filter on the value the patch replaced has to find nothing — which is
+     * what Paimon 1.3.1's read answers, and not what the 1.3-SNAPSHOT that wrote the table did:
+     * its filtered read pruned each file by its own bounds and returned `(1, 1, 1)` for `b = 1`.
+     */
+    @Test
+    fun `a data-evolution split is read stitched, so a filter on a patched column finds the row and the old value finds nothing`() {
+        val input = input("de")
+        assertTrue(input.dataEvolution)
+        assertEquals(listOf(2, 1), input.splits.map { it.size }.sortedDescending(), "the patched pair and the whole file for the inserted row")
+        val stitched = input.splits.single { it.size == 2 }
+        assertTrue(stitched.first().partial && !stitched.last().partial, "the patch is freshest and read first")
+
+        val one = where("de", "id", PredicateOp.EQ, "1").hits.single()
+        assertEquals(RowFate.LIVE, one.fate)
+        assertEquals(listOf(1, 11, 1), listOf("id", "b", "c").map { (one.cells[it] as Number).toInt() })
+        assertEquals(stitched.last().fileName, one.filePath, "the hit is reported at the file holding the row")
+        assertEquals("b from ${stitched.first().fileName}", one.note)
+
+        val patched = where("de", "b", PredicateOp.EQ, "11")
+        assertTrue(patched.filesRead.none { it.error != null }, patched.filesRead.toString())
+        assertEquals(listOf(1), patched.hits.map { (it.cells["id"] as Number).toInt() })
+        assertEquals(emptyList(), where("de", "b", PredicateOp.EQ, "1").hits, "the value the patch replaced is no row's")
+        val three = where("de", "id", PredicateOp.EQ, "3").hits.single()
+        assertEquals(listOf(3, 33, 0), listOf("id", "b", "c").map { (three.cells[it] as Number).toInt() })
+        assertEquals(null, three.note, "a whole file is not stitched")
+    }
+
+    @Test
+    fun `a split is read whole when the filter ruled out one file of it`() {
+        val input = input("de")
+        val stitched = input.splits.single { it.size == 2 }
+        val whole = stitched.last()
+        val result = PaimonRowLookup.lookup(input, ScanFilter.Term(ScanPredicate("b", PredicateOp.EQ, "22")), setOf(whole.fileName))
+        assertEquals(listOf(2), result.hits.map { (it.cells["id"] as Number).toInt() })
+        assertEquals(0, result.filesRuledOut, "the ruled-out file holds the row's other columns and is opened for them")
+        assertTrue(result.filesRead.any { it.filePath == whole.fileName })
+    }
 }

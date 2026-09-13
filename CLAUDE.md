@@ -1698,7 +1698,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,130 tests across 144 files (865 in :core, 260 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,140 tests across 144 files (869 in :core, 260 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1808,7 +1808,7 @@ container invocation and the traps in it:
 | `paimon/db.db/rt` | `PaimonRowTrackingFixtureTest` | `row-tracking.enabled` — two appends recording first ids 0 and 3, then a full compaction whose output records none and carries `_ROW_ID` per row |
 | `paimon/db.db/sm` | `PaimonStatsModeFixtureTest` | `fields.v.stats-mode = none` — `_VALUE_STATS` over two of three columns, named in `_VALUE_STATS_COLS`; the oracle for the subset decoding |
 | `paimon/db.db/se` | `PaimonSchemaEvolutionFixtureTest` | `ADD COLUMN` between two writes, then a compaction — a schema-1 manifest listing a schema-0 file, whose stats decode only against its own schema |
-| `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted |
+| `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest`, `PaimonRowLookupFixtureTest`, `PaimonScanPruningTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted; the stitched read `(1, 11, 1)` the lookup is held to, and the file bounds pruning must not consult |
 | `paimon/db.db/lk` | `PaimonRowKindTest` | `changelog-producer = lookup` — the `-U` / `+U` pair a re-inserted key produces, carried by the COMPACT snapshot the lookup ran in, and a `-D` with the value it removed |
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |
 | `paimon/db.db/px`, `pxa` | `PaimonExpiryFixtureTest` | one table written twice — six commits, a tag on 2, a consumer at 4; `px` as it is, `pxa` after `expire_snapshots(retain_max = 2, retain_min = 1)` — the survivors the plan for `px` is checked against |
@@ -2070,6 +2070,28 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   where the entry is built (`PaimonUnifiedDataFile.partial`) and carried to the node — and every
   site that asked `writeCols != null` asks it instead. `PaimonRowTrackingFixtureTest` pins `rt`
   at five rows read
+- **A data-evolution split is read stitched, and no file of such a table is pruned by its own
+  bounds.** `PaimonReadInput.splits` groups the read files the way `DataEvolutionSplitGenerator.split`
+  does — same partition, bucket and `_FIRST_ROW_ID`, freshest first by `_MAX_SEQUENCE_NUMBER`, a file
+  recording no first id alone — and `PaimonRowLookup.readSplit` reads a split of two or more as one
+  statement, the files joined on `file_row_number` (every file of a split holds the same rows in
+  the same order; `DataEvolutionSplitRead` checks the row counts agree) with each column taken from
+  the first file holding it and the filter run over the stitched row. So `id = 1` on `de` answers
+  `(1, 11, 1)` at the file holding the row with `b from <patch>` as its note, and `b = 11` finds
+  it though the file holding `id` records `b` in 1..2 — which is why **a split is read whole when
+  the filter left any file of it**, the ruled-out file being the one with the row's other columns.
+  The pruning side follows from the same fact: a file's bounds under data evolution describe
+  values a patch may have replaced, so `evaluateScan` withholds the file stage on such a table
+  (`paimonFileBoundsWithheld`, the reason on `ScanPlan.fileBoundsWithheld` and on every file's
+  outcome) and the panel says so once above the file table, while the manifest stage — partition
+  ranges, which no patch changes — still runs. Paimon 1.3.0 and later do the same
+  (`DataEvolutionFileStoreScan.filterByStats` answers true, #6443, 2025-10-21); the 1.3-SNAPSHOT
+  that wrote `de` did not, and a filtered read of the checked-in bytes on it returned `(1, 1, 1)`
+  for `b = 1` and nothing for `b = 11` where `SELECT *` prints `(1, 11, 1)` — a wrong answer the
+  panel now reads correctly. And a headline that counted only proved reads said *would read 0 of
+  3* on that table: a file nothing could be evaluated against is opened all the same, so the
+  section's headline counts `UNEVALUATED` with `WOULD_BE_READ` and names them on a line of their
+  own, the way it already named the manifests
 - **What a read of a Paimon snapshot returns is counted, because nothing records it.**
   `totalRecordCount` sums file rows — an updated key twice, a `-D` marker as a row — and an
   `ANALYZE` writes `mergedRecordCount` once, for the snapshot it ran on. `service/PaimonMergedCount.kt`

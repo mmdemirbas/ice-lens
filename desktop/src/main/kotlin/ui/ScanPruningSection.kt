@@ -202,7 +202,9 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
                 }
             }
         }
-        val readIds = files.map { it.first }.filter { plan.files[it]?.fate == FileFate.WOULD_BE_READ }
+        // A file nothing could be evaluated against is opened all the same — a skip is a proof and
+        // "would be read" the absence of one — so it counts here and is named separately below.
+        val readIds = files.map { it.first }.filter { plan.files[it]?.fate.let { f -> f == FileFate.WOULD_BE_READ || f == FileFate.UNEVALUATED } }
         val readBytes = readIds.sumOf { sizeOf.getValue(it).first }
         val readRecords = readIds.sumOf { sizeOf.getValue(it).second }
         val allBytes = files.sumOf { sizeOf.getValue(it.first).first }
@@ -214,7 +216,7 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
         // it read and never which, and the manifest count is the intermediate step that produced
         // it — worth showing, and worth showing second.
         Text(
-            "Would read ${formatCount(plan.readFiles)} of ${formatCounted(files.size, "data file")} drawn — " +
+            "Would read ${formatCount(readIds.size)} of ${formatCounted(files.size, "data file")} drawn — " +
                 "${formatBytes(readBytes)} of ${formatBytes(allBytes)}, ${formatCount(readRecords)} of ${formatCount(allRecords)} rows",
             fontSize = TypeScale.body,
             fontWeight = FontWeight.Bold,
@@ -230,10 +232,13 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
         )
         // Named separately because a manifest nothing could be evaluated against is not a manifest a
         // scan decided to read — folding the two together would overstate what this screen knows.
-        if (unevaluated > 0) {
+        if (unevaluated > 0 || plan.unevaluatedFiles > 0) {
+            val what = listOfNotNull(
+                unevaluated.takeIf { it > 0 }?.let { formatCounted(it, "manifest") },
+                plan.unevaluatedFiles.takeIf { it > 0 }?.let { formatCounted(it, "file") },
+            ).joinToString(" and ")
             Text(
-                "${formatCounted(unevaluated, "manifest")} could not be evaluated at all; " +
-                    "the reason is on each row.",
+                "$what could not be evaluated at all, and would be read; the reason is on each row.",
                 fontSize = TypeScale.small,
                 color = colors.onSurfaceVariant,
             )
@@ -291,6 +296,16 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
         )
+        // The one table whose read consults no file's bounds; said once here rather than on
+        // every row, where the same sentence would be the reason cell of each.
+        plan.fileBoundsWithheld?.let {
+            Text(
+                "Not consulted here — $it.",
+                fontSize = TypeScale.small,
+                color = verdictUnevaluatedColor(),
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
         val unreachedColor = colors.onSurfaceVariant.copy(alpha = 0.7f)
         WideTable(
             headers = listOf("Verdict", "File", "Because"),

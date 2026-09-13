@@ -70,6 +70,22 @@ fun paimonPartitionSummaries(node: GraphNode.PaimonManifestNode): List<Partition
     }
 }
 
+/**
+ * Why a Paimon table's file bounds are not consulted, or null where they are. Under
+ * `data-evolution.enabled` a read stitches every file sharing a first row id, the freshest
+ * file's column winning, so a file's own bounds describe values another file may have replaced —
+ * `de`'s whole file records `b` in 1..2 where the read returns 11 and 22. Paimon 1.3.0 and later
+ * prune no file by its statistics on such a table (`DataEvolutionFileStoreScan`, #6443); the
+ * snapshot that wrote `de` still did, and a filtered read of it returned the unpatched row. The
+ * option is read off the newest schema, since it is fixed at creation.
+ */
+fun paimonFileBoundsWithheld(graph: GraphModel): String? {
+    val newest = graph.nodes.asSequence().filterIsInstance<GraphNode.PaimonSchemaNode>().maxByOrNull { it.data.id ?: -1 } ?: return null
+    if (newest.data.options[PAIMON_DATA_EVOLUTION_KEY] != "true") return null
+    return "this table is under data evolution: a read stitches files sharing a first row id and a " +
+        "patch may replace the values a file's own bounds describe, so no file is ruled out by them"
+}
+
 /** A Paimon data file's column bounds as the statistics the file stage evaluates, one per decodable column. */
 fun paimonColumnStats(node: GraphNode.PaimonDataFileNode): List<ColumnStats> {
     val bounds = node.columnBounds ?: return emptyList()

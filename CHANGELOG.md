@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The Paimon row lookup reads a data-evolution split stitched.** Files sharing a first row id
+  are joined on their row number, each column from the freshest file holding it, and the filter
+  runs over the stitched row — so on `de` a lookup answers `(1, 11, 1)` with `b from <patch>` as
+  the note, and `b = 11` finds the row whose `id` sits in a file recording `b` in 1..2. A split
+  is read whole when the filter left any file of it.
+
+### Fixed
+- **No file of a data-evolution table is pruned by its own bounds.** A patch may replace the
+  values a file's bounds describe, and Paimon 1.3.0+ consults none of them on such a table
+  (`DataEvolutionFileStoreScan`); the file stage now declines with the reason, said once above
+  the file table, while the manifest stage still prunes by partition. The section's headline
+  counts a file nothing could be evaluated against as read — it said *would read 0 of 3* on `de`
+  — and names such files on a line of their own.
 - **A level-0 file a batch read skips says so.** On a `first-row` table or a primary-key table
   with deletion vectors, the file panel's `LSM Level` row and the IDE strip's `Level` row note
   that a batch read of the table skips level 0, so a row in the file is not returned until a

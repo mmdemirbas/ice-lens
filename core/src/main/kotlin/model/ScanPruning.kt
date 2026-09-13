@@ -938,11 +938,18 @@ private fun evaluateColumnTerm(stats: ColumnStats, predicate: ScanPredicate): Pr
 data class ScanPlan(
     val manifests: Map<String, ManifestPruneResult>,
     val files: Map<String, FilePruneResult>,
+    /**
+     * Why no file's bounds were consulted, where the table's read does not consult them — a
+     * Paimon table under data evolution, see [paimonFileBoundsWithheld]; null everywhere else.
+     */
+    val fileBoundsWithheld: String? = null,
 ) {
     val skippedManifests: Int get() = manifests.values.count { it.isSkipped }
     val readFiles: Int get() = files.values.count { it.fate == FileFate.WOULD_BE_READ }
     val skippedFiles: Int get() = files.values.count { it.fate == FileFate.SKIPPED }
     val unreachedFiles: Int get() = files.values.count { it.fate == FileFate.NOT_REACHED }
+    /** Reached and not ruled out, with nothing to evaluate — a scan opens these as it opens [readFiles]. */
+    val unevaluatedFiles: Int get() = files.values.count { it.fate == FileFate.UNEVALUATED }
 }
 
 /**
@@ -978,20 +985,32 @@ fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
         .filter { graph.nodeById[it.fromId].let { n -> n is GraphNode.ManifestNode || n is GraphNode.PaimonManifestNode } }
         .associate { it.toId to it.fromId }
 
+    // A Paimon table under data evolution reads a file stitched with the ones sharing its first
+    // row id, so a column's bounds here may describe values a patch replaced; the scan consults
+    // none of them, and neither does this.
+    val withheld = paimonFileBoundsWithheld(graph)
     val files = graph.nodes.asSequence()
         .mapNotNull { node ->
             val stats = when (node) {
                 is GraphNode.FileNode -> node.columnStats
-                is GraphNode.PaimonDataFileNode -> paimonColumnStats(node)
+                is GraphNode.PaimonDataFileNode -> if (withheld == null) paimonColumnStats(node) else null
                 else -> return@mapNotNull null
             }
             val manifestSkipped = manifestOf[node.id]?.let { manifests[it]?.isSkipped } == true
-            val own = evaluateFilePruning(stats, filter)
+            val own = if (stats != null) evaluateFilePruning(stats, filter) else unevaluatedFile(filter, withheld.orEmpty())
             node.id to if (manifestSkipped) own.copy(fate = FileFate.NOT_REACHED) else own
         }
         .toMap()
 
-    return ScanPlan(manifests, files)
+    return ScanPlan(manifests, files, withheld)
+}
+
+/** Every predicate not evaluated against the file, for one [reason] that is about the table rather than the file. */
+private fun unevaluatedFile(filter: ScanFilter, reason: String): FilePruneResult {
+    val outcomes = filter.pushNegation().predicates().map { predicate ->
+        PredicateOutcome(predicate, fieldName = null, transform = null, effect = TermEffect.NOT_EVALUATED, reason = reason)
+    }
+    return FilePruneResult(outcomes, if (outcomes.isEmpty()) FileFate.WOULD_BE_READ else FileFate.UNEVALUATED)
 }
 
 private val GraphEdge.isStructural: Boolean get() = affectsLayout && !isSibling

@@ -115,4 +115,26 @@ class PaimonScanPruningTest {
             }
         }
     }
+
+    /**
+     * `de` is under data evolution, where a file's own `b` bounds (1..2) describe values its
+     * patch replaced with 11 and 22 — pruning on them would skip the file a read of `b = 11`
+     * needs. Paimon 1.3.0+ consults no file's statistics on such a table (#6443), so the file
+     * stage declines with the reason, and the manifest stage — partition ranges, which a patch
+     * cannot change — is untouched.
+     */
+    @Test
+    fun `a data-evolution table's file bounds are not consulted, and the reason is on the plan`() {
+        val de = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/de").absolutePath)),
+            showRows = false,
+        )
+        val plan = evaluateScan(de, listOf(ScanPredicate("b", PredicateOp.EQ, "11")))
+        val fates = de.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>().map { plan.files[it.id]!!.fate }.toSet()
+        assertEquals(setOf(FileFate.UNEVALUATED), fates, "no file skipped by a bound a patch may have replaced")
+        assertTrue(plan.fileBoundsWithheld!!.contains("data evolution"))
+        assertTrue(plan.files.values.all { r -> r.outcomes.all { it.effect == TermEffect.NOT_EVALUATED && it.reason == plan.fileBoundsWithheld } })
+        assertEquals(0, plan.skippedManifests)
+        assertEquals(null, evaluateScan(graph, listOf(ScanPredicate("k", PredicateOp.EQ, "1"))).fileBoundsWithheld, "pt is not under data evolution")
+    }
 }

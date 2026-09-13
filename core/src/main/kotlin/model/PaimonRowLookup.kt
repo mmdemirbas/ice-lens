@@ -28,7 +28,16 @@ data class PaimonLookupFile(
     val recordCount: Long?,
     /** A data-evolution patch file (`_WRITE_COLS` set): columns of rows another file holds, no rows of its own. */
     val partial: Boolean = false,
-)
+    /** `_FIRST_ROW_ID` — what a data-evolution read stitches files by; null where the file records none. */
+    val firstRowId: Long? = null,
+    /** `_MAX_SEQUENCE_NUMBER` — the file whose column wins where two files of one split hold it. */
+    val maxSequenceNumber: Long? = null,
+    /** `_WRITE_COLS` — the columns the file holds; null for every column of its schema. */
+    val writeCols: List<String>? = null,
+) {
+    /** Whether the file holds [column] — every column when `_WRITE_COLS` is not recorded. */
+    fun holds(column: String): Boolean = writeCols?.contains(column) ?: true
+}
 
 /**
  * One `_DELETIONS_VECTORS_RANGES` entry with the index file it sits in — the coordinates
@@ -70,9 +79,31 @@ data class PaimonReadInput(
     /** The read files sharing a file's partition and bucket — every file another record of the key could be in. */
     fun bucketOf(file: PaimonLookupFile): List<PaimonLookupFile> =
         readFiles.filter { it.partition == file.partition && it.bucket == file.bucket }
+
+    /** `data-evolution.enabled` — a read stitches files by first row id, see [splits]. */
+    val dataEvolution: Boolean get() = schema.options[PAIMON_DATA_EVOLUTION_KEY] == "true"
+
+    /**
+     * What a read opens as one unit, in the order it opens them: under data evolution, the read
+     * files sharing a partition, bucket and first row id, freshest first by `_MAX_SEQUENCE_NUMBER`
+     * — the rule `DataEvolutionSplitGenerator.split` groups by, with each column taken from the
+     * first file of the split holding it — and every other file alone. A file recording no first
+     * row id is alone whatever the table's options, which is what a compaction's output is.
+     */
+    val splits: List<List<PaimonLookupFile>> get() = splitsOf(readFiles)
+
+    /** [splits] over any of the table's files — the lookup's, which reads the skipped level-0 files too. */
+    fun splitsOf(files: List<PaimonLookupFile>): List<List<PaimonLookupFile>> {
+        if (!dataEvolution) return files.map { listOf(it) }
+        val (keyed, alone) = files.partition { it.firstRowId != null }
+        val grouped = keyed.groupBy { Triple(it.partition, it.bucket, it.firstRowId) }.values
+            .map { split -> split.sortedWith(compareByDescending<PaimonLookupFile> { it.maxSequenceNumber ?: Long.MIN_VALUE }.thenBy { it.fileName }) }
+        return grouped + alone.map { listOf(it) }
+    }
 }
 
 const val DEFAULT_PAIMON_MERGE_ENGINE = "deduplicate"
+const val PAIMON_DATA_EVOLUTION_KEY = "data-evolution.enabled"
 
 /** The read input for the latest snapshot on `main`, or null when the table has none. */
 fun PaimonUnifiedTableModel.paimonRowLookupInput(): PaimonReadInput? =
@@ -92,6 +123,9 @@ fun PaimonUnifiedTableModel.paimonReadInputOf(snapshot: PaimonUnifiedSnapshot, r
             level = meta.level,
             recordCount = meta.rowCount,
             partial = entry.partial,
+            firstRowId = meta.firstRowId,
+            maxSequenceNumber = meta.maxSequenceNumber,
+            writeCols = meta.writeCols,
         )
     }
     return PaimonReadInput(
