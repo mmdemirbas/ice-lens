@@ -432,8 +432,9 @@ intellij/src/main/kotlin/plugin/
   `contains_nan` and a null `lower_bound` are compared only where recorded. The manifest panel's
   `Partition Ranges` leads each row with the verdict and puts the counted bound beside the
   recorded one; `PartitionSummaryTallyTest` holds every engine-written manifest to agreement
-  across every transform the corpus carries and moves one bound by hand to see one figure
-  disagree
+  across every transform the corpus carries, moves one bound by hand to see one figure
+  disagree, and holds `lineage`'s DELETED-only manifests to recording their removed files'
+  partitions as bounds — the status-blind fold seen, not read
 - **What a positional delete file removes is counted by DuckDB, behind a button.**
   `SampleRowReader.queryPositionalDeleteTargets` runs `GROUP BY file_path` over the delete file's
   own rows, so what crosses back is one row per targeted data file whether the file holds one
@@ -1605,7 +1606,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,080 tests across 136 files (820 in :core, 255 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,080 tests across 136 files (821 in :core, 255 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -44,6 +44,25 @@ class PartitionSummaryTallyTest {
         assertTrue(fields.size >= 8, "saw only ${fields.size} distinct fields: $fields")
     }
 
+    /**
+     * The writer folds every entry whatever its status — `ManifestWriter.addEntry` runs
+     * `stats.update` after the status switch — and `lineage` is where that is seen rather than
+     * read: manifests whose only entries are `DELETED` still record bounds, and they are the
+     * removed files' partitions.
+     */
+    @Test
+    fun `a manifest holding only DELETED entries records their partitions as its bounds`() {
+        val deletedOnly = manifests(model("lineage")).filter { m ->
+            m.partitionSummaries.isNotEmpty() && m.dataFiles.isNotEmpty() && m.dataFiles.all { it.metadata.status == ManifestEntryStatus.DELETED }
+        }
+        assertTrue(deletedOnly.isNotEmpty(), "lineage should hold a manifest of DELETED entries only")
+        deletedOnly.forEach { m ->
+            assertTrue(m.partitionSummaries.all { it.lower != null && it.upper != null }, m.metadata.manifestPath.orEmpty())
+            val tallies = partitionSummaryTallies(m.partitionSummaries, m.dataFiles.map { it.partition })
+            assertTrue(tallies.filter { it.figure.endsWith("bound") }.all { it.agrees == true }, tallies.toString())
+        }
+    }
+
     @Test
     fun `a bound moved by hand is a disagreement on that figure alone`() {
         val m = manifests(model("parted")).first { mf -> mf.partitionSummaries.any { it.lower != null && it.upper != null && it.lower != it.upper } }
