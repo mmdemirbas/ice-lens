@@ -672,6 +672,22 @@ intellij/src/main/kotlin/plugin/
   three settings as ages (`formatRetentionMs`: `30 days (2,592,000,000 ms)`) with `not set` where
   the table's defaults apply, instead of the bare milliseconds it printed as `N/A` on every
   fixture before this one
+- **What an expiry would remove is decided the way `RemoveSnapshots` decides it, and checked
+  against two expiries Iceberg ran.** `model/ExpiryPlan.kt` reads the rules off that class rather
+  than the docs, because the docs call `older_than` the cutoff and the code makes it only the
+  *default* one: a ref survives if it is `main` or younger than its `max-ref-age-ms`; a surviving
+  ref keeps its snapshot; a surviving branch keeps ancestors from the tip while fewer than its
+  `min-snapshots-to-keep` are kept **or** the ancestor is newer than *its* cutoff — its own
+  `max-snapshot-age-ms` if set, else `older_than` — stopping at the first that is neither; a
+  snapshot on no surviving ref is kept only while newer than the default cutoff. Each keep is a
+  `Keep(rule, ref)`, so the panel can say `newer than the cutoff of main, audit; referenced by
+  release` rather than one string per ref. `ExpiryPlanTest` plans from the metadata *before*
+  `retained`'s and `expired`'s expiries and requires the retained set to equal what the metadata
+  *after* lists, and reproduces `retained`'s first run — a 7-day branch age, nothing removed — by
+  adding the age back. The metadata panel's `Expiry` section draws two columns, the table's
+  defaults and `older_than = now`, because the reader's question is "what protects this snapshot"
+  and only the age rule moves between them; ages are measured from `LocalExpiryClock`, which the
+  render tests pin to the table's last write so a capture does not change with the calendar
 - **A rollback is read from the snapshot log, because it is written nowhere else.**
   `set_current_snapshot`, `rollback_to_snapshot` and `rollback_to_timestamp` write no snapshot:
   they move `main` and append a `snapshot-log` entry naming a snapshot the log already holds, and
@@ -1335,7 +1351,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~983 tests across 119 files (742 in :core, 235 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~987 tests across 120 files (746 in :core, 235 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

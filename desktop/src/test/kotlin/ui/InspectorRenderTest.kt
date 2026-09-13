@@ -2264,6 +2264,12 @@ class InspectorRenderTest {
 
     @Composable
     private fun InspectorUnderTest(graph: GraphModel, nodeId: String) {
-        NodeDetailsContent(graph, setOf(nodeId))
+        // The expiry plan measures ages from a clock; pinned to the table's own last write so the
+        // capture is the same whichever day it is taken.
+        val lastWrite = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().mapNotNull { it.data.lastUpdatedMs }.maxOrNull()
+            ?: System.currentTimeMillis()
+        CompositionLocalProvider(LocalExpiryClock provides { lastWrite }) {
+            NodeDetailsContent(graph, setOf(nodeId))
+        }
     }
 }

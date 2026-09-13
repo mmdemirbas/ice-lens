@@ -88,6 +88,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **The metadata panel says what `expire_snapshots` would remove, and what keeps the rest.** An
+  `Expiry` section plans the procedure the way Iceberg's `RemoveSnapshots` does — ref by ref, a
+  branch's own snapshot age standing in for `older_than` on what it reaches — under the table's
+  defaults and under `older_than = now`, with the keeping rule and ref beside every snapshot
+  (`newer than the cutoff of main, audit; referenced by release`). Held to the two expiries the
+  fixtures ran: `retained`'s and `expired`'s, planned from the metadata before each and required
+  to match the metadata after.
 - **Refs print their retention as ages.** `30 days (2,592,000,000 ms)` and `not set` where the
   table's defaults apply, in place of bare milliseconds that read `N/A` on every fixture. `retained`
   is the fixture — a tag and a branch created with retention, and an `expire_snapshots` that kept

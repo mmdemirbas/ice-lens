@@ -91,6 +91,9 @@ import model.snapshotHistory
 import model.SnapshotLogKind
 import model.partialRows
 import model.partitionBreakdown
+import model.planExpiry
+import model.ExpiryOptions
+import model.TableMetadata
 import model.stepComparableSnapshot
 import model.UNDECODED_PARTITION
 import model.LiveFile
@@ -1434,6 +1437,8 @@ fun NodeDetailsContent(
                                 }
                             )
                         }
+
+                        ExpirySection(node.data, nowMs = expiryClock())
 
                         CountedSection("Snapshots", node.data.snapshots.size, "snapshots") {
                             val snapshots = node.data.snapshots.sortedBy { it.timestampMs ?: Long.MAX_VALUE }
@@ -4108,6 +4113,75 @@ private fun DeleteReachSection(node: GraphNode.SnapshotNode, children: List<Grap
  * deferred live set so a panel opened twice walks it once.
  */
 /**
+ * The clock an expiry plan is measured from. A composition local so a render can pin it: an age
+ * is "now minus a timestamp", and a capture taken against the wall clock draws a different panel
+ * every day it is run.
+ */
+val LocalExpiryClock = androidx.compose.runtime.compositionLocalOf<() -> Long> { { System.currentTimeMillis() } }
+
+@Composable
+private fun expiryClock(): Long = LocalExpiryClock.current()
+
+/**
+ * What `expire_snapshots` would remove from this metadata, decided by [planExpiry] — the rules of
+ * Iceberg's `RemoveSnapshots`, ref by ref — under two cutoffs side by side: the table's defaults,
+ * and `older_than = now`, which is the most a procedure call can ask by age. Two columns rather
+ * than a form, because the question a reader arrives with is "what is protecting this snapshot",
+ * and the answer is the same ref either way; only the age rule moves between the columns.
+ */
+@Composable
+private fun ExpirySection(metadata: TableMetadata, nowMs: Long) {
+    val colors = MaterialTheme.colorScheme
+    val byDefaults = metadata.planExpiry(ExpiryOptions(nowMs = nowMs))
+    val byAge = metadata.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs))
+    val title = "Expiry" + if (byAge.removed.isNotEmpty()) " — ${byAge.removed.size} would go" else ""
+    Section(title) {
+        Text(
+            "What expire_snapshots would keep, and why, the way RemoveSnapshots decides it: a ref " +
+                "keeps its snapshot, a branch keeps its ancestors while they are within its " +
+                "min-snapshots-to-keep or newer than its cutoff, and anything on no ref goes once " +
+                "it is older than the cutoff. A branch's own max-snapshot-age-ms replaces older_than " +
+                "for everything the branch reaches. The first column is the table's defaults " +
+                "(${formatRetentionMs(nowMs - byDefaults.defaultCutoffMs).substringBefore(" (")} cutoff, " +
+                "keep ${byDefaults.defaultMinSnapshotsToKeep}); the second is older_than = now.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        val expiringRefs = byDefaults.refs.filter { !it.retained }
+        if (expiringRefs.isNotEmpty()) {
+            Text(
+                "Refs past their max-ref-age: " + expiringRefs.joinToString(", ") { "${it.name} (${it.reason})" } + ".",
+                fontSize = TypeScale.small,
+                fontWeight = FontWeight.Bold,
+                color = colors.error,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
+        val byAgeById = byAge.snapshots.associateBy { it.snapshotId }
+        val ordered = metadata.snapshots.sortedBy { it.sequenceNumber ?: Long.MAX_VALUE }.mapNotNull { it.snapshotId }
+        WideTable(
+            headers = listOf("Under the defaults", "Snapshot ID", "With older_than = now"),
+            // The verdict leads and wraps; the panel opens at 300dp, so the leading column must
+            // fit there or the reader scrolls before reading anything.
+            columnWidths = listOf(190.dp, 190.dp, 300.dp),
+            rows = ordered.map { id ->
+                val defaults = byDefaults.snapshots.first { it.snapshotId == id }
+                val age = byAgeById.getValue(id)
+                listOf(
+                    if (defaults.retained) "kept — " + defaults.describeKeptBy() else "REMOVED",
+                    id.toString(),
+                    if (age.retained) "kept — " + age.describeKeptBy() else "REMOVED",
+                )
+            },
+            leadCellColors = ordered.map { id ->
+                if (byDefaults.snapshots.first { it.snapshotId == id }.retained) null else colors.error
+            },
+        )
+    }
+}
+
+/**
  * The snapshot's live files by partition, largest first — what Iceberg's `.partitions` metadata
  * table answers, folded from the same [LiveFile] set the totals above and the comparison use.
  * Format-agnostic through [ComparableSnapshot], because "how is this table skewed" is the same
@@ -4150,7 +4224,7 @@ private fun PartitionsSection(snapshot: ComparableSnapshot) {
                 )
                 WideTable(
                     headers = listOf("Partition", "Data Files", "Records", "Bytes", "Delete Files", "Delete Records"),
-                    columnWidths = listOf(300.dp, 90.dp, 110.dp, 110.dp, 100.dp, 120.dp),
+                    columnWidths = listOf(190.dp, 90.dp, 110.dp, 110.dp, 100.dp, 120.dp),
                     rows = shares.map { share ->
                         listOf(
                             share.partition,
