@@ -34,9 +34,13 @@ data class PartitionShare(
     val dataFileCount: Int,
     val dataRecordCount: Long,
     val dataSizeBytes: Long,
-    val deleteFileCount: Int,
-    val deleteRecordCount: Long,
+    val posDeleteFileCount: Int,
+    val posDeleteRecordCount: Long,
+    val eqDeleteFileCount: Int,
+    val eqDeleteRecordCount: Long,
 ) {
+    val deleteFileCount: Int get() = posDeleteFileCount + eqDeleteFileCount
+    val deleteRecordCount: Long get() = posDeleteRecordCount + eqDeleteRecordCount
     /** `dataFileCount` including delete files: what a scan of this partition opens. */
     val fileCount: Int get() = dataFileCount + deleteFileCount
 }
@@ -54,14 +58,17 @@ fun List<LiveFile>.partitionBreakdown(): List<PartitionShare> =
     groupBy { it.partition ?: UNDECODED_PARTITION }
         .map { (partition, files) ->
             val data = files.filter { it.content == DataFileContent.DATA }
-            val deletes = files.filter { it.content != DataFileContent.DATA }
+            val pos = files.filter { it.content == DataFileContent.POSITION_DELETES }
+            val eq = files.filter { it.content == DataFileContent.EQUALITY_DELETES }
             PartitionShare(
                 partition = partition,
                 dataFileCount = data.size,
                 dataRecordCount = data.filter { !it.partial }.sumOf { it.recordCount },
                 dataSizeBytes = data.sumOf { it.sizeBytes },
-                deleteFileCount = deletes.size,
-                deleteRecordCount = deletes.sumOf { it.recordCount },
+                posDeleteFileCount = pos.size,
+                posDeleteRecordCount = pos.sumOf { it.recordCount },
+                eqDeleteFileCount = eq.size,
+                eqDeleteRecordCount = eq.sumOf { it.recordCount },
             )
         }
         .sortedWith(compareByDescending<PartitionShare> { it.dataSizeBytes }.thenBy { it.partition })

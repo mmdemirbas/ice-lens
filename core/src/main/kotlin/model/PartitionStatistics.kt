@@ -84,3 +84,47 @@ fun readPartitionStatistics(path: Path, resolution: PathResolution): PartitionSt
         problem = read.exceptionOrNull()?.let { it.message ?: it::class.simpleName },
     )
 }
+
+/**
+ * One partition-statistics row against the same figures folded from the live files of the
+ * snapshot the file names — the `manifestTallies` rule one level up. A planner reads the file
+ * instead of walking the manifests, which is exactly what lets the two drift: the file is written
+ * once by `compute_partition_stats` and nothing on the read path checks it again.
+ */
+data class PartitionStatsVerdict(
+    val partition: String,
+    /** The file's row, or null for a live partition the file does not mention. */
+    val recorded: PartitionStatsRow?,
+    /** The fold over the live files, or null for a partition the file lists that holds no live file. */
+    val counted: PartitionShare?,
+    /** `data files: 3 recorded, 2 counted` — one entry per figure that differs. */
+    val disagreements: List<String>,
+) {
+    val agrees: Boolean get() = recorded != null && counted != null && disagreements.isEmpty()
+}
+
+/** Every partition either side knows, in the file's order then the live set's — see [PartitionStatsVerdict]. */
+fun checkPartitionStatistics(rows: List<PartitionStatsRow>, live: List<LiveFile>): List<PartitionStatsVerdict> {
+    val counted = live.partitionBreakdown().associateBy { it.partition }
+    val recorded = rows.associateBy { it.partition }
+    val partitions = (rows.map { it.partition } + counted.keys.filter { it !in recorded }).distinct()
+    return partitions.map { partition ->
+        val row = recorded[partition]
+        val share = counted[partition]
+        val differences = if (row == null || share == null) emptyList() else buildList {
+            fun check(label: String, recordedValue: Number?, countedValue: Number) {
+                if (recordedValue != null && recordedValue.toLong() != countedValue.toLong()) {
+                    add("$label: ${recordedValue.toLong()} recorded, ${countedValue.toLong()} counted")
+                }
+            }
+            check("data files", row.dataFileCount, share.dataFileCount)
+            check("data records", row.dataRecordCount, share.dataRecordCount)
+            check("data bytes", row.totalDataFileSizeInBytes, share.dataSizeBytes)
+            check("position delete files", row.positionDeleteFileCount, share.posDeleteFileCount)
+            check("position delete records", row.positionDeleteRecordCount, share.posDeleteRecordCount)
+            check("equality delete files", row.equalityDeleteFileCount, share.eqDeleteFileCount)
+            check("equality delete records", row.equalityDeleteRecordCount, share.eqDeleteRecordCount)
+        }
+        PartitionStatsVerdict(partition, row, share, differences)
+    }
+}

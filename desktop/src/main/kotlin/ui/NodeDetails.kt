@@ -92,6 +92,8 @@ import model.SnapshotLogKind
 import model.partialRows
 import model.partitionBreakdown
 import model.planExpiry
+import model.checkPartitionStatistics
+import model.PartitionStatsVerdict
 import model.ExpiryOptions
 import model.TableMetadata
 import model.stepComparableSnapshot
@@ -1630,41 +1632,64 @@ fun NodeDetailsContent(
                                     )
                                     return@forEach
                                 }
+                                // The file against the live files of the snapshot it names —
+                                // the same rule as manifestTallies. The snapshot node's walk is
+                                // deferred and shared with the totals it also serves; a snapshot
+                                // the graph no longer draws leaves the column saying so.
+                                val live = (currentGraph.nodeById["snap_${file.snapshotId}"] as? GraphNode.SnapshotNode)?.liveFiles
+                                val verdicts = live?.let { checkPartitionStatistics(rows, it) }
+                                val disagreeing = verdicts?.count { !it.agrees } ?: 0
                                 Text(
                                     "${fileNameFromPath(file.statisticsPath.orEmpty())}: ${formatCount(rows.size.toLong())} partitions" +
                                         (if (read.truncated) " shown of more — the first ${formatCount(model.MAX_PARTITION_STATS_ROWS.toLong())} rows of the file" else "") +
-                                        ". Record counts are before deletes; a delete file's records are the positions or keys it holds.",
+                                        ". Record counts are before deletes; a delete file's records are the positions or keys it holds. " +
+                                        when {
+                                            verdicts == null -> "Not checked: snapshot ${file.snapshotId} is not drawn, so its live files were not walked."
+                                            disagreeing == 0 -> "Every row agrees with the live files of snapshot ${file.snapshotId}."
+                                            else -> "$disagreeing of ${verdicts.size} partitions DISAGREE with the live files of snapshot ${file.snapshotId} — the file is stale, or the walk is wrong."
+                                        },
                                     fontSize = TypeScale.small,
-                                    color = colors.onSurfaceVariant,
+                                    color = if (disagreeing > 0) colors.error else colors.onSurfaceVariant,
+                                    fontWeight = if (disagreeing > 0) FontWeight.Bold else null,
                                     modifier = Modifier.padding(bottom = 4.dp),
                                 )
+                                val listed = verdicts ?: rows.map { PartitionStatsVerdict(it.partition, it, null, emptyList()) }
                                 WideTable(
                                     headers = listOf(
-                                        "Partition", "Data Records", "Data Files", "Data Size",
+                                        "Agrees", "Partition", "Data Records", "Data Files", "Data Size",
                                         "Pos. Delete Records", "Pos. Delete Files", "Eq. Delete Records", "Eq. Delete Files",
                                         "Total Records", "Last Updated", "Last Snapshot", "Spec",
                                     ),
-                                    rows = rows.map { row ->
+                                    rows = listed.map { verdict ->
+                                        val row = verdict.recorded
                                         listOf(
-                                            row.partition.ifEmpty { "(unpartitioned)" },
-                                            row.dataRecordCount?.let { formatCount(it) } ?: "N/A",
-                                            row.dataFileCount?.let { formatCount(it.toLong()) } ?: "N/A",
-                                            row.totalDataFileSizeInBytes?.let { formatBytes(it) } ?: "N/A",
-                                            row.positionDeleteRecordCount?.let { formatCount(it) } ?: "N/A",
-                                            row.positionDeleteFileCount?.let { formatCount(it.toLong()) } ?: "N/A",
-                                            row.equalityDeleteRecordCount?.let { formatCount(it) } ?: "N/A",
-                                            row.equalityDeleteFileCount?.let { formatCount(it.toLong()) } ?: "N/A",
-                                            row.totalRecordCount?.let { formatCount(it) } ?: "not written",
-                                            formatTimestampShort(row.lastUpdatedAtMs),
-                                            row.lastUpdatedSnapshotId?.toString() ?: "N/A",
-                                            row.specId?.toString() ?: "N/A",
+                                            when {
+                                                verdicts == null -> "not checked"
+                                                row == null -> "NO — live partition the file omits"
+                                                verdict.counted == null -> "NO — no live file in it"
+                                                verdict.agrees -> "yes"
+                                                else -> "NO — " + verdict.disagreements.joinToString("; ")
+                                            },
+                                            verdict.partition.ifEmpty { "(unpartitioned)" },
+                                            row?.dataRecordCount?.let { formatCount(it) } ?: "N/A",
+                                            row?.dataFileCount?.let { formatCount(it.toLong()) } ?: "N/A",
+                                            row?.totalDataFileSizeInBytes?.let { formatBytes(it) } ?: "N/A",
+                                            row?.positionDeleteRecordCount?.let { formatCount(it) } ?: "N/A",
+                                            row?.positionDeleteFileCount?.let { formatCount(it.toLong()) } ?: "N/A",
+                                            row?.equalityDeleteRecordCount?.let { formatCount(it) } ?: "N/A",
+                                            row?.equalityDeleteFileCount?.let { formatCount(it.toLong()) } ?: "N/A",
+                                            row?.totalRecordCount?.let { formatCount(it) } ?: "not written",
+                                            formatTimestampShort(row?.lastUpdatedAtMs),
+                                            row?.lastUpdatedSnapshotId?.toString() ?: "N/A",
+                                            row?.specId?.toString() ?: "N/A",
                                         )
                                     },
                                     columnWidths = listOf(
-                                        160.dp, 110.dp, 90.dp, 100.dp,
+                                        190.dp, 160.dp, 110.dp, 90.dp, 100.dp,
                                         150.dp, 130.dp, 140.dp, 130.dp,
                                         110.dp, 200.dp, 200.dp, 60.dp,
                                     ),
+                                    leadCellColors = listed.map { if (verdicts != null && !it.agrees) colors.error else null },
                                 )
                             }
                         }

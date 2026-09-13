@@ -285,6 +285,17 @@ intellij/src/main/kotlin/plugin/
   stepping *is* selecting, so the panel holds no state and the canvas highlights what it shows. A
   button at the end of history is disabled, not dropped, so the row keeps its shape; each names the
   commit it would move to. `SnapshotSteppingTest` pins the order and the ends
+- **A partition statistics file is shown against the live files of the snapshot it names.**
+  `checkPartitionStatistics` in `model/PartitionStatistics.kt` puts each row of the file beside
+  the `PartitionShare` folded from `liveFilesOf` for that snapshot — the `manifestTallies` rule one
+  level up, and for the same reason: a planner reads the file instead of walking the manifests,
+  which is exactly what lets the two drift, and nothing on the read path checks it again. A
+  partition on one side only is a disagreement of its own kind (the file omits a live partition;
+  the file lists one that holds no live file), and a figure that differs is named with both
+  values. The panel leads the per-partition table with the verdict, reaches the snapshot's
+  deferred walk through `snap_<id>` in the drawn graph, and says "not checked" when that snapshot
+  is not drawn rather than walking it itself. `PartitionStatsCheckTest` holds `pstats` to full
+  agreement and plants three kinds of drift to see each named
 - **A snapshot's partition breakdown is folded from the same live set the comparison uses.**
   `List<LiveFile>.partitionBreakdown()` in `model/SnapshotDiff.kt` groups a snapshot's live files
   by their decoded partition — `LiveFile.partition`, carried out of `liveFilesOf` by zipping the
@@ -1351,7 +1362,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~987 tests across 120 files (746 in :core, 235 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~989 tests across 120 files (748 in :core, 235 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
