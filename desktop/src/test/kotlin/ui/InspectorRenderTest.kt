@@ -55,6 +55,7 @@ import model.snapshotAsOf
 import model.PaimonUnifiedTableModel
 import model.PredicateOp
 import model.ScanPredicate
+import model.deleteKindOf
 import model.SnapshotRefLabel
 import model.UnifiedTableModel
 import service.AggregationPolicy
@@ -1627,6 +1628,26 @@ class InspectorRenderTest {
         renderScene("scan-pruning-paimon-fa", width = 1400, height = 2400) {
             Column(Modifier.padding(16.dp)) {
                 ScanPruningSection(fa, model.ScanFilter.of(listOf(ScanPredicate("v", PredicateOp.EQ, "delta")))) {}
+            }
+        }
+    }
+
+    /**
+     * The delete pairing from a data file's end, on the one table where all four ruling-out
+     * rules appear in one section: `fupp`'s commit-1 `p=x` file has its own commit's positional
+     * delete reaching it, two equality deletes below it by sequence, one keyed to the other
+     * partition and one whose bounds miss its ids. Every reason cell has to explain a different
+     * `no`, which is what this capture is for.
+     */
+    @Test
+    fun `the delete pairing section names each of the four rules that rule a delete out`() {
+        val graph = graphFor("fupp")
+        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().single {
+            deleteKindOf(it.data) == null && it.sequenceNumber == 1L && it.partition?.path == "p=x"
+        }
+        renderScene("deletes-reaching-fupp", width = 1400, height = 1300) {
+            Column(Modifier.padding(16.dp)) {
+                DeletesReachingSection(file, graph)
             }
         }
     }

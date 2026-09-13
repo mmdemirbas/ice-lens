@@ -378,8 +378,8 @@ intellij/src/main/kotlin/plugin/
   compaction, while a rewrite whose record delta is a *difference* and a removal that **found
   nothing to remove** are the two rows invisible in every figure above them
 - **Which delete files a scan pairs with which data files is answered from the metadata, and the
-  interesting answer is "none".** `model/DeleteAssignment.kt` applies the two rules a scan applies,
-  neither of which needs a file opened. **Sequence:** a positional delete or a v3 vector reaches a
+  interesting answer is "none".** `model/DeleteAssignment.kt` applies the four rules
+  `DeleteFileIndex.forDataFile` applies (1.8.1), none of which needs a file opened. **Sequence:** a positional delete or a v3 vector reaches a
   data file at or below its own number, an equality delete only one strictly below — the difference
   is what makes equality deletes safe to write, since they must not touch rows a later commit adds.
   **Target:** a vector names its file in `referenced_data_file`, and a v2 positional delete records
@@ -388,12 +388,23 @@ intellij/src/main/kotlin/plugin/
   and settle it; bounds that span only rule paths out. An equality delete has no target and every
   candidate stays unsettled, which is why `reaches` and `mayReach` are separate lists: "the metadata
   ruled everything out" and "the metadata could rule nothing out" would otherwise both read as an
-  empty list, and only the first means the file is **dangling**. The partition is deliberately *not*
-  compared — Iceberg never applies a delete across one, so including it would rule *more* out, and a
-  wrong exclusion here hides a delete. Omitting it can only leave a pair unsettled, which is the
-  absence of a proof and is what the panel says. `mor` was already documented as having two dangling
-  deletes and nothing asserted it, because nothing could compute it; `DeleteAssignmentTest` now does,
-  from the delete files' own bounds against the live paths. **The same pairing is asked from both
+  empty list, and only the first means the file is **dangling**. **Partition:** a delete is filed
+  under the spec id and partition tuple it was written under and weighed only against data files
+  under the same key (`PartitionScope`, spec id included — the same tuple under another spec is
+  another key) — except an equality delete under an *unpartitioned* spec, which is global and
+  weighed against every file, and except a vector or a positional delete that names one file,
+  which is keyed by path and never asked. A partition this could not decode is not compared,
+  since a wrong exclusion here hides a delete and an unsettled pair is only the absence of a
+  proof. **Bounds:** an equality delete is ruled out when, on any of its equality columns, its
+  bounds and the data file's cannot meet — `canContainEqDeletesForFile`: a delete holding no
+  null against a file all null on the column and the reverse, a required column never null, and
+  otherwise the two ranges compared as values through `compareValues`; a missing figure on either
+  side leaves the column undecided (`equalityDeleteMayTouch`). It is the one rule that can rule
+  an equality delete out short of sequence, and `fupp` is where it does: Flink's upsert sink
+  writes an equality delete for every key it inserts, so commit 2's delete for a new key names
+  nothing any earlier file holds and is dangling by its own bounds. `mor` was already documented
+  as having two dangling deletes and nothing asserted it, because nothing could compute it;
+  `DeleteAssignmentTest` now does, from the delete files' own bounds against the live paths. **The same pairing is asked from both
   ends and they are one implementation**: `deleteReach(snapshot)` walks a closure and answers per
   delete file, `deleteCandidatesFor(dataFile, drawn)` needs no walk at all — both operands' sequence
   numbers and targets are facts about the files — and both fold `reachVerdict`. The per-file
@@ -403,17 +414,23 @@ intellij/src/main/kotlin/plugin/
   out by its target and the other by sequence, having been written before that file existed.
   **And the pairing is held to Iceberg's own**: `iceberg-scan-plans.scala` prints
   `FileScanTask.deletes()` for every data file of every checked-in table's current snapshot —
-  `DeleteFileIndex`'s pairing, partition included — into
-  `core/src/test/resources/iceberg-scan-plans/deletes.txt`, and `IcebergDeletePairingPlanTest`
-  asserts both directions over 28 tables and 80 files: a delete Iceberg applies is reached or
-  unsettled here, a reach proved here is one Iceberg applies, and — since no positional delete or
-  vector in the corpus is left unsettled — the plan's deletes are exactly the proved ones plus the
-  equality deletes, which only sequence and partition attach. `test` is the one table left out,
-  its manifest list recorded at the path it was written to. A target rule weakened to "unsettled"
-  is caught on `eqdel`, and the sequence rule's boundary both ways on `fup` — the Flink upsert
-  sink is the one writer that puts a delete in the same commit as the data file it can apply
-  to: commit 1 holds a data file, a positional delete for its position 0 and an equality delete
-  for its keys at one sequence number, and Iceberg attaches the first and not the second
+  `DeleteFileIndex`'s pairing — into `core/src/test/resources/iceberg-scan-plans/deletes.txt`,
+  and `IcebergDeletePairingPlanTest` asserts both directions over 31 tables and 89 files: a
+  delete Iceberg applies is reached or unsettled here, a reach proved here is one Iceberg
+  applies, and — since no positional delete or vector in the corpus is left unsettled — the
+  plan's deletes are exactly the proved ones plus the equality deletes left unsettled. `test` is
+  the one table left out, its manifest list recorded at the path it was written to. A target rule
+  weakened to "unsettled" is caught on `eqdel`, and the sequence rule's boundary both ways on
+  `fup` — the Flink upsert sink is the one writer that puts a delete in the same commit as the
+  data file it can apply to: commit 1 holds a data file, a positional delete for its position 0
+  and an equality delete for its keys at one sequence number, and Iceberg attaches the first and
+  not the second. The bounds rule is caught on `fupp` and the partition rule on `eqpart`, which
+  exists because `fupp` cannot separate the two: its partition column is an equality column, so
+  the bounds on it already differ across partitions. `eqpart`'s deletes are on `id` alone over
+  files that all hold ids 1..2 — the one under the partitioned spec in `p=y` is attached to the
+  `p=y` file alone, and the one under the unpartitioned spec the table started with is attached
+  to all three, the spec-0 file included; dropping the partition rule, the global rule or the
+  bounds rule each fails the plan test on one of the two
 - **The live row count exists only by reading the delete files, and the pairing is what makes that
   cheap.** `record_count` counts rows *before* deletes, and subtracting the delete files' own
   `record_count` is wrong the moment one is dangling — on `mor` that subtraction gives 3 where the
@@ -1758,7 +1775,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,167 tests across 153 files (898 in :core, 261 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,175 tests across 155 files (905 in :core, 262 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1868,6 +1885,8 @@ container invocation and the traps in it:
 | `default/maint` | `MaintenanceFixtureTest` | `rewrite_position_delete_files` dropping two dangling deletes, then `rewrite_manifests` — the commit whose summary counts manifests |
 | `default/merged`, `mergedel`, `mergespec` | `ManifestMergeFixtureTest` | `commit.manifest.min-count-to-merge = 2` — every append merging the list into one manifest, a copy-on-write delete's filtered manifest alone in its bin, merging switched off; the delete side, where a second delete rewrote the first delete file; and a spec change merging the old spec's manifests under the default count |
 | `default/fup` | `FlinkUpsertFixtureTest`, `IcebergDeletePairingPlanTest` | Flink 1.20's upsert sink on a v2 table — each commit's equality delete and data file at one sequence number, and a positional delete for a key upserted twice in one checkpoint; `(1, a2), (2, b2), (4, d)` read back |
+| `default/fupp` | `FlinkUpsertPartitionedFixtureTest` | `fup` partitioned by `p`, with `p` in the key — commit 2's equality delete in `p=y` never weighed against the `p=x` files, and its delete in `p=x` for a new key dangling by its own bounds; `(1, x, a2), (2, y, b2), (4, x, d)` read back |
+| `default/eqpart` | `EqualityPartitionFixtureTest` | two equality deletes on `id` alone written with `EqualityDeleteWriter` over three files that all hold ids 1..2 — one under the partitioned spec in `p=y`, keyed to that partition; one under the unpartitioned spec the table started with, global; `(1, x), (1, x)` read back |
 | `default/sweep`, `swept`, `sweepb`, `sweptb` | `ExpiryFilePlanFixtureTest` | two tables copied on disk before `expire_snapshots` ran on the original — `swept` with one ref (incremental cleanup: a removed file and a rolled-back commit's file freed), `sweptb` with a branch (reachable: a manifest freed, no file) |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |

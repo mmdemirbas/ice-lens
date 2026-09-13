@@ -8,11 +8,11 @@ import kotlin.test.assertTrue
  * The delete pairing, held to what Iceberg's own plan attaches to each data file.
  *
  * `deleteReach` decides from the metadata which delete files a scan pairs with which data files
- * — sequence number, and a positional delete's `file_path` bounds or a vector's
- * `referenced_data_file` — and deliberately leaves the partition out, which can only leave a
- * pair *unsettled* (`mayReach`) and never rule one in. `FileScanTask.deletes()` is the same
- * pairing decided by `DeleteFileIndex`, partition included, over every checked-in table's
- * current snapshot (`src/test/resources/iceberg-scan-plans/deletes.txt`, printed by
+ * — sequence number, a positional delete's `file_path` bounds or a vector's
+ * `referenced_data_file`, the spec and partition a delete is keyed by, and an equality delete's
+ * bounds on its columns against the file's. `FileScanTask.deletes()` is the same pairing
+ * decided by `DeleteFileIndex`, over every checked-in table's current snapshot
+ * (`src/test/resources/iceberg-scan-plans/deletes.txt`, printed by
  * `docs/fixtures/iceberg-scan-plans.scala`). The relation between the two is one-sided both
  * ways, and both sides are asserted: a delete Iceberg applies to a file must be reached or
  * unsettled here — missing one is the wrong that returns a deleted row — and a reach *proved*
@@ -26,7 +26,10 @@ import kotlin.test.assertTrue
  * Flink-written table whose commit 1 holds a data file, a positional delete for it and an
  * equality delete beside it at one sequence number — an equality delete applied at `>=` pairs
  * with the file Iceberg does not attach it to, and a positional delete applied at `>` misses
- * the one Iceberg does.
+ * the one Iceberg does. The bounds rule is caught on `fupp`, whose commit 2 writes an equality
+ * delete for a key no earlier file in its partition holds, and the partition rule on `eqpart`,
+ * whose deletes' bounds admit every file and whose `p=y` delete Iceberg attaches to the `p=y`
+ * file alone — while the one it wrote under the unpartitioned spec is attached to all three.
  */
 class IcebergDeletePairingPlanTest {
 
@@ -91,7 +94,7 @@ class IcebergDeletePairingPlanTest {
         }
         // Twenty-nine tables' current snapshots, eighty-two data files — pinned so a table
         // quietly answering nothing is seen.
-        assertTrue(checked.size >= 82, "only ${checked.size} files checked")
+        assertTrue(checked.size >= 89, "only ${checked.size} files checked")
     }
 
     @Test

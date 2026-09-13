@@ -57,6 +57,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fi` the two files merge-read and their indexes are never opened, which the rows say too. The
   panel's `File Index` row names the columns and index types. Held to `FileIndexPredicate` and
   the plan on both tables (`docs/fixtures/paimon-scan-plans.scala`).
+- **The delete pairing applies Iceberg's partition and bounds rules.** A delete is keyed by the
+  spec and partition it was written under and weighed only against data files under the same
+  key — a vector or a positional delete naming one file is keyed by path instead, and an
+  equality delete under an unpartitioned spec is global — and an equality delete is ruled out
+  where its bounds on an equality column cannot meet the file's, null counts included
+  (`canContainEqDeletesForFile`). Two new verdicts on the file panel's `Deletes Reaching This
+  File`, each with its reason; the row panel's `Delete Files` asks only what is left. Two
+  fixtures pin them against Iceberg's own plan: `fupp`, Flink's upsert sink on a partitioned
+  table, where commit 2's equality delete for a new key is dangling by its bounds — and
+  `eqpart`, equality deletes on `id` alone written under both specs of a table partitioned after
+  its first commit, where the partitioned one is attached to its own partition's file only and
+  the unpartitioned one to every file. Without the partition rule an equality delete in another
+  partition stayed "maybe" on every partitioned merge-on-read table.
 - **A Flink-written merge-on-read table joins the fixtures.** `fup` is Flink 1.20's upsert
   sink on a v2 table: each commit's equality delete sits beside its data file at one sequence
   number, and a key upserted twice in one checkpoint gets a positional delete in that same
@@ -64,7 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "strictly below" in the pairing. Read back by Flink as `(1, a2), (2, b2), (4, d)`, which the
   live row count and the row lookup both answer.
 - **The delete pairing is held to Iceberg's own plan.** `FileScanTask.deletes()` over every
-  checked-in table's current snapshot (28 tables, 80 data files) is checked in as an oracle, and
+  checked-in table's current snapshot (31 tables, 89 data files) is checked in as an oracle, and
   `deleteReach` agrees with it both ways: every delete Iceberg applies is reached or unsettled,
   every proved reach is one Iceberg applies, and the metadata settles every positional delete
   and vector in the corpus, so the plan's deletes are the proved ones plus the equality deletes.

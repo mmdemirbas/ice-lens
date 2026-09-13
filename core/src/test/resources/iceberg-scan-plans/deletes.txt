@@ -17,6 +17,10 @@
 -- eqdel
 00000-0-1d29780d-8c15-44a2-98f1-5c7e3a8ebc17-0-00001.parquet -> 00000-3-f86b61f1-7cb5-46d7-9dcd-eae21f03ba8e-00001-deletes.parquet,00000-eq-deletes.parquet
 00000-1-2b682d33-7500-456d-92c2-8c531cf1d4c0-0-00001.parquet -> 00000-eq-deletes.parquet
+-- eqpart
+00000-0-9dfb6d30-53ef-4a54-8c22-55a7773ae665-0-00001.parquet -> 00000-eq-delete-global.parquet
+00000-2-523218cc-914d-4e9f-b18e-c6642376fcf4-0-00001.parquet -> 00000-eq-delete-global.parquet
+00000-2-523218cc-914d-4e9f-b18e-c6642376fcf4-0-00002.parquet -> 00000-eq-delete-global.parquet,00000-eq-delete-y.parquet
 -- evolved
 00000-0-a6c9cccf-8be8-4bf0-b8b2-e04615ebabbb-0-00001.parquet ->
 00000-1-8796d368-d573-43ff-8e88-77d8d19fd2b0-0-00001.parquet ->
@@ -30,6 +34,11 @@
 -- fup
 00000-0-72e79fa5-ee85-46d7-a8cf-c55afb4347d8-00001.parquet -> 00000-0-72e79fa5-ee85-46d7-a8cf-c55afb4347d8-00003.parquet,00000-0-9bb2bf3a-1dc8-4afe-b61b-f87bb79ccdbb-00002.parquet
 00000-0-9bb2bf3a-1dc8-4afe-b61b-f87bb79ccdbb-00001.parquet ->
+-- fupp
+00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00001.parquet ->
+00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00003.parquet ->
+00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00001.parquet -> 00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00005.parquet
+00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00003.parquet -> 00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00002.parquet
 -- lineage
 00000-10-ab6a7fe5-a042-4129-8c95-b7316b2c5085-0-00001.parquet ->
 00000-11-1a863870-1a43-4e16-941b-55c47c6242ef-0-00001.parquet ->

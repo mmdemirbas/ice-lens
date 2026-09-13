@@ -67,10 +67,12 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   that have no edge to draw are the interesting remainder: a positional delete file names its
   targets one per row, so the link exists but at row granularity and only after reading the file;
   an equality delete has no target at all. Drawing the first would mean reading every delete row
-  at graph-build time, which is the cost aggregation exists to avoid. The pairing itself is held
-  to Iceberg's plan on every table (`IcebergDeletePairingPlanTest`), the sequence rule's
-  boundary included, since `fup` — Flink's upsert sink — writes a delete in the same commit as
-  the data file it applies to.
+  at graph-build time, which is the cost aggregation exists to avoid. The pairing itself applies
+  all four of `DeleteFileIndex`'s rules — sequence, target, spec and partition, an equality
+  delete's bounds — and is held to Iceberg's plan on every table (`IcebergDeletePairingPlanTest`):
+  the sequence boundary on `fup`, the bounds rule on `fupp`, the partition and global rules on
+  `eqpart`. What is left unsettled is exactly what the metadata cannot settle: an equality delete
+  whose bounds overlap a file's in its own partition.
 
 - **The branch columns are exercised at three branches and at a branch cut from a branch, and
   each found a defect.** `example/iceberg/default/branched3` forks three times at three
@@ -359,6 +361,8 @@ What is left:
   | `default/parted` | eight partition fields — identity on string and `decimal(9,2)`, `bucket`, `truncate`, all four time transforms — two snapshots, a pre-epoch row, a negative decimal |
   | `default/mor` | merge-on-read v2: three positional delete files, six commits including a `rewrite_data_files` compaction that leaves two of them dangling |
   | `default/eqdel` | both delete kinds in one table — one positional and one equality delete file, the latter written with Iceberg's own `EqualityDeleteWriter` |
+  | `default/fup`, `fupp` | Flink 1.20's upsert sink — a delete in the same commit as the data file it applies to, unpartitioned and partitioned by a key column |
+  | `default/eqpart` | equality deletes on `id` alone under a partitioned spec and under the unpartitioned spec the table started with — the partition rule with the bounds rule out of the way |
   | `default/v3` | format-version 3 with two deletion vectors (Puffin), the v3 representation of what `mor` carries as parquet |
   | `default/lineage` | format-version 3 written by Iceberg 1.10 — row lineage at every level: `next-row-id` 14 after five commits, a rewrite that burns two ids, a file carrying `_row_id`, a deletion vector allocating none, a compaction keeping every id |
   | `default/evolved` | three manifest schemas in one table — `int`→`long`, `float`→`double`, a column renamed then dropped, one added |

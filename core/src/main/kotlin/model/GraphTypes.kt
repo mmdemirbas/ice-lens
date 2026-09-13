@@ -549,6 +549,8 @@ sealed class GraphNode(
         val schema: IcebergSchemaModel? = null,
         /** This file's partition tuple, decoded against the manifest's own spec. */
         val partition: DecodedPartition? = null,
+        /** The spec that manifest records — with [partition], what a delete is keyed on; see [PartitionScope]. */
+        val specId: Int? = null,
         val localPath: String? = null,
         /** How [localPath] was arrived at — see [UnifiedDataFile.pathResolution]. */
         val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,

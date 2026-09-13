@@ -4,6 +4,7 @@ import java.io.File
 import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -115,6 +116,52 @@ class DeleteAssignmentTest {
             DeleteReachVerdict.RULED_OUT_BY_SEQUENCE,
             reachVerdict(DeleteFileKind.POSITIONAL, deleteSequence = 3, targets, "data/f.parquet", dataSequence = 4),
         )
+    }
+
+    @Test
+    fun `a delete is keyed by spec and partition unless it names a file or is a global equality delete`() {
+        val targets = DeleteTargets()
+        val x0 = PartitionScope(0, "p=x")
+        val y0 = PartitionScope(0, "p=y")
+        val x1 = PartitionScope(1, "p=x")
+        val none = PartitionScope(0, "")
+        fun v(kind: DeleteFileKind, delete: PartitionScope, data: PartitionScope, t: DeleteTargets = targets) =
+            reachVerdict(kind, deleteSequence = 5, t, "data/f.parquet", dataSequence = 4, deleteScope = delete, dataScope = data)
+        assertEquals(DeleteReachVerdict.RULED_OUT_BY_PARTITION, v(DeleteFileKind.EQUALITY, y0, x0))
+        assertEquals(DeleteReachVerdict.RULED_OUT_BY_PARTITION, v(DeleteFileKind.EQUALITY, x1, x0), "same tuple, another spec")
+        assertEquals(DeleteReachVerdict.MAY_REACH, v(DeleteFileKind.EQUALITY, x0, x0))
+        assertEquals(DeleteReachVerdict.MAY_REACH, v(DeleteFileKind.EQUALITY, none, x0), "an unpartitioned equality delete is global")
+        assertEquals(DeleteReachVerdict.RULED_OUT_BY_PARTITION, v(DeleteFileKind.POSITIONAL, none, x0), "a positional one is not")
+        assertEquals(DeleteReachVerdict.RULED_OUT_BY_PARTITION, v(DeleteFileKind.POSITIONAL, y0, x0))
+        // A vector, or a positional delete that names one file, is keyed by path and the partition is not asked.
+        assertEquals(DeleteReachVerdict.REACHES, v(DeleteFileKind.POSITIONAL, y0, x0, DeleteTargets(low = "data/f.parquet", high = "data/f.parquet")))
+        assertEquals(DeleteReachVerdict.REACHES, v(DeleteFileKind.DELETION_VECTOR, y0, x0, DeleteTargets(referenced = "data/f.parquet")))
+        // A partition this could not decode is not compared.
+        assertEquals(DeleteReachVerdict.MAY_REACH, v(DeleteFileKind.EQUALITY, y0, PartitionScope(0, null)))
+    }
+
+    @Test
+    fun `an equality delete whose bounds cannot meet the file's is ruled out, and a missing figure means it may`() {
+        fun stats(id: Int, low: Any?, high: Any?, values: Long? = 3, nulls: Long? = 0) = ColumnStats(
+            fieldId = id, columnName = "id", type = IcebergType.IntType,
+            lowerBound = low?.let { DecodedValue(it.toString(), it, IcebergType.IntType, ByteArray(0)) },
+            upperBound = high?.let { DecodedValue(it.toString(), it, IcebergType.IntType, ByteArray(0)) },
+            valueCount = values, nullValueCount = nulls, nanValueCount = null, columnSizeBytes = null,
+        )
+        val data = listOf(stats(1, 1, 1))
+        assertFalse(equalityDeleteMayTouch(data, listOf(stats(1, 4, 4)), listOf(1), emptySet()), "4..4 against 1..1")
+        assertTrue(equalityDeleteMayTouch(data, listOf(stats(1, 0, 2)), listOf(1), emptySet()))
+        assertTrue(equalityDeleteMayTouch(data, listOf(stats(1, null, null)), listOf(1), emptySet()), "no bound on the delete")
+        assertTrue(equalityDeleteMayTouch(listOf(stats(1, null, null)), listOf(stats(1, 4, 4)), listOf(1), emptySet()), "no bound on the data")
+        assertTrue(equalityDeleteMayTouch(data, listOf(stats(1, 4, 4)), listOf(2), emptySet()), "a column with no statistics on either side")
+        // Nulls: a data file all-null on the column against a delete holding no null, and the reverse.
+        assertFalse(equalityDeleteMayTouch(listOf(stats(1, null, null, values = 3, nulls = 3)), listOf(stats(1, 4, 4, nulls = 0)), listOf(1), emptySet()))
+        assertFalse(equalityDeleteMayTouch(listOf(stats(1, 1, 1, nulls = 0)), listOf(stats(1, null, null, values = 2, nulls = 2)), listOf(1), emptySet()))
+        assertTrue(equalityDeleteMayTouch(listOf(stats(1, 1, 1, nulls = 1)), listOf(stats(1, 4, 4, nulls = 1)), listOf(1), emptySet()), "both hold a null, so the deletes apply")
+        // A required column is never null, whatever the counts say.
+        assertFalse(equalityDeleteMayTouch(data, listOf(stats(1, 4, 4, nulls = null)), listOf(1), setOf(1)))
+        val verdict = reachVerdict(DeleteFileKind.EQUALITY, 5, DeleteTargets(), "data/f.parquet", 4, equalityMayTouch = { false })
+        assertEquals(DeleteReachVerdict.RULED_OUT_BY_BOUNDS, verdict)
     }
 
     /** A path outside the recorded range is ruled out; one inside it is only unsettled. */

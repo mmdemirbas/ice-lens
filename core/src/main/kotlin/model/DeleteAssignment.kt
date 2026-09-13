@@ -26,13 +26,27 @@ package model
  * reading anything; when they span, the range only rules paths *out*. An equality delete has no
  * target at all: it applies by value.
  *
- * ### What this is not
+ * ### The two rules that scope the rest
  *
- * The partition is not compared. Iceberg only ever applies a delete file within its own partition,
- * so including it would rule *more* out — and a wrong exclusion here hides a delete, which is the
- * failure worth avoiding. Leaving it out can only leave a pair at [DeleteReachVerdict.MAY_REACH],
- * which is the absence of a proof and is what the panel says. In practice the paths carry the
- * partition directory, so the bounds usually settle it anyway.
+ * **Partition.** `DeleteFileIndex` keys an equality delete, and a positional delete that names no
+ * single file, by the *spec and partition* its manifest records, and looks a data file's deletes
+ * up by the data file's own — so a delete under partition `p=x` never applies to a file in `p=y`,
+ * nor to a file under another spec, even one whose partition renders the same. The one exception
+ * is an equality delete written under an **unpartitioned** spec, which is global. A vector, or a
+ * positional delete whose bounds name one file, is keyed by path instead and the partition is not
+ * consulted. A partition this could not decode is left undecided rather than compared, which can
+ * only leave a pair at [DeleteReachVerdict.MAY_REACH].
+ *
+ * **Bounds.** An equality delete records bounds and null counts on its equality columns like any
+ * file, and `canContainEqDeletesForFile` compares them with the data file's before pairing:
+ * ranges that do not overlap on some equality column, a data file all-null where the delete holds
+ * no null, or the reverse, rule the pair out. Every step is a one-sided proof over recorded
+ * figures — a missing bound or count on either side means "may match" — so this reads more than
+ * Iceberg only where a figure is missing, never less.
+ *
+ * Both were left out until `fup` and `fupp` existed to hold them to Iceberg's own plan: a wrong
+ * exclusion here hides a delete, which is the failure worth avoiding, and the only defence
+ * against it is the planner's answer on engine-written bytes (`IcebergDeletePairingPlanTest`).
  */
 data class DeleteReach(
     val deletePath: String,
@@ -57,7 +71,49 @@ data class DeleteReach(
 
 enum class DeleteFileKind { DELETION_VECTOR, POSITIONAL, EQUALITY }
 
-enum class DeleteReachVerdict { REACHES, MAY_REACH, RULED_OUT_BY_TARGET, RULED_OUT_BY_SEQUENCE }
+enum class DeleteReachVerdict { REACHES, MAY_REACH, RULED_OUT_BY_TARGET, RULED_OUT_BY_SEQUENCE, RULED_OUT_BY_PARTITION, RULED_OUT_BY_BOUNDS }
+
+/**
+ * What `DeleteFileIndex` keys a file on: the spec its manifest records and its partition tuple,
+ * rendered as the path segments (`p=x`) — `""` under an unpartitioned spec, null where the tuple
+ * could not be decoded and so must not be compared.
+ */
+data class PartitionScope(val specId: Int?, val partition: String?) {
+    val isUnpartitioned: Boolean get() = partition == ""
+    val isKnown: Boolean get() = partition != null
+
+    /** The same key, as the index compares it: spec and tuple both. */
+    fun sameAs(other: PartitionScope): Boolean = isKnown && other.isKnown && specId == other.specId && partition == other.partition
+}
+
+/**
+ * `canContainEqDeletesForFile` at 1.8.1: whether an equality delete's recorded figures on its
+ * equality columns leave it able to touch the data file. Null where either side lacks the column
+ * statistics to say, which is "may match".
+ */
+fun equalityDeleteMayTouch(data: List<ColumnStats>, delete: List<ColumnStats>, equalityIds: List<Int>, requiredIds: Set<Int>): Boolean {
+    for (id in equalityIds) {
+        val d = data.firstOrNull { it.fieldId == id }
+        val e = delete.firstOrNull { it.fieldId == id }
+        val required = id in requiredIds
+        // Null bookkeeping, each a fact about counts the writer recorded.
+        fun containsNull(s: ColumnStats?) = !required && (s?.nullValueCount == null || s.nullValueCount > 0)
+        fun allNull(s: ColumnStats?) = !required && s?.nullValueCount != null && s.valueCount != null && s.nullValueCount == s.valueCount
+        fun allNonNull(s: ColumnStats?) = required || (s?.nullValueCount != null && s.nullValueCount <= 0)
+        if (containsNull(d) && containsNull(e)) continue
+        if (allNull(d) && allNonNull(e)) return false
+        if (allNull(e) && allNonNull(d)) return false
+        val dl = d?.lowerBound?.value ?: continue
+        val du = d.upperBound?.value ?: continue
+        val el = e?.lowerBound?.value ?: continue
+        val eu = e.upperBound?.value ?: continue
+        val lowPastHigh = compareValues(dl, eu) ?: continue
+        if (lowPastHigh > 0) return false
+        val highBeforeLow = compareValues(el, du) ?: continue
+        if (highBeforeLow > 0) return false
+    }
+    return true
+}
 
 /** What one delete file's own metadata says about the data files it can apply to. */
 data class DeleteTargets(
@@ -89,8 +145,11 @@ fun deleteReach(snapshot: UnifiedSnapshot): List<DeleteReach> {
     val live = liveFilesOf(snapshot)
     val livePaths = live.map { normalizeFilePath(it.path) }.toSet()
 
-    val data = mutableListOf<Pair<String, Long>>()
-    val deletes = mutableListOf<Triple<ManifestEntry, Long, DataFile>>()
+    class Side(val path: String, val sequence: Long, val file: DataFile, val scope: PartitionScope, val manifest: UnifiedManifest) {
+        val stats: List<ColumnStats> by lazy { columnStatsFor(file, manifest.schema) }
+    }
+    val data = mutableListOf<Side>()
+    val deletes = mutableListOf<Side>()
     val seen = mutableSetOf<String>()
     snapshot.manifests.forEach { manifest ->
         manifest.dataFiles.forEach { unified ->
@@ -102,23 +161,26 @@ fun deleteReach(snapshot: UnifiedSnapshot): List<DeleteReach> {
             // two manifests naming one path would otherwise pair it twice.
             if (normalized !in livePaths || !seen.add(normalized)) return@forEach
             val sequence = effectiveSequenceNumber(unified.metadata, manifest.metadata.sequenceNumber)
-            if (file.content == DataFileContent.DATA || file.content == null) {
-                data += normalized to sequence
-            } else {
-                deletes += Triple(unified.metadata, sequence, file)
-            }
+            val side = Side(normalized, sequence, file, PartitionScope(manifest.metadata.partitionSpecId, unified.partition?.path), manifest)
+            if (file.content == DataFileContent.DATA || file.content == null) data += side else deletes += side
         }
     }
 
-    return deletes.map { (entry, sequence, file) ->
+    return deletes.map { delete ->
+        val file = delete.file
+        val sequence = delete.sequence
         val kind = deleteKindOf(file) ?: DeleteFileKind.POSITIONAL
         val targets = deleteTargetsOf(file)
+        val requiredIds = delete.manifest.schema?.struct?.fields?.filter { it.required }?.map { it.id }?.toSet().orEmpty()
         val reaches = mutableListOf<String>()
         val mayReach = mutableListOf<String>()
-        data.forEach { (dataPath, dataSequence) ->
-            when (reachVerdict(kind, sequence, targets, dataPath, dataSequence)) {
-                DeleteReachVerdict.REACHES -> reaches += dataPath
-                DeleteReachVerdict.MAY_REACH -> mayReach += dataPath
+        data.forEach { d ->
+            val overlap = if (kind == DeleteFileKind.EQUALITY) {
+                { equalityDeleteMayTouch(d.stats, delete.stats, file.equalityIds.orEmpty(), requiredIds) }
+            } else null
+            when (reachVerdict(kind, sequence, targets, d.path, d.sequence, delete.scope, d.scope, overlap)) {
+                DeleteReachVerdict.REACHES -> reaches += d.path
+                DeleteReachVerdict.MAY_REACH -> mayReach += d.path
                 else -> Unit
             }
         }
@@ -170,8 +232,10 @@ fun deleteCandidatesFor(
 ): List<DeleteCandidate> {
     val dataPath = normalizeFilePath(dataFile.data.filePath.orEmpty())
     if (dataPath.isEmpty() || deleteKindOf(dataFile.data) != null) return emptyList()
+    val dataScope = PartitionScope(dataFile.specId, dataFile.partition?.path)
     return candidates.mapNotNull { node ->
         val kind = deleteKindOf(node.data) ?: return@mapNotNull null
+        val requiredIds = node.schema?.struct?.fields?.filter { it.required }?.map { it.id }?.toSet().orEmpty()
         DeleteCandidate(
             delete = node,
             kind = kind,
@@ -181,6 +245,11 @@ fun deleteCandidatesFor(
                 targets = deleteTargetsOf(node.data),
                 dataPath = dataPath,
                 dataSequence = dataFile.sequenceNumber,
+                deleteScope = PartitionScope(node.specId, node.partition?.path),
+                dataScope = dataScope,
+                equalityMayTouch = if (kind == DeleteFileKind.EQUALITY) {
+                    { equalityDeleteMayTouch(dataFile.columnStats, node.columnStats, node.data.equalityIds.orEmpty(), requiredIds) }
+                } else null,
             ),
         )
     }
@@ -215,6 +284,11 @@ fun reachVerdict(
     targets: DeleteTargets,
     dataPath: String,
     dataSequence: Long,
+    /** The delete file's spec and partition, and the data file's — see [PartitionScope]; either null leaves the partition out. */
+    deleteScope: PartitionScope? = null,
+    dataScope: PartitionScope? = null,
+    /** For an equality delete, whether its bounds leave it able to touch the file — see [equalityDeleteMayTouch]; null leaves the bounds out. */
+    equalityMayTouch: (() -> Boolean)? = null,
 ): DeleteReachVerdict {
     // Both numbers always exist: an entry inherits its manifest's, and a v1 manifest's is 0 by
     // the spec — see [effectiveSequenceNumber]. A delete written after a v1 table's upgrade
@@ -228,9 +302,22 @@ fun reachVerdict(
     }
     if (!ordered) return DeleteReachVerdict.RULED_OUT_BY_SEQUENCE
 
+    // A vector, and a positional delete whose bounds name one file, are keyed by path; the
+    // partition is never consulted for them.
     targets.onlyPath?.let { only ->
         return if (normalizeFilePath(only) == dataPath) DeleteReachVerdict.REACHES
         else DeleteReachVerdict.RULED_OUT_BY_TARGET
+    }
+
+    // Everything else is keyed by spec and partition — except an equality delete under an
+    // unpartitioned spec, which is global. Two scopes this could not decode are not compared.
+    if (deleteScope != null && dataScope != null && deleteScope.isKnown && dataScope.isKnown) {
+        val global = kind == DeleteFileKind.EQUALITY && deleteScope.isUnpartitioned
+        if (!global && !deleteScope.sameAs(dataScope)) return DeleteReachVerdict.RULED_OUT_BY_PARTITION
+    }
+
+    if (kind == DeleteFileKind.EQUALITY && equalityMayTouch != null && !equalityMayTouch()) {
+        return DeleteReachVerdict.RULED_OUT_BY_BOUNDS
     }
 
     val low = targets.low

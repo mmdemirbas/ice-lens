@@ -1697,13 +1697,13 @@ internal fun DeletesReachingSection(node: GraphNode.FileNode, graph: GraphModel)
     }
     if (candidates.isEmpty()) return
 
-    val reaching = candidates.filter { it.verdict != DeleteReachVerdict.RULED_OUT_BY_TARGET &&
-        it.verdict != DeleteReachVerdict.RULED_OUT_BY_SEQUENCE }
+    val reaching = candidates.filter { it.verdict == DeleteReachVerdict.REACHES || it.verdict == DeleteReachVerdict.MAY_REACH }
     CountedSection("Deletes Reaching This File", reaching.size, "delete files") {
         Text(
             "Of the ${formatCount(candidates.size.toLong())} delete files drawn for this table, " +
-                "these are the ones a scan could pair with this data file — by sequence number and " +
-                "by the paths each records about itself, neither of which needs a file opened. The " +
+                "these are the ones a scan could pair with this data file — by sequence number, by " +
+                "spec and partition, by the paths each records about itself and, for an equality " +
+                "delete, by the bounds on its columns, none of which needs a file opened. The " +
                 "ruled-out rows are kept so the reason is visible: a delete file drawn beside this " +
                 "one usually applies to something else entirely. Every delete file the graph holds " +
                 "is weighed, including any a later commit has since removed.",
@@ -1748,9 +1748,15 @@ internal fun DeletesReachingSection(node: GraphNode.FileNode, graph: GraphModel)
                                 "sequence ${candidate.delete.sequenceNumber} is below this file's " +
                                     "${node.sequenceNumber}, so this file did not exist yet"
                             }
+                        // A delete is keyed by the spec and partition it was written under; only an
+                        // equality delete under an unpartitioned spec is weighed against every file.
+                        DeleteReachVerdict.RULED_OUT_BY_PARTITION ->
+                            "it is keyed to ${describeScope(candidate.delete)}; this file is in ${describeScope(node)}"
+                        DeleteReachVerdict.RULED_OUT_BY_BOUNDS ->
+                            "its bounds on the equality columns do not overlap this file's"
                         DeleteReachVerdict.MAY_REACH -> when (candidate.kind) {
                             DeleteFileKind.EQUALITY ->
-                                "an equality delete records no target, so only reading it settles this"
+                                "it records no target and its bounds overlap this file's; only reading it settles this"
                             else -> "this file is inside its recorded range, which does not name it"
                         }
                     },
@@ -1766,6 +1772,12 @@ internal fun DeletesReachingSection(node: GraphNode.FileNode, graph: GraphModel)
         )
         DeletedRowCount(node, candidates)
     }
+}
+
+/** `p=y under spec 1`, or `the unpartitioned spec 0` — the key a scan files a delete under. */
+private fun describeScope(node: GraphNode.FileNode): String {
+    val partition = node.partition?.path
+    return if (partition.isNullOrEmpty()) "the unpartitioned spec ${node.specId}" else "$partition under spec ${node.specId}"
 }
 
 /**

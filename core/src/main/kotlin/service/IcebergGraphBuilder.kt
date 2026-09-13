@@ -297,6 +297,7 @@ object IcebergGraphBuilder {
                                         simpleId = simpleId,
                                         schema = unifiedManifest.schema,
                                         partition = unifiedDataFile.partition,
+                                        specId = unifiedManifest.metadata.partitionSpecId,
                                         localPath = unifiedDataFile.path.toString(),
                                         pathResolution = unifiedDataFile.pathResolution,
                                         sortOrder = dataFile.sortOrderId?.let { sortOrdersById[it.toInt()] },
