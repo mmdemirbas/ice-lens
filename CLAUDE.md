@@ -69,6 +69,7 @@ core/src/main/kotlin/
 │   ├── ManifestMergePlan.kt   # What the next commit does to the manifest list — ManifestMergeManager's bins and verdicts
 │   ├── MaintenanceInput.kt    # The newest metadata and the current snapshot's node, carried on the table node for the planners — never read off the drawn graph
 │   ├── FileHistory.kt         # One file across the retained snapshots — added by, removed by, still listed live by — on either format
+│   ├── Integrity.kt           # Every recorded figure against the same figure counted, over the whole table at once — the panels' checks, run everywhere
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
@@ -120,6 +121,7 @@ desktop/src/main/kotlin/
     ├── NodeDetails.kt         # Inspector panel — header, multi-select, the shared sections and helpers the panels reach for
     ├── MaintenanceSections.kt # The planners' sections — rewrite, manifest merge, expiry and its files, compaction, the table's summary line per procedure
     ├── FileHistorySection.kt  # A file's life on both file panels: which commit removed it, and what still keeps it on disk
+    ├── IntegritySection.kt    # The whole-table check behind a click on the table panel, and its findings
     ├── NodePanels.kt          # Table, row, error and group panels
     ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
     ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
@@ -738,6 +740,21 @@ intellij/src/main/kotlin/plugin/
   lists an expiry removes; the first version read the graph and was complete only on tables
   small enough to draw whole. Data files first and in the error colour, `MAX_EXPIRY_FILE_ROWS`
   (200) listed
+- **"Is this table consistent" is one click, and it runs the panels' own checks.**
+  `model/Integrity.kt` runs `manifestTallies` on every distinct manifest, each commit's
+  `snapshotChangeOf(...).tallies` and `snapshotTotals` on its closure (Iceberg), and
+  `paimonManifestTallies` on every distinct manifest with `paimonRecordTallies` on every
+  snapshot's replay across main, the branches and the tag-only snapshots (Paimon), and lists the
+  pairs that disagree with where they are — nothing of its own, so it cannot say anything a
+  node's panel would not. `checked` counts only pairs with both sides; a figure a writer did not
+  record is not a comparison. The two checks that walk a closure per snapshot stop after
+  `MAX_CLOSURE_CHECKS` (50), newest first, and the report says how far they got; the statistics
+  files stay on their own panels, being file reads. It rides `TableNode.integrity` behind a
+  click, the `UnreferencedFilesSection` shape. `IntegrityFixtureTest` holds every engine-written
+  table to no findings but the two the format wrote — `tg` and `pea` each keep a tag on a
+  snapshot whose changelog list the expiry deleted, so the tag's `changelogRecordCount` stands
+  against nothing — and proves the report reaches the checks the other way, by changing two
+  summary figures in a copy's newest `metadata.json` and requiring exactly those two findings
 - **A file's history is a third reading of the walks the suite already trusts, and it is asked
   of one file at a time.** `model/FileHistory.kt` answers the two questions a missing-file error
   raises — which commit removed it, and what still lists it live, which is what keeps it on disk
@@ -1575,7 +1592,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,070 tests across 134 files (813 in :core, 254 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,080 tests across 135 files (817 in :core, 255 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

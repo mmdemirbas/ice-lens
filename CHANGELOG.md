@@ -112,6 +112,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The table panel checks every recorded figure at once.** `Integrity`, behind a click: manifest
+  counts, commit summaries and snapshot totals on Iceberg, manifest counts and record counts on
+  Paimon — the checks each node's panel runs, over the whole table, listing the pairs that
+  disagree and where. Every checked-in table agrees with itself but for the changelog count a
+  tag records against a list the expiry deleted.
 - **A file panel tells the file's history.** On both formats: which commit added the file, which
   removed it, and which retained snapshots still list it live — the line a missing-file error
   sends a reader looking for, and the reason a removed file is still on disk. Live agrees with the

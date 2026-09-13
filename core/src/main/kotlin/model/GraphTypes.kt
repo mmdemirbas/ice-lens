@@ -366,6 +366,11 @@ sealed class GraphNode(
          * graph. Deferred because the builder makes this node before the snapshot nodes exist.
          */
         val maintenance: DeferredRead<MaintenanceInput> = DeferredRead.none(),
+        /**
+         * Every recorded figure against the same figure counted, over the whole table — see
+         * [IntegrityReport]. Behind a click, because two of its checks walk a closure per snapshot.
+         */
+        val integrity: DeferredRead<IntegrityReport> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 240.0, 96.0)

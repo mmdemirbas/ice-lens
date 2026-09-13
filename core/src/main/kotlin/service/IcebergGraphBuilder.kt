@@ -63,6 +63,7 @@ object IcebergGraphBuilder {
             tableSummary,
             unreferencedFiles = DeferredRead.of { findUnreferencedFiles(tableModel) },
             expiryFiles = DeferredRead.of { tableModel.expiryFileInput() },
+            integrity = DeferredRead.of { tableModel.integrityReport() },
             // Closes over `logicalNodes` like the vector index below: it is read after the
             // traversal has filled it, so the current snapshot's node is there whether or not
             // aggregation goes on to draw it.

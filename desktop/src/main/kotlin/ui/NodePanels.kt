@@ -166,7 +166,8 @@ internal fun ColumnScope.TablePanel(
         currentGraph.let { graph ->
             ScanPruningSection(graph, scanFilter, onScanFilterChange)
         }
-        // The panel's other control, kept beside the first for the same reason.
+        // The panel's other controls, kept beside the first for the same reason.
+        IntegritySection(node)
         UnreferencedFilesSection(node)
 
         // Folded, and out of the identity table above, because none of the three

@@ -48,6 +48,7 @@ so and the inspector lists all of them.
 - **What a scan would skip**: a filter (`WHERE`-clause or form, with `AND` / `OR` / `NOT` / `IN` / `BETWEEN` / `LIKE`) evaluated against manifest partition summaries and file column bounds, with the term that proved each skip
 - **What a commit did** — folded from the manifests it wrote, checked against its own summary — and **what is different between any two snapshots**, on either format, with one side pinned and the other stepped through history
 - Delete files paired with the data files they reach, dangling deletes named, deletion vectors decoded to the rows they mark, and the live row count behind a click
+- One click checks every figure the metadata records against the same figure counted — manifest counts, commit summaries, snapshot totals, Paimon record counts — over the whole table
 - A file's history on either format — the commit that added it, the one that removed it, and the retained snapshots that still list it live and so keep it on disk
 - Per-snapshot partition breakdown, largest first; per-partition and table statistics files opened and shown against their records
 - What `expire_snapshots` would remove and what keeps the rest — a ref on Iceberg, a consumer or the retention bounds on Paimon — and which files that frees: by which cleanup on Iceberg, and past which tag on Paimon; rollbacks read off the snapshot log

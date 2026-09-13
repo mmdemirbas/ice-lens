@@ -1851,6 +1851,34 @@ class InspectorRenderTest {
     }
 
     /**
+     * The whole-table check, on the one table whose metadata disagrees with itself — `tg`'s tag
+     * records a changelog count against a list the expiry deleted — and on `mor`, where every
+     * comparison agrees, so the line for a clean table is seen once. Both wait for the run.
+     */
+    @Test
+    fun `a table checks every recorded figure at once`() {
+        val tg = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/tg").absolutePath)),
+            showRows = false,
+        )
+        val tgTable = tg.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("integrity", width = 1400, height = 460, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                IntegritySection(tgTable, startRequested = true) { settled.set(true) }
+            }
+        }
+
+        val morTable = graphFor("mor").nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val cleanSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("integrity-agrees", width = 1400, height = 300, ready = cleanSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                IntegritySection(morTable, startRequested = true) { cleanSettled.set(true) }
+            }
+        }
+    }
+
+    /**
      * The same graph at two display scales, and the assertion that it is the same drawing.
      *
      * A scene twice as wide, twice as tall and at twice the density is the same window on a
