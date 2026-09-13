@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **A looked-up row whose delete file could not be read is `not decided`, not `live`.** The Iceberg
+  lookup noted the unread delete and still reported the row live; a vector decoded past its cap
+  read the same way.
 - **The maintenance summary and the snapshot panel's rewrite and merge sections plan from the
   newest metadata and the current snapshot whatever the page size draws.** They looked both up on
   the drawn graph, where each is the last of its siblings — so a page size that folded them, or a
@@ -117,11 +120,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The IDE tool window's table row says what an expiry would remove** — `older_than = now` on
   Iceberg, a bare call on Paimon — the one maintenance line that needs no walk.
-- **Row lookup.** Under the scan filter on an Iceberg table panel, a click reads the files the
-  filter leaves and lists the matching rows with each one's fate — live, deleted by a vector, by a
-  positional delete or by an equality delete, naming the file that did it. Equality deletes are
-  evaluated for a looked-up row, which the metadata alone never could. Checked against the rows
-  the `mor`, `eqdel` and `v3` scripts left.
+- **Row lookup.** Under the scan filter on a table panel, a click reads the files the filter
+  leaves and lists the matching rows with each one's fate. On Iceberg: live, deleted by a vector,
+  by a positional delete or by an equality delete, naming the file that did it — equality deletes
+  are evaluated for a looked-up row, which the metadata alone never could. On Paimon: live, marked
+  by the vector its index file holds, a `-D` or `-U` retraction, or superseded by a later write
+  for its key in the bucket, naming the file holding it — the bucket's other files are read for
+  the key whether or not the filter left them, so a filter on an old value finds the record it
+  matches and says what shadows it. Paimon deletion vectors are decoded from the index file, both
+  the 32-bit form and the 64-bit one that is Iceberg's blob. Checked against the rows the `mor`,
+  `eqdel`, `v3`, `lk`, `dv`, `ad` and `pc` scripts left.
 - **Time travel resolved.** A typed time and the snapshot `TIMESTAMP AS OF` (Iceberg) or
   `scan.timestamp-millis` (Paimon) would land on, the way each engine resolves it — on a
   rolled-back table a time between the abandoned commit and the reset lands on the abandoned

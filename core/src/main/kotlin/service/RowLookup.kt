@@ -4,7 +4,11 @@ import model.DeleteFileKind
 import model.DeletionVector
 import model.LookupDataFile
 import model.LookupDeleteFile
+import model.LookupFileOutcome
+import model.RowFate
+import model.RowHit
 import model.RowLookupInput
+import model.RowLookupResult
 import model.ScanFilter
 import model.normalizeFilePath
 import model.toSql
@@ -31,67 +35,34 @@ object RowLookup {
     /** Hits kept per data file. */
     const val MAX_HITS_PER_FILE = 20
 
-    enum class RowFate(val label: String) {
-        LIVE("live"),
-        VECTOR_DELETED("deleted by a vector"),
-        POSITION_DELETED("deleted by position"),
-        EQUALITY_DELETED("deleted by equality"),
-        UNKNOWN("not decided"),
-    }
-
-    data class Hit(
-        val file: LookupDataFile,
-        /** `file_row_number`; null for a format DuckDB gives no position for. */
-        val position: Long?,
-        val cells: Map<String, Any?>,
-        val fate: RowFate,
-        /** The delete file that decided it, when one did. */
-        val by: String? = null,
-        val note: String? = null,
-    )
-
-    data class FileOutcome(val file: LookupDataFile, val hits: Int, val error: String? = null)
-
-    data class Result(
-        val filesRead: List<FileOutcome>,
-        /** Live data files the filter ruled out before any was opened. */
-        val filesRuledOut: Int,
-        /** Live data files left unread by [MAX_FILES]. */
-        val filesLeft: Int,
-        val hits: List<Hit>,
-    ) {
-        val live: Int get() = hits.count { it.fate == RowFate.LIVE }
-        val deleted: Int get() = hits.count { it.fate != RowFate.LIVE && it.fate != RowFate.UNKNOWN }
-    }
-
     /**
      * Reads the files the filter leaves — every live data file whose normalised recorded path is
      * not in [ruledOut] — and decides each hit.
      */
-    fun lookup(input: RowLookupInput, filter: ScanFilter, ruledOut: Set<String>): Result {
+    fun lookup(input: RowLookupInput, filter: ScanFilter, ruledOut: Set<String>): RowLookupResult {
         val candidates = input.dataFiles.filter { normalizeFilePath(it.recordedPath) !in ruledOut }
         val toRead = candidates.take(MAX_FILES)
         val predicate = filter.toSql { column -> input.schema?.struct?.fields?.firstOrNull { it.name == column }?.type }
         val vectors = mutableMapOf<String, DeletionVector?>()
-        val outcomes = mutableListOf<FileOutcome>()
-        val hits = mutableListOf<Hit>()
+        val outcomes = mutableListOf<LookupFileOutcome>()
+        val hits = mutableListOf<RowHit>()
         for (file in toRead) {
             val rows = runCatching { readMatches(file, predicate.sql, predicate.params) }
             val error = rows.exceptionOrNull()
             if (error != null) {
                 logger.warn("Could not read {}: {}", file.localPath, error.message)
-                outcomes += FileOutcome(file, 0, error.message ?: error.toString())
+                outcomes += LookupFileOutcome(file.recordedPath, 0, error.message ?: error.toString())
                 continue
             }
             val matched = rows.getOrThrow()
-            outcomes += FileOutcome(file, matched.size)
+            outcomes += LookupFileOutcome(file.recordedPath, matched.size)
             val deletes = input.deletesFor(file.recordedPath)
             matched.forEach { cells ->
                 val position = (cells[SampleRowReader.FILE_ROW_NUMBER] as? Number)?.toLong()
                 hits += decide(file, position, cells - SampleRowReader.FILE_ROW_NUMBER, deletes, vectors)
             }
         }
-        return Result(outcomes, candidates.size.let { input.dataFiles.size - it }, candidates.size - toRead.size, hits)
+        return RowLookupResult(outcomes, input.dataFiles.size - candidates.size, candidates.size - toRead.size, hits)
     }
 
     private fun readMatches(file: LookupDataFile, where: String, params: List<String>): List<Map<String, Any?>> {
@@ -117,11 +88,14 @@ object RowLookup {
         cells: Map<String, Any?>,
         deletes: List<LookupDeleteFile>,
         vectors: MutableMap<String, DeletionVector?>,
-    ): Hit {
-        if (deletes.isEmpty()) return Hit(file, position, cells, RowFate.LIVE)
+    ): RowHit {
+        val path = file.recordedPath
+        if (deletes.isEmpty()) return RowHit(path, position, cells, RowFate.LIVE)
         if (position == null && deletes.any { it.kind != DeleteFileKind.EQUALITY }) {
-            return Hit(file, position, cells, RowFate.UNKNOWN, note = "no position: DuckDB numbers rows in Parquet only")
+            return RowHit(path, position, cells, RowFate.UNKNOWN, note = "no position: DuckDB numbers rows in Parquet only")
         }
+        // A delete that could not be applied leaves the row undecided: "no delete proved it gone"
+        // is not "live" when one of them was never read.
         var note: String? = null
         for (delete in deletes) {
             when (delete.kind) {
@@ -135,25 +109,25 @@ object RowLookup {
                         }.onFailure { logger.warn("Could not read the vector in {}: {}", delete.localPath, it.message) }.getOrNull()
                     }
                     if (vector == null) { note = "a vector could not be read"; continue }
-                    if (position!! in vector.positions) return Hit(file, position, cells, RowFate.VECTOR_DELETED, delete.recordedPath)
+                    if (position!! in vector.positions) return RowHit(path, position, cells, RowFate.VECTOR_DELETED, delete.recordedPath)
                     if (vector.truncated) note = "the vector holds more positions than were decoded"
                 }
                 DeleteFileKind.POSITIONAL -> {
                     val marked = runCatching { positionMarked(delete, file.recordedPath, position!!) }
                         .onFailure { logger.warn("Could not read {}: {}", delete.localPath, it.message) }.getOrNull()
                     if (marked == null) { note = "a positional delete could not be read"; continue }
-                    if (marked) return Hit(file, position, cells, RowFate.POSITION_DELETED, delete.recordedPath)
+                    if (marked) return RowHit(path, position, cells, RowFate.POSITION_DELETED, delete.recordedPath)
                 }
                 DeleteFileKind.EQUALITY -> {
                     if (delete.equalityColumns.isEmpty()) { note = "an equality delete names fields the schema does not"; continue }
                     val matched = runCatching { equalityMatches(delete, cells) }
                         .onFailure { logger.warn("Could not read {}: {}", delete.localPath, it.message) }.getOrNull()
                     if (matched == null) { note = "an equality delete could not be read"; continue }
-                    if (matched) return Hit(file, position, cells, RowFate.EQUALITY_DELETED, delete.recordedPath)
+                    if (matched) return RowHit(path, position, cells, RowFate.EQUALITY_DELETED, delete.recordedPath)
                 }
             }
         }
-        return Hit(file, position, cells, RowFate.LIVE, note = note)
+        return RowHit(path, position, cells, if (note == null) RowFate.LIVE else RowFate.UNKNOWN, note = note)
     }
 
     /** Whether the positional delete holds `(file_path, pos)` — the path as the manifest recorded the data file. */

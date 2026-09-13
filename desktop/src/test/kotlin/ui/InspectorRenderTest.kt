@@ -1891,6 +1891,27 @@ class InspectorRenderTest {
     }
 
     /**
+     * The Paimon lookup on `lk`, whose six records show every fate the format has at once: the
+     * updated key's old record superseded by the file holding the new one, the deleted key's
+     * record superseded by its `-D`, that `-D` as a retraction, and three live rows.
+     */
+    @Test
+    fun `a Paimon row lookup names what shadows each record`() {
+        val lk = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/lk").absolutePath)),
+            showRows = false,
+        )
+        val table = lk.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val filter = ScanFilter.Term(model.ScanPredicate("k", model.PredicateOp.GTE, "1"))
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-row-lookup", width = 1400, height = 900, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                RowLookupSection(table, lk, filter, startRequested = true) { settled.set(true) }
+            }
+        }
+    }
+
+    /**
      * The whole-table check, on the one table whose metadata disagrees with itself — `tg`'s tag
      * records a changelog count against a list the expiry deleted — and on `mor`, where every
      * comparison agrees, so the line for a clean table is seen once. Both wait for the run.

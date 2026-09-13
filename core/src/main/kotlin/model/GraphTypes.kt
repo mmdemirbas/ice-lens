@@ -373,6 +373,8 @@ sealed class GraphNode(
         val integrity: DeferredRead<IntegrityReport> = DeferredRead.none(),
         /** What finding a row in the current snapshot takes — see [RowLookupInput]. Nothing on Paimon. */
         val rowLookup: DeferredRead<RowLookupInput> = DeferredRead.none(),
+        /** The same for a Paimon table's latest snapshot — see [PaimonRowLookupInput]. Nothing on Iceberg. */
+        val paimonRowLookup: DeferredRead<PaimonRowLookupInput> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 240.0, 96.0)

@@ -36,6 +36,54 @@ data class LookupDeleteFile(
     val equalityColumns: List<String> = emptyList(),
 )
 
+/**
+ * What a looked-up row turned out to be. The first four are Iceberg's — a delete file of each
+ * kind, or none — and the next two are Paimon's, where a primary-key file holds every write as
+ * a row and a row is gone when a later write for its key exists or when it is itself the marker
+ * of one. [UNKNOWN] is the honest answer where a rule could not be applied, never a guess.
+ */
+enum class RowFate(val label: String) {
+    LIVE("live"),
+    VECTOR_DELETED("deleted by a vector"),
+    POSITION_DELETED("deleted by position"),
+    EQUALITY_DELETED("deleted by equality"),
+    /** A Paimon `-D` or `-U` record: the marker a delete or an update writes, not a row of the table. */
+    RETRACTION("a retraction"),
+    /** A Paimon record a later write for the same key shadows under the merge engine. */
+    SUPERSEDED("superseded"),
+    UNKNOWN("not decided"),
+    ;
+
+    val deleted: Boolean get() = this != LIVE && this != UNKNOWN
+}
+
+data class RowHit(
+    /** The data file the row was read from — Iceberg's recorded path, Paimon's file name. */
+    val filePath: String,
+    /** `file_row_number`; null for a format DuckDB gives no position for. */
+    val position: Long?,
+    val cells: Map<String, Any?>,
+    val fate: RowFate,
+    /** The file that decided it, when one did — a delete file, an index file, a later data file. */
+    val by: String? = null,
+    val note: String? = null,
+)
+
+data class LookupFileOutcome(val filePath: String, val hits: Int, val error: String? = null)
+
+data class RowLookupResult(
+    val filesRead: List<LookupFileOutcome>,
+    /** Live data files the filter ruled out before any was opened. */
+    val filesRuledOut: Int,
+    /** Live data files left unread by the cap. */
+    val filesLeft: Int,
+    val hits: List<RowHit>,
+) {
+    val live: Int get() = hits.count { it.fate == RowFate.LIVE }
+    val deleted: Int get() = hits.count { it.fate.deleted }
+    val undecided: Int get() = hits.count { it.fate == RowFate.UNKNOWN }
+}
+
 data class RowLookupInput(
     val snapshotId: Long?,
     val schema: IcebergSchemaModel?,

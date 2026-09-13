@@ -48,7 +48,7 @@ so and the inspector lists all of them.
 - **What a scan would skip**: a filter (`WHERE`-clause or form, with `AND` / `OR` / `NOT` / `IN` / `BETWEEN` / `LIKE`) evaluated against manifest partition summaries and file column bounds, with the term that proved each skip
 - **What a commit did** — folded from the manifests it wrote, checked against its own summary — and **what is different between any two snapshots**, on either format, with one side pinned and the other stepped through history
 - Delete files paired with the data files they reach, dangling deletes named, deletion vectors decoded to the rows they mark, and the live row count behind a click
-- **Row lookup**: the rows a filter matches, read from the files it leaves, each with its fate — live, or deleted by which vector, positional delete or equality delete
+- **Row lookup** on either format: the rows a filter matches, read from the files it leaves, each with its fate — live, or deleted by which vector, positional delete or equality delete on Iceberg; live, vector-marked, a retraction, or superseded by which later write on Paimon
 - One click checks every figure the metadata records against the same figure counted — manifest counts, commit summaries, snapshot totals, Paimon record counts — over the whole table
 - A file's history on either format — the commit that added it, the one that removed it, and the retained snapshots that still list it live and so keep it on disk
 - Per-snapshot partition breakdown, largest first; per-partition and table statistics files opened and shown against their records
@@ -72,11 +72,12 @@ so and the inspector lists all of them.
 | Detection | `metadata/` with `*.metadata.json` | `snapshot/` + `schema/` |
 | Metadata | metadata.json (v1–v3), snapshot log with rollbacks marked, metadata log, refs with retention, partition specs, sort orders, table and partition statistics files, row lineage (`next-row-id`, `first-row-id`, `added-rows`) | `snapshot/snapshot-N`, `schema/schema-N`, tags, branches, consumers, the index manifest (hash indexes and deletion vectors), `ANALYZE` statistics |
 | Manifests | manifest list (Avro) → manifest (Avro), data / delete split, partition summaries decoded against each manifest's own spec | base / delta / changelog manifest lists → manifests, replayed delta-over-base |
-| Files | data, positional-delete, equality-delete, v3 deletion vectors (Puffin, decoded), partition tuples and column bounds decoded against the manifest's own schema, inherited sequence numbers and row ids | data files with LSM level and bucket, key and value bounds, file indexes, external paths, row tracking, data-evolution patch files paired with the file they patch |
+| Files | data, positional-delete, equality-delete, v3 deletion vectors (Puffin, decoded), partition tuples and column bounds decoded against the manifest's own schema, inherited sequence numbers and row ids | data files with LSM level and bucket, key and value bounds, file indexes, external paths, row tracking, data-evolution patch files paired with the file they patch, deletion vectors decoded from the index file |
 | Rows | Parquet / ORC / Avro via DuckDB, capped at 50 per file, with `_row_id` and deleted rows marked | same, with `_ROW_ID` and the `+I` / `-U` / `+U` / `-D` kind of each key-value row |
 
 Paimon has no Iceberg-style positional or equality delete files; removals are `_KIND=1`
-manifest entries, reported as *entries recording a removal* rather than as delete files.
+manifest entries, reported as *entries recording a removal* rather than as delete files, and
+row-level deletes on a table with `deletion-vectors.enabled` are vectors in the index file.
 
 ## Quick start
 

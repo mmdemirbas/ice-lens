@@ -103,7 +103,7 @@ ice-lens is a single-module Kotlin Compose Desktop application. All code lives i
 │  FileHistorySection.kt   A file's life across the retained snapshots, and whether an expiry would free it
 │  IntegritySection.kt     The whole-table check behind a click: every recorded figure against the same figure counted
 │  TimeTravelSection.kt    A typed time and the snapshot a read as of it lands on
-│  RowLookupSection.kt     The scan filter one step further: the matching rows read from the files it leaves, each with its fate
+│  RowLookupSection.kt     The scan filter one step further: the matching rows read from the files it leaves, each with its fate, on either format
 │  NodePanels.kt       Table / row / error / group panels
 │  IcebergNodePanels.kt  Metadata / snapshot / manifest / file panels
 │  PaimonNodePanels.kt   Paimon snapshot / schema / manifest list / manifest / data file panels

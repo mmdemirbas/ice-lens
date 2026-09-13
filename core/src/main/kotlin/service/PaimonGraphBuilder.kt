@@ -48,6 +48,7 @@ object PaimonGraphBuilder {
             unreferencedFiles = DeferredRead.of { findUnreferencedFiles(tableModel) },
             paimonExpiryFiles = DeferredRead.of { tableModel.expiryFileInput() },
             integrity = DeferredRead.of { tableModel.integrityReport() },
+            paimonRowLookup = DeferredRead.of { tableModel.paimonRowLookupInput() },
             // Read after the traversal fills `logicalNodes`, so the latest snapshot's node is
             // found whether or not aggregation goes on to draw it.
             maintenance = DeferredRead.of {

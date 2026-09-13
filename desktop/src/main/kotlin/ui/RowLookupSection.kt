@@ -18,11 +18,14 @@ import kotlinx.coroutines.withContext
 import model.FileFate
 import model.GraphModel
 import model.GraphNode
+import model.RowFate
+import model.RowLookupResult
 import model.ScanFilter
 import model.evaluateScan
 import model.isEmpty
 import model.normalizeFilePath
 import model.render
+import service.PaimonRowLookup
 import service.RowLookup
 
 /** Cells a hit's row prints before it stops. */
@@ -35,7 +38,9 @@ private const val MAX_ROW_CELLS = 8
  * whether a delete file removes it, which is the one question about a merge-on-read table the
  * metadata cannot answer. Behind a click, since it is a DuckDB read per file, and it runs
  * against the filter as it stands when the click lands; the files the drawn part of the graph
- * ruled out are not opened, and a file not drawn is read rather than guessed at.
+ * ruled out are not opened, and a file not drawn is read rather than guessed at. Both formats
+ * land here — the result is one shape — and the file a Paimon row is looked up in is named by
+ * its file name, since that is what a vector range and a manifest entry name it by.
  */
 @Composable
 internal fun RowLookupSection(
@@ -46,21 +51,34 @@ internal fun RowLookupSection(
     onSettled: () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
-    if (!node.rowLookup.isPresent) return
+    val paimon = node.paimonRowLookup.isPresent
+    if (!node.rowLookup.isPresent && !paimon) return
 
     val ruledOut = remember(graph, filter) {
         val plan = evaluateScan(graph, filter)
         plan.files.filter { it.value.fate == FileFate.SKIPPED }.keys
-            .mapNotNull { id -> (graph.nodeById[id] as? GraphNode.FileNode)?.data?.filePath?.let(::normalizeFilePath) }
+            .mapNotNull { id ->
+                when (val file = graph.nodeById[id]) {
+                    is GraphNode.FileNode -> file.data.filePath?.let(::normalizeFilePath)
+                    is GraphNode.PaimonDataFileNode -> file.entry.file?.fileName
+                    else -> null
+                }
+            }
             .toSet()
     }
     var requestedFor by remember(node.id) { mutableStateOf<ScanFilter?>(if (startRequested) filter else null) }
-    val outcome by produceState<Result<RowLookup.Result>?>(null, node.id, requestedFor) {
+    val outcome by produceState<Result<RowLookupResult>?>(null, node.id, requestedFor) {
         value = null
         val asked = requestedFor
         if (asked != null) {
             value = withContext(Dispatchers.IO) {
-                runCatching { RowLookup.lookup(requireNotNull(node.rowLookup.value) { "no current snapshot to read" }, asked, ruledOut) }
+                runCatching {
+                    if (paimon) {
+                        PaimonRowLookup.lookup(requireNotNull(node.paimonRowLookup.value) { "no snapshot to read" }, asked, ruledOut)
+                    } else {
+                        RowLookup.lookup(requireNotNull(node.rowLookup.value) { "no current snapshot to read" }, asked, ruledOut)
+                    }
+                }
             }
             onSettled()
         }
@@ -70,10 +88,18 @@ internal fun RowLookupSection(
 
     Section(title) {
         Text(
-            "The rows the filter matches, read from the live data files it did not rule out, each with " +
-                "its fate under the delete files a scan pairs with its file — a vector by the row's " +
-                "position, a positional delete by (file_path, pos), an equality delete by the row's own " +
-                "values. The one question about a merge-on-read table the metadata cannot settle.",
+            if (paimon) {
+                "The rows the filter matches, read from the latest snapshot's live data files it did not " +
+                    "rule out, each with its fate: marked by the vector its index file holds, a -D or -U " +
+                    "retraction rather than a row, or shadowed by a later write for its key in the same " +
+                    "bucket — the merge a read runs under merge-engine = deduplicate, applied to one row. " +
+                    "The bucket's other files are read for the key whether or not the filter left them."
+            } else {
+                "The rows the filter matches, read from the live data files it did not rule out, each with " +
+                    "its fate under the delete files a scan pairs with its file — a vector by the row's " +
+                    "position, a positional delete by (file_path, pos), an equality delete by the row's own " +
+                    "values. The one question about a merge-on-read table the metadata cannot settle."
+            },
             fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 8.dp),
@@ -87,7 +113,7 @@ internal fun RowLookupSection(
                 OutlinedButton(onClick = { requestedFor = filter }) {
                     Text("Read the files the filter leaves (${RowLookup.MAX_FILES} at most)")
                 }
-                if (result != null) ResultBody(result)
+                if (result != null) ResultBody(result, paimon)
             }
             outcome == null -> Text("Reading ${filter.render()}…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
             result == null -> Text(
@@ -95,13 +121,13 @@ internal fun RowLookupSection(
                 fontSize = TypeScale.small,
                 color = colors.error,
             )
-            else -> ResultBody(result)
+            else -> ResultBody(result, paimon)
         }
     }
 }
 
 @Composable
-private fun ResultBody(result: RowLookup.Result) {
+private fun ResultBody(result: RowLookupResult, paimon: Boolean) {
     val colors = MaterialTheme.colorScheme
     val read = result.filesRead.size
     val failed = result.filesRead.count { it.error != null }
@@ -110,32 +136,36 @@ private fun ResultBody(result: RowLookup.Result) {
             (if (result.filesRuledOut > 0) ", ${result.filesRuledOut} ruled out by the filter" else "") +
             (if (result.filesLeft > 0) ", ${result.filesLeft} left unread by the cap" else "") +
             (if (failed > 0) ", $failed could not be read" else "") +
-            ": ${result.live} live, ${result.deleted} deleted" +
-            (result.hits.count { it.fate == RowLookup.RowFate.UNKNOWN }.takeIf { it > 0 }?.let { ", $it not decided" } ?: "") + ".",
+            ": ${result.live} live, ${result.deleted} ${if (paimon) "not live" else "deleted"}" +
+            (result.undecided.takeIf { it > 0 }?.let { ", $it not decided" } ?: "") + ".",
         fontSize = TypeScale.small,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(bottom = 4.dp),
     )
-    result.filesRead.filter { it.error != null }.forEach { Text("Could not read ${fileNameFromPath(it.file.recordedPath)}: ${it.error}", fontSize = TypeScale.small, color = colors.error) }
+    result.filesRead.filter { it.error != null }.forEach { Text("Could not read ${fileNameFromPath(it.filePath)}: ${it.error}", fontSize = TypeScale.small, color = colors.error) }
     if (result.hits.isNotEmpty()) {
         WideTable(
-            headers = listOf("Fate", "By", "File", "Position", "Row"),
+            // The fate, then why, then by what, then where: a Paimon superseded record carries a note
+            // on every row, and folded into the fate cell it wrapped the column to three lines.
+            headers = listOf("Fate", "Note", "By", "File", "Position", "Row"),
             // 520dp holds a Spark-written data file name on one line.
-            columnWidths = listOf(190.dp, 300.dp, 520.dp, 80.dp, 600.dp),
+            columnWidths = listOf(190.dp, 300.dp, 300.dp, 520.dp, 80.dp, 600.dp),
             rows = result.hits.map { hit ->
                 listOf(
-                    hit.fate.label + (hit.note?.let { " — $it" } ?: ""),
+                    hit.fate.label,
+                    hit.note ?: "—",
                     hit.by?.let(::fileNameFromPath) ?: "—",
-                    fileNameFromPath(hit.file.recordedPath),
+                    fileNameFromPath(hit.filePath),
                     hit.position?.toString() ?: "—",
-                    hit.cells.entries.take(MAX_ROW_CELLS).joinToString(", ") { "${it.key}=${it.value ?: "null"}" } +
+                    // A Paimon key-value row leads with three system columns; the row's own come first, as on the card.
+                    hit.cells.entries.sortedBy { it.key.startsWith("_") }.take(MAX_ROW_CELLS).joinToString(", ") { "${it.key}=${it.value ?: "null"}" } +
                         (if (hit.cells.size > MAX_ROW_CELLS) ", …" else ""),
                 )
             },
             leadCellColors = result.hits.map {
                 when (it.fate) {
-                    RowLookup.RowFate.LIVE -> null
-                    RowLookup.RowFate.UNKNOWN -> verdictUnevaluatedColor()
+                    RowFate.LIVE -> null
+                    RowFate.UNKNOWN -> verdictUnevaluatedColor()
                     else -> verdictSkippedColor()
                 }
             },

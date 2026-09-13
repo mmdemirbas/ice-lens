@@ -71,7 +71,8 @@ core/src/main/kotlin/
 │   ├── FileHistory.kt         # One file across the retained snapshots — added by, removed by, still listed live by — on either format
 │   ├── Integrity.kt           # Every recorded figure against the same figure counted, over the whole table at once — the panels' checks, run everywhere
 │   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
-│   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing
+│   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing — and the fates a hit can have, both formats
+│   ├── PaimonRowLookup.kt     # The same off a Paimon table's latest snapshot: the live files by bucket, the index manifest's vectors, the merge engine
 │   ├── ScanFilterSql.kt       # A ScanFilter as DuckDB's WHERE clause, every literal bound and cast to its column's type
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
@@ -92,6 +93,8 @@ core/src/main/kotlin/
 │   ├── PaimonReader.kt        # Paimon JSON snapshot/schema + Avro manifest list/manifest reading
 │   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet, ORC, Avro — max 50)
 │   ├── RowLookup.kt           # The rows a filter matches, read through DuckDB, and each one's fate under the delete files paired with its file
+│   ├── PaimonRowLookup.kt     # The same on Paimon: a record's fate under its file's vector, its own `_VALUE_KIND`, and the bucket's later writes for its key
+│   ├── PaimonDeletionVectorReader.kt # A Paimon index file's vector at (offset, length) → the row positions it marks; v1 32-bit, v2 as Iceberg's blob
 │   ├── StorageLocation.kt     # A location string → the Path that opens it. The one place a scheme is resolved
 │   ├── DuckDb.kt              # The shared DuckDB connection, and the object-store credentials configured on it
 │   ├── ObjectStorage.kt       # Listing and reading object storage through DuckDB, with the caches that make it viable
@@ -128,7 +131,7 @@ desktop/src/main/kotlin/
     ├── FileHistorySection.kt  # A file's life on both file panels: which commit removed it, and what still keeps it on disk
     ├── IntegritySection.kt    # The whole-table check behind a click on the table panel, and its findings
     ├── TimeTravelSection.kt   # A typed time and the snapshot it resolves to, on the metadata panel and the Paimon table panel
-    ├── RowLookupSection.kt    # The scan filter one step further: the matching rows read from the files it leaves, each with its fate
+    ├── RowLookupSection.kt    # The scan filter one step further: the matching rows read from the files it leaves, each with its fate — both formats
     ├── NodePanels.kt          # Table, row, error and group panels
     ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
     ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
@@ -426,7 +429,37 @@ intellij/src/main/kotlin/plugin/
   `mor` 1,3,4,5,6 (2 compacted away without a trace, 7 by position, 5 as `echo-updated`),
   `eqdel` 1,4,5,7 (2 and 6 by equality across both files, 3 by position), `v3` 1,3,4,5 (2 by a
   vector; 4 twice, the old row marked and `delta-updated` live). An ORC or Avro hit has no
-  position and its fate is `not decided`, said rather than guessed
+  position and its fate is `not decided`, said rather than guessed — as is a hit whose delete file
+  could not be read or whose vector was decoded past `MAX_POSITIONS`, since "no delete proved it
+  gone" is not "live" when one was never applied
+- **A Paimon row is found the same way, and what decides it is the merge a read runs, applied
+  to one record.** `model/PaimonRowLookup.kt` reads what it takes off the latest snapshot on
+  `main` (`TableNode.paimonRowLookup`): the replay's live files with their partition and bucket,
+  the index manifest's `_DELETIONS_VECTORS_RANGES` with the index file each sits in, the
+  schema, the trimmed primary keys and `merge-engine`. `service/PaimonRowLookup.kt` reads the
+  files the filter leaves through the same DuckDB statement and decides a hit in the order the
+  format does: the vector its index file holds for the file, by position, first — the file's own
+  statement; then its `_VALUE_KIND`, since a `-D` or `-U` is the marker a delete or an update
+  wrote and not a row; then whether a later write for its key exists in the bucket, which under
+  `deduplicate` shadows it. **That last one needs the bucket's other files whether or not the
+  filter left them** — `lk`'s `v = 'b'` matches the old record of a key whose new value is `B`,
+  and the new record is in a file the filter never opens — so the bucket is asked once per bucket
+  the hits fall in (`UNION ALL` over its live files, the hit keys bound and cast, `max` and
+  `arg_max` per key), never once per hit. A merge engine that combines versions rather than
+  picking one is reported and not applied: a key with one record is that record, a key with
+  several is `not decided`. An append table has neither keys nor sequence, so a hit is live
+  unless its vector marks it (`ad`). `service/PaimonDeletionVectorReader.kt` decodes the vector
+  from the layout `DeletionVector.read` reads at 1.3.1 and the `dv` index's own bytes confirm:
+  a version byte opens the file; at each range's offset a big-endian size, a magic, the bitmap,
+  a big-endian CRC-32 over magic and bitmap — and the range's recorded length is the size, so it
+  excludes the size and CRC fields where a Puffin manifest's `content_size_in_bytes` includes
+  them. Magic `1581511376` is a 32-bit portable Roaring bitmap, which is a Puffin vector's inner
+  bitmap without the bucket wrapper, so `PuffinReader.readRoaring32` decodes it; magic
+  `1681511377` read little-endian is the bytes `D1 D3 39 64`, Iceberg's own blob copied over, and
+  the whole range goes through `PuffinReader.decodeDeletionVector` — `v3`'s Puffin blob is its
+  oracle. `PaimonRowLookupFixtureTest` holds `lk`, `dv`, `ad` and `pc` to their scripts, and
+  both formats land in one `RowLookupResult` with one `RowFate`, which is why the section is one
+  composable: `RETRACTION` and `SUPERSEDED` are the two fates Iceberg has no need of
 - **The one question asked from the directory rather than from the metadata is "what is here that
   nothing names".** `model/UnreferencedFiles.kt` walks the table root and subtracts every path the
   model resolved — manifest lists, manifests, data and delete files, Puffin vectors and statistics,
@@ -1656,7 +1689,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,100 tests across 138 files (832 in :core, 257 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,110 tests across 140 files (843 in :core, 258 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

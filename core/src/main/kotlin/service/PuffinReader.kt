@@ -194,7 +194,7 @@ object PuffinReader {
      * alone — 4,096 or fewer is an array, more is a 8 KiB bitset. Guessing from the byte count
      * would be right for every container the fixture has and wrong at the boundary.
      */
-    private fun readRoaring32(buffer: ByteBuffer, emit: (Long) -> Unit) {
+    internal fun readRoaring32(buffer: ByteBuffer, emit: (Long) -> Unit) {
         val start = buffer.position()
         val cookie = buffer.getInt()
 
