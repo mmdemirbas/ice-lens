@@ -1745,7 +1745,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,153 tests across 148 files (884 in :core, 261 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,162 tests across 151 files (893 in :core, 261 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1861,7 +1861,8 @@ container invocation and the traps in it:
 | `paimon/db.db/ao` | `PaimonAppendOnlyFixtureTest` | an append-only table, no primary key, `bucket = -1` — no key range, everything in `bucket-0`, and a DELETE that rewrites a file as an `APPEND` with a negative delta |
 | `paimon/db.db/br` | `PaimonBranchFixtureTest` | two branches — one created from a tag and committed to, one created empty; main and `dev` both hold a `snapshot-2`, and `bucket-0` holds a file only the branch names |
 | `paimon/db.db/cs` | `PaimonConsumerFixtureTest` | a consumer standing on snapshot 2, and an `expire_snapshots(retain_max = 1)` that left snapshots 2 and 3 because of it |
-| `paimon/db.db/fi` | `PaimonFileIndexFixtureTest` | a bloom-filter file index both ways — a 599 KB `.index` beside the first data file, 117 bytes embedded in the second entry |
+| `paimon/db.db/fi` | `PaimonFileIndexFixtureTest`, `PaimonFileIndexPruningTest` | a bloom-filter file index both ways — a 599 KB `.index` beside the first data file, 117 bytes embedded in the second entry — on a primary-key table, whose merge read consults neither |
+| `paimon/db.db/fa` | `PaimonFileIndexTest`, `PaimonFileIndexPruningTest` | the append twin — bloom filters on both columns, a 1,290-byte `.index` then an embedded one, and a 43-byte value for xxHash64's stripe; the table whose scan and read actually ask the index |
 | `paimon/db.db/ep` | `PaimonExternalPathFixtureTest` | `data-file.external-paths` — no bucket under the table, both files at `example/paimon/ep-files/bucket-0/` beside it, `_EXTERNAL_PATH` recorded |
 | `paimon/db.db/rt` | `PaimonRowTrackingFixtureTest` | `row-tracking.enabled` — two appends recording first ids 0 and 3, then a full compaction whose output records none and carries `_ROW_ID` per row |
 | `paimon/db.db/sm` | `PaimonStatsModeFixtureTest` | `fields.v.stats-mode = none` — `_VALUE_STATS` over two of three columns, named in `_VALUE_STATS_COLS`; the oracle for the subset decoding |
@@ -2275,7 +2276,46 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   filter over a million items is 599 KB and a file, over a hundred is 117 bytes and embedded —
   and the referenced-files walk names the extra files beside their data file, or a scan's index
   is reported as an orphan. The panel's `File Index` row says which, and "none" for a table with
-  no `file-index.*` property. The index bytes are not decoded
+  no `file-index.*` property — and what the index holds, read off its head
+- **The file index is decoded, and the scan plan asks it — where Paimon's own read would.**
+  `service/PaimonFileIndexReader.kt` reads the container `FileIndexFormat` writes at 1.3.1 (a
+  magic, a version, a head naming each column's index types with body offsets measured from the
+  container's start, then the bytes) from the `.index` file or the embedded bytes, into
+  `PaimonFileIndex` (`model/PaimonFileIndex.kt`), decoded on first use as
+  `PaimonDataFileNode.fileIndex`. Only `bloom-filter` is read: a 4-byte hash-function count and
+  `BloomFilter64`'s bit set, probed Kirsch–Mitzenmacher-style over one 64-bit hash — and **the
+  hash is `FastHash`'s, two functions by type**: xxHash64 with seed 0 over a string's bytes
+  (`xxHash64`, written from the published algorithm and held to its vectors) and Thomas Wang's
+  64-bit integer hash over anything numeric widened to a long, a date as its epoch day, a float
+  as its bits. `paimonFastHash` answers null for `BOOLEAN`, `DECIMAL` and the nested types,
+  which the writer refuses to index. `applyPaimonFileIndex` (`model/PaimonFileIndexPruning.kt`)
+  then marks every `=` the filter rules out as proved — `IN` is a disjunction of them by then —
+  and re-folds the verdict; an index the writer left empty is a skip for any equality, as
+  `EmptyFileIndexReader` reads it. **When it is asked is the finding, and it is not "always".**
+  An append table's scan tests the embedded index as it plans (`AppendOnlyFileStoreScan.filterByStats`)
+  and its read opens the `.index` file (`RawFileSplitRead.createFileReader` through
+  `FileIndexEvaluator`), so a file the latter rules out is in the plan and yields no row — the
+  index was read, the data was not, and the row says `skipped when read, not when planned`. A
+  primary-key table's scan tests an embedded index only under deletion vectors
+  (`KeyValueFileStore.newScan` passes `fileIndexReadEnabled && deletionVectorsEnabled`), and its
+  read consults either index only on a split it reads raw: `paimonRawConvertible` follows
+  `MergeTreeSplitGenerator.splitForBatch` — every file when all are above level 0 without `-D`
+  rows under deletion vectors, `first-row` or one level; otherwise sections of intersecting key
+  ranges (`IntervalPartition`) **packed into `source.split.target-size` splits at
+  `source.split.open-file-cost` each**, a split raw only when it holds one file. Packed, not
+  sectioned: `fi`'s two level-0 files share no key and still read as one merge split, because two
+  small sections fit one 128 MiB split, so `v = 'dog'` reads both and their indexes are never
+  opened — the file says `its file index is not consulted` — while `k = 4 AND v = 'dog'` leaves
+  one alone, raw, and its embedded filter skips it when read. `fa` is the append twin, written
+  for this: bloom filters on `k` and `v` at 1,000 items (a 1,290-byte `.index`) then 100
+  (embedded), and a 43-byte value so xxHash64's 32-byte stripe is walked. The oracle is
+  `paimon-scan-plans.scala` twice over — the plan's files, and `FileIndexPredicate` over each
+  kept file's index with the split's `rawConvertible()` — and `PaimonFileIndexPruningTest` holds
+  eleven filters to what a read reads rows from: the plan's files less those a raw read's index
+  rules out. Two mutations were run and caught: swapping the hash halves in the probe (a present
+  value read as absent), and deciding raw-ness per section rather than per split (`fi`'s files
+  skipped where Paimon merges them). The section's headline counts index skips apart from bound
+  skips, and states the rule once above the file table where a drawn file carries an index
 - **A consumer is why an expiry stopped short, and it is one JSON file.** `consumer/consumer-<id>`
   holds `nextSnapshot`, the snapshot a streaming reader will consume next, and
   `expire_snapshots` keeps that snapshot and everything after it — the `cs` fixture asked for

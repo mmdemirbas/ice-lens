@@ -18,7 +18,7 @@
 // Run with the Paimon Spark 3.5 runtime jar, version 1.3, over copies of the tables:
 //
 //   WH=$PWD/tmp/plans-wh; rm -rf "$WH"; mkdir -p "$WH/db.db"
-//   for t in pc lk pu ag dv sm pt; do cp -R example/paimon/db.db/$t "$WH/db.db/$t"; done
+//   for t in pc lk pu ag dv sm pt fa fi; do cp -R example/paimon/db.db/$t "$WH/db.db/$t"; done
 //   JAR=~/code/spark-kit/lakelab/tasks/01_FlinkUpsertRead/.run/jars/paimon-spark-3.5-local.jar
 //   docker run --rm --entrypoint bash \
 //     -v "$WH:/wh" -v "$JAR:/opt/paimon-spark.jar:ro" \
@@ -32,6 +32,8 @@
 
 import org.apache.paimon.catalog.CatalogContext
 import org.apache.paimon.data.BinaryString
+import org.apache.paimon.fileindex.FileIndexPredicate
+import org.apache.paimon.fs.Path
 import org.apache.paimon.options.Options
 import org.apache.paimon.predicate.{Predicate, PredicateBuilder}
 import org.apache.paimon.table.FileStoreTableFactory
@@ -51,6 +53,31 @@ def plan(name: String, label: String, mk: (PredicateBuilder, org.apache.paimon.t
   println(s"-- $name: $label")
   for (s <- splits; f <- s.dataFiles().asScala) println(s"${s.partition()} b${s.bucket()} L${f.level()} ${f.fileName()}")
   println(s"-- $name: $label = ${splits.map(_.dataFiles().size()).sum} files")
+}
+
+// The file index, asked the way the read asks it (FileIndexEvaluator → FileIndexPredicate over
+// the embedded bytes or the .index file beside the data file) for every file the plan kept, with
+// whether the split is read raw — the only read that consults an index. Printed per file as
+// `<file> raw=<bool> index=<REMAIN|SKIP|none>`.
+def indexes(name: String, label: String, mk: (PredicateBuilder, org.apache.paimon.types.RowType) => Predicate): Unit = {
+  val options = new Options()
+  options.set("path", s"/wh/db.db/$name")
+  val table = FileStoreTableFactory.create(CatalogContext.create(options))
+  val rowType = table.rowType()
+  val predicate = mk(new PredicateBuilder(rowType), rowType)
+  val readBuilder = table.newReadBuilder()
+  val scan = (if (predicate == null) readBuilder else readBuilder.withFilter(predicate)).newScan()
+  val splits = scan.plan().splits().asScala.map(_.asInstanceOf[DataSplit])
+  println(s"-- $name: $label [index]")
+  for (s <- splits; f <- s.dataFiles().asScala) {
+    val embedded = f.embeddedIndex()
+    val indexFile = f.extraFiles().asScala.find(_.endsWith(".index"))
+    val verdict =
+      if (embedded != null) { val p = new FileIndexPredicate(embedded, rowType); try { if (p.evaluate(predicate).remain()) "REMAIN" else "SKIP" } finally p.close() }
+      else if (indexFile.isDefined) { val p = new FileIndexPredicate(new Path(s.bucketPath(), indexFile.get), table.fileIO(), rowType); try { if (p.evaluate(predicate).remain()) "REMAIN" else "SKIP" } finally p.close() }
+      else "none"
+    println(s"${f.fileName()} raw=${s.rawConvertible()} index=$verdict")
+  }
 }
 
 def lit(v: Any): AnyRef = v match {
@@ -101,3 +128,31 @@ plan("sm", "k = 99", isEq("k", 99))
 plan("pt", "no filter", (b, t) => null)
 plan("pt", "k = 3", isEq("k", 3))
 plan("pt", "v = 'zzz'", isEq("v", "zzz"))
+
+// fa: an append table with a bloom filter on k and v — the first file's index beside it, the
+// second's embedded. The scan tests the embedded one; the read tests both.
+plan("fa", "no filter", (b, t) => null)
+plan("fa", "v = 'dog'", isEq("v", "dog"))
+plan("fa", "k = 5", isEq("k", 5))
+plan("fa", "v = 'delta'", isEq("v", "delta"))
+plan("fa", "k = 2", isEq("k", 2))
+plan("fa", "v = 'the quick brown fox jumps over the lazy dog'", isEq("v", "the quick brown fox jumps over the lazy dog"))
+plan("fa", "v = 'bob'", isEq("v", "bob"))
+plan("fa", "k = 5 AND v = 'delta'", and(isEq("k", 5), isEq("v", "delta")))
+indexes("fa", "v = 'dog'", isEq("v", "dog"))
+indexes("fa", "k = 5", isEq("k", 5))
+indexes("fa", "v = 'delta'", isEq("v", "delta"))
+indexes("fa", "k = 2", isEq("k", 2))
+indexes("fa", "v = 'the quick brown fox jumps over the lazy dog'", isEq("v", "the quick brown fox jumps over the lazy dog"))
+indexes("fa", "v = 'bob'", isEq("v", "bob"))
+
+// fi: the primary-key twin without deletion vectors — the scan never tests its index, and its
+// two level-0 files share no key range, so each is a raw split whose read does
+plan("fi", "no filter", (b, t) => null)
+plan("fi", "v = 'dog'", isEq("v", "dog"))
+plan("fi", "k = 4 AND v = 'dog'", and(isEq("k", 4), isEq("v", "dog")))
+plan("fi", "k = 2 AND v = 'bob'", and(isEq("k", 2), isEq("v", "bob")))
+indexes("fi", "v = 'dog'", isEq("v", "dog"))
+indexes("fi", "k = 4 AND v = 'dog'", and(isEq("k", 4), isEq("v", "dog")))
+indexes("fi", "k = 2 AND v = 'bob'", and(isEq("k", 2), isEq("v", "bob")))
+indexes("fi", "v = 'beta'", isEq("v", "beta"))

@@ -890,6 +890,11 @@ sealed class GraphNode(
         val vectorRange: PaimonVectorRange? = null,
         /** That vector decoded, on first use — see [service.PaimonDeletionVectorReader]. Nothing where [vectorRange] is null. */
         val deletionVector: DeferredRead<DeletionVector> = DeferredRead.none(),
+        /**
+         * The file index the entry names — embedded, or the `.index` file beside the data file —
+         * decoded on first use; see [PaimonFileIndexRead]. Nothing where the entry names none.
+         */
+        val fileIndex: DeferredRead<PaimonFileIndexRead> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         // 64, not 60: the stress pass measured this card at exactly its declared height, which

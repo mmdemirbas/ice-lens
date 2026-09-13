@@ -68,6 +68,24 @@ object PaimonGraphBuilder {
             }
         }
 
+        // A file's index, decoded on first use: the entry's own bytes, or the `.index` file the
+        // entry names beside the data file — beside it wherever the file is, an external path
+        // included, which is why it resolves against the data file's path.
+        fun fileIndexLoader(file: PaimonUnifiedDataFile): DeferredRead<PaimonFileIndexRead> {
+            val meta = file.metadata.file ?: return DeferredRead.none()
+            val embedded = meta.embeddedFileIndex
+            val indexFile = meta.extraFiles.orEmpty().firstOrNull { it.endsWith(".index") }
+            if (embedded == null && indexFile == null) return DeferredRead.none()
+            return DeferredRead.of {
+                runCatching {
+                    PaimonFileIndexRead(if (embedded != null) PaimonFileIndexReader.decode(embedded) else PaimonFileIndexReader.read(file.path.resolveSibling(indexFile!!)))
+                }.getOrElse { e ->
+                    logger.warn("Could not read the file index of {}: {}", meta.fileName, e.message)
+                    PaimonFileIndexRead(null, e.message ?: e.javaClass.simpleName)
+                }
+            }
+        }
+
         var nextManifestSimpleId = 1
         var nextManifestListSimpleId = 1
         var nextFileSimpleId = 1
@@ -288,6 +306,7 @@ object PaimonGraphBuilder {
                                     else paimonDataFileKey(unifiedDataFile).let { key -> DeferredRead.of { tableModel.fileHistoryOf(key, branch) } },
                                     vectorRange = vectorRange,
                                     deletionVector = vector,
+                                    fileIndex = fileIndexLoader(unifiedDataFile),
                                 )
                             }
 

@@ -1617,6 +1617,18 @@ class InspectorRenderTest {
                 ScanPruningSection(pc, model.ScanFilter.of(listOf(ScanPredicate("v", PredicateOp.EQ, "g")))) {}
             }
         }
+        // And on `fa`, whose files carry a bloom filter: `v = 'delta'` is inside both files'
+        // bounds and held by one — the other is ruled out by its index file when read, which
+        // its reason cell and note both say, under the rule stated once above the table.
+        val fa = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/fa").absolutePath)),
+            showRows = false,
+        )
+        renderScene("scan-pruning-paimon-fa", width = 1400, height = 2400) {
+            Column(Modifier.padding(16.dp)) {
+                ScanPruningSection(fa, model.ScanFilter.of(listOf(ScanPredicate("v", PredicateOp.EQ, "delta")))) {}
+            }
+        }
     }
 
     /**

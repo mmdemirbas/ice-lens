@@ -740,7 +740,13 @@ enum class FileFate {
  * overlap and any of them may match, so a file its own bounds rule out is still opened; see
  * [evaluatePaimonPrimaryKeyFiles]. Null where the outcomes are the whole explanation.
  */
-data class FilePruneResult(val outcomes: List<PredicateOutcome>, val fate: FileFate, val note: String? = null) {
+data class FilePruneResult(
+    val outcomes: List<PredicateOutcome>,
+    val fate: FileFate,
+    val note: String? = null,
+    /** A skip the file's bloom-filter index proved where its bounds had not — see [applyPaimonFileIndex]. */
+    val byIndex: Boolean = false,
+) {
     /** The first outcome that proved the file cannot match, or null when none did. */
     val skippedBy: PredicateOutcome? get() = outcomes.firstOrNull { it.effect == TermEffect.SKIPS }
 }
@@ -777,6 +783,11 @@ fun evaluateFilePruning(stats: List<ColumnStats>, filter: ScanFilter): FilePrune
             evaluateColumnTerm(matched, predicate)
         }
     }
+    return foldFileOutcomes(normalized, outcomes)
+}
+
+/** The verdict over a file's outcomes, folded over the (negation-pushed) filter the same way whatever produced them. */
+internal fun foldFileOutcomes(normalized: ScanFilter, outcomes: List<PredicateOutcome>): FilePruneResult {
     val skipped = outcomes.filter { it.effect == TermEffect.SKIPS }.map { it.predicate }.toSet()
     val proved = normalized.verdict { predicate ->
         if (predicate in skipped) ScanVerdict.CANNOT_MATCH else ScanVerdict.MIGHT_MATCH
@@ -958,10 +969,14 @@ data class ScanPlan(
     val fileBoundsWithheld: String? = null,
     /** How a Paimon primary-key table's file stage decides — [PaimonScanRule.describe]; null on every other table. */
     val primaryKeyRule: String? = null,
+    /** How a file's bloom-filter index enters the plan, where a drawn file carries one — [paimonFileIndexRule]; null elsewhere. */
+    val fileIndexRule: String? = null,
 ) {
     val skippedManifests: Int get() = manifests.values.count { it.isSkipped }
     val readFiles: Int get() = files.values.count { it.fate == FileFate.WOULD_BE_READ }
     val skippedFiles: Int get() = files.values.count { it.fate == FileFate.SKIPPED }
+    /** Of [skippedFiles], the ones a file index ruled out rather than a bound. */
+    val indexSkippedFiles: Int get() = files.values.count { it.fate == FileFate.SKIPPED && it.byIndex }
     val unreachedFiles: Int get() = files.values.count { it.fate == FileFate.NOT_REACHED }
     /** Reached and not ruled out, with nothing to evaluate — a scan opens these as it opens [readFiles]. */
     val unevaluatedFiles: Int get() = files.values.count { it.fate == FileFate.UNEVALUATED }
@@ -1013,6 +1028,7 @@ fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
     // row id, so a column's bounds here may describe values a patch replaced; the scan consults
     // none of them, and neither does this.
     val withheld = paimonFileBoundsWithheld(graph)
+    val columnTypes by lazy { paimonColumnTypes(graph) }
     val files = graph.nodes.asSequence()
         .mapNotNull { node ->
             val stats = when (node) {
@@ -1023,12 +1039,18 @@ fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
                 }
                 else -> return@mapNotNull null
             }
-            val own = if (stats != null) evaluateFilePruning(stats, filter) else unevaluatedFile(filter, withheld.orEmpty())
+            var own = if (stats != null) evaluateFilePruning(stats, filter) else unevaluatedFile(filter, withheld.orEmpty())
+            // An append table's file index: the embedded one is tested when the scan plans, the
+            // `.index` file beside the data file when the read opens it — see [FileIndexUse].
+            if (node is GraphNode.PaimonDataFileNode && withheld == null && node.hasFileIndex) {
+                val use = if (node.entry.file?.embeddedFileIndex != null) FileIndexUse.AT_PLAN else FileIndexUse.AT_READ
+                own = applyPaimonFileIndex(own, filter, node, use, columnTypes)
+            }
             node.id to if (manifestSkipped(node.id)) own.copy(fate = FileFate.NOT_REACHED) else own
         }
         .toMap()
 
-    return ScanPlan(manifests, files, withheld, primaryKeyRule?.describe())
+    return ScanPlan(manifests, files, withheld, primaryKeyRule?.describe(), paimonFileIndexRule(graph, primaryKeyRule))
 }
 
 /** Every predicate not evaluated against the file, for one [reason] that is about the table rather than the file. */

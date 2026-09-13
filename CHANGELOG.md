@@ -46,6 +46,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the panel said one. A level-0 file of a table whose batch reads skip level 0 is `not read`; a
   file read for its bucket's sake says so in its reason cell; the rule is stated once above the
   file table. Held to the plans Paimon itself made (`docs/fixtures/paimon-scan-plans.scala`).
+- **A Paimon file index is decoded and the scan plan asks it — where Paimon's read would.** A
+  `bloom-filter` index, embedded in the entry or in the `.index` file beside the data file, is
+  read (the container, the filter, xxHash64 for strings and Wang's hash for numbers) and an
+  equality on an indexed column the filter rules out skips the file. When it is asked follows
+  release-1.3.1: an append table tests an embedded index as it plans and the `.index` file when
+  the read opens it — such a file is listed by the plan and yields no row, which the row says —
+  while a primary-key table's scan tests an embedded index only under deletion vectors and its
+  read consults one only on a split read raw, one file alone in it. `fa` is the new fixture; on
+  `fi` the two files merge-read and their indexes are never opened, which the rows say too. The
+  panel's `File Index` row names the columns and index types. Held to `FileIndexPredicate` and
+  the plan on both tables (`docs/fixtures/paimon-scan-plans.scala`).
 - **Iceberg's two pruning stages are held to Iceberg's own plans.**
   `docs/fixtures/iceberg-scan-plans.scala` prints the data files `planFiles()` opens for 41
   filters over five checked-in tables — every transform shape, both partition specs, three

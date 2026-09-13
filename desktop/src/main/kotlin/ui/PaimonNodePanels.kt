@@ -296,13 +296,16 @@ internal fun ColumnScope.PaimonDataFilePanel(
             // an answer — a table with no file-index.* property has none.
             val embedded = file?.embeddedFileIndex
             val indexFiles = file?.extraFiles.orEmpty().filter { it.endsWith(".index") }
+            // What the index holds is read off its head — which columns, which index types — and
+            // said beside where it lives; an index this could not read says that instead.
+            val decoded = node.fileIndex.value?.let { read -> read.index?.describe() ?: "not read: ${read.error}" }
             DetailRow(
                 "File Index",
                 when {
                     embedded != null -> "embedded in the manifest entry, ${formatBytesExact(embedded.size.toLong())}"
                     indexFiles.isNotEmpty() -> indexFiles.joinToString(", ") { "$it, beside the data file" }
                     else -> "none"
-                },
+                } + (decoded?.let { " — $it" } ?: ""),
             )
             if (!file?.extraFiles.isNullOrEmpty()) DetailRow("Extra Files", file?.extraFiles.orEmpty().joinToString(", "))
         }

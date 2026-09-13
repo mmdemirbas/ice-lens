@@ -226,7 +226,8 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
         Text(
             "${formatCount(plan.skippedManifests)} of ${formatCounted(manifests.size, "manifest")} " +
                 "ruled out, so ${formatCounted(plan.unreachedFiles, "file")} never opened. " +
-                "${formatCounted(plan.skippedFiles, "file")} ruled out by their own bounds.",
+                "${formatCounted(plan.skippedFiles - plan.indexSkippedFiles, "file")} ruled out by their own bounds" +
+                (if (plan.indexSkippedFiles > 0) ", ${formatCount(plan.indexSkippedFiles)} by their file index." else "."),
             fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
         )
@@ -309,6 +310,10 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
         // A primary-key table's rule, said once: the reason cells below name a bucket where it
         // decided a file, and this is what they refer to.
         plan.primaryKeyRule?.let {
+            Text("$it.", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+        }
+        // The file index rule, the same way — once, where a drawn file carries one.
+        plan.fileIndexRule?.let {
             Text("$it.", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
         }
         // The one table whose read consults no file's bounds; said once here rather than on
@@ -497,8 +502,13 @@ private fun FilePruneResult?.summarise(): String {
     if (fate == FileFate.NOT_REACHED) return "its manifest was ruled out, so a scan never opens it"
     if (fate == FileFate.NOT_READ) return outcomes.firstOrNull()?.reason ?: "a batch read of this table never opens it"
     val own = outcomes.summarise(proved = fate == FileFate.SKIPPED)
-    // A bucket's rule decided the fate; the file's own outcomes follow, since they are what it overrode.
-    return note?.let { "$it. Its own bounds: $own" } ?: own
+    // A bucket's rule decided the fate; the file's own outcomes follow, since they are what it
+    // overrode. A skip the file's index proved leads with the proof, and its note follows.
+    return when {
+        note == null -> own
+        byIndex -> "$own — $note"
+        else -> "$note. Its own bounds: $own"
+    }
 }
 
 private fun ManifestPruneResult?.summarise(): String =

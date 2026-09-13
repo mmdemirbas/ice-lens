@@ -135,6 +135,11 @@ data class PaimonScanRule(
     val skipsLevel0: Boolean,
     /** `partial-update` or `aggregation` without deletion vectors: no value bound is consulted, per file or per bucket. */
     val valueBoundsNever: Boolean,
+    /** `deletion-vectors.enabled` — what lets the scan test an embedded file index, and the read read every file raw. */
+    val deletionVectors: Boolean = false,
+    /** `source.split.target-size` and `source.split.open-file-cost` — how the read packs a bucket's files into splits. */
+    val splitTargetBytes: Long = 128L shl 20,
+    val openFileCostBytes: Long = 4L shl 20,
 ) {
     fun isKey(column: String): Boolean = trimmedKeys.any { it.equals(column.trim(), ignoreCase = true) }
 
@@ -166,6 +171,9 @@ fun paimonScanRule(graph: GraphModel): PaimonScanRule? {
         engine = rule.engine,
         skipsLevel0 = rule.skipsLevel0,
         valueBoundsNever = !deletionVectors && (rule.engine == "partial-update" || rule.engine == "aggregation"),
+        deletionVectors = deletionVectors,
+        splitTargetBytes = schema.options["source.split.target-size"]?.let(::parsePaimonMemoryBytes) ?: (128L shl 20),
+        openFileCostBytes = schema.options["source.split.open-file-cost"]?.let(::parsePaimonMemoryBytes) ?: (4L shl 20),
     )
 }
 
@@ -208,6 +216,7 @@ fun evaluatePaimonPrimaryKeyFiles(
     val staged = mutableListOf<Staged>()
     val live = graph.nodes.asSequence().filterIsInstance<GraphNode.TableNode>().firstOrNull()
         ?.paimonRowLookup?.value?.files?.map { it.fileName }?.toSet()
+    val columnTypes by lazy { paimonColumnTypes(graph) }
     for (node in graph.nodes) {
         if (node !is GraphNode.PaimonDataFileNode) continue
         val isLive = live == null || (node.operationKind == PaimonEntryKind.ADD && node.entry.file?.fileName in live)
@@ -216,7 +225,12 @@ fun evaluatePaimonPrimaryKeyFiles(
         // still has one, which is why the key bounds lead.
         val keyStats = paimonKeyColumnStats(node)
         val stats = keyStats + paimonColumnStats(node).filter { v -> keyStats.none { it.columnName == v.columnName } }
-        val own = evaluateFilePruning(stats, filter)
+        var own = evaluateFilePruning(stats, filter)
+        // The scan tests an embedded index beside the value bounds only under deletion vectors
+        // (`KeyValueFileStore.newScan`); everything else about a file index waits for the read.
+        if (rule.deletionVectors && node.entry.file?.embeddedFileIndex != null) {
+            own = applyPaimonFileIndex(own, filter, node, FileIndexUse.AT_PLAN, columnTypes)
+        }
         when {
             manifestSkipped(node.id) -> results[node.id] = own.copy(fate = FileFate.NOT_REACHED)
             !isLive -> results[node.id] = own.copy(
@@ -258,6 +272,17 @@ fun evaluatePaimonPrimaryKeyFiles(
             else -> bucket.forEach { s ->
                 results[s.node.id] = s.own.copy(note = "no file of the bucket can hold a match, so the bucket is skipped whole")
             }
+        }
+        // The read stage: a file index is consulted by the raw read, which a primary-key table
+        // gets only for a split it reads without merging — see [paimonRawConvertible]. A file
+        // the plan kept with an index a merge read never opens says so.
+        val kept = bucket.filter { results[it.node.id]?.fate.let { f -> f == FileFate.WOULD_BE_READ || f == FileFate.UNEVALUATED } }
+        val raw = paimonRawConvertible(kept.map { it.node }, rule)
+        for (s in kept) {
+            if (!s.node.hasFileIndex) continue
+            val result = results.getValue(s.node.id)
+            results[s.node.id] = if (s.node.id in raw) applyPaimonFileIndex(result, filter, s.node, FileIndexUse.AT_READ, columnTypes)
+            else result.copy(note = joinNotes(result.note, "its file index is not consulted: the file shares a key range with another, so the read merges them and opens no index"))
         }
     }
     return results

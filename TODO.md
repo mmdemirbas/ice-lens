@@ -40,8 +40,12 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   now — a key predicate per file, the rest per bucket, never by value under `partial-update` or
   `aggregation` without deletion vectors — held to the plans `paimon-scan-plans.scala` printed,
   and the Iceberg stages to the 41 `planFiles()` printed by `iceberg-scan-plans.scala`, every
-  filtered plan agreeing file for file; what that leaves is a filter through a **file index** (`fileIndexReadEnabled`, the bloom filter
-  `fi` carries), which the scan consults after the bounds and this does not decode.
+  filtered plan agreeing file for file. The **file index** is decoded too — the bloom filter, its
+  two hashes, and the rule for when a read consults it, which on a primary-key table is only a
+  split read raw (`model/PaimonFileIndexPruning.kt`, `fa` and `fi` against `FileIndexPredicate`).
+  What is left of the index is the other types (`bitmap`, `bsi`, `dynamic-bitmap`), named and
+  not read, and a bloom filter over a `TIMESTAMP` column, whose hash needs the precision and is
+  declined rather than guessed.
 
 - **Iceberg v3 is modelled up to what Spark 3.5 can write.** A deletion vector's Puffin blob is
   opened and its positions decoded (`service/PuffinReader.kt`), so the inspector answers which
@@ -379,7 +383,8 @@ What is left:
   | `paimon/db.db/ao` | append-only, no primary key, `bucket = -1` — a DELETE rewrites the file as an `APPEND` with delta −1 |
   | `paimon/db.db/br` | two branches — one created from a tag and committed to, one created empty; main and `dev` share a snapshot id for two different commits |
   | `paimon/db.db/cs` | a consumer at snapshot 2 and an `expire_snapshots(retain_max = 1)` it held back — two snapshots left of three |
-  | `paimon/db.db/fi` | a bloom-filter file index both ways — a `.index` file beside the data file, and one embedded in the manifest entry |
+  | `paimon/db.db/fi` | a bloom-filter file index both ways — a `.index` file beside the data file, and one embedded in the manifest entry — on a primary-key table, whose merge read never opens either |
+  | `paimon/db.db/fa` | the append twin: bloom filters on both columns, one `.index` file and one embedded, and the table whose scan and read do consult them — the plan and `FileIndexPredicate` oracle |
   | `paimon/db.db/ep` | `data-file.external-paths` — the data files beside the table under `ep-files/`, `_EXTERNAL_PATH` recorded, no bucket under the table |
   | `paimon/db.db/rt` | `row-tracking.enabled` — first ids on appended files, `_ROW_ID` inside a compaction's output, `nextRowId` on every snapshot |
   | `paimon/db.db/sm` | `fields.v.stats-mode = none` — `_VALUE_STATS_COLS` names two of three columns, and every bound lands on its own column |
