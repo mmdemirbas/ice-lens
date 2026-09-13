@@ -1,0 +1,28 @@
+{
+  "version" : 3,
+  "id" : 1,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT"
+  }, {
+    "id" : 1,
+    "name" : "c",
+    "type" : "STRING"
+  }, {
+    "id" : 2,
+    "name" : "n",
+    "type" : "INT"
+  } ],
+  "highestFieldId" : 2,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ ],
+  "options" : {
+    "owner" : "root",
+    "file-index.bitmap.columns" : "c,n",
+    "file-index.bloom-filter.n.items" : "100",
+    "file-index.in-manifest-threshold" : "1b",
+    "file-index.bloom-filter.columns" : "n"
+  },
+  "timeMillis" : 1789341868954
+}

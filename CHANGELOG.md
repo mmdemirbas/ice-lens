@@ -57,6 +57,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fi` the two files merge-read and their indexes are never opened, which the rows say too. The
   panel's `File Index` row names the columns and index types. Held to `FileIndexPredicate` and
   the plan on both tables (`docs/fixtures/paimon-scan-plans.scala`).
+- **A Paimon bitmap file index is read, and it answers exactly.** One Roaring bitmap per
+  distinct value and one for null, so the scan-pruning section rules a value out by the
+  dictionary — no false positive, unlike a bloom filter — and answers `<>`, `IS NULL` and
+  `IS NOT NULL` the way `BitmapFileIndex`'s reader does. v1 and v2 layouts, the v2 block
+  directory read block by block. `fb` is the fixture, held to `FileIndexPredicate` over every
+  file and every operator.
+- **A column that is null in every row rules a file out for any comparison.** Both formats'
+  own evaluators skip such a file for `=`, `<`, `<=`, `>`, `>=` and a prefix, and the file
+  stage now does too; for `<>` Paimon skips and Iceberg keeps, and the verdict follows the
+  format the file belongs to, with the reason saying which does what.
 - **A Paimon bloom filter over a timestamp, time or date column is asked.** `FastHash`'s
   temporal half: a date over its epoch day, a time over its milliseconds of the day, a
   timestamp of either kind over its microseconds since the epoch (milliseconds at precision 3

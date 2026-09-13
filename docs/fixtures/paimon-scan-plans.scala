@@ -18,7 +18,7 @@
 // Run with the Paimon Spark 3.5 runtime jar, version 1.3, over copies of the tables:
 //
 //   WH=$PWD/tmp/plans-wh; rm -rf "$WH"; mkdir -p "$WH/db.db"
-//   for t in pc lk pu ag dv sm pt fa fi ft; do cp -R example/paimon/db.db/$t "$WH/db.db/$t"; done
+//   for t in pc lk pu ag dv sm pt fa fi ft fb; do cp -R example/paimon/db.db/$t "$WH/db.db/$t"; done
 //   JAR=~/code/spark-kit/lakelab/tasks/01_FlinkUpsertRead/.run/jars/paimon-spark-3.5-local.jar
 //   docker run --rm --entrypoint bash \
 //     -v "$WH:/wh" -v "$JAR:/opt/paimon-spark.jar:ro" \
@@ -80,6 +80,28 @@ def indexes(name: String, label: String, mk: (PredicateBuilder, org.apache.paimo
   }
 }
 
+// The index alone, asked for EVERY data file of the table whatever the plan did with it — the
+// oracle for the index decoders, since the plan settles most negatives by the file's statistics
+// first. Printed per file as `<file> index=<REMAIN|SKIP|none>`.
+def indexAll(name: String, label: String, mk: (PredicateBuilder, org.apache.paimon.types.RowType) => Predicate): Unit = {
+  val options = new Options()
+  options.set("path", s"/wh/db.db/$name")
+  val table = FileStoreTableFactory.create(CatalogContext.create(options))
+  val rowType = table.rowType()
+  val predicate = mk(new PredicateBuilder(rowType), rowType)
+  val splits = table.newReadBuilder().newScan().plan().splits().asScala.map(_.asInstanceOf[DataSplit])
+  println(s"-- $name: $label [index-all]")
+  for (s <- splits; f <- s.dataFiles().asScala) {
+    val embedded = f.embeddedIndex()
+    val indexFile = f.extraFiles().asScala.find(_.endsWith(".index"))
+    val verdict =
+      if (embedded != null) { val p = new FileIndexPredicate(embedded, rowType); try { if (p.evaluate(predicate).remain()) "REMAIN" else "SKIP" } finally p.close() }
+      else if (indexFile.isDefined) { val p = new FileIndexPredicate(new Path(s.bucketPath(), indexFile.get), table.fileIO(), rowType); try { if (p.evaluate(predicate).remain()) "REMAIN" else "SKIP" } finally p.close() }
+      else "none"
+    println(s"${f.fileName()} index=$verdict")
+  }
+}
+
 def lit(v: Any): AnyRef = v match {
   case s: String => BinaryString.fromString(s)
   case i: Int => Int.box(i)
@@ -96,6 +118,10 @@ def date(s: String) = java.time.LocalDate.parse(s)
 def isEq(name: String, v: Any) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.equal(t.getFieldIndex(name), lit(v))
 def and(ps: ((PredicateBuilder, org.apache.paimon.types.RowType) => Predicate)*) =
   (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => PredicateBuilder.and(ps.map(_(b, t)).asJava)
+def isNotEq(name: String, v: Any) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.notEqual(t.getFieldIndex(name), lit(v))
+def isIn(name: String, vs: Any*) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.in(t.getFieldIndex(name), vs.map(lit).asJava)
+def isNull(name: String) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.isNull(t.getFieldIndex(name))
+def isNotNull(name: String) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.isNotNull(t.getFieldIndex(name))
 
 // pc: deduplicate, a level-5 file (keys 1..5) and two level-0 files (6, 7) — overlapping levels
 plan("pc", "no filter", (b, t) => null)
@@ -181,3 +207,40 @@ plan("ft", "d = 2024-03-06", isEq("d", date("2024-03-06")))
 plan("ft", "d = 2024-03-07", isEq("d", date("2024-03-07")))
 indexes("ft", "d = 2024-03-08", isEq("d", date("2024-03-08")))
 indexes("ft", "ts = 2024-03-05 10:00:00.123", isEq("ts", ldt("2024-03-05 10:00:00.123")))
+
+// fb: an append table with a bitmap index on c and n and a bloom filter on n — file 1's index
+// embedded (red, green, a null), files 2 (all red) and 3 (all null) with a .index beside them.
+// The dictionary answers `=` exactly and `<>` / IS NULL / IS NOT NULL too.
+plan("fb", "no filter", (b, t) => null)
+plan("fb", "c = 'red'", isEq("c", "red"))
+plan("fb", "c = 'green'", isEq("c", "green"))
+plan("fb", "c = 'orange'", isEq("c", "orange"))
+plan("fb", "c <> 'red'", isNotEq("c", "red"))
+plan("fb", "c IS NULL", isNull("c"))
+plan("fb", "c IS NOT NULL", isNotNull("c"))
+plan("fb", "n = 5", isEq("n", 5))
+plan("fb", "n = 9", isEq("n", 9))
+plan("fb", "n IN (2, 6)", isIn("n", 2, 6))
+plan("fb", "n = 5 AND c = 'green'", and(isEq("n", 5), isEq("c", "green")))
+plan("fb", "n <> 7", isNotEq("n", 7))
+indexes("fb", "c = 'red'", isEq("c", "red"))
+indexes("fb", "c = 'orange'", isEq("c", "orange"))
+indexes("fb", "c <> 'red'", isNotEq("c", "red"))
+indexes("fb", "c IS NULL", isNull("c"))
+indexes("fb", "c IS NOT NULL", isNotNull("c"))
+indexes("fb", "n = 5", isEq("n", 5))
+indexes("fb", "n IN (2, 6)", isIn("n", 2, 6))
+indexes("fb", "n <> 7", isNotEq("n", 7))
+indexAll("fb", "c = 'red'", isEq("c", "red"))
+indexAll("fb", "c = 'orange'", isEq("c", "orange"))
+indexAll("fb", "c <> 'red'", isNotEq("c", "red"))
+indexAll("fb", "c <> 'green'", isNotEq("c", "green"))
+indexAll("fb", "c IS NULL", isNull("c"))
+indexAll("fb", "c IS NOT NULL", isNotNull("c"))
+indexAll("fb", "n = 9", isEq("n", 9))
+indexAll("fb", "n = 5", isEq("n", 5))
+indexAll("fb", "n <> 7", isNotEq("n", 7))
+indexAll("fb", "n <> 5", isNotEq("n", 5))
+indexAll("fb", "n IN (2, 6)", isIn("n", 2, 6))
+indexAll("fb", "n IS NULL", isNull("n"))
+indexAll("fb", "c IN ('green', 'orange')", isIn("c", "green", "orange"))

@@ -1775,7 +1775,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,176 tests across 155 files (906 in :core, 262 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,179 tests across 155 files (909 in :core, 262 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1896,6 +1896,7 @@ container invocation and the traps in it:
 | `paimon/db.db/cs` | `PaimonConsumerFixtureTest` | a consumer standing on snapshot 2, and an `expire_snapshots(retain_max = 1)` that left snapshots 2 and 3 because of it |
 | `paimon/db.db/fi` | `PaimonFileIndexFixtureTest`, `PaimonFileIndexPruningTest` | a bloom-filter file index both ways — a 599 KB `.index` beside the first data file, 117 bytes embedded in the second entry — on a primary-key table, whose merge read consults neither |
 | `paimon/db.db/fa` | `PaimonFileIndexTest`, `PaimonFileIndexPruningTest` | the append twin — bloom filters on both columns, a 1,290-byte `.index` then an embedded one, and a 43-byte value for xxHash64's stripe; the table whose scan and read actually ask the index |
+| `paimon/db.db/fb` | `PaimonFileIndexTest`, `PaimonFileIndexPruningTest` | a bitmap file index on two columns, one also under a bloom filter — one file with red, green and a null (embedded), one all red and one all null (`.index` files); the dictionary held to `FileIndexPredicate` over every file for `=`, `<>`, `IS NULL` and `IS NOT NULL` |
 | `paimon/db.db/ft` | `PaimonFileIndexTest`, `PaimonFileIndexPruningTest` | an append table with a bloom filter on a `TIMESTAMP(6)`, a `TIMESTAMP(6) WITH LOCAL TIME ZONE` and a `DATE` column, embedded — the temporal hashes, held to the plan on three values a column and on two misses inside the bounds that only a microsecond hash answers |
 | `paimon/db.db/ep` | `PaimonExternalPathFixtureTest` | `data-file.external-paths` — no bucket under the table, both files at `example/paimon/ep-files/bucket-0/` beside it, `_EXTERNAL_PATH` recorded |
 | `paimon/db.db/rt` | `PaimonRowTrackingFixtureTest` | `row-tracking.enabled` — two appends recording first ids 0 and 3, then a full compaction whose output records none and carries `_ROW_ID` per row |
@@ -2360,7 +2361,26 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   rules out. Two mutations were run and caught: swapping the hash halves in the probe (a present
   value read as absent), and deciding raw-ness per section rather than per split (`fi`'s files
   skipped where Paimon merges them). The section's headline counts index skips apart from bound
-  skips, and states the rule once above the file table where a drawn file carries an index
+  skips, and states the rule once above the file table where a drawn file carries an index.
+  **The `bitmap` index is read too, and it is a dictionary** (`model/PaimonBitmapIndex.kt`): one
+  Roaring bitmap per distinct value and one for null, so `=` is answered exactly rather than as a
+  possibility, and `<>`, `IS NULL` and `IS NOT NULL` are answered as `BitmapFileIndex.Reader`
+  answers them — a `<>` is the value's rows flipped over the row count, empty only when every
+  row holds the value, nulls counted among the rows. The v2 layout (the default) is a directory
+  of blocks sorted by the type's comparator and read block by block, `BinaryString`'s unsigned
+  byte order for a string; an offset below zero is one row, `-1 - row`, written in place of a
+  bitmap. A column with several indexes is ruled out by any of them, which is
+  `FileIndexPredicate` and-ing their results. `fb` is the fixture — red/green/null, all red, all
+  null, one embedded and two `.index` files, `n` under both a bitmap and a bloom filter — and
+  its oracle is `FileIndexPredicate` asked for *every* file (`indexAll` in the script), because
+  the plan settles most negatives by the statistics first and only `c = 'orange'`, inside file
+  1's bounds, is the dictionary's own skip. **Which is where the two formats' file stages were
+  found to differ**: a column that is null in every row satisfies no comparison, and both
+  `InclusiveMetricsEvaluator.containsNullsOnly` and Paimon's `NullFalseLeafBinaryFunction` skip
+  the file for `=`, `<`, `<=`, `>`, `>=` and a prefix — now the shared stage's rule — while for
+  `<>` Paimon skips it and Iceberg's `notEq` answers "might match" before it looks, so
+  `paimonAllNullNegations` adds Paimon's reading to Paimon's files only, and the shared reason
+  says which format does what
 - **A consumer is why an expiry stopped short, and it is one JSON file.** `consumer/consumer-<id>`
   holds `nextSnapshot`, the snapshot a streaming reader will consume next, and
   `expire_snapshots` keeps that snapshot and everything after it — the `cs` fixture asked for

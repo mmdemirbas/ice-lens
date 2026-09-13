@@ -87,6 +87,27 @@ fun paimonFileBoundsWithheld(graph: GraphModel): String? {
 }
 
 /** A Paimon data file's column bounds as the statistics the file stage evaluates, one per decodable column. */
+/**
+ * [own] with a `<>` or `NOT LIKE` on a column that is null in every row marked as proved — the
+ * one place the two formats' file stages read the same statistics differently. Paimon's
+ * `NullFalseLeafBinaryFunction.test` answers false for any binary comparison when the null count
+ * is the row count, `<>` included; Iceberg's `InclusiveMetricsEvaluator.notEq` answers "might
+ * match" before it looks at the counts. The shared stage keeps Iceberg's reading, and this adds
+ * Paimon's for its files.
+ */
+internal fun paimonAllNullNegations(own: FilePruneResult, filter: ScanFilter, stats: List<ColumnStats>): FilePruneResult {
+    if (own.fate == FileFate.SKIPPED) return own
+    var changed = false
+    val outcomes = own.outcomes.map { o ->
+        if (o.effect != TermEffect.NOT_EVALUATED || (o.predicate.op != PredicateOp.NOT_EQ && o.predicate.op != PredicateOp.NOT_LIKE)) return@map o
+        val column = stats.firstOrNull { it.columnName.equals(o.predicate.column.trim(), ignoreCase = true) } ?: return@map o
+        if (!column.isAllNull) return@map o
+        changed = true
+        o.copy(effect = TermEffect.SKIPS, fieldName = column.displayName, reason = "every value of ${column.displayName} here is null, and a Paimon scan answers `${o.predicate.op}` false for a file whose null count is its row count")
+    }
+    return if (changed) foldFileOutcomes(filter.pushNegation(), outcomes).copy(note = own.note) else own
+}
+
 fun paimonColumnStats(node: GraphNode.PaimonDataFileNode): List<ColumnStats> {
     val bounds = node.columnBounds ?: return emptyList()
     val rowCount = node.entry.file?.rowCount
@@ -225,7 +246,7 @@ fun evaluatePaimonPrimaryKeyFiles(
         // still has one, which is why the key bounds lead.
         val keyStats = paimonKeyColumnStats(node)
         val stats = keyStats + paimonColumnStats(node).filter { v -> keyStats.none { it.columnName == v.columnName } }
-        var own = evaluateFilePruning(stats, filter)
+        var own = paimonAllNullNegations(evaluateFilePruning(stats, filter), filter, stats)
         // The scan tests an embedded index beside the value bounds only under deletion vectors
         // (`KeyValueFileStore.newScan`); everything else about a file index waits for the read.
         if (rule.deletionVectors && node.entry.file?.embeddedFileIndex != null) {

@@ -46,15 +46,18 @@ val GraphNode.PaimonDataFileNode.hasFileIndex: Boolean
     get() = entry.file?.embeddedFileIndex != null || entry.file?.extraFiles.orEmpty().any { it.endsWith(".index") }
 
 /**
- * [own] with every equality the file's bloom filter rules out marked as proved, and the verdict
- * folded again.
+ * [own] with every term the file's indexes rule out marked as proved, and the verdict folded
+ * again.
  *
- * Only `=` is asked — `IN` is a disjunction of them by the time it arrives — and only where the
- * bounds did not already settle the term: a bound's proof needs no second one. A column with an
- * index the writer left empty holds no non-null value, which `EmptyFileIndexReader` reads as a
- * skip for any equality, and so does this. A term the index cannot decide keeps the outcome the
- * bounds gave it, except that an index which *may* hold the value turns "no statistics" into an
- * evaluation — the index looked, and that is the answer.
+ * A bloom filter answers `=` only — `IN` is a disjunction of them by the time it arrives — and
+ * a bitmap index answers `=`, `<>`, `IS NULL` and `IS NOT NULL`, the four `BitmapFileIndex`'s
+ * reader visits; nothing is asked where the bounds already settled the term, since a bound's
+ * proof needs no second one. A column carrying several indexes is ruled out by any one of them,
+ * which is `FileIndexPredicate` and-ing their results. An index the writer left empty holds no
+ * non-null value, which `EmptyFileIndexReader` reads as a skip for any equality, and so does
+ * this. A term the indexes cannot decide keeps the outcome the bounds gave it, except that an
+ * index which *may* hold the value turns "no statistics" into an evaluation — the index looked,
+ * and that is the answer.
  */
 internal fun applyPaimonFileIndex(
     own: FilePruneResult,
@@ -70,28 +73,23 @@ internal fun applyPaimonFileIndex(
     val consulted = if (use == FileIndexUse.AT_PLAN) "tested when the scan plans" else "opened by the read"
     var decided = false
     val outcomes = own.outcomes.map { o ->
-        if (o.effect == TermEffect.SKIPS || o.predicate.op != PredicateOp.EQ) return@map o
+        val op = o.predicate.op
+        if (o.effect == TermEffect.SKIPS || op !in INDEXED_OPS) return@map o
         val column = o.predicate.column.trim()
         val indexes = index.columns.entries.firstOrNull { it.key.equals(column, ignoreCase = true) }?.value ?: return@map o
-        val bloom = indexes.firstOrNull { it.type == PaimonFileIndex.BLOOM_FILTER } ?: return@map o
         val literal = "'" + o.predicate.literal.trim().removeSurrounding("'").removeSurrounding("\"") + "'"
-        if (bloom.bytes == null) {
-            decided = true
-            return@map o.copy(effect = TermEffect.SKIPS, reason = "$column's file index ($where) is empty: no non-null $column here", fieldName = column)
-        }
         val type = types.entries.firstOrNull { it.key.equals(column, ignoreCase = true) }?.value
             ?: node.columnBounds?.firstOrNull { it.name.equals(column, ignoreCase = true) }?.type
             ?: return@map o
         val iceberg = paimonTypeAsIceberg(type) ?: return@map o
-        val value = parseLiteral(o.predicate.literal, iceberg) ?: return@map o
-        val hash = paimonFastHash(type, value) ?: return@map o
-        val decoder = PaimonBloomFilter.decode(bloom.bytes) ?: return@map o
-        if (decoder.mightContain(hash)) {
-            if (o.effect == TermEffect.NOT_EVALUATED) o.copy(effect = TermEffect.KEEPS, fieldName = column, reason = "$column's bloom filter ($where) may hold $literal")
-            else o
-        } else {
-            decided = true
-            o.copy(effect = TermEffect.SKIPS, fieldName = column, reason = "$column's bloom filter ($where, $consulted) has no $literal")
+        val value = if (op.takesLiteral) parseLiteral(o.predicate.literal, iceberg) ?: return@map o else null
+        // One verdict per index of the column that can answer the operator: a proof, or "may".
+        val verdicts = indexes.mapNotNull { ix -> indexVerdict(ix, op, column, type, value, literal, where, consulted) }
+        val proof = verdicts.firstOrNull { it.first }
+        when {
+            proof != null -> { decided = true; o.copy(effect = TermEffect.SKIPS, fieldName = column, reason = proof.second) }
+            verdicts.isNotEmpty() && o.effect == TermEffect.NOT_EVALUATED -> o.copy(effect = TermEffect.KEEPS, fieldName = column, reason = verdicts.first().second)
+            else -> o
         }
     }
     val folded = foldFileOutcomes(filter.pushNegation(), outcomes)
@@ -102,6 +100,62 @@ internal fun applyPaimonFileIndex(
         else -> null
     }
     return folded.copy(note = joinNotes(own.note, note), byIndex = byIndex)
+}
+
+private val INDEXED_OPS = setOf(PredicateOp.EQ, PredicateOp.NOT_EQ, PredicateOp.IS_NULL, PredicateOp.IS_NOT_NULL)
+
+/**
+ * What one index says about one term: `true` and the reason when it proves the file holds no
+ * matching row, `false` and the reason when it looked and could not, null when it cannot answer
+ * the operator or the type. A bloom filter answers `=`; a bitmap index answers all four, the
+ * way `BitmapFileIndex.Reader` does — `<>` is the value's rows flipped over the row count, so it
+ * is empty only when every row holds the value, nulls included in the count.
+ */
+private fun indexVerdict(
+    ix: PaimonColumnIndex,
+    op: PredicateOp,
+    column: String,
+    type: String,
+    value: Any?,
+    literal: String,
+    where: String,
+    consulted: String,
+): Pair<Boolean, String>? = when (ix.type) {
+    PaimonFileIndex.BLOOM_FILTER -> {
+        if (op != PredicateOp.EQ) null
+        else if (ix.bytes == null) true to "$column's file index ($where) is empty: no non-null $column here"
+        else {
+            val hash = paimonFastHash(type, value!!)
+            val filter = ix.bytes.let(PaimonBloomFilter::decode)
+            if (hash == null || filter == null) null
+            else if (filter.mightContain(hash)) false to "$column's bloom filter ($where) may hold $literal"
+            else true to "$column's bloom filter ($where, $consulted) has no $literal"
+        }
+    }
+    PaimonFileIndex.BITMAP -> {
+        if (ix.bytes == null) {
+            if (op == PredicateOp.EQ) true to "$column's file index ($where) is empty: no non-null $column here" else null
+        } else {
+            val bitmap = PaimonBitmapIndex.decode(ix.bytes, type)
+            val key = value?.let { paimonBitmapKey(type, it) }
+            when {
+                bitmap == null -> null
+                op == PredicateOp.EQ -> if (key == null) null
+                    else if (bitmap.contains(key)) false to "$column's bitmap index ($where) lists $literal"
+                    else true to "$column's bitmap index ($where, $consulted) lists no $literal: its ${bitmap.distinctValues} values are not it"
+                op == PredicateOp.NOT_EQ -> if (key == null) null
+                    else if (bitmap.cardinalityOf(key) == bitmap.rowCount) true to "$column's bitmap index ($where, $consulted): every one of its ${bitmap.rowCount} rows is $literal"
+                    else false to "$column's bitmap index ($where) has rows that are not $literal"
+                op == PredicateOp.IS_NULL ->
+                    if (bitmap.hasNull) false to "$column's bitmap index ($where) has a null bitmap"
+                    else true to "$column's bitmap index ($where, $consulted) has no null bitmap"
+                else -> // IS_NOT_NULL
+                    if (bitmap.distinctValues > 0) false to "$column's bitmap index ($where) lists ${bitmap.distinctValues} values"
+                    else true to "$column's bitmap index ($where, $consulted) lists no value: every row is null"
+            }
+        }
+    }
+    else -> null
 }
 
 internal fun joinNotes(vararg notes: String?): String? = notes.filterNotNull().takeIf { it.isNotEmpty() }?.joinToString("; ")

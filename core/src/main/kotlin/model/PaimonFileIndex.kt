@@ -10,9 +10,10 @@ import java.time.Instant
  * A Paimon file index, decoded from its container — see [service.PaimonFileIndexReader].
  *
  * One entry per indexed column, in the order the head lists them; a column may carry several
- * index types. What each index's bytes mean is decided by [PaimonColumnIndex.type], and only
- * `bloom-filter` is read here: the other types (`bitmap`, `bsi`, `dynamic-bitmap`) are named and
- * left undecoded, which the pruning reports rather than guesses at.
+ * index types. What each index's bytes mean is decided by [PaimonColumnIndex.type]: a
+ * `bloom-filter` is [PaimonBloomFilter], a `bitmap` is [PaimonBitmapIndex], and the other types
+ * (`bsi`, `dynamic-bitmap`) are named and left undecoded, which the pruning reports rather than
+ * guesses at.
  */
 data class PaimonFileIndex(
     val columns: Map<String, List<PaimonColumnIndex>>,
@@ -31,8 +32,15 @@ data class PaimonFileIndex(
         ?.firstOrNull { it.type == BLOOM_FILTER }?.bytes
         ?.let { PaimonBloomFilter.decode(it) }
 
+    /** The bitmap index over [column], decoded against its [paimonType], or null when the column has none or its bytes are empty. */
+    fun bitmapIndex(column: String, paimonType: String): PaimonBitmapIndex? = columns.entries
+        .firstOrNull { it.key.equals(column.trim(), ignoreCase = true) }?.value
+        ?.firstOrNull { it.type == BITMAP }?.bytes
+        ?.let { PaimonBitmapIndex.decode(it, paimonType) }
+
     companion object {
         const val BLOOM_FILTER = "bloom-filter"
+        const val BITMAP = "bitmap"
     }
 }
 

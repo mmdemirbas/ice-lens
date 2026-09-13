@@ -800,6 +800,9 @@ internal fun foldFileOutcomes(normalized: ScanFilter, outcomes: List<PredicateOu
     return FilePruneResult(outcomes, fate)
 }
 
+/** The operators a column that is null in every row cannot satisfy, on both formats' own reading. */
+private val ALL_NULL_SKIPS = setOf(PredicateOp.EQ, PredicateOp.LT, PredicateOp.LTE, PredicateOp.GT, PredicateOp.GTE, PredicateOp.LIKE)
+
 private fun ColumnStats.matches(column: String): Boolean {
     val wanted = column.trim()
     if (wanted.isEmpty()) return false
@@ -842,13 +845,23 @@ private fun evaluateColumnTerm(stats: ColumnStats, predicate: ScanPredicate): Pr
         else -> Unit
     }
 
+    // A null satisfies no comparison, so a column that is null in every row holds no matching
+    // row whatever the literal — `InclusiveMetricsEvaluator.containsNullsOnly` and Paimon's
+    // `NullFalseLeafBinaryFunction` both answer so. Not for `<>` or `NOT LIKE`: Paimon's answer
+    // is the same there, Iceberg's evaluator returns "might match" before it looks, and the
+    // Paimon bridge adds its own reading rather than this stage skipping a file Iceberg opens.
+    if (stats.isAllNull && predicate.op in ALL_NULL_SKIPS) {
+        return outcome(TermEffect.SKIPS, "every value of $name here is null, and a null satisfies no comparison")
+    }
+
     val lower = stats.lowerBound?.takeIf { !it.isError }?.value
     val upper = stats.upperBound?.takeIf { !it.isError }?.value
     if (lower == null || upper == null) {
         return outcome(
             TermEffect.NOT_EVALUATED,
             if (stats.isAllNull) {
-                "every value of $name here is null, so the file records no bounds for it"
+                "every value of $name here is null, so the file records no bounds for it — which " +
+                    "rules a `<>` out on Paimon and not on Iceberg, whose evaluator keeps the file"
             } else {
                 "$name has no usable ${if (lower == null) "lower" else "upper"} bound recorded in " +
                     "this file, so there is no range to rule the predicate out against"
@@ -1040,6 +1053,7 @@ fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
                 else -> return@mapNotNull null
             }
             var own = if (stats != null) evaluateFilePruning(stats, filter) else unevaluatedFile(filter, withheld.orEmpty())
+            if (node is GraphNode.PaimonDataFileNode && stats != null) own = paimonAllNullNegations(own, filter, stats)
             // An append table's file index: the embedded one is tested when the scan plans, the
             // `.index` file beside the data file when the read opens it — see [FileIndexUse].
             if (node is GraphNode.PaimonDataFileNode && withheld == null && node.hasFileIndex) {

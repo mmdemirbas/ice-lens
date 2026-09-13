@@ -3,6 +3,7 @@ package model
 import service.GraphLayoutService
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -27,6 +28,9 @@ class PaimonFileIndexPruningTest {
     private val fi1 = "data-c207bd15-64eb-4893-a09f-c6ef8e5d7693-0.parquet"   // k 1..3, .index beside it
     private val fi2 = "data-f13e0a5f-77b4-4f0f-909a-bdc2152578d2-0.parquet"   // k 4..5, index embedded
     private val ft1 = "data-831f46cf-d7a2-4d48-a916-d55bc4e917bf-0.parquet"   // three rows, temporal bloom filters embedded
+    private val fb1 = "data-78cf96d7-9512-4747-8693-dbc3c5d6ad40-0.parquet"   // red, green, red, null; n 1..4; bitmap embedded
+    private val fb2 = "data-0601ba10-ed0a-4763-b7de-f03655fc7c77-0.parquet"   // red, red; n 5..6; .index beside it
+    private val fb3 = "data-02d4b3e1-d6fa-4f0b-9a20-3932c2cf06d4-0.parquet"   // null, null; n 7..8; .index beside it
 
     /** [planned] is what the plan opened; [rawSkipped] the planned files a raw read's index then ruled out; [merged] the planned files read through a merge, index unconsulted. */
     private class Case(val fixture: String, val filter: String, val planned: Set<String>, val rawSkipped: Set<String> = emptySet(), val merged: Set<String> = emptySet())
@@ -55,6 +59,20 @@ class PaimonFileIndexPruningTest {
         Case("ft", "d = '2024-03-05'", setOf(ft1)),
         Case("ft", "d = '2024-03-06'", setOf(ft1)),
         Case("ft", "d = '2024-03-07'", setOf(ft1)),
+        // fb: the bitmap index. The plan settles most negatives by the statistics first — an all-null
+        // column matches no value and no `<>`, bounds that meet settle a `<>` — and the dictionary is
+        // what rules `orange` out of file 1, whose bounds are green..red.
+        Case("fb", "c = 'red'", setOf(fb1, fb2)),
+        Case("fb", "c = 'green'", setOf(fb1)),
+        Case("fb", "c = 'orange'", emptySet()),
+        Case("fb", "c <> 'red'", setOf(fb1)),
+        Case("fb", "c IS NULL", setOf(fb1, fb3)),
+        Case("fb", "c IS NOT NULL", setOf(fb1, fb2)),
+        Case("fb", "n = 5", setOf(fb2)),
+        Case("fb", "n = 9", emptySet()),
+        Case("fb", "n IN (2, 6)", setOf(fb1, fb2)),
+        Case("fb", "n = 5 AND c = 'green'", emptySet()),
+        Case("fb", "n <> 7", setOf(fb1, fb2, fb3)),
     )
 
     private fun fileNodes(graph: GraphModel) = graph.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
@@ -67,7 +85,7 @@ class PaimonFileIndexPruningTest {
             val graph = graphs.getValue(case.fixture)
             val plan = evaluateScan(graph, (parseScanFilter(case.filter) as ScanFilterParse.Parsed).filter)
             val nodes = fileNodes(graph)
-            assertEquals(if (case.fixture == "ft") 1 else 2, nodes.size, case.fixture)
+            assertEquals(when (case.fixture) { "ft" -> 1; "fb" -> 3; else -> 2 }, nodes.size, case.fixture)
             for ((name, node) in nodes) {
                 val result = plan.files.getValue(node.id)
                 val label = "${case.fixture}: ${case.filter} — $name: $result"
@@ -84,6 +102,37 @@ class PaimonFileIndexPruningTest {
                 }
             }
         }
+    }
+
+    /**
+     * The bitmap's own verdicts through the pruning path, where the statistics decide nothing:
+     * `c <> 'red'` on file 2 is settled by bounds that meet, so the term is asked of the index only
+     * where the bounds could not answer — `c = 'orange'` on file 1, and the reason says so.
+     */
+    @Test
+    fun `a bitmap index rules a value out by its dictionary, and a not-equal out only when every row holds the value`() {
+        val graph = graphOf("fb")
+        val nodes = fileNodes(graph)
+        fun outcome(filter: String, file: String) = evaluateScan(graph, (parseScanFilter(filter) as ScanFilterParse.Parsed).filter)
+            .files.getValue(nodes.getValue(file).id)
+        val orange = outcome("c = 'orange'", fb1)
+        assertEquals(FileFate.SKIPPED, orange.fate)
+        assertTrue(orange.byIndex, "$orange")
+        assertTrue(orange.outcomes.single().reason.contains("bitmap index (embedded in the entry, tested when the scan plans) lists no 'orange'"), orange.outcomes.single().reason)
+        val red = outcome("c = 'red'", fb1)
+        assertEquals(FileFate.WOULD_BE_READ, red.fate)
+        assertTrue(red.outcomes.single().reason.contains("inside"), "the bounds answered first, and the index is not asked after them: ${red.outcomes.single().reason}")
+        // File 3 is all null: `=` and `<>` are both settled by the statistics before any index is asked.
+        val nullNotEq = outcome("c <> 'red'", fb3)
+        assertEquals(FileFate.SKIPPED, nullNotEq.fate)
+        assertFalse(nullNotEq.byIndex)
+        assertTrue(nullNotEq.outcomes.single().reason.contains("null count is its row count"), nullNotEq.outcomes.single().reason)
+        assertEquals(FileFate.SKIPPED, outcome("c = 'red'", fb3).fate)
+        assertEquals(FileFate.SKIPPED, outcome("c < 'zzz'", fb3).fate)
+        // n = 9 on file 2: inside no bounds anywhere, so the statistics settle it; n = 6 AND c = 'green' is a `.index` skip — the read's, not the plan's.
+        val readSkip = outcome("n = 6 AND c = 'green'", fb2)
+        assertEquals(FileFate.SKIPPED, readSkip.fate)
+        assertFalse(readSkip.byIndex, "bounds that meet settle `c = 'green'` on an all-red file: $readSkip")
     }
 
     @Test
