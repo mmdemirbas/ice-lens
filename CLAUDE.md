@@ -400,7 +400,18 @@ intellij/src/main/kotlin/plugin/
   direction is therefore scoped to *what the graph draws* rather than to a snapshot, which is the
   scope `evaluateScan` already answers in and gives up only liveness; the panel says so. `mor` is
   where the two rules separate: of the two delete files that miss the compacted file, one is ruled
-  out by its target and the other by sequence, having been written before that file existed
+  out by its target and the other by sequence, having been written before that file existed.
+  **And the pairing is held to Iceberg's own**: `iceberg-scan-plans.scala` prints
+  `FileScanTask.deletes()` for every data file of every checked-in table's current snapshot —
+  `DeleteFileIndex`'s pairing, partition included — into
+  `core/src/test/resources/iceberg-scan-plans/deletes.txt`, and `IcebergDeletePairingPlanTest`
+  asserts both directions over 28 tables and 80 files: a delete Iceberg applies is reached or
+  unsettled here, a reach proved here is one Iceberg applies, and — since no positional delete or
+  vector in the corpus is left unsettled — the plan's deletes are exactly the proved ones plus the
+  equality deletes, which only sequence and partition attach. `test` is the one table left out,
+  its manifest list recorded at the path it was written to. A target rule weakened to "unsettled"
+  is caught on `eqdel`; the sequence rule's `>` against `>=` is not, since no fixture writes a
+  delete in the same commit as a data file it could apply to
 - **The live row count exists only by reading the delete files, and the pairing is what makes that
   cheap.** `record_count` counts rows *before* deletes, and subtracting the delete files' own
   `record_count` is wrong the moment one is dangling — on `mor` that subtraction gives 3 where the
@@ -1745,7 +1756,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,162 tests across 151 files (893 in :core, 261 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,164 tests across 152 files (895 in :core, 261 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -57,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fi` the two files merge-read and their indexes are never opened, which the rows say too. The
   panel's `File Index` row names the columns and index types. Held to `FileIndexPredicate` and
   the plan on both tables (`docs/fixtures/paimon-scan-plans.scala`).
+- **The delete pairing is held to Iceberg's own plan.** `FileScanTask.deletes()` over every
+  checked-in table's current snapshot (28 tables, 80 data files) is checked in as an oracle, and
+  `deleteReach` agrees with it both ways: every delete Iceberg applies is reached or unsettled,
+  every proved reach is one Iceberg applies, and the metadata settles every positional delete
+  and vector in the corpus, so the plan's deletes are the proved ones plus the equality deletes.
 - **Iceberg's two pruning stages are held to Iceberg's own plans.**
   `docs/fixtures/iceberg-scan-plans.scala` prints the data files `planFiles()` opens for 41
   filters over five checked-in tables — every transform shape, both partition specs, three

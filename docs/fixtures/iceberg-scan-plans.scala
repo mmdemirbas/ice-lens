@@ -9,7 +9,7 @@
 // record (/wh/default/<t>), so the manifests resolve where they say they are:
 //
 //   WH=$PWD/tmp/iplans-wh; rm -rf "$WH"; mkdir -p "$WH/default"
-//   for t in parted respec evolved pstats mor; do cp -R example/iceberg/default/$t "$WH/default/$t"; done
+//   cp -R example/iceberg/default/* "$WH/default/"; cp -R example/iceberg/extdata-files "$WH/"
 //   docker run --rm --entrypoint bash \
 //     -v "$WH:/wh" -v "$PWD/docs/fixtures/iceberg-scan-plans.scala:/tmp/plans.scala:ro" \
 //     tabulario/spark-iceberg:latest \
@@ -17,6 +17,13 @@
 //
 // Observed (2026-09-14), one line per file the plan opens; the file names per case are carried
 // by IcebergScanPlanTest.
+//
+// The second half prints, for every table, which delete files the unfiltered plan attaches to
+// each data file of the current snapshot (`FileScanTask.deletes()` — DeleteFileIndex's pairing
+// by sequence number, partition, and a positional delete's file_path bounds or a vector's
+// referenced_data_file), which IcebergDeletePairingPlanTest holds `deleteReach` to: a delete
+// Iceberg applies must be reached or unsettled here, and a reach proved here must be one
+// Iceberg applies.
 
 import org.apache.iceberg.expressions.{Expression, Expressions => E}
 import org.apache.iceberg.hadoop.HadoopTables
@@ -84,3 +91,20 @@ plan("pstats", "id > 3", E.greaterThan("id", 3))
 plan("mor", "no filter", null)
 plan("mor", "id = 7", E.equal("id", 7))
 plan("mor", "id < 3", E.lessThan("id", 3))
+
+// Every table's current snapshot: `<data file> -> <delete files>`, sorted. A table this Iceberg
+// cannot open prints one `!` line instead, and the test leaves it out by name.
+def deletes(name: String): Unit = {
+  println(s"-- $name: deletes")
+  try {
+    val table = tables.load(s"/wh/default/$name")
+    if (table.currentSnapshot() == null) { println("(no snapshot)"); return }
+    val byFile = scala.collection.mutable.TreeMap[String, scala.collection.mutable.TreeSet[String]]()
+    for (t <- table.newScan().planFiles().asScala) {
+      val set = byFile.getOrElseUpdate(t.file().path().toString.split("/").last, scala.collection.mutable.TreeSet[String]())
+      t.deletes().asScala.foreach(d => set += d.path().toString.split("/").last)
+    }
+    for ((f, ds) <- byFile) println(s"$f -> ${ds.mkString(",")}")
+  } catch { case e: Throwable => println(s"! ${e.getClass.getSimpleName}: ${e.getMessage}") }
+}
+new java.io.File("/wh/default").listFiles().filter(_.isDirectory).map(_.getName).sorted.foreach(deletes)
