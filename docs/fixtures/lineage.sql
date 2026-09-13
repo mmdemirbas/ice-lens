@@ -32,7 +32,11 @@
 --   5  ALTER    write.delete.mode = merge-on-read
 --   6  DELETE   WHERE id = 4                                                 snapshot 4, first-row-id 9: a deletion vector over snapshot 2's p=1 file, in a delete
 --                                                                            manifest with no first_row_id; next stays 9
---   7  SELECT   every row with _row_id and _last_updated_sequence_number      the oracle, printed by the writer:
+--   7  CALL     rewrite_data_files (min-input-files 2, bin-pack)             snapshot 5, first-row-id 9: the four live files compacted to one per partition
+--                                                                            (3 rows p=1, 2 rows p=2) and the vector applied; every row keeps its _row_id and
+--                                                                            _last_updated_sequence_number as columns of the new files — the promise of row
+--                                                                            lineage — while the files still inherit 9 and 12 and next-row-id moves to 14
+--   8  SELECT   every row with _row_id and _last_updated_sequence_number      the oracle, printed by the writer, unchanged by the compaction:
 --                                                                            1 alpha 0 1 / 2 BRAVO 2 3 / 3 charlie 1 1 / 5 echo 5 2 / 6 foxtrot 4 2
 --
 -- To regenerate (see docs/fixtures/parted.sql for why --entrypoint bash is required):
@@ -73,5 +77,7 @@ UPDATE lens.default.lineage SET name = 'BRAVO' WHERE id = 2;
 ALTER TABLE lens.default.lineage SET TBLPROPERTIES ('write.delete.mode' = 'merge-on-read');
 
 DELETE FROM lens.default.lineage WHERE id = 4;
+
+CALL lens.system.rewrite_data_files(table => 'default.lineage', options => map('min-input-files', '2'));
 
 SELECT id, name, p, _row_id, _last_updated_sequence_number FROM lens.default.lineage ORDER BY id;

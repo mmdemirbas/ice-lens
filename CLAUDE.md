@@ -627,8 +627,12 @@ intellij/src/main/kotlin/plugin/
   entries); a manifest with only existing rows still advances the allocation by them, so an
   `UPDATE` of one row moved `next-row-id` by three and **ids 7 and 8 are burned**; and the added
   file of that update inherits 6 though its one row carries `_row_id` 2. A deletion vector's
-  manifest and entry record none. `lineage` is partitioned so one INSERT writes two files into
-  one manifest, which is the only shape that exercises the sum
+  manifest and entry record none. And a `rewrite_data_files` at the end **carries every row's id
+  and last-updated number into the files it writes**, columns copied from the rows — the promise
+  of row lineage, and the reason the writer's own per-row printout is identical before and after
+  it — while its files still inherit 9 and 12 and `next-row-id` moves to 14. `lineage` is
+  partitioned so one INSERT writes two files into one manifest, which is the only shape that
+  exercises the sum
 - **A null sequence number on an entry means "the manifest's", never "unknown".** Iceberg inherits
   it: an entry written by the commit that wrote its manifest stores nothing, because every entry
   that commit adds shares one number, and only an entry *carried forward* records one of its own.
@@ -1262,7 +1266,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~951 tests across 111 files (717 in :core, 229 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~952 tests across 111 files (718 in :core, 229 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1344,7 +1348,7 @@ container invocation and the traps in it:
 | `default/mor` | `MergeOnReadFixtureTest` | positional deletes, a compaction, dangling deletes |
 | `default/eqdel` | `EqualityDeleteFixtureTest` | both delete kinds in one table |
 | `default/v3` | `FormatV3FixtureTest` | format-version 3 with deletion vectors |
-| `default/lineage` | `RowLineageFixtureTest` | format-version 3 row lineage, written by Iceberg 1.10 — `next-row-id`, a snapshot's and a manifest's `first-row-id`, files inheriting theirs in entry order, a rewritten file carrying `_row_id`, and a deletion vector allocating nothing |
+| `default/lineage` | `RowLineageFixtureTest` | format-version 3 row lineage, written by Iceberg 1.10 — `next-row-id`, a snapshot's and a manifest's `first-row-id`, files inheriting theirs in entry order, a rewritten file carrying `_row_id`, a deletion vector allocating nothing, and a compaction that keeps every id |
 | `default/evolved` | `SchemaEvolutionFixtureTest` | three manifest schemas — `int`→`long`, `float`→`double`, a rename and a drop |
 | `default/promoted` | `PromotedBoundsFixtureTest` | `evolved` then `rewrite_manifests` — one manifest under the current schema carrying four-byte bounds under `long`/`double` and a bound for a dropped field |
 | `default/respec` | `PartitionSpecEvolutionTest` | two partition specs — dropped, rebucketed, `days`→`months` |
