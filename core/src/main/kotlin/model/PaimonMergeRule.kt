@@ -12,7 +12,15 @@ enum class PaimonMergeKeeps { LATEST, FIRST, COMBINED }
  * key. `first-row` keeps the first and rejects a retraction outright unless `ignore-delete`.
  * `partial-update` folds every record's non-null columns into one row; a `-D` removes the key
  * only under `partial-update.remove-record-on-delete`, is skipped under `ignore-delete`, and is
- * rejected otherwise — and a sequence group retracts columns by group, which is not applied here.
+ * rejected otherwise. With sequence groups (`fields.<seq>.sequence-group = <cols>`) a record
+ * updates a group only when its sequence field is at or above the row's, a retraction retracts
+ * its group's columns and the key stays — unless `partial-update.remove-record-on-sequence-group`
+ * names the group's sequence field, when a `-D` at or above the row's value removes the key
+ * (`retractWithSequenceGroup`); [sequenceGroupRemovals] carries those fields and the fold is
+ * `service.PaimonSequenceGroups`. **A key with no insert record is not a row** under every
+ * engine but `aggregation`: `deduplicate` and `first-row` return the record they kept, which is
+ * none, and `partial-update` answers `DELETE` while `meetInsert` is false — a key whose only
+ * records are retractions ignored under `ignore-delete`, or retracting by group, is gone.
  * `aggregation` folds by each column's function; a `-D` removes the key only under
  * `aggregation.remove-record-on-delete` and otherwise retracts from the aggregate, the row
  * staying. **And a batch read of a first-row table, or of any primary-key table with deletion
@@ -29,10 +37,20 @@ data class PaimonMergeRule(
     val retractionsIgnored: Boolean,
     /** A retraction record makes the merge function throw: a read of that key fails. */
     val retractionsRejected: Boolean,
-    /** False where the rule is not applied here — partial-update sequence groups. */
+    /** False where the rule is not applied here — a multi-field sequence group named by `remove-record-on-sequence-group`. */
     val applied: Boolean,
     /** A batch read of this table skips level-0 files. */
     val skipsLevel0: Boolean,
+    /** A key with no `+I`/`+U` record among its records is not a row — every engine but aggregation. */
+    val keyNeedsInsert: Boolean = true,
+    /** `partial-update` with sequence groups: retractions retract by group and never remove on their kind. */
+    val sequenceGroups: Boolean = false,
+    /**
+     * The sequence fields `partial-update.remove-record-on-sequence-group` names, each with the
+     * fields of its group in declaration order — a `-D` whose value is at or above the row's on
+     * any of them removes the key. Empty where the option is unset.
+     */
+    val sequenceGroupRemovals: List<List<String>> = emptyList(),
 ) {
     fun removes(kind: Int?): Boolean = kind != null && kind in removingKinds
 
@@ -47,7 +65,12 @@ data class PaimonMergeRule(
             },
         )
         when {
-            !applied -> append("; sequence groups retract by column group, which is not applied here")
+            !applied -> append("; remove-record-on-sequence-group names a multi-field sequence group, which is not applied here")
+            sequenceGroups && sequenceGroupRemovals.isNotEmpty() -> append(
+                "; a record updates a sequence group only at or above the row's ${sequenceGroupRemovals.joinToString(", ") { it.joinToString(",") }}, " +
+                    "and a -D (delete) there removes the key (remove-record-on-sequence-group)",
+            )
+            sequenceGroups -> append("; a retraction retracts its sequence group's columns and the key stays")
             retractionsIgnored -> append("; retractions are ignored (ignore-delete)")
             retractionsRejected -> append("; a retraction makes the read fail")
             removingKinds.isNotEmpty() -> append("; a ${removingKinds.sorted().joinToString(" or ") { PaimonRowKind.describe(it).substringBefore(" (") }} as the latest record removes the key")
@@ -70,21 +93,29 @@ fun paimonMergeRuleOf(options: Map<String, String>, hasPrimaryKey: Boolean): Pai
     return when (engine) {
         "first-row" -> PaimonMergeRule(engine, PaimonMergeKeeps.FIRST, emptySet(), ignoreDelete, !ignoreDelete, applied = true, skipsLevel0 = skipsLevel0)
         "partial-update" -> {
-            val sequenceGroups = options.keys.any { it.startsWith("fields.") && it.endsWith(".sequence-group") }
+            // `fields.<seq fields>.sequence-group = <cols>`: the key names the sequence fields.
+            val groups = options.keys.filter { it.startsWith("fields.") && it.endsWith(".sequence-group") }
+                .map { it.removePrefix("fields.").removeSuffix(".sequence-group").split(",").map(String::trim) }
             val removeOnDelete = flag("partial-update.remove-record-on-delete")
+            val removeOnGroups = options["partial-update.remove-record-on-sequence-group"]?.split(",")?.map(String::trim)?.filter { it.isNotEmpty() }.orEmpty()
+            val removals = removeOnGroups.mapNotNull { field -> groups.firstOrNull { field in it } }.distinct()
             PaimonMergeRule(
                 engine, PaimonMergeKeeps.COMBINED,
-                removingKinds = if (!ignoreDelete && removeOnDelete) setOf(PaimonRowKind.DELETE) else emptySet(),
+                removingKinds = if (!ignoreDelete && removeOnDelete && groups.isEmpty()) setOf(PaimonRowKind.DELETE) else emptySet(),
                 retractionsIgnored = ignoreDelete,
-                retractionsRejected = !ignoreDelete && !removeOnDelete && !sequenceGroups,
-                applied = !sequenceGroups,
+                retractionsRejected = !ignoreDelete && !removeOnDelete && groups.isEmpty(),
+                applied = removals.all { it.size == 1 },
                 skipsLevel0 = skipsLevel0,
+                sequenceGroups = groups.isNotEmpty(),
+                sequenceGroupRemovals = if (ignoreDelete) emptyList() else removals,
             )
         }
         "aggregation" -> PaimonMergeRule(
             engine, PaimonMergeKeeps.COMBINED,
             removingKinds = if (flag("aggregation.remove-record-on-delete")) setOf(PaimonRowKind.DELETE) else emptySet(),
             retractionsIgnored = false, retractionsRejected = false, applied = true, skipsLevel0 = skipsLevel0,
+            // A retraction retracts from the aggregate and the row stays, whether or not an insert preceded it.
+            keyNeedsInsert = false,
         )
         else -> PaimonMergeRule(
             engine, PaimonMergeKeeps.LATEST,

@@ -42,13 +42,15 @@ object PaimonMergedCount {
         val fileRows: Long,
         /** Distinct keys — one record each after the merge. */
         val keys: Long,
-        /** Keys whose latest record is a `-D` or `-U`. */
+        /** Keys whose latest record is a `-D` or `-U` that removes them — or, under sequence groups, a `-D` at or above the row's value. */
         val retracted: Long,
         /** Keys whose latest record a vector marks. */
         val vectorMarked: Long,
         val error: String? = null,
+        /** Keys with no insert record at all, not already counted in [retracted] — not a row where [PaimonMergeRule.keyNeedsInsert]. */
+        val insertless: Long = 0,
     ) {
-        val merged: Long get() = keys - retracted - vectorMarked
+        val merged: Long get() = keys - retracted - vectorMarked - insertless
     }
 
     data class Result(
@@ -70,6 +72,7 @@ object PaimonMergedCount {
     ) {
         val merged: Long? get() = if (applied && buckets.none { it.error != null } && bucketsLeft == 0) buckets.sumOf { it.merged } else null
         val retracted: Long get() = buckets.sumOf { it.retracted }
+        val insertless: Long get() = buckets.sumOf { it.insertless }
         val vectorMarked: Long get() = buckets.sumOf { it.vectorMarked }
         val failed: Int get() = buckets.count { it.error != null }
     }
@@ -125,16 +128,28 @@ object PaimonMergedCount {
         // first-row, or under ignore-delete; and the keys a read would fail on, where a retraction
         // is rejected, are counted rather than folded.
         val removing = rule.removingKinds.takeIf { it.isNotEmpty() }?.joinToString(", ", "(", ")") ?: "(-1)"
-        val (keys, retracted, rejected) = DuckDb.withConnection { conn ->
+        // `first` is null for a key with no `+I`/`+U` record: every engine but aggregation answers
+        // no row for it, whatever its retractions did.
+        val (keys, latestRemoving, rejected, insertless) = DuckDb.withConnection { conn ->
             conn.prepareStatement(
-                "SELECT count(*), count(*) FILTER (WHERE kind IN $removing), count(*) FILTER (WHERE retracted) FROM ($latest)",
+                "SELECT count(*), count(*) FILTER (WHERE kind IN $removing), count(*) FILTER (WHERE retracted), " +
+                    "count(*) FILTER (WHERE first IS NULL AND kind NOT IN $removing) FROM ($latest)",
             ).use { pstmt ->
                 paths.forEachIndexed { i, p -> pstmt.setString(i + 1, p) }
-                pstmt.executeQuery().use { rs -> rs.next(); Triple(rs.getLong(1), rs.getLong(2), rs.getLong(3)) }
+                pstmt.executeQuery().use { rs -> rs.next(); listOf(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }
             }
         }
         if (rule.retractionsRejected && rejected > 0) {
             throw IllegalStateException("$rejected keys carry a retraction, which a read of a ${rule.engine} table fails on")
+        }
+        // Under remove-record-on-sequence-group a `-D` removes by its value, not its kind: the keys
+        // holding one are folded record by record, and a key whose last record removed it counts
+        // as retracted — unless it never had an insert, which `insertless` already holds.
+        val retracted = if (rule.sequenceGroupRemovals.isEmpty()) latestRemoving else {
+            val notNull = PaimonRowLookup.groupNullability(input)
+            PaimonRowLookup.sequenceGroupRecords(input, files, keyColumns, casts = emptyList(), keys = emptyList()).values
+                .map { PaimonSequenceGroups.fold(it, notNull) }
+                .count { it.removedNow && it.hasInsert }.toLong()
         }
         // Keys whose latest record a vector marks: only the files with a vector are asked, and
         // only for the records that are not already retractions, streamed rather than listed.
@@ -168,6 +183,6 @@ object PaimonMergedCount {
                 }
             }
         }
-        return BucketCount(partition, bucket, files.size, files.sumOf { it.recordCount ?: 0L }, keys, retracted, marked)
+        return BucketCount(partition, bucket, files.size, files.sumOf { it.recordCount ?: 0L }, keys, retracted, marked, insertless = if (rule.keyNeedsInsert) insertless else 0)
     }
 }

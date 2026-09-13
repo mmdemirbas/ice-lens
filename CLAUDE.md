@@ -98,6 +98,7 @@ core/src/main/kotlin/
 │   ├── PaimonMergedCount.kt   # What `SELECT count(*)` returns as of a Paimon snapshot: the merge over each bucket's files, less retractions and vector-marked keys
 │   ├── LiveRowCount.kt        # The same on Iceberg: each data file's record_count less the rows the delete files the scan pairs with it remove
 │   ├── PaimonDeletionVectorReader.kt # A Paimon index file's vector at (offset, length) → the row positions it marks; v1 32-bit, v2 as Iceberg's blob
+│   ├── PaimonSequenceGroups.kt # partial-update's remove-record-on-sequence-group, folded over a key's records in sequence order
 │   ├── StorageLocation.kt     # A location string → the Path that opens it. The one place a scheme is resolved
 │   ├── DuckDb.kt              # The shared DuckDB connection, and the object-store credentials configured on it
 │   ├── ObjectStorage.kt       # Listing and reading object storage through DuckDB, with the caches that make it viable
@@ -1698,7 +1699,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,140 tests across 144 files (869 in :core, 260 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,140 tests across 144 files (871 in :core, 260 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1817,6 +1818,7 @@ container invocation and the traps in it:
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 | `paimon/db.db/pu`, `ag`, `fr` | `PaimonMergeEngineFixtureTest` | one primary-key table per merge engine other than the default — `partial-update` folding two writes and removing a key on `-D` until its re-insert, `aggregation` summing, and `first-row`, whose DELETE Spark ran as a file rewrite to level 0 that a batch read of a first-row table never reads: Paimon's own reads printed one row where the statements describe two |
+| `paimon/db.db/sg`, `sgd` | `PaimonMergeEngineFixtureTest` | `partial-update` with two sequence groups — `sg` inserts only, a lower group value not overriding a higher; `sgd` with `remove-record-on-sequence-group = ga`, a DELETE writing a `-D` that removes the key and an insert bringing it back, Paimon's read at every snapshot |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
 starts a loopback-only MinIO and uploads `example/iceberg/default/mor` to `s3://warehouse/db/mor`;
@@ -2116,10 +2118,28 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   under `partial-update` only with `remove-record-on-delete`, and under `aggregation` only with
   its own; none under `first-row`), whether retractions are ignored (`ignore-delete` and its
   per-engine spellings) or make the read fail (`first-row`, and `partial-update` with neither
-  option), and that sequence groups are not applied. `latestPerKeySql` carries the rule's
+  option and no sequence group). `latestPerKeySql` carries the rule's
   removing kinds as a window, so the count and the lookup see a key's last removing record and
   the records after it — a partial-update key removed by a `-D` and re-inserted is one row
-  again. **And `DataTableBatchScan` filters `level > 0` for a first-row table or a primary-key
+  again. **A key with no insert record is not a row**, under every engine but `aggregation`:
+  `deduplicate` and `first-row` return the record they kept and `partial-update` answers
+  `DELETE` while `meetInsert` is false, so a key whose only records are retractions — ignored
+  under `ignore-delete`, or retracting by group — is counted in `BucketCount.insertless` and
+  taken off the merged figure (`PaimonMergeRule.keyNeedsInsert`). **Sequence groups are
+  applied, and the one removal they allow is folded in this process.** `fields.<seq>.sequence-group`
+  makes a retraction retract its group's columns and never the key — `sg`, three rows — unless
+  `partial-update.remove-record-on-sequence-group` names the group's sequence field, when a
+  `-D` at or above the row's value on it removes the key (`retractWithSequenceGroup`). That is a
+  scan with state, not an aggregate: `add` clears `currentDeleteRow` on every record and a
+  removal resets the row so the groups start over, so `service/PaimonSequenceGroups.fold` walks
+  the key's records in sequence order and the count and the lookup ask it only for the keys
+  holding a `-D` (`sequenceGroupRecords`, one CTE over the bucket), taking its last removal and
+  the inserts after it in the shape the SQL gives every other engine. `sgd` is the oracle —
+  Spark's DELETE takes the upsert path under that option and writes a `-D` carrying the row's
+  current `ga`, at or above itself — and `PaimonMergeEngineFixtureTest` holds every snapshot's
+  count to what Paimon printed (2, 2, 3, 2, 3, 3) and the removed key's three records at
+  snapshot 5 to superseded, retraction, live. A group of several sequence fields named by the
+  option is the one shape left "not applied". **And `DataTableBatchScan` filters `level > 0` for a first-row table or a primary-key
   table with deletion vectors** (`batchScanSkipLevel0`): the writer's forced compaction is
   supposed to have moved every level-0 record up, so a batch read trusts that and never opens
   level 0. `fr` is where trusting it fails — Spark refuses an upsert delete on a first-row table

@@ -77,11 +77,13 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   selection — cheap on a developer's table, a stall on the EDT for a large one, so it would need
   the plugin's background task to warm it first.
 
-- **The Paimon merge rules stop at sequence groups.** `deduplicate`, `first-row`,
+- **The Paimon merge rules stop at a multi-field removal group.** `deduplicate`, `first-row`,
   `partial-update` and `aggregation` are applied by the merged count and the row lookup
   (`model/PaimonMergeRule.kt`), each on a table written under it; `partial-update` with
-  `fields.*.sequence-group` retracts by column group and is reported as not applied. Two more
-  edges: the bucket's other files are read for a hit's key without pruning on their
+  `fields.*.sequence-group` is applied too, its `remove-record-on-sequence-group` folded per key
+  (`service/PaimonSequenceGroups.kt`, `sg` and `sgd`), except where the option names a group of
+  several sequence fields — the generated comparator's order over a partly-null tuple is not
+  reproduced here, and that shape is reported as not applied. Two more edges: the bucket's other files are read for a hit's key without pruning on their
   `_MIN_KEY`/`_MAX_KEY`, which a large bucket would want; and a data-evolution split is stitched
   on `file_row_number`, which DuckDB assigns in Parquet only — an ORC data-evolution table
   reports the split as unreadable rather than reading its files apart.

@@ -63,6 +63,8 @@ object PaimonRowLookup {
         val removalKind: Int?,
         /** The insert records after the last removal — what a folding engine builds the row from. */
         val folded: Long,
+        /** Under `remove-record-on-sequence-group`, the sequence numbers of the `-D` records that removed the key as they were met. */
+        val removals: Set<Long> = emptySet(),
     )
 
     /**
@@ -195,9 +197,96 @@ object PaimonRowLookup {
         return raws.groupBy { it.file.partition to it.file.bucket }.mapValues { (scope, bucketRaws) ->
             val keys = bucketRaws.map { keyOf(it.cells, keyColumns) }.distinct()
             val files = input.bucketOf(bucketRaws.first().file)
-            runCatching { queryKeyStates(files, keyColumns, casts, keys, input.rule.removingKinds) }
+            runCatching {
+                val states = queryKeyStates(files, keyColumns, casts, keys, input.rule.removingKinds)
+                if (input.rule.applied && input.rule.sequenceGroupRemovals.isNotEmpty()) withSequenceGroupRemovals(input, files, keyColumns, casts, keys, states) else states
+            }
                 .onFailure { logger.warn("Could not read bucket {}: {}", scope, it.message) }
                 .getOrDefault(emptyMap())
+        }
+    }
+
+    /**
+     * The SQL states know no removal under sequence groups — a `-D` removes by its value on a
+     * group, not by its kind — so the keys holding a `-D` are folded record by record
+     * ([PaimonSequenceGroups]) and their states take the fold's last removal and the inserts
+     * after it, the shape the SQL gives every other engine.
+     */
+    private fun withSequenceGroupRemovals(
+        input: PaimonReadInput,
+        files: List<PaimonLookupFile>,
+        keyColumns: List<String>,
+        casts: List<String?>,
+        keys: List<List<String?>>,
+        states: Map<List<String?>, KeyState>,
+    ): Map<List<String?>, KeyState> {
+        val folds = sequenceGroupRecords(input, files, keyColumns, casts, keys)
+        if (folds.isEmpty()) return states
+        val notNull = groupNullability(input)
+        return states.mapValues { (key, state) ->
+            val records = folds[key] ?: return@mapValues state
+            val fold = PaimonSequenceGroups.fold(records, notNull)
+            val last = fold.removals.lastOrNull() ?: return@mapValues state
+            KeyState(
+                latest = state.latest, holder = state.holder, latestKind = state.latestKind,
+                first = state.first, firstHolder = state.firstHolder, records = state.records, anyRetraction = state.anyRetraction,
+                lastRemoval = last.sequence, removalHolder = last.holder, removalKind = last.kind,
+                folded = records.count { !PaimonRowKind.isRetraction(it.kind) && it.sequence > last.sequence }.toLong(),
+                removals = fold.removals.map { it.sequence }.toSet(),
+            )
+        }
+    }
+
+    /** Per named group and field, whether the schema declares the column `NOT NULL`. */
+    internal fun groupNullability(input: PaimonReadInput): List<List<Boolean>> = input.rule.sequenceGroupRemovals.map { group ->
+        group.map { field -> input.schema.fields.firstOrNull { it.name == field }?.type?.uppercase()?.endsWith("NOT NULL") == true }
+    }
+
+    /**
+     * Every record of the keys among [keys] that hold a `-D` in the bucket — or, with [keys]
+     * empty, of every such key — in key and sequence order, with each record's value on the
+     * named groups' fields. One `?` per file, then one per key column per key.
+     */
+    internal fun sequenceGroupRecords(
+        input: PaimonReadInput,
+        files: List<PaimonLookupFile>,
+        keyColumns: List<String>,
+        casts: List<String?>,
+        keys: List<List<String?>>,
+    ): Map<List<String?>, List<PaimonSequenceGroups.Record>> {
+        val groups = input.rule.sequenceGroupRemovals
+        val keyList = keyColumns.joinToString(", ", transform = ::quoteSqlIdentifier)
+        val fields = groups.flatten().distinct()
+        val fieldList = fields.joinToString("") { ", " + quoteSqlIdentifier(it) }
+        val branches = files.joinToString(" UNION ALL ") {
+            "SELECT $keyList, ${quoteSqlIdentifier(SEQUENCE_NUMBER)} AS s, ${quoteSqlIdentifier(PaimonRowKind.COLUMN)} AS k, " +
+                "filename AS f$fieldList FROM read_parquet(?, filename = true, file_row_number = true)"
+        }
+        val tuple = "(" + casts.joinToString(", ") { cast -> if (cast == null) "?" else "CAST(? AS $cast)" } + ")"
+        val asked = if (keys.isEmpty()) "" else " AND ($keyList) IN (${keys.joinToString(", ") { tuple }})"
+        val sql = "WITH u AS ($branches) SELECT $keyList, s, k, f$fieldList FROM u " +
+            "WHERE ($keyList) IN (SELECT $keyList FROM u WHERE k = ${PaimonRowKind.DELETE})$asked ORDER BY $keyList, s"
+        return DuckDb.withConnection { conn ->
+            conn.prepareStatement(sql).use { pstmt ->
+                var i = 1
+                files.forEach { pstmt.setString(i++, SampleRowReader.resolveForQuery(it.localPath).first) }
+                keys.forEach { key -> key.forEach { pstmt.setString(i++, it) } }
+                pstmt.executeQuery().use { rs ->
+                    val n = keyColumns.size
+                    val out = LinkedHashMap<List<String?>, MutableList<PaimonSequenceGroups.Record>>()
+                    while (rs.next()) {
+                        val key = (1..n).map { rs.getObject(it)?.toString() }
+                        val values = fields.associateWith { rs.getObject(it) }
+                        out.getOrPut(key) { mutableListOf() } += PaimonSequenceGroups.Record(
+                            sequence = rs.getLong("s"),
+                            kind = rs.getInt("k"),
+                            holder = rs.getString("f").substringAfterLast('/'),
+                            groups = groups.map { group -> group.map { values[it] } },
+                        )
+                    }
+                    out
+                }
+            }
         }
     }
 
@@ -305,26 +394,33 @@ object PaimonRowLookup {
         }
 
         val kind = (cells[PaimonRowKind.COLUMN] as? Number)?.toInt()
+        val sequence = (cells[SEQUENCE_NUMBER] as? Number)?.toLong()
+        val state = bucketKeys[keyOf(cells, keyColumns)]
         if (kind != null && PaimonRowKind.isRetraction(kind)) {
+            val fields = rule.sequenceGroupRemovals.joinToString(", ") { it.joinToString(",") }
             val how = when {
                 rule.retractionsIgnored -> ", ignored under ignore-delete"
                 rule.retractionsRejected -> ", which a read of this table fails on"
+                !rule.applied -> ", under a rule not applied here"
+                rule.sequenceGroups && sequence != null && state?.removals?.contains(sequence) == true ->
+                    ", at or above the row's $fields: removed the key (remove-record-on-sequence-group)"
+                rule.sequenceGroups && kind == PaimonRowKind.DELETE && rule.sequenceGroupRemovals.isNotEmpty() ->
+                    ", below the row's $fields or null there: retracts its group's columns, the key stays"
+                rule.sequenceGroups -> ", retracts its sequence group's columns; the key stays"
                 rule.keeps == PaimonMergeKeeps.COMBINED && !rule.removes(kind) -> ", folded into the row"
                 else -> ", not a row"
             }
             return RowHit(file.fileName, position, cells, RowFate.RETRACTION, note = PaimonRowKind.describe(kind) + how)
         }
-        val sequence = (cells[SEQUENCE_NUMBER] as? Number)?.toLong()
-            ?: return RowHit(file.fileName, position, cells, RowFate.UNKNOWN, note = "the record carries no $SEQUENCE_NUMBER")
-        val state = bucketKeys[keyOf(cells, keyColumns)]
-            ?: return RowHit(file.fileName, position, cells, RowFate.UNKNOWN, note = "the bucket's files could not be read for the key")
+        if (sequence == null) return RowHit(file.fileName, position, cells, RowFate.UNKNOWN, note = "the record carries no $SEQUENCE_NUMBER")
+        if (state == null) return RowHit(file.fileName, position, cells, RowFate.UNKNOWN, note = "the bucket's files could not be read for the key")
         // A removing retraction after this record: under deduplicate any later record shadows it
         // anyway; under a folding engine it is the one thing that does.
         val removal = state.lastRemoval?.takeIf { it > sequence }
         return when {
             !rule.applied -> RowHit(
                 file.fileName, position, cells, RowFate.UNKNOWN,
-                note = "merge-engine = ${rule.engine} with sequence groups; not applied here",
+                note = "merge-engine = ${rule.engine} with remove-record-on-sequence-group on a multi-field group; not applied here",
             )
             state.anyRetraction && rule.retractionsRejected -> RowHit(
                 file.fileName, position, cells, RowFate.UNKNOWN, note = "the key has a retraction, which a read of this table fails on",

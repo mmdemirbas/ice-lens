@@ -1970,6 +1970,16 @@ class InspectorRenderTest {
                 PaimonMergedCountSection(ad) { settled.set(true) }
             }
         }
+        // `sgd` at snapshot 4: partial-update with sequence groups, the key a -D removed at or
+        // above the row's `ga` counted as retracted, the rule stating the field.
+        val (sgd, _) = latest("sgd")
+        val four = sgd.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().single { it.branch == null && it.data.id == 4L }
+        val sgdSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-merged-rows-sgd", width = 1400, height = 620, ready = sgdSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                PaimonMergedCountSection(four, startRequested = true) { sgdSettled.set(true) }
+            }
+        }
     }
 
     /**

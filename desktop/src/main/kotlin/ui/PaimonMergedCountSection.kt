@@ -109,6 +109,7 @@ private fun ResultBody(result: PaimonMergedCount.Result) {
             " — ${formatCount(result.fileRows)} in the files" +
             (if (result.fromMetadata) "" else ", ${formatCount(result.buckets.sumOf { it.keys })} keys") +
             ", ${formatCount(result.retracted)} retracted, ${formatCount(result.vectorMarked)} marked by vectors" +
+            (if (result.insertless > 0) ", ${formatCount(result.insertless)} never inserted" else "") +
             (if (result.bucketsLeft > 0) ", ${result.bucketsLeft} buckets left unread by the cap" else "") +
             (if (result.failed > 0) ", ${result.failed} could not be read" else "") + ".",
         fontSize = TypeScale.small,

@@ -92,13 +92,18 @@ class PaimonMergedCountFixtureTest {
     }
 
     @Test
-    fun `partial-update with sequence groups is reported, not applied`() {
+    fun `remove-record-on-sequence-group naming a multi-field group is reported, not applied`() {
         val pc = model("pc")
         val input = assertNotNull(pc.paimonReadInputOf(pc.snapshots.last(), replayPaimonSnapshot(pc.snapshots.last())))
-        val options = input.schema.options + mapOf("merge-engine" to "partial-update", "fields.v.sequence-group" to "k")
+        val options = input.schema.options + mapOf(
+            "merge-engine" to "partial-update", "fields.k,v.sequence-group" to "v", "partial-update.remove-record-on-sequence-group" to "k",
+        )
         val result = PaimonMergedCount.count(input.copy(rule = model.paimonMergeRuleOf(options, hasPrimaryKey = true)))
         assertTrue(!result.applied)
         assertNull(result.merged)
         assertEquals("partial-update", result.mergeEngine)
+        // A single-field group there, or no removal option at all, is applied.
+        assertTrue(model.paimonMergeRuleOf(options + ("fields.k,v.sequence-group" to "") - "fields.k,v.sequence-group" + ("fields.k.sequence-group" to "v"), hasPrimaryKey = true).applied)
+        assertTrue(model.paimonMergeRuleOf(options - "partial-update.remove-record-on-sequence-group", hasPrimaryKey = true).applied)
     }
 }
