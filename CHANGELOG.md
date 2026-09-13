@@ -88,6 +88,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **Refs print their retention as ages.** `30 days (2,592,000,000 ms)` and `not set` where the
+  table's defaults apply, in place of bare milliseconds that read `N/A` on every fixture. `retained`
+  is the fixture — a tag and a branch created with retention, and an `expire_snapshots` that kept
+  the branch's two, the tag's one and main's tip, and whose first attempt removed nothing because
+  the branch's own snapshot age stood in for `older_than`.
 - **An append table's deletion vector has a fixture.** `ad` is written with
   `deletion-vectors.enabled` on a `bucket = -1` table: its DELETE commits as a `COMPACT` whose only
   change is an index manifest — one vector per touched file, both files untouched — where `ao`

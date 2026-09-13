@@ -414,6 +414,18 @@ class InspectorRenderTest {
         renderInspector(paimon, last.id, "paimon-snapshot-node-partitions", height = 2600)
     }
 
+    /** The refs table with retention set on two of three refs, as ages rather than milliseconds. */
+    @Test
+    fun `refs with retention render their ages`() {
+        val graph = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/retained").absolutePath)),
+            showRows = false,
+        )
+        val newest = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().maxBy { it.data.snapshotLog.size }
+        assertEquals(3, newest.data.refs.size)
+        renderInspector(graph, newest.id, "metadata-node-retained", height = 4400)
+    }
+
     /**
      * A rollback is drawn from the log: the metadata panel's snapshot log has to mark the entry
      * that set main back and say what it left behind, the abandoned commit's panel has to name the

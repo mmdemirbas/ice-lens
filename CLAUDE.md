@@ -661,6 +661,17 @@ intellij/src/main/kotlin/plugin/
   introduced the snapshot on every commit of `lineage`, and `Snapshot.describeRowIds()` prints the
   range with the summary's figure beside it where the two differ. It is one function in core
   because both shells list it and two spellings of "the other 2 went to existing rows" drift
+- **A ref's retention settings replace the table's and the procedure's for the snapshots that
+  ref reaches.** `retained`'s first run gave the branch `WITH SNAPSHOT RETENTION 2 SNAPSHOTS 7
+  DAYS`, and `expire_snapshots(older_than => 2099)` removed **nothing**: a branch's own
+  `max-snapshot-age-ms` stands in for `older_than` on every snapshot the branch reaches, none was
+  seven days old, and every snapshot of that table — main's two included — was an ancestor of the
+  branch tip. The checked-in fixture sets no age, so the branch falls back to `older_than`, keeps
+  its `min-snapshots-to-keep` two, and snapshots 1 and 3 expire: two manifest lists deleted, no
+  manifest and no data file, since later snapshots carry them forward. The refs table prints the
+  three settings as ages (`formatRetentionMs`: `30 days (2,592,000,000 ms)`) with `not set` where
+  the table's defaults apply, instead of the bare milliseconds it printed as `N/A` on every
+  fixture before this one
 - **A rollback is read from the snapshot log, because it is written nowhere else.**
   `set_current_snapshot`, `rollback_to_snapshot` and `rollback_to_timestamp` write no snapshot:
   they move `main` and append a `snapshot-log` entry naming a snapshot the log already holds, and
@@ -1324,7 +1335,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~979 tests across 118 files (739 in :core, 234 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~983 tests across 119 files (742 in :core, 235 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1416,6 +1427,7 @@ container invocation and the traps in it:
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
 | `default/wap` | `WapFixtureTest` | write-audit-publish — a staged snapshot on no ref, main moving past it, `publish_changes` cherry-picking it with `source-snapshot-id` and `published-wap-id` |
 | `default/rolled` | `RolledBackFixtureTest` | main set back to an earlier snapshot by `set_current_snapshot` — a second `snapshot-log` entry for the target, the abandoned commit retained on no ref, the next commit forking from the target |
+| `default/retained` | `RetainedFixtureTest` | refs with retention — a tag `RETAIN 90 DAYS`, a branch `RETAIN 30 DAYS WITH SNAPSHOT RETENTION 2 SNAPSHOTS` — and an `expire_snapshots` that kept what each ref's own settings say |
 | `default/extdata` | `ExternalDataPathFixtureTest` | `write.data.path` outside the table — no `data/` under it, two files beside it under `example/iceberg/extdata-files/` |
 | `default/sorted` | `SortedFixtureTest` | three sort orders, a commit under each, then a sort compaction — rows sorted inside every file, `sort_order_id 0` on every file |
 | `default/expired` | `ExpiredSnapshotsFixtureTest` | snapshots dropped by `expire_snapshots` — the older metadata versions still list them, and they are drawn as expired, not as read errors |

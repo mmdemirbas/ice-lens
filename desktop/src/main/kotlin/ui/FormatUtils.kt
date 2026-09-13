@@ -72,3 +72,23 @@ fun parseLongSet(raw: String): Set<Long> =
 
 fun encodeLongSet(values: Set<Long>): String =
     values.sorted().joinToString(";")
+
+/**
+ * A retention age as the unit it was most likely written in — `30 days`, `12 hours`, `90 min` —
+ * with the exact millisecond figure beside it, since `2592000000` is what the metadata holds and
+ * what a reader may need to match against a `RETAIN` clause. Null is "not set", which for a ref
+ * means the table's own defaults apply.
+ */
+fun formatRetentionMs(ms: Long?): String {
+    if (ms == null) return "not set"
+    val dayMs = 86_400_000L
+    val hourMs = 3_600_000L
+    val minuteMs = 60_000L
+    val human = when {
+        ms % dayMs == 0L -> "${ms / dayMs} ${if (ms / dayMs == 1L) "day" else "days"}"
+        ms % hourMs == 0L -> "${ms / hourMs} ${if (ms / hourMs == 1L) "hour" else "hours"}"
+        ms % minuteMs == 0L -> "${ms / minuteMs} min"
+        else -> "${ms / 1000.0} s"
+    }
+    return "$human (${formatCount(ms)} ms)"
+}

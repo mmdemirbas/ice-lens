@@ -1414,17 +1414,22 @@ fun NodeDetailsContent(
                                 }
                         }
 
+                        // A ref's three retention settings are what expire_snapshots reads for
+                        // the snapshots that ref reaches, in place of the table's defaults and of
+                        // the procedure's own older_than — the retained fixture is where a
+                        // branch's age shielded every snapshot of the table from an expiry.
                         CountedSection("Refs", node.data.refs.size, "refs") {
                             WideTable(
-                                headers = listOf("Name", "Type", "Snapshot ID", "Max Ref Age MS", "Max Snapshot Age MS", "Min Snapshots To Keep"),
+                                headers = listOf("Name", "Type", "Snapshot ID", "Max Ref Age", "Max Snapshot Age", "Min Snapshots To Keep"),
+                                columnWidths = listOf(110.dp, 80.dp, 190.dp, 250.dp, 250.dp, 170.dp),
                                 rows = node.data.refs.toSortedMap().map { (name, ref) ->
                                     listOf(
                                         name,
                                         ref.type ?: "N/A",
                                         "${ref.snapshotId ?: "N/A"}",
-                                        "${ref.maxRefAgeMs ?: "N/A"}",
-                                        "${ref.maxSnapshotAgeMs ?: "N/A"}",
-                                        "${ref.minSnapshotsToKeep ?: "N/A"}"
+                                        formatRetentionMs(ref.maxRefAgeMs),
+                                        formatRetentionMs(ref.maxSnapshotAgeMs),
+                                        ref.minSnapshotsToKeep?.toString() ?: "not set",
                                     )
                                 }
                             )
