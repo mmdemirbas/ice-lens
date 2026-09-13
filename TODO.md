@@ -47,9 +47,11 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   defaults** (`initial-default` / `write-default`). The jar swap does not reach them: Spark 3.5
   has no VARIANT type, and Iceberg 1.10's Spark 3.5 module answers `ALTER TABLE … ADD COLUMN … DEFAULT`
   with `UnsupportedOperationException: setting default values in Spark is currently unsupported`
-  (run 2026-09-13). These need a Spark 4.0 image. What the vector work does *not* cover: an Iceberg
-  **positional delete** file (v2) marks no rows, because its targets are one per row and only
-  known after reading the file — the same reason there is no `e_dv_*`-style edge for it.
+  (run 2026-09-13). These need a Spark 4.0 image. What the vector work does *not* cover on the
+  canvas: an Iceberg **positional delete** file (v2) marks no row *card*, because its targets are
+  one per row and only known after reading the file — the same reason there is no `e_dv_*`-style
+  edge for it. A row's panel answers it behind a click (`RowDeletesSection`), for equality deletes
+  too.
 
 - **Delete-file targeting is drawn where the format records it, and only there.** A v3 deletion
   vector's `referenced_data_file` is now an edge (`e_dv_*`, withheld from ELK). The two cases

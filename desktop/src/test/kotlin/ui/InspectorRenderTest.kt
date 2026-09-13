@@ -2014,6 +2014,25 @@ class InspectorRenderTest {
                 RowLookupSection(puTable, pu, ScanFilter.Term(model.ScanPredicate("k", model.PredicateOp.LTE, "3")), startRequested = true) { puSettled.set(true) }
             }
         }
+        // And a sampled row's own panel on `mor`, the row a positional delete names: the Delete
+        // Files section, asked and answered.
+        val mor = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/mor").absolutePath)),
+            showRows = true,
+        )
+        // The id-7 row under the compacted file — the one the delete names; the file the
+        // compaction removed draws the same row, and no delete reaches that copy.
+        val seven = mor.nodes.filterIsInstance<GraphNode.RowNode>().filter { it.content == 0 && it.resolvedData["id"]?.toString() == "7" }.first { row ->
+            val parent = mor.edges.first { it.toId == row.id }.let { mor.nodeById[it.fromId] as GraphNode.FileNode }
+            model.deleteCandidatesFor(parent, mor.nodes.filterIsInstance<GraphNode.FileNode>()).any { it.verdict == model.DeleteReachVerdict.REACHES }
+        }
+        renderInspector(mor, seven.id, "row-node-deleted", height = 1300)
+        val rowSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("row-node-deleted-asked", width = 1400, height = 460, ready = rowSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                RowDeletesSection(seven, mor, startRequested = true) { rowSettled.set(true) }
+            }
+        }
         // And on `de`, data evolution: a filter on the patched value finds the row, stitched from
         // the patch and the file it patches, and the note names where `b` came from.
         val de = GraphLayoutService.layoutGraph(

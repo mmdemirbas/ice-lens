@@ -383,6 +383,9 @@ internal fun ColumnScope.RowPanel(
                 .forEach { (k, v) -> DetailRow(k, "$v") }
         }
 
+        // A v2 positional or an equality delete is a file read, so what the `Deleted` row above
+        // cannot say for them is asked behind a click here.
+        if (node.content == 0) RowDeletesSection(node, currentGraph)
         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 }
 

@@ -81,6 +81,14 @@ object RowLookup {
         }
     }
 
+    /**
+     * One row's fate under [deletes], the delete files a scan pairs with its file — what the
+     * row panel asks for a sampled row, with its position and cells already in hand. The same
+     * decision the lookup makes for a hit, without the read that found it.
+     */
+    fun fateOf(file: LookupDataFile, position: Long?, cells: Map<String, Any?>, deletes: List<LookupDeleteFile>): RowHit =
+        decide(file, position, cells, deletes, mutableMapOf())
+
     private fun decide(
         file: LookupDataFile,
         position: Long?,

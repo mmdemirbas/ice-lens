@@ -136,6 +136,7 @@ desktop/src/main/kotlin/
     ├── IntegritySection.kt    # The whole-table check behind a click on the table panel, and its findings
     ├── PaimonMergedCountSection.kt # The rows a read of a Paimon snapshot returns, behind a click on a primary-key table
     ├── LiveRowsSection.kt     # The rows a read of an Iceberg snapshot returns, behind a click where a delete manifest is listed
+    ├── RowDeletesSection.kt   # Whether a read returns a sampled Iceberg row: the delete files paired with its file, asked for it behind a click
     ├── TimeTravelSection.kt   # A typed time and the snapshot it resolves to, on the metadata panel and the Paimon table panel
     ├── RowLookupSection.kt    # The scan filter one step further: the matching rows read from the files it leaves, each with its fate — both formats
     ├── NodePanels.kt          # Table, row, error and group panels
@@ -531,7 +532,15 @@ intellij/src/main/kotlin/plugin/
   `referenced_data_file` — through an index built on first use, one vector opened per drawn data
   file rather than every `.puffin` in the table. A deleted row card carries the word, the strike
   and the fade: green at full strength is the colour of a live row, which would be colour arguing
-  against the label printed on it.
+  against the label printed on it. **A positional or equality delete is asked behind a click on
+  the row's panel**, because either is a file read: `RowDeletesSection` takes the row's parent
+  file, the delete files `deleteCandidatesFor` leaves for it — the same pairing the file's own
+  panel lists — and `RowLookup.fateOf`, the decision the lookup makes for a hit with the row's
+  position and cells already in hand. The v2 merge-on-read shape Spark writes is the common one,
+  and until this the panel's `Deleted` row said *not by a deletion vector* of a row a positional
+  delete had removed. `RowFateFixtureTest` holds `mor`'s id 7 to deleted under the compacted file
+  and live under the copy the compaction removed — the delete written after it does not reach
+  that file — and `eqdel`'s 2 and 3 to their two kinds
 - **A deletion vector is decoded, and decoded lazily.** `service/PuffinReader.kt` reads the
   Puffin container and the `deletion-vector-v1` blob inside it — a 4-byte big-endian length, the
   magic `D1 D3 39 64`, a 64-bit "portable" Roaring bitmap, and a 4-byte big-endian **CRC-32**
@@ -1704,7 +1713,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,140 tests across 145 files (872 in :core, 260 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,140 tests across 146 files (874 in :core, 260 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

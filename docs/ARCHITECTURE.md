@@ -104,6 +104,7 @@ ice-lens is a single-module Kotlin Compose Desktop application. All code lives i
 │  IntegritySection.kt     The whole-table check behind a click: every recorded figure against the same figure counted
 │  PaimonMergedCountSection.kt  What a read of a Paimon snapshot returns — the merge over the bucket files, behind a click
 │  LiveRowsSection.kt       What a read of an Iceberg snapshot returns — the delete files applied per data file, behind a click
+│  RowDeletesSection.kt     Whether a read returns a sampled Iceberg row — its file's paired delete files asked for it, behind a click
 │  TimeTravelSection.kt    A typed time and the snapshot a read as of it lands on
 │  RowLookupSection.kt     The scan filter one step further: the matching rows read from the files it leaves, each with its fate, on either format
 │  NodePanels.kt       Table / row / error / group panels

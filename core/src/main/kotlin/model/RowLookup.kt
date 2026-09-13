@@ -111,6 +111,34 @@ data class RowLookupInput(
     }
 }
 
+/** A drawn data file as the lookup reads it — null for a delete file or one with no recorded path. */
+fun GraphNode.FileNode.asLookupDataFile(): LookupDataFile? {
+    val file = entry.dataFile ?: return null
+    if (deleteKindOf(file) != null) return null
+    val recorded = file.filePath?.takeIf { it.isNotBlank() } ?: return null
+    return LookupDataFile(recorded, localPath ?: recorded, file.fileFormat, file.recordCount)
+}
+
+/**
+ * A drawn delete file as the lookup applies it, its equality field ids named through
+ * [GraphNode.FileNode.tableFieldsById] — every field any metadata version defined, so a column
+ * renamed since the delete was written still resolves. Null for a data file.
+ */
+fun GraphNode.FileNode.asLookupDeleteFile(): LookupDeleteFile? {
+    val file = entry.dataFile ?: return null
+    val kind = deleteKindOf(file) ?: return null
+    val recorded = file.filePath?.takeIf { it.isNotBlank() } ?: return null
+    return LookupDeleteFile(
+        recordedPath = recorded,
+        localPath = localPath ?: recorded,
+        kind = kind,
+        contentOffset = file.contentOffset,
+        contentSizeInBytes = file.contentSizeInBytes,
+        recordCount = file.recordCount,
+        equalityColumns = file.equalityIds.orEmpty().mapNotNull { id -> tableFieldsById[id]?.name },
+    )
+}
+
 /** The lookup input for the current snapshot, or null when the newest metadata names none it can read. */
 fun UnifiedTableModel.rowLookupInput(): RowLookupInput? {
     val newest = metadatas.lastOrNull()?.metadata ?: return null

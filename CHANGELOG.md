@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A sampled Iceberg row says whether a positional or equality delete removes it.** The row
+  panel's `Delete Files` section asks the delete files a scan pairs with the row's file, behind
+  a click — the panel's `Deleted` row could only answer for a v3 vector, and said *not by a
+  deletion vector* of a row a v2 positional delete had removed.
 - **The IDE strip lists a file's history.** A `History` row under a data file on either format,
   drawn reading and filled off the EDT — which commit added the file, which removed it, how many
   retained snapshots still list it live.
