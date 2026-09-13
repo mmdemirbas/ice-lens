@@ -49,7 +49,8 @@ so and the inspector lists all of them.
 - **What a commit did** — folded from the manifests it wrote, checked against its own summary — and **what is different between any two snapshots**, on either format, with one side pinned and the other stepped through history
 - Delete files paired with the data files they reach, dangling deletes named, deletion vectors decoded to the rows they mark, and the live row count behind a click
 - Per-snapshot partition breakdown, largest first; per-partition and table statistics files opened and shown against their records
-- What `expire_snapshots` would remove and which ref keeps the rest; rollbacks read off the snapshot log
+- What `expire_snapshots` would remove and what keeps the rest — a ref on Iceberg, a consumer or the retention bounds on Paimon; rollbacks read off the snapshot log
+- A Paimon bucket as its LSM tree — sorted runs against the compaction trigger — and what the next flush would compact, the way `UniversalCompaction` picks it
 - Schema evolution view -- diffs between schema versions (added/dropped/renamed columns, type changes); table properties tracked across metadata versions
 - Find on the graph (`Ctrl/Cmd + F`) by path, partition, operation, branch or error text; arrow-key navigation over the drawing
 - Export the graph as SVG, PNG or JSON, and the file inventory as CSV
