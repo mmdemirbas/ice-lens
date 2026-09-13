@@ -86,19 +86,30 @@ class FileHistoryFixtureTest {
         }
     }
 
+    /**
+     * The manifest outlives the commit that wrote it, and its `added_snapshot_id` says which
+     * commit that was — so a file added by a snapshot the expiry removed is still credited, from
+     * the summary the older metadata version keeps, and the credited commit is never live.
+     */
     @Test
-    fun `a file whose adding commit has expired is live with no commit to credit`() {
+    fun `a file whose adding commit has expired is credited to it, from a manifest still carried`() {
         val m = iceberg("expired")
         val retained = retainedIceberg(m)
+        val retainedIds = retained.map { it.metadata.snapshotId }.toSet()
         val current = m.metadatas.last().metadata.currentSnapshotId
         val carried = liveFilesOf(retained.first { it.metadata.snapshotId == current })
             .map { normalizeFilePath(it.path) }
             .map { m.fileHistoryOf(it) }
-            .filter { it.addedBy == null }
+            .filter { h -> h.snapshots.any { it.expired } }
         assertTrue(carried.isNotEmpty(), "expired should carry a file added by a snapshot that is gone")
-        carried.forEach {
-            assertTrue(it.liveNow)
-            assertEquals("live now — carried in from a snapshot no longer retained", it.describe)
+        carried.forEach { h ->
+            assertTrue(h.liveNow)
+            val added = assertNotNull(h.addedBy)
+            assertTrue(added.expired && !added.live && added.snapshotId !in retainedIds)
+            assertEquals("append", added.operation, "the older metadata version still keeps the expired commit's summary")
+            assertEquals("live now — added by snapshot ${added.snapshotId} (append), since expired", h.describe)
+            assertEquals(h.snapshots.size - 1, h.retainedListing.size)
+            assertEquals(h.snapshots.first(), added, "the expired commit sorts first, by its sequence number")
         }
     }
 

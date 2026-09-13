@@ -758,8 +758,14 @@ intellij/src/main/kotlin/plugin/
   every transition between **adjacent** commits — adjacent, because the earliest retained
   snapshot's base carries what expired commits added, and a tag-only snapshot stands apart from
   the next retained one with the expired commits between (`cs`, `pea` each caught a stricter
-  version). A snapshot the table no longer retains can be neither credited nor blamed, and the
-  panel says so under the table. **Under the line the panel says whether the expiry the table
+  version). **On Iceberg an expired commit is still credited**: the manifest it wrote outlives
+  it in every later snapshot's list, and its `added_snapshot_id` names the commit — so a file the
+  expiry's survivors carry is `added by snapshot X (append), since expired`, with the operation
+  and time from the summary an older metadata version keeps (`expired` is the fixture), marked
+  `expired` in the table, never live, and outside the "listed by k of N retained" count. Paimon
+  records no writer on an entry, so a file older than the earliest retained snapshot is
+  `carried in`. A snapshot the table no longer retains can otherwise be neither credited nor
+  blamed, and the panel says so under the table. **Under the line the panel says whether the expiry the table
   panel plans would free the file** — `older_than = now` on Iceberg, `retain_min = 1` with
   `older_than = now` on Paimon — from the same `planExpiryFiles` the `Expiry Files` sections
   draw, and when not, which listed-live snapshot is kept and by what rule, or which tag holds

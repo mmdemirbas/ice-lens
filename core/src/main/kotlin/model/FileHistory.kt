@@ -39,12 +39,20 @@ data class FileHistoryEntry(
     val event: FileEvent?,
     /** The current snapshot — the newest metadata's on Iceberg, the latest on the branch on Paimon. */
     val isCurrent: Boolean,
+    /**
+     * A snapshot the table no longer retains, credited from a manifest it wrote that a retained
+     * snapshot still carries — Iceberg's `added_snapshot_id` outlives the snapshot. Never live.
+     */
+    val expired: Boolean = false,
 )
 
 data class FileHistory(
     /** The key the file is known by — the normalised recorded path on Iceberg, the file name on Paimon. */
     val fileKey: String,
-    /** Every retained snapshot that lists the file, live or as removed, in commit order. */
+    /**
+     * Every retained snapshot that lists the file, live or as removed, in commit order — and on
+     * Iceberg the expired commit that added or removed it, when a carried manifest still says so.
+     */
     val snapshots: List<FileHistoryEntry>,
     /** How many retained snapshots there are, listing the file or not. */
     val retainedSnapshotCount: Int,
@@ -55,13 +63,15 @@ data class FileHistory(
     val removedBy: FileHistoryEntry? get() = snapshots.lastOrNull { it.event == FileEvent.REMOVED }
     val liveIn: List<FileHistoryEntry> get() = snapshots.filter { it.live }
     val liveNow: Boolean get() = snapshots.any { it.isCurrent && it.live }
+    /** The retained snapshots' entries — what "listed by k of N retained" counts. */
+    val retainedListing: List<FileHistoryEntry> get() = snapshots.filter { !it.expired }
 
     /** The one line a reader came for. */
     val describe: String get() {
         val added = addedBy
         val removed = removedBy
         val live = liveIn
-        fun name(e: FileHistoryEntry) = "snapshot ${e.snapshotId}" + (e.operation?.let { " ($it)" } ?: "")
+        fun name(e: FileHistoryEntry) = "snapshot ${e.snapshotId}" + (e.operation?.let { " ($it)" } ?: "") + (if (e.expired) ", since expired" else "")
         return when {
             liveNow && added != null -> "live now — added by ${name(added)}"
             liveNow -> "live now — carried in from a snapshot no longer retained"
@@ -101,6 +111,7 @@ fun UnifiedTableModel.fileHistoryOf(fileKey: String): FileHistory {
             holdings.getOrPut(manifestPath) { m.dataFiles.filter { it.ledgerFileKey() == fileKey }.map { it.metadata.status } }
         }
     }
+    val retainedIds = retained.map { it.metadata.snapshotId }.toSet()
     val entries = retained.mapNotNull { s ->
         val id = s.metadata.snapshotId ?: return@mapNotNull null
         var live = false
@@ -119,7 +130,25 @@ fun UnifiedTableModel.fileHistoryOf(fileKey: String): FileHistory {
         if (!live && event == null) return@mapNotNull null
         FileHistoryEntry(id, s.metadata.timestampMs, s.metadata.summary["operation"], live, event, isCurrent = id == currentId)
     }
-    return FileHistory(fileKey, entries, retained.size, branch = null)
+    // A manifest a retained snapshot carries may have been written by a commit since expired,
+    // and its `added_snapshot_id` still says which: the commit is credited, from the summary an
+    // older metadata version keeps of it when one does. Never live — nothing retained is it.
+    val writers = mutableMapOf<String, Long>()
+    retained.forEach { s -> s.manifests.forEach { m -> m.metadata.manifestPath?.let { p -> m.metadata.addedSnapshotId?.let { writers.putIfAbsent(p, it) } } } }
+    val expiredEvents = holdings.entries
+        .mapNotNull { (path, statuses) -> writers[path]?.takeIf { it !in retainedIds }?.let { it to statuses } }
+        .groupBy({ it.first }, { it.second })
+        .mapNotNull { (id, statusLists) ->
+            val statuses = statusLists.flatten()
+            val event = eventOf(statuses.count { it == ManifestEntryStatus.ADDED }, statuses.count { it == ManifestEntryStatus.DELETED }) ?: return@mapNotNull null
+            val snap = metadatas.asReversed().firstNotNullOfOrNull { um -> um.snapshots.firstOrNull { it.metadata.snapshotId == id } }?.metadata
+            val entry = FileHistoryEntry(id, snap?.timestampMs, snap?.summary?.get("operation"), live = false, event = event, isCurrent = false, expired = true)
+            entry to (snap?.effectiveSequenceNumber ?: Long.MIN_VALUE)
+        }
+    val ordered = (entries.map { e -> e to retained.first { it.metadata.snapshotId == e.snapshotId }.metadata.effectiveSequenceNumber } + expiredEvents)
+        .sortedWith(compareBy({ it.second }, { it.first.timestampMs ?: Long.MAX_VALUE }, { it.first.snapshotId }))
+        .map { it.first }
+    return FileHistory(fileKey, ordered, retained.size, branch = null)
 }
 
 /**

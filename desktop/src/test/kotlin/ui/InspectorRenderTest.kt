@@ -122,6 +122,11 @@ class InspectorRenderTest {
         val kept = sweepb.nodes.filterIsInstance<GraphNode.FileNode>()
             .first { it.entry.status == ManifestEntryStatus.DELETED && it.history.value?.removedBy != null }
         renderInspector(sweepb, kept.id, "file-node-history-kept", height = 2600)
+        // And a file added by a commit the expiry removed: credited, marked expired, never live.
+        val expired = graphFor("expired")
+        val credited = expired.nodes.filterIsInstance<GraphNode.FileNode>()
+            .first { n -> n.history.value?.snapshots?.any { it.expired } == true }
+        renderInspector(expired, credited.id, "file-node-history-expired", height = 2600)
         val dv = GraphLayoutService.layoutGraph(
             PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/dv").absolutePath)),
             showRows = false,

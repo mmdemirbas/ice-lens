@@ -74,11 +74,16 @@ internal fun FileHistorySection(history: DeferredRead<FileHistory>, graph: Graph
         val shown = h.snapshots.take(MAX_FILE_HISTORY_ROWS)
         WideTable(
             headers = listOf("Verdict", "Snapshot", "Operation", "Time"),
-            columnWidths = listOf(150.dp, 190.dp, 110.dp, 170.dp),
+            // 250dp holds a 19-digit Iceberg id with ` (expired)` after it on one line.
+            columnWidths = listOf(150.dp, 250.dp, 110.dp, 170.dp),
             rows = shown.map { e ->
                 listOf(
                     e.event?.label ?: "live",
-                    "${e.snapshotId}" + if (e.isCurrent) " (current)" else "",
+                    "${e.snapshotId}" + when {
+                        e.isCurrent -> " (current)"
+                        e.expired -> " (expired)"
+                        else -> ""
+                    },
                     e.operation ?: "N/A",
                     formatAppTimestamp(e.timestampMs),
                 )
@@ -94,8 +99,8 @@ internal fun FileHistorySection(history: DeferredRead<FileHistory>, graph: Graph
             )
         }
         Text(
-            "Listed by ${formatCounted(h.snapshots.size, "snapshot")} of the ${formatCount(h.retainedSnapshotCount)} retained; " +
-                "a snapshot the table no longer retains can be neither credited nor blamed.",
+            "Listed by ${formatCounted(h.retainedListing.size, "snapshot")} of the ${formatCount(h.retainedSnapshotCount)} retained" +
+                (if (h.snapshots.size > h.retainedListing.size) "; an expired commit is credited from the manifest it wrote, which a retained snapshot still carries." else "; a snapshot the table no longer retains can be neither credited nor blamed."),
             fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp),
