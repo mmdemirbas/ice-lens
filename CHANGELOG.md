@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **The tool-window layout is out of `App.kt`.** `DockState` holds where each window sits,
+  which are hidden, the pane sizes and a drag in flight, with the rules as functions that
+  `DockStateTest` asserts on — where a drop lands, how far a pane may grow, what a bar lists.
+  `DockLayout` draws it and is rendered by `DockLayoutTest` in its three shapes, which is the
+  first time this layout has been seen in a test at all. `App.kt` 1,009 → 593 lines. One
+  observable change: the drop targets a drag lights up are judged against, and drawn over, the
+  dock below the toolbar rather than the whole window.
 - **The README describes the app that ships.** Its limitations still said local filesystem
   only, Iceberg v1 and v2, partition values not decoded and manifest summaries not read — four
   claims each false for some time. Features, format coverage, toolbar and shortcuts are current.

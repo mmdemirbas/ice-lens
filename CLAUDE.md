@@ -99,7 +99,9 @@ desktop/src/main/kotlin/
 ├── Main.kt                    # Entry point, window state persistence (multi-monitor aware)
 └── ui/
     ├── AppState.kt            # Business logic: workspace mgmt, table loading, caching, snapshot filter (testable, no UI)
-    ├── App.kt                 # Thin UI layer — layout, keyboard shortcuts, LaunchedEffects (delegates to AppState)
+    ├── App.kt                 # Thin UI layer — the window, keyboard shortcuts, dialogs, LaunchedEffects (delegates to AppState)
+    ├── DockState.kt           # Where the tool windows sit, which are hidden, pane sizes, a drag in flight — persisted, testable
+    ├── DockLayout.kt          # The dock drawn from a DockState: bars, stacked side panes, the bottom strip, drop targets
     ├── Toolbar.kt             # The row above the canvas, and the snapshot-filter menu. Stateless
     ├── NodePositions.kt       # Drag state layered over core's immutable layout positions (Compose-observable)
     ├── ToolWindowTypes.kt     # ToolWindowAnchor enum, ToolWindowConfig (holds an ImageVector → shell, not core)
@@ -1124,6 +1126,19 @@ intellij/src/main/kotlin/plugin/
   because the bare arrows are the cursor, and Alt is the one modifier a list may take since there
   is no text field inside it. A nested table row answers nothing to either, and a move under a
   search answers nothing, because the neighbour the reader sees is not the neighbour the list has
+- **The dock is a state class and a composable, and `App()` holds neither's rules.** `DockState`
+  in `ui/DockState.kt` owns where each tool window sits, which are hidden, the pane widths and
+  splits, and a drag in flight — the anchors and sizes persist as they change, the hidden set and
+  the drag do not — and every rule is a function on it: `visibleAt`, `buttonsAt`, `toggleAll`,
+  `resizeLeftPane` (the centre keeps 260dp; the right pane's width is reserved only while it
+  shows), `dropAnchorAt` (sides before bottom, so a corner is a side). `DockLayout` draws it:
+  bars, the stacked side panes, the bottom pane or — when a bottom window is hidden — a 32dp
+  strip, since that bar is the only way back to it. It measures its own `bounds`, so what a drop
+  is judged against and where the drop targets are drawn are one rectangle. `App()` is never
+  rendered in a test (it owns the preferences node and the coroutines), so `DockLayoutTest` is
+  where the layout is seen at all, and its assertion is the row's arithmetic: the centre gets the
+  width minus bars, panes and dividers, which a `Row` that neither wraps nor clips would get
+  wrong silently
 - **Tab-reachability of the chrome is asserted, not assumed.** `KeyboardReachTest` drives
   `ImageComposeScene.sendKeyEvent` — the skiko `KeyEvent(key, type)` constructor, not the AWT
   wrapper, which the scene casts and throws on — through the tool-window bar and a pane's close
@@ -1350,8 +1365,9 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 
 ## Known issues and tech debt
 
-1. **`App.kt` is ~850 lines** — business logic lives in `AppState.kt` and the toolbar in
-   `Toolbar.kt`; what is left is the window, the tool-window layout and the `LaunchedEffect`s.
+1. **`App.kt` is ~600 lines** — business logic lives in `AppState.kt`, the toolbar in
+   `Toolbar.kt` and the tool-window layout in `DockState.kt` / `DockLayout.kt`; what is left is
+   the window, its key handling, the canvas block, the dialogs and the `LaunchedEffect`s.
 2. **`@Suppress("DEPRECATION")` on avro4k** — `decodeFromGenericData` API may change
 
 ## Testing
@@ -1362,7 +1378,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~989 tests across 120 files (748 in :core, 235 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,000 tests across 122 files (748 in :core, 246 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

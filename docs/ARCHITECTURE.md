@@ -92,7 +92,9 @@ ice-lens is a single-module Kotlin Compose Desktop application. All code lives i
 ┌──────────────────────────────────────────┐
 │  UI LAYER (Compose Desktop)              │
 │                                          │
-│  App.kt           State management, toolbar, keyboard shortcuts, layout orchestration
+│  App.kt           The window, keyboard shortcuts, dialogs, LaunchedEffects
+│  DockState.kt     Tool-window anchors, visibility, pane sizes, drag in flight (persisted)
+│  DockLayout.kt    The dock drawn from a DockState: bars, panes, bottom strip, drop targets
 │  AboutDialog.kt   About dialog with version info, diagnostics, cheat sheet
 │  GraphCanvas.kt   Zoomable/pannable canvas, node/edge rendering, viewport culling
 │  NodeComponents.kt   Per-type node card rendering, copy-to-clipboard

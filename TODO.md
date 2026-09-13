@@ -156,11 +156,10 @@ What is left:
 
 ## Code quality
 
-- **`App.kt` is ~850 lines and the next block is the tool-window layout.** The toolbar is out
-  (`Toolbar.kt`), along with `AppState` and `AboutDialog`. What remains inline is the
-  three-pane arrangement with its drag handles and persisted sizes — about 300 lines, and unlike
-  the toolbar it is not a component with a boundary: the panes, the dividers and the visibility
-  flags are one interlocking thing. Extracting it means designing that boundary first.
+- **`App.kt` is ~600 lines.** The toolbar (`Toolbar.kt`), the state (`AppState`), the about
+  dialog and now the tool-window layout (`DockState.kt` / `DockLayout.kt`) are out. What remains
+  inline is the canvas block — `GraphCanvas` and its overlays, about 200 lines of wiring — and the
+  export action; both are wiring rather than a component with a boundary of its own.
 
 ---
 

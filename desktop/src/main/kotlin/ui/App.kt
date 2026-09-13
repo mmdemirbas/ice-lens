@@ -9,17 +9,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.focusable
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -34,13 +27,6 @@ import java.util.prefs.Preferences
 
 private val prefs = Preferences.userRoot().node("com.github.mmdemirbas.icelens")
 
-private const val PREF_LEFT_PANE_WIDTH = "left_pane_width"
-private const val PREF_RIGHT_PANE_WIDTH = "right_pane_width"
-private const val PREF_BOTTOM_PANE_HEIGHT = "bottom_pane_height"
-private const val PREF_LEFT_SPLIT = "left_split"
-private const val PREF_RIGHT_SPLIT = "right_split"
-private const val PREF_BOTTOM_SPLIT = "bottom_split"
-private const val PREF_WINDOW_ANCHORS = "tool_window_anchors"
 private const val PREF_ZOOM = "zoom"
 private const val PREF_IS_SELECT_MODE = "is_select_mode"
 private const val PREF_IS_DARK_MODE = "is_dark_mode"
@@ -67,79 +53,13 @@ fun App() {
     var searchBarEpoch by remember { mutableStateOf(0) }
     var fitGraphRequest by remember { mutableIntStateOf(0) }
 
-    var leftPaneWidth by remember { mutableStateOf(prefs.getFloat(PREF_LEFT_PANE_WIDTH, 250f).dp) }
-    var rightPaneWidth by remember { mutableStateOf(prefs.getFloat(PREF_RIGHT_PANE_WIDTH, 300f).dp) }
-    var bottomPaneHeight by remember { mutableStateOf(prefs.getFloat(PREF_BOTTOM_PANE_HEIGHT, 220f).dp) }
-    var leftSplitRatio by remember { mutableStateOf(prefs.getFloat(PREF_LEFT_SPLIT, 0.55f)) }
-    var rightSplitRatio by remember { mutableStateOf(prefs.getFloat(PREF_RIGHT_SPLIT, 0.6f)) }
-    var bottomSplitRatio by remember { mutableStateOf(prefs.getFloat(PREF_BOTTOM_SPLIT, 0.5f)) }
-    val density = LocalDensity.current
-    var draggingToolWindowId by remember { mutableStateOf<String?>(null) }
-    var dragTargetAnchor by remember { mutableStateOf<ToolWindowAnchor?>(null) }
-    var appWindowBounds by remember { mutableStateOf<Rect?>(null) }
-    var hiddenToolWindowIds by remember { mutableStateOf(setOf<String>()) }
-
-    var windowAnchors by remember {
-        val defaults = mapOf(
-            "workspace" to ToolWindowAnchor.LEFT_TOP,
-            "structure" to ToolWindowAnchor.LEFT_BOTTOM,
-            "inspector" to ToolWindowAnchor.RIGHT_TOP
-        )
-        val saved = prefs.get(PREF_WINDOW_ANCHORS, "")
-        val parsed = saved.split(";").mapNotNull { part ->
-            val idAndAnchor = part.split(":")
-            if (idAndAnchor.size != 2) return@mapNotNull null
-            val id = idAndAnchor[0]
-            val anchor = runCatching { ToolWindowAnchor.valueOf(idAndAnchor[1]) }.getOrNull() ?: return@mapNotNull null
-            id to anchor
-        }.toMap()
-        val map = defaults.toMutableMap().apply { putAll(parsed) }
-        mutableStateOf(map)
+    val dock = remember {
+        DockState(prefs, listOf(
+            ToolWindowConfig("workspace", "Workspace", Icons.Default.Storage, ToolWindowAnchor.LEFT_TOP),
+            ToolWindowConfig("structure", "Structure", Icons.Default.AccountTree, ToolWindowAnchor.LEFT_BOTTOM),
+            ToolWindowConfig("inspector", "Inspector", Icons.Default.Info, ToolWindowAnchor.RIGHT_TOP),
+        ))
     }
-
-    val toolWindows = listOf(
-        ToolWindowConfig("workspace", "Workspace", Icons.Default.Storage, windowAnchors["workspace"] ?: ToolWindowAnchor.LEFT_TOP),
-        ToolWindowConfig("structure", "Structure", Icons.Default.AccountTree, windowAnchors["structure"] ?: ToolWindowAnchor.LEFT_BOTTOM),
-        ToolWindowConfig("inspector", "Inspector", Icons.Default.Info, windowAnchors["inspector"] ?: ToolWindowAnchor.RIGHT_TOP)
-    )
-
-    // ═══ UI Helper Functions ═══
-
-    fun moveToolWindow(id: String, newAnchor: ToolWindowAnchor) {
-        val currentAnchor = windowAnchors[id] ?: ToolWindowAnchor.LEFT_TOP
-        if (currentAnchor == newAnchor) return
-        val newAnchors = windowAnchors.toMutableMap()
-        newAnchors[id] = newAnchor
-        windowAnchors = newAnchors
-        prefs.put(PREF_WINDOW_ANCHORS, newAnchors.entries.joinToString(";") { "${it.key}:${it.value}" })
-    }
-
-    fun updateDragTarget(positionInWindow: Offset?) {
-        val bounds = appWindowBounds
-        val edgeSizePx = with(density) { 120.dp.toPx() }
-        dragTargetAnchor = if (positionInWindow == null || bounds == null) null else when {
-            positionInWindow.x <= bounds.left + edgeSizePx && positionInWindow.y <= bounds.center.y -> ToolWindowAnchor.LEFT_TOP
-            positionInWindow.x <= bounds.left + edgeSizePx -> ToolWindowAnchor.LEFT_BOTTOM
-            positionInWindow.x >= bounds.right - edgeSizePx && positionInWindow.y <= bounds.center.y -> ToolWindowAnchor.RIGHT_TOP
-            positionInWindow.x >= bounds.right - edgeSizePx -> ToolWindowAnchor.RIGHT_BOTTOM
-            positionInWindow.y >= bounds.bottom - edgeSizePx && positionInWindow.x <= bounds.center.x -> ToolWindowAnchor.BOTTOM_LEFT
-            positionInWindow.y >= bounds.bottom - edgeSizePx -> ToolWindowAnchor.BOTTOM_RIGHT
-            else -> null
-        }
-    }
-
-    fun toggleWindowVisibility(id: String) {
-        hiddenToolWindowIds = if (id in hiddenToolWindowIds) hiddenToolWindowIds - id else hiddenToolWindowIds + id
-    }
-    fun toggleInspectorVisibility() {
-        toggleWindowVisibility("inspector")
-    }
-    fun toggleAllPanelsVisibility() {
-        val visibleIds = toolWindows.map { it.id }.filter { it !in hiddenToolWindowIds }
-        hiddenToolWindowIds = if (visibleIds.isNotEmpty()) toolWindows.map { it.id }.toSet() else emptySet()
-    }
-
-    fun toolWindowTitle(id: String): String = toolWindows.firstOrNull { it.id == id }?.title ?: id
 
     // ═══ Render Tool Window Content ═══
 
@@ -204,27 +124,6 @@ fun App() {
         }
     }
 
-    // ═══ Tool Window Layout Helpers ═══
-
-    val anchorToWindowId = toolWindows.associate { window ->
-        (windowAnchors[window.id] ?: window.anchor) to window.id
-    }
-    val visibleAnchorToWindowId = toolWindows
-        .filterNot { it.id in hiddenToolWindowIds }
-        .associate { window -> (windowAnchors[window.id] ?: window.anchor) to window.id }
-    val leftSideButtons = toolWindows
-        .filter { (windowAnchors[it.id] ?: it.anchor) in setOf(ToolWindowAnchor.LEFT_TOP, ToolWindowAnchor.LEFT_BOTTOM) }
-        .map { it.id to it.icon }
-    val rightSideButtons = toolWindows
-        .filter { (windowAnchors[it.id] ?: it.anchor) in setOf(ToolWindowAnchor.RIGHT_TOP, ToolWindowAnchor.RIGHT_BOTTOM) }
-        .map { it.id to it.icon }
-    val bottomLeftButtons = toolWindows
-        .filter { (windowAnchors[it.id] ?: it.anchor) == ToolWindowAnchor.BOTTOM_LEFT }
-        .map { it.id to it.icon }
-    val bottomRightButtons = toolWindows
-        .filter { (windowAnchors[it.id] ?: it.anchor) == ToolWindowAnchor.BOTTOM_RIGHT }
-        .map { it.id to it.icon }
-
     // ═══ Main UI ═══
 
     MaterialTheme(
@@ -277,7 +176,6 @@ fun App() {
                             else -> false
                         }
                     }
-                    .onGloballyPositioned { coords -> appWindowBounds = coords.boundsInWindow() }
             ) {
             Column(Modifier.fillMaxSize()) {
 
@@ -350,96 +248,10 @@ fun App() {
 
             // ═══ Main Content Area ═══
 
-            val leftTopId = visibleAnchorToWindowId[ToolWindowAnchor.LEFT_TOP]
-            val leftBottomId = visibleAnchorToWindowId[ToolWindowAnchor.LEFT_BOTTOM]
-            val rightTopId = visibleAnchorToWindowId[ToolWindowAnchor.RIGHT_TOP]
-            val rightBottomId = visibleAnchorToWindowId[ToolWindowAnchor.RIGHT_BOTTOM]
-            val bottomLeftId = visibleAnchorToWindowId[ToolWindowAnchor.BOTTOM_LEFT]
-            val bottomRightId = visibleAnchorToWindowId[ToolWindowAnchor.BOTTOM_RIGHT]
-
-            fun onPaneDragEnd() {
-                val draggedId = draggingToolWindowId
-                val target = dragTargetAnchor
-                if (draggedId != null && target != null) moveToolWindow(draggedId, target)
-                draggingToolWindowId = null
-                updateDragTarget(null)
-            }
-
-            @Composable
-            fun WindowSlot(paneId: String?, modifier: Modifier = Modifier) {
-                if (paneId == null) {
-                    Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant))
-                    return
-                }
-                ToolWindowPane(
-                    title = toolWindowTitle(paneId),
-                    isBeingDragged = draggingToolWindowId == paneId,
-                    onClose = { hiddenToolWindowIds = hiddenToolWindowIds + paneId },
-                    onDragStart = { position ->
-                        draggingToolWindowId = paneId
-                        updateDragTarget(position)
-                    },
-                    onDragMove = { position -> updateDragTarget(position) },
-                    onDragEnd = { onPaneDragEnd() },
-                    onDragCancel = {
-                        draggingToolWindowId = null
-                        updateDragTarget(null)
-                    }
-                ) {
-                    RenderToolWindowContent(paneId)
-                }
-            }
-
-            Row(Modifier.weight(1f)) {
-                if (leftSideButtons.isNotEmpty()) {
-                    ToolWindowBar(
-                        anchor = ToolWindowAnchor.LEFT_TOP,
-                        windows = leftSideButtons,
-                        activeWindowId = leftSideButtons.firstOrNull { (id, _) -> id !in hiddenToolWindowIds }?.first,
-                        onWindowClick = { id -> toggleWindowVisibility(id) },
-                        onWindowDragStart = { id, position ->
-                            draggingToolWindowId = id
-                            updateDragTarget(position)
-                        },
-                        onWindowDragMove = { position -> updateDragTarget(position) },
-                        onWindowDragEnd = { onPaneDragEnd() },
-                        onWindowDragCancel = {
-                            draggingToolWindowId = null
-                            updateDragTarget(null)
-                        },
-                        isDropTarget = dragTargetAnchor == ToolWindowAnchor.LEFT_TOP || dragTargetAnchor == ToolWindowAnchor.LEFT_BOTTOM
-                    )
-                }
-                if (leftTopId != null || leftBottomId != null) {
-                    Box(Modifier.width(leftPaneWidth).fillMaxHeight()) {
-                        Column(Modifier.fillMaxSize()) {
-                            if (leftTopId != null && leftBottomId != null) {
-                                Box(Modifier.weight(leftSplitRatio).fillMaxWidth()) { WindowSlot(leftTopId, Modifier.fillMaxSize()) }
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
-                                DraggableHorizontalDivider(onDrag = { delta ->
-                                    val h = (delta / 600f)
-                                    leftSplitRatio = (leftSplitRatio + h).coerceIn(0.2f, 0.8f)
-                                    prefs.putFloat(PREF_LEFT_SPLIT, leftSplitRatio)
-                                })
-                                Box(Modifier.weight(1f - leftSplitRatio).fillMaxWidth()) { WindowSlot(leftBottomId, Modifier.fillMaxSize()) }
-                            } else {
-                                Box(Modifier.fillMaxSize()) { WindowSlot(leftTopId ?: leftBottomId, Modifier.fillMaxSize()) }
-                            }
-                        }
-                    }
-                    DraggableVerticalDivider(onDrag = { delta ->
-                        val deltaDp = with(density) { delta.toDp() }
-                        val windowWidthDp = with(density) { (appWindowBounds?.width ?: 1600f).toDp() }
-                        val reservedRight = if (rightTopId != null || rightBottomId != null) rightPaneWidth else 0.dp
-                        val maxLeftWidth = (windowWidthDp - reservedRight - 260.dp).coerceAtLeast(150.dp)
-                        leftPaneWidth = (leftPaneWidth + deltaDp).coerceIn(150.dp, maxLeftWidth)
-                        prefs.putFloat(PREF_LEFT_PANE_WIDTH, leftPaneWidth.value)
-                    })
-                }
-
-                // ═══ Graph Canvas (Center) ═══
-
-                Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
+            DockLayout(
+                dock = dock,
+                modifier = Modifier.weight(1f),
+                centre = {
                     val currentGraph = state.visibleGraphModel
                     if (currentGraph != null) {
                         // Recomputed here rather than held in state: it is a pure function of the
@@ -488,13 +300,13 @@ fun App() {
                                         }
                                     }
                                 },
-                                onEmptyAreaDoubleClick = { toggleAllPanelsVisibility() },
+                                onEmptyAreaDoubleClick = { dock.toggleAll() },
                                 // Double-clicking a group opens it. Everything else keeps the
                                 // gesture it already had — a group node is the only card where
                                 // there is something to open rather than something to inspect.
                                 onNodeDoubleClick = { node ->
                                     if (node is GraphNode.GroupNode) state.expandGroup(node.id)
-                                    else toggleInspectorVisibility()
+                                    else dock.toggle("inspector")
                                 },
                                 statusOverlay = {
                                     // Each missing node is attributed to one reason, aggregation
@@ -653,171 +465,9 @@ fun App() {
                             }
                         }
                     }
-                }
-
-                // ═══ Right Pane ═══
-
-                if (rightTopId != null || rightBottomId != null) {
-                    DraggableVerticalDivider(onDrag = { delta ->
-                        val deltaDp = with(density) { delta.toDp() }
-                        val windowWidthDp = with(density) { (appWindowBounds?.width ?: 1600f).toDp() }
-                        val maxRightWidth = (windowWidthDp - 260.dp).coerceAtLeast(200.dp)
-                        rightPaneWidth = (rightPaneWidth - deltaDp).coerceIn(200.dp, maxRightWidth)
-                        prefs.putFloat(PREF_RIGHT_PANE_WIDTH, rightPaneWidth.value)
-                    })
-                    Box(Modifier.width(rightPaneWidth).fillMaxHeight()) {
-                        Column(Modifier.fillMaxSize()) {
-                            if (rightTopId != null && rightBottomId != null) {
-                                Box(Modifier.weight(rightSplitRatio).fillMaxWidth()) { WindowSlot(rightTopId, Modifier.fillMaxSize()) }
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
-                                DraggableHorizontalDivider(onDrag = { delta ->
-                                    val h = (delta / 600f)
-                                    rightSplitRatio = (rightSplitRatio + h).coerceIn(0.2f, 0.8f)
-                                    prefs.putFloat(PREF_RIGHT_SPLIT, rightSplitRatio)
-                                })
-                                Box(Modifier.weight(1f - rightSplitRatio).fillMaxWidth()) { WindowSlot(rightBottomId, Modifier.fillMaxSize()) }
-                            } else {
-                                Box(Modifier.fillMaxSize()) { WindowSlot(rightTopId ?: rightBottomId, Modifier.fillMaxSize()) }
-                            }
-                        }
-                    }
-                }
-                if (rightSideButtons.isNotEmpty()) {
-                    ToolWindowBar(
-                        anchor = ToolWindowAnchor.RIGHT_TOP,
-                        windows = rightSideButtons,
-                        activeWindowId = rightSideButtons.firstOrNull { (id, _) -> id !in hiddenToolWindowIds }?.first,
-                        onWindowClick = { id -> toggleWindowVisibility(id) },
-                        onWindowDragStart = { id, position ->
-                            draggingToolWindowId = id
-                            updateDragTarget(position)
-                        },
-                        onWindowDragMove = { position -> updateDragTarget(position) },
-                        onWindowDragEnd = { onPaneDragEnd() },
-                        onWindowDragCancel = {
-                            draggingToolWindowId = null
-                            updateDragTarget(null)
-                        },
-                        isDropTarget = dragTargetAnchor == ToolWindowAnchor.RIGHT_TOP || dragTargetAnchor == ToolWindowAnchor.RIGHT_BOTTOM
-                    )
-                }
-            }
-
-            // ═══ Bottom Pane ═══
-
-            if (bottomLeftId != null || bottomRightId != null) {
-                DraggableHorizontalDivider(onDrag = { delta ->
-                    val deltaDp = with(density) { delta.toDp() }
-                    bottomPaneHeight = (bottomPaneHeight - deltaDp).coerceIn(120.dp, 500.dp)
-                    prefs.putFloat(PREF_BOTTOM_PANE_HEIGHT, bottomPaneHeight.value)
-                })
-                Box(Modifier.height(bottomPaneHeight).fillMaxWidth()) {
-                    Row(Modifier.fillMaxSize()) {
-                        if (bottomLeftButtons.isNotEmpty()) {
-                            ToolWindowBar(
-                                anchor = ToolWindowAnchor.LEFT_TOP,
-                                windows = bottomLeftButtons,
-                                activeWindowId = bottomLeftButtons.firstOrNull { (id, _) -> id !in hiddenToolWindowIds }?.first,
-                                onWindowClick = { id -> toggleWindowVisibility(id) },
-                                onWindowDragStart = { id, position ->
-                                    draggingToolWindowId = id
-                                    updateDragTarget(position)
-                                },
-                                onWindowDragMove = { position -> updateDragTarget(position) },
-                                onWindowDragEnd = { onPaneDragEnd() },
-                                onWindowDragCancel = {
-                                    draggingToolWindowId = null
-                                    updateDragTarget(null)
-                                },
-                                isDropTarget = dragTargetAnchor == ToolWindowAnchor.BOTTOM_LEFT
-                            )
-                        }
-                        val leftWeight = if (bottomLeftId != null && bottomRightId != null) bottomSplitRatio else 1f
-                        val rightWeight = if (bottomLeftId != null && bottomRightId != null) 1f - bottomSplitRatio else 1f
-                        if (bottomLeftId != null) {
-                            Box(Modifier.weight(leftWeight).fillMaxHeight()) { WindowSlot(bottomLeftId, Modifier.fillMaxSize()) }
-                        }
-                        if (bottomLeftId != null && bottomRightId != null) {
-                            DraggableVerticalDivider(onDrag = { delta ->
-                                val w = (delta / 800f)
-                                bottomSplitRatio = (bottomSplitRatio + w).coerceIn(0.2f, 0.8f)
-                                prefs.putFloat(PREF_BOTTOM_SPLIT, bottomSplitRatio)
-                            })
-                        }
-                        if (bottomRightId != null) {
-                            Box(Modifier.weight(rightWeight).fillMaxHeight()) { WindowSlot(bottomRightId, Modifier.fillMaxSize()) }
-                        }
-                        if (bottomRightButtons.isNotEmpty()) {
-                            ToolWindowBar(
-                                anchor = ToolWindowAnchor.RIGHT_TOP,
-                                windows = bottomRightButtons,
-                                activeWindowId = bottomRightButtons.firstOrNull { (id, _) -> id !in hiddenToolWindowIds }?.first,
-                                onWindowClick = { id -> toggleWindowVisibility(id) },
-                                onWindowDragStart = { id, position ->
-                                    draggingToolWindowId = id
-                                    updateDragTarget(position)
-                                },
-                                onWindowDragMove = { position -> updateDragTarget(position) },
-                                onWindowDragEnd = { onPaneDragEnd() },
-                                onWindowDragCancel = {
-                                    draggingToolWindowId = null
-                                    updateDragTarget(null)
-                                },
-                                isDropTarget = dragTargetAnchor == ToolWindowAnchor.BOTTOM_RIGHT
-                            )
-                        }
-                    }
-                }
-            } else if (bottomLeftButtons.isNotEmpty() || bottomRightButtons.isNotEmpty()) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(32.dp)
-                        .background(Color.Transparent),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (bottomLeftButtons.isNotEmpty()) {
-                        ToolWindowBar(
-                            anchor = ToolWindowAnchor.LEFT_TOP,
-                            windows = bottomLeftButtons,
-                            activeWindowId = bottomLeftButtons.firstOrNull { (id, _) -> id !in hiddenToolWindowIds }?.first,
-                            onWindowClick = { id -> toggleWindowVisibility(id) },
-                            onWindowDragStart = { id, position ->
-                                draggingToolWindowId = id
-                                updateDragTarget(position)
-                            },
-                            onWindowDragMove = { position -> updateDragTarget(position) },
-                            onWindowDragEnd = { onPaneDragEnd() },
-                            onWindowDragCancel = {
-                                draggingToolWindowId = null
-                                updateDragTarget(null)
-                            },
-                            isDropTarget = dragTargetAnchor == ToolWindowAnchor.BOTTOM_LEFT
-                        )
-                    }
-                    Spacer(Modifier.weight(1f))
-                    if (bottomRightButtons.isNotEmpty()) {
-                        ToolWindowBar(
-                            anchor = ToolWindowAnchor.RIGHT_TOP,
-                            windows = bottomRightButtons,
-                            activeWindowId = bottomRightButtons.firstOrNull { (id, _) -> id !in hiddenToolWindowIds }?.first,
-                            onWindowClick = { id -> toggleWindowVisibility(id) },
-                            onWindowDragStart = { id, position ->
-                                draggingToolWindowId = id
-                                updateDragTarget(position)
-                            },
-                            onWindowDragMove = { position -> updateDragTarget(position) },
-                            onWindowDragEnd = { onPaneDragEnd() },
-                            onWindowDragCancel = {
-                                draggingToolWindowId = null
-                                updateDragTarget(null)
-                            },
-                            isDropTarget = dragTargetAnchor == ToolWindowAnchor.BOTTOM_RIGHT
-                        )
-                    }
-                }
-                }
-
+                },
+                window = { id -> RenderToolWindowContent(id) },
+            )
             }
 
             // ═══ Dialogs & Overlays ═══
@@ -864,72 +514,6 @@ fun App() {
                             }
                         }
                     },
-                )
-            }
-
-            if (draggingToolWindowId != null) {
-                val sideDropWidth = 220.dp
-                val bottomDropHeight = 160.dp
-                val baseColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                val activeColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
-
-                Column(
-                    Modifier
-                        .align(Alignment.TopStart)
-                        .padding(bottom = bottomDropHeight)
-                        .width(sideDropWidth)
-                        .fillMaxHeight()
-                ) {
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .background(if (dragTargetAnchor == ToolWindowAnchor.LEFT_TOP) activeColor else baseColor)
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), thickness = 1.dp)
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .background(if (dragTargetAnchor == ToolWindowAnchor.LEFT_BOTTOM) activeColor else baseColor)
-                    )
-                }
-
-                Column(
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(bottom = bottomDropHeight)
-                        .width(sideDropWidth)
-                        .fillMaxHeight()
-                ) {
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .background(if (dragTargetAnchor == ToolWindowAnchor.RIGHT_TOP) activeColor else baseColor)
-                    )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), thickness = 1.dp)
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .background(if (dragTargetAnchor == ToolWindowAnchor.RIGHT_BOTTOM) activeColor else baseColor)
-                    )
-                }
-
-                Box(
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth(0.5f)
-                        .height(bottomDropHeight)
-                        .background(if (dragTargetAnchor == ToolWindowAnchor.BOTTOM_LEFT) activeColor else baseColor)
-                )
-                Box(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .fillMaxWidth(0.5f)
-                        .height(bottomDropHeight)
-                        .background(if (dragTargetAnchor == ToolWindowAnchor.BOTTOM_RIGHT) activeColor else baseColor)
                 )
             }
         }
