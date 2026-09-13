@@ -25,7 +25,7 @@ object StatsCheckReader {
         return DuckDb.withConnection { conn ->
             // The file's own columns, with the field ids a Parquet file carries.
             val columns = linkedMapOf<String, String>()   // name -> DuckDB type
-            conn.prepareStatement("DESCRIBE SELECT * FROM read_parquet(?)").use { st ->
+            conn.prepareStatement("DESCRIBE SELECT * FROM read_parquet(?, hive_partitioning = false)").use { st ->
                 st.setString(1, safePath)
                 st.executeQuery().use { rs -> while (rs.next()) columns[rs.getString("column_name")] = rs.getString("column_type") }
             }
@@ -54,7 +54,7 @@ object StatsCheckReader {
                     terms.append(", min($q), max($q), count(*) - count($q), NULL")
                 }
             }
-            terms.append(" FROM read_parquet(?)")
+            terms.append(" FROM read_parquet(?, hive_partitioning = false)")
             val actual = linkedMapOf<String, ActualColumnStats>()
             var rows = 0L
             conn.prepareStatement(terms.toString()).use { st ->

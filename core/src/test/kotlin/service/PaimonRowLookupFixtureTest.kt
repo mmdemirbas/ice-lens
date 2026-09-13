@@ -32,6 +32,24 @@ class PaimonRowLookupFixtureTest {
     private fun where(fixture: String, column: String, op: PredicateOp, literal: String): RowLookupResult =
         PaimonRowLookup.lookup(input(fixture), ScanFilter.Term(ScanPredicate(column, op, literal)), emptySet())
 
+    /**
+     * `pt` is partitioned by `dt` and `region`, and its files sit under `dt=19787/region=eu/` —
+     * paths DuckDB reads as Hive partitions unless told not to, typing `dt` as a BIGINT from the
+     * path over the DATE the file holds. That collision was an INTERNAL error in DuckDB 1.4.4
+     * ("Vector::Reference used on vector of different type") which invalidated the connection
+     * for every later query, so every read here passes `hive_partitioning = false`: the file is
+     * the truth and the path is a layout.
+     */
+    @Test
+    fun `a partitioned table is read from its files, not from the partition values in their paths`() {
+        val byDate = where("pt", "dt", PredicateOp.EQ, "2024-03-07")
+        assertEquals(listOf(9), byDate.hits.map { (it.cells.getValue("k") as Number).toInt() }, "$byDate")
+        assertEquals(java.time.LocalDate.of(2024, 3, 7), byDate.hits.single().cells.getValue("dt"))
+        assertTrue(byDate.filesRead.all { it.error == null }, "$byDate")
+        val region = where("pt", "region", PredicateOp.EQ, "north-america")
+        assertEquals(listOf(3, 5, 6, 10), region.hits.map { (it.cells.getValue("k") as Number).toInt() }.sorted())
+    }
+
     @Test
     fun `a primary-key table's updated key has one live record, and the record before it is superseded by the file holding the update`() {
         val two = where("lk", "k", PredicateOp.EQ, "2").hits.sortedBy { it.cells["_SEQUENCE_NUMBER"] as Long }

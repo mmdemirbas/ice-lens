@@ -31,6 +31,15 @@ data class PositionalDeleteTally(
  * Reads sample rows from data files using DuckDB.
  *
  * DuckDB supports Parquet, ORC, and Avro via `read_parquet()` which auto-detects format.
+ *
+ * **Every `read_parquet` in this module passes `hive_partitioning = false`.** A table's files sit
+ * under `name=value` directories — `dt=19787/region=eu/bucket-0/` on Paimon, `amount=98765.43/`
+ * on Iceberg — and DuckDB reads those as Hive partitions by default, adding a column per segment
+ * typed from the path text and letting it override a file column of the same name. Both formats
+ * write the partition columns into the file, so the path is a layout and the file is the truth;
+ * read as partitions, a Paimon DATE arrived as the BIGINT its legacy path spells it as and a
+ * DECIMAL as text, and on DuckDB 1.4.4 the DATE-over-BIGINT collision was an INTERNAL error that
+ * invalidated the connection for every query after it.
  */
 object SampleRowReader {
 
@@ -109,10 +118,10 @@ object SampleRowReader {
             // asked for rather than inferred from the result order: a scan may return rows in any
             // order it likes, and the reader would have no way to tell that it had.
             val sql = if (ext == "parquet") {
-                "SELECT * FROM read_parquet(?, file_row_number = true) " +
+                "SELECT * FROM read_parquet(?, file_row_number = true, hive_partitioning = false) " +
                     "LIMIT ${GraphLayoutService.MAX_PARQUET_SAMPLE_ROWS}"
             } else {
-                "SELECT * FROM read_parquet(?) LIMIT ${GraphLayoutService.MAX_PARQUET_SAMPLE_ROWS}"
+                "SELECT * FROM read_parquet(?, hive_partitioning = false) LIMIT ${GraphLayoutService.MAX_PARQUET_SAMPLE_ROWS}"
             }
             conn.prepareStatement(sql).use { pstmt ->
                 pstmt.setString(1, safePath)
@@ -192,7 +201,7 @@ object SampleRowReader {
         val (safePath, ext) = resolveForQuery(filePath)
         require(ext == "parquet") { "A partition statistics file is Parquet, got .$ext" }
         return DuckDb.withConnection { conn ->
-            conn.prepareStatement("SELECT * FROM read_parquet(?) LIMIT $limit").use { pstmt ->
+            conn.prepareStatement("SELECT * FROM read_parquet(?, hive_partitioning = false) LIMIT $limit").use { pstmt ->
                 pstmt.setString(1, safePath)
                 val rs = pstmt.executeQuery()
                 val meta = rs.metaData
@@ -224,7 +233,7 @@ object SampleRowReader {
             // One branch per delete file, every value bound. The text is generated because
             // `read_parquet` takes a file per call, not because anything here is interpolated.
             val branches = resolved.joinToString(" UNION ALL ") {
-                "SELECT pos FROM read_parquet(?) WHERE file_path = ?"
+                "SELECT pos FROM read_parquet(?, hive_partitioning = false) WHERE file_path = ?"
             }
             conn.prepareStatement("SELECT count(DISTINCT pos) FROM ($branches)").use { pstmt ->
                 resolved.forEachIndexed { index, path ->
@@ -241,7 +250,7 @@ object SampleRowReader {
 
         return DuckDb.withConnection { conn ->
             val sql = "SELECT file_path, count(*) AS positions, min(pos) AS lowest, max(pos) AS highest " +
-                "FROM read_parquet(?) GROUP BY file_path ORDER BY positions DESC, file_path"
+                "FROM read_parquet(?, hive_partitioning = false) GROUP BY file_path ORDER BY positions DESC, file_path"
             conn.prepareStatement(sql).use { pstmt ->
                 pstmt.setString(1, safePath)
                 pstmt.executeQuery().use { rs ->

@@ -36,6 +36,21 @@ class RowLookupFixtureTest {
     private fun byId(fixture: String, id: Int): RowLookupResult =
         RowLookup.lookup(input(fixture), ScanFilter.Term(ScanPredicate("id", PredicateOp.EQ, "$id")), emptySet())
 
+    /**
+     * `parted`'s files sit under `amount=98765.43/d=1969-06-11/…`, and DuckDB's Hive-partition
+     * autodetection typed `amount` as text from the path over the file's DECIMAL(9,2) — so a
+     * lookup on the decimal compared text with a decimal cast and found nothing. Every read
+     * passes `hive_partitioning = false` now; the file's column is the one asked.
+     */
+    @Test
+    fun `a partitioned table's columns are read from the file, typed as the file types them`() {
+        val hit = RowLookup.lookup(input("parted"), ScanFilter.Term(ScanPredicate("amount", PredicateOp.EQ, "98765.43")), emptySet())
+        assertEquals(listOf(3), hit.hits.map { (it.cells.getValue("id") as Number).toInt() }, "$hit")
+        assertTrue(hit.hits.single().cells.getValue("amount") is java.math.BigDecimal, "${hit.hits.single().cells}")
+        // Nothing from the path is added as a column: the transformed partition fields are not columns of the row.
+        assertTrue(hit.hits.single().cells.keys.none { it.endsWith("_bucket") || it.endsWith("_day") || it.endsWith("_year") }, "${hit.hits.single().cells.keys}")
+    }
+
     @Test
     fun `a merge-on-read table's positional delete decides the row it marks, and a compaction leaves no trace of the rows before it`() {
         // Script: rows 1..7; 2 deleted and 5 updated before the compaction, 7 deleted after it.

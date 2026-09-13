@@ -62,8 +62,8 @@ data class StatsCheckResult(
 fun checkColumnStats(recorded: RecordedColumnStats, actual: ActualColumnStats?, rows: Long): ColumnStatsCheck {
     fun result(verdict: StatsVerdict, reason: String) = ColumnStatsCheck(
         column = recorded.name,
-        recordedLower = recorded.lowerShown, actualMin = actual?.min?.let { showValue(asBound(it, recorded.lower ?: recorded.upper)) },
-        recordedUpper = recorded.upperShown, actualMax = actual?.max?.let { showValue(asBound(it, recorded.upper ?: recorded.lower)) },
+        recordedLower = recorded.lowerShown, actualMin = actual?.min?.let(::showValue),
+        recordedUpper = recorded.upperShown, actualMax = actual?.max?.let(::showValue),
         recordedNulls = recorded.nullCount, actualNulls = actual?.nullCount,
         verdict = verdict, reason = reason,
     )
@@ -86,8 +86,8 @@ fun checkColumnStats(recorded: RecordedColumnStats, actual: ActualColumnStats?, 
         if (recorded.nanCount != actual.nanCount) problems += "records ${recorded.nanCount} NaNs, the file holds ${actual.nanCount}"
     }
     val nonNull = rows - actual.nullCount - (actual.nanCount ?: 0L)
-    val min = asBound(actual.min, recorded.lower ?: recorded.upper)
-    val max = asBound(actual.max, recorded.upper ?: recorded.lower)
+    val min = actual.min
+    val max = actual.max
     if (recorded.lower != null) {
         if (nonNull == 0L) problems += "records a lower bound where no value is there to bound"
         else when (val c = compareValues(recorded.lower, min)) {
@@ -112,17 +112,6 @@ fun checkColumnStats(recorded: RecordedColumnStats, actual: ActualColumnStats?, 
 /** Every recorded column against the counted ones. */
 fun checkStats(recorded: List<RecordedColumnStats>, actual: Map<String, ActualColumnStats>, rows: Long, recordedRows: Long?): StatsCheckResult =
     StatsCheckResult(rows, recordedRows, recorded.map { r -> checkColumnStats(r, actual[r.name], rows) })
-
-/**
- * A counted value in the kind its recorded bound has, where DuckDB's reading differs: a Paimon
- * `DATE` is an int32 without the date annotation and comes back as its epoch day, and the JDBC
- * driver hands a `DECIMAL` aggregate back as text.
- */
-private fun asBound(v: Any?, like: Any?): Any? = when {
-    like is java.time.LocalDate && v is Number -> java.time.LocalDate.ofEpochDay(v.toLong())
-    like is java.math.BigDecimal && v is String -> v.toBigDecimalOrNull() ?: v
-    else -> v
-}
 
 private fun showValue(v: Any?): String = when (v) {
     null -> "null"

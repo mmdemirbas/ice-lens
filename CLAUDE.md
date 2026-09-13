@@ -529,11 +529,8 @@ intellij/src/main/kotlin/plugin/
   offers them behind a button on both formats. The comparison is **one-sided on the bounds and
   exact on the counts**: Iceberg truncates string metrics to sixteen characters and increments
   the upper one, so a bound may be wider than the values and disagrees only when a row lies
-  outside it. Three things the corpus settled: NaNs are kept out of a float's bounds by both
-  writers, so they are counted apart with `FILTER (WHERE isnan(...))`; a Paimon `DATE` is an
-  int32 without the date annotation and comes back as its epoch day; and DuckDB's JDBC driver
-  hands a `DECIMAL` aggregate back as text — both coerced to the recorded bound's kind before
-  `compareValues`. A positional delete's reserved `file_path` and `pos` columns are in no table
+  outside it. NaNs are kept out of a float's bounds by both writers, so they are counted apart
+  with `FILTER (WHERE isnan(...))`. A positional delete's reserved `file_path` and `pos` columns are in no table
   schema, so their bounds are decoded by the types the spec fixes and checked too. Columns are
   found by **field id** through `parquet_schema`, so a column renamed since the file was
   written is still its column. `StatsCheckFixtureTest` sweeps every Parquet file of every
@@ -1243,6 +1240,19 @@ intellij/src/main/kotlin/plugin/
   "all data access is read-only" is a type here and not only a rule in this file.** `toFile()`
   throws for the same reason: returning a plausible `java.io.File` is exactly how a remote path
   silently becomes a read of a local path that is not there
+- **Every `read_parquet` passes `hive_partitioning = false`, and the sweep that found why is the
+  statistics check.** Both formats lay files out under `name=value` directories and both write
+  the partition columns into the file, so the path is a layout convention and the file is the
+  truth. DuckDB reads such paths as Hive partitions by default — a column per segment, typed from
+  the path text, overriding a file column of the same name — which is what had `parted`'s
+  `amount` (a `DECIMAL(9,2)` in the file, `amount=98765.43` in the path) reading as text and
+  `pt`'s `dt` (a `DATE` in the file, `dt=19787` under `partition.legacy-name`) as a `BIGINT`: a
+  row lookup on either compared the wrong type and found nothing, and on DuckDB 1.4.4 the
+  DATE-over-BIGINT collision was an `INTERNAL Error: Vector::Reference used on vector of
+  different type` that **invalidated the connection for every query after it**. The first
+  version of the statistics check coerced the two readings back; the sweep passing without the
+  coercions once the flag was set is what says the flag is the whole fix. `parted` and `pt` pin
+  it from both lookups
 - **The bytes come from DuckDB, and that was measured against the alternative.** AWS's
   `aws-java-nio-spi-for-s3` was run against a MinIO container before this was written. Three things
   decided it: DuckDB is **already a dependency** where the SPI adds 48 jars and 34 MB to `core` for
@@ -1800,7 +1810,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,183 tests across 156 files (912 in :core, 263 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,185 tests across 156 files (914 in :core, 263 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

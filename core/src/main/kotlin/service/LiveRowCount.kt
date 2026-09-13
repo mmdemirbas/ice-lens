@@ -116,16 +116,16 @@ object LiveRowCount {
 
         val conditions = mutableListOf<String>()
         if (positional.isNotEmpty()) {
-            val branches = positional.joinToString(" UNION ALL ") { "SELECT pos FROM read_parquet(?) WHERE file_path = ?" }
+            val branches = positional.joinToString(" UNION ALL ") { "SELECT pos FROM read_parquet(?, hive_partitioning = false) WHERE file_path = ?" }
             conditions += "d.${SampleRowReader.FILE_ROW_NUMBER} IN ($branches)"
         }
         equality.forEach { delete ->
             val on = delete.equalityColumns.joinToString(" AND ") { column ->
                 "e.${quoteSqlIdentifier(column)} IS NOT DISTINCT FROM d.${quoteSqlIdentifier(column)}"
             }
-            conditions += "EXISTS (SELECT 1 FROM read_parquet(?) e WHERE $on)"
+            conditions += "EXISTS (SELECT 1 FROM read_parquet(?, hive_partitioning = false) e WHERE $on)"
         }
-        val sql = "SELECT d.${SampleRowReader.FILE_ROW_NUMBER} FROM read_parquet(?, file_row_number = true) d " +
+        val sql = "SELECT d.${SampleRowReader.FILE_ROW_NUMBER} FROM read_parquet(?, file_row_number = true, hive_partitioning = false) d " +
             "WHERE ${conditions.joinToString(" OR ")}"
         DuckDb.withConnection { conn ->
             conn.prepareStatement(sql).use { pstmt ->

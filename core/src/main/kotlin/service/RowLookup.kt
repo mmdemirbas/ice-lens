@@ -66,7 +66,7 @@ object RowLookup {
 
     private fun readMatches(file: LookupDataFile, where: String, params: List<String>): List<Map<String, Any?>> {
         val (safePath, ext) = SampleRowReader.resolveForQuery(file.localPath)
-        val source = if (ext == "parquet") "read_parquet(?, file_row_number = true)" else "read_parquet(?)"
+        val source = if (ext == "parquet") "read_parquet(?, file_row_number = true, hive_partitioning = false)" else "read_parquet(?, hive_partitioning = false)"
         return DuckDb.withConnection { conn ->
             conn.prepareStatement("SELECT * FROM $source WHERE $where LIMIT $MAX_HITS_PER_FILE").use { pstmt ->
                 pstmt.setString(1, safePath)
@@ -141,7 +141,7 @@ object RowLookup {
     private fun positionMarked(delete: LookupDeleteFile, recordedDataPath: String, position: Long): Boolean {
         val (safePath, _) = SampleRowReader.resolveForQuery(delete.localPath)
         return DuckDb.withConnection { conn ->
-            conn.prepareStatement("SELECT 1 FROM read_parquet(?) WHERE file_path = ? AND pos = ? LIMIT 1").use { pstmt ->
+            conn.prepareStatement("SELECT 1 FROM read_parquet(?, hive_partitioning = false) WHERE file_path = ? AND pos = ? LIMIT 1").use { pstmt ->
                 pstmt.setString(1, safePath)
                 pstmt.setString(2, recordedDataPath)
                 pstmt.setLong(3, position)
@@ -159,7 +159,7 @@ object RowLookup {
         }
         val bound = delete.equalityColumns.filter { cells[it] != null }.map { cells[it].toString() }
         return DuckDb.withConnection { conn ->
-            conn.prepareStatement("SELECT 1 FROM read_parquet(?) WHERE $where LIMIT 1").use { pstmt ->
+            conn.prepareStatement("SELECT 1 FROM read_parquet(?, hive_partitioning = false) WHERE $where LIMIT 1").use { pstmt ->
                 pstmt.setString(1, safePath)
                 bound.forEachIndexed { i, v -> pstmt.setString(i + 2, v) }
                 pstmt.executeQuery().use { it.next() }

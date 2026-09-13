@@ -37,6 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is read whole when the filter left any file of it.
 
 ### Fixed
+- **A partitioned table's columns are read from the file, never from the path.** DuckDB read
+  `dt=19787/` and `amount=98765.43/` directories as Hive partitions, typing the column from the
+  path text over the file's own — a Paimon `DATE` arrived as a `BIGINT`, an Iceberg `DECIMAL`
+  as text, a row lookup on either found nothing, and on DuckDB 1.4.4 the DATE-over-BIGINT
+  collision was an internal error that broke every later query until restart. Every read now
+  passes `hive_partitioning = false`.
 - **A Paimon primary-key table's scan pruning follows the scan's own rule.** Every file was
   pruned by its own value bounds, which is what an append table's scan does and what a
   primary-key table's does not: a key predicate prunes a file on its own, the whole filter is
