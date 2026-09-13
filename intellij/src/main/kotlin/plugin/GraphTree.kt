@@ -4,6 +4,7 @@ import javax.swing.tree.DefaultMutableTreeNode
 import model.DecodedPaimonPartition
 import model.GraphModel
 import model.GraphNode
+import model.PaimonRowKind
 import model.PaimonRowValue
 import model.displayLabel
 import model.sourceSnapshotId
@@ -129,7 +130,11 @@ object GraphTree {
                 "Row ids" to if (records > 0) "$first..${first + records - 1}" else first.toString()
             },
         )
-        is GraphNode.RowNode -> node.resolvedData.entries.map { it.key to it.value.toString() }
+        is GraphNode.RowNode -> node.resolvedData.entries.map { (key, value) ->
+            // The one cell whose number means nothing on its own.
+            if (key == PaimonRowKind.COLUMN) "Row kind" to ((value as? Number)?.toInt()?.let(PaimonRowKind::describe) ?: value.toString())
+            else key to value.toString()
+        }
         is GraphNode.ErrorNode -> listOf("Error" to node.title, "Detail" to node.message)
         is GraphNode.PaimonSnapshotNode -> listOf(
             "Snapshot id" to node.data.id.toString(),

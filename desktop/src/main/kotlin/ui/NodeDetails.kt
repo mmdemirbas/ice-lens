@@ -80,6 +80,7 @@ import model.snapshotTotals
 import model.FileChange
 import model.manifestTallies
 import model.MAIN_BRANCH
+import model.PaimonRowKind
 import model.sourceSnapshotId
 import model.publishedWapId
 import model.wapId
@@ -2342,13 +2343,28 @@ fun NodeDetailsContent(
                             // the file's own, and it is the one a delete addresses.
                             node.filePosition?.let { position ->
                                 DetailRow("Position in file", position.toString())
+                                // Only where the builder resolved the file's vector: a Paimon row
+                                // has a position too, and its vector is not mapped to rows here.
+                                if (node.vectorsResolved) {
+                                    DetailRow(
+                                        "Deleted",
+                                        if (node.isDeletedByVector) {
+                                            "yes — a deletion vector marks this position"
+                                        } else {
+                                            "not by a deletion vector"
+                                        },
+                                    )
+                                }
+                            }
+                            // A Paimon key-value row says what it does to its key, and the byte
+                            // is read here rather than printed as 0..3 — a `-D` row is stored like
+                            // any other and only this says it is a deletion.
+                            node.paimonRowKind?.let { kind ->
                                 DetailRow(
-                                    "Deleted",
-                                    if (node.isDeletedByVector) {
-                                        "yes — a deletion vector marks this position"
-                                    } else {
-                                        "not by a deletion vector"
-                                    },
+                                    "Row Kind",
+                                    PaimonRowKind.describe(kind) + if (PaimonRowKind.isRetraction(kind)) {
+                                        " — a retraction: merged with the levels below, it removes the key's earlier value"
+                                    } else "",
                                 )
                             }
                             // The row's cells, once read. `data` is the placeholder the builder

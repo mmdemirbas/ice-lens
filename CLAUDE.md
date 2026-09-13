@@ -1283,7 +1283,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~958 tests across 112 files (722 in :core, 230 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~962 tests across 113 files (725 in :core, 231 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1437,6 +1437,19 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   stream, not the table's contents.
 - Paimon has no data/delete manifest split (every manifest carries both kinds of entry), so
   all manifests count as `dataManifestCount`.
+- **A primary-key table's data file holds every write as a row, and `_VALUE_KIND` says which
+  kind.** The Parquet file's columns are `_KEY_<col>` per key field, `_SEQUENCE_NUMBER`,
+  `_VALUE_KIND` and then the value fields, so a `DELETE` is a `-D` row at level 0 with the key's
+  last value still in it, removed only when a compaction merges it with the levels below. The codes
+  are `PaimonRowKind` in `model/PaimonSchema.kt` — 0 `+I`, 1 `-U`, 2 `+U`, 3 `-D`, from the
+  file's own bytes on `cl` and `se` — and a `RowNode.isRetraction` row is drawn as the
+  Iceberg-vector-deleted row is: faded, struck, the kind in the title. The card lists keys
+  beginning with `_` **last**, because the file's physical order puts the three system columns
+  first and a card of four lines would otherwise show none of the row's own. A Paimon row goes
+  through the same `unifiedRowOf` as an Iceberg row, so its position is `UnifiedRow.position` and
+  not a `file_row_number` cell; and it is built with `vectorsResolved = false`, because a Paimon
+  vector lives in the index manifest and is not mapped to rows here — the panel prints the position
+  and no `Deleted` row, rather than "not by a deletion vector" of a row no vector was looked up for
 - **A partitioned table's file path comes from the entry's `_PARTITION`, and that is a
   `BinaryRow` this decodes.** A manifest entry names its file by `_FILE_NAME` only; the file lives
   under `<key>=<value>/…/bucket-N/`, so until `model/PaimonBinaryRow.kt` existed every data file of

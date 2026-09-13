@@ -605,6 +605,14 @@ sealed class GraphNode(
          * positions in ascending order, so its cap cannot hide a position this set needs.
          */
         private val deletedPositions: Set<Long> = emptySet(),
+        /**
+         * Whether [deletedPositions] is an answer at all. The Iceberg builder resolves a file's
+         * vector and passes its positions, so an empty set means "none marks this row"; the
+         * Paimon builder passes nothing, because a Paimon deletion vector lives in the index
+         * manifest and is not mapped to rows here — and "not by a deletion vector" would then be
+         * a claim nothing checked.
+         */
+        val vectorsResolved: Boolean = true,
     ) : GraphNode(id, initialX, initialY, 200.0, 80.0) {
         val isDelete: Boolean get() = content > 0
         val resolvedData: Map<String, Any> by lazy {
@@ -623,6 +631,19 @@ sealed class GraphNode(
          * reader asking "is anything deleted here" is looking.
          */
         val isDeletedByVector: Boolean get() = filePosition?.let { it in deletedPositions } == true
+
+        /**
+         * A Paimon key-value row's `_VALUE_KIND`, once the row has been read; null for an Iceberg
+         * row and for an append-table row, which carry none. See [PaimonRowKind].
+         */
+        val paimonRowKind: Int? get() = (resolvedData[PaimonRowKind.COLUMN] as? Number)?.toInt()
+
+        /**
+         * Whether this row removes rather than states — a Paimon `-U` or `-D`. Drawn the way an
+         * Iceberg row under a deletion vector is, because it is the same fact from the reader's
+         * side: a query does not return this row.
+         */
+        val isRetraction: Boolean get() = paimonRowKind?.let { PaimonRowKind.isRetraction(it) } == true
 
         companion object {
             /** Where [filePosition] is carried in [resolvedData]. Filtered out of the card. */

@@ -191,6 +191,32 @@ data class PaimonManifestFileMeta(
 )
 
 /**
+ * `_VALUE_KIND` in a row of a Paimon key-value file — the `RowKind` byte the merge engine reads,
+ * which is the whole of what makes a `-D` row a deletion: the row is stored like any other, and
+ * only this byte says it retracts the key's earlier value when the levels are merged. A changelog
+ * file's rows carry the same byte with the update pair split into before and after.
+ */
+object PaimonRowKind {
+    const val COLUMN = "_VALUE_KIND"
+    const val INSERT = 0
+    const val UPDATE_BEFORE = 1
+    const val UPDATE_AFTER = 2
+    const val DELETE = 3
+
+    /** `-D (delete)` — the short form Paimon prints, with the word beside it. */
+    fun describe(code: Int): String = when (code) {
+        INSERT -> "+I (insert)"
+        UPDATE_BEFORE -> "-U (update, the value before)"
+        UPDATE_AFTER -> "+U (update, the value after)"
+        DELETE -> "-D (delete)"
+        else -> "$code (not a RowKind this reads)"
+    }
+
+    /** A retraction — a row that removes rather than states: `-U` and `-D`. */
+    fun isRetraction(code: Int): Boolean = code == UPDATE_BEFORE || code == DELETE
+}
+
+/**
  * `_KIND` values in a Paimon manifest entry. [DELETE] records the removal of a file from the
  * table; it is not an Iceberg-style positional or equality delete file.
  */

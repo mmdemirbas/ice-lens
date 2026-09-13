@@ -82,10 +82,13 @@ private fun rowCardDetailEntries(node: GraphNode.RowNode): List<Map.Entry<String
         // columns — the table does not declare a column by that name.
         GraphNode.RowNode.ROW_POSITION_KEY,
     )
+    // A format's own columns — Paimon's `_KEY_*`, `_SEQUENCE_NUMBER`, `_VALUE_KIND`, Iceberg's
+    // `_row_id` — go after the table's, because the card shows three lines and a reader
+    // recognises a row by its data. The kind is already in the title line.
     val filtered = node.resolvedData.entries.filter { (key, _) ->
         key !in metaKeys &&
             !(node.content == 1 && (key == "file_path" || key == "pos" || key == "position"))
-    }
+    }.sortedBy { (key, _) -> if (key.startsWith("_")) 1 else 0 }
     if (filtered.isEmpty()) return emptyList()
     if (node.content != 0) return filtered
 
@@ -801,7 +804,7 @@ fun RowCard(node: GraphNode.RowNode, isSelected: Boolean = false) {
     // The same fade a pruned node gets, and for the same reason: it says "a query does not read
     // this" without a word. Left at full strength the card is the green of a live data row, which
     // is colour arguing against the label printed on it.
-    val fade = if (node.isDeletedByVector) 0.45f else 1f
+    val fade = if (node.isDeletedByVector || node.isRetraction) 0.45f else 1f
     val cardColor = getGraphNodeColor(node, isDarkSurface(MaterialTheme.colorScheme.surface))
     Box(
         modifier = Modifier
@@ -814,8 +817,13 @@ fun RowCard(node: GraphNode.RowNode, isSelected: Boolean = false) {
     ) {
         CardColumn(padding = 6.dp) {
             Text(
-                "ROW $fileNo.$rowIdx: ${rowStatusShortLabel(node.content)}" +
-                    if (node.isDeletedByVector) " — DELETED" else "",
+                "ROW $fileNo.$rowIdx: ${rowStatusShortLabel(node.content)}" + when {
+                    node.isDeletedByVector -> " — DELETED"
+                    // Paimon's own short form: the byte says what the row does to its key.
+                    node.paimonRowKind == model.PaimonRowKind.DELETE -> " — -D"
+                    node.paimonRowKind == model.PaimonRowKind.UPDATE_BEFORE -> " — -U"
+                    else -> ""
+                },
                 fontSize = TypeScale.micro,
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextSecondary()
@@ -839,7 +847,7 @@ fun RowCard(node: GraphNode.RowNode, isSelected: Boolean = false) {
                     // Struck through as well as named: a reader scanning forty row cards is
                     // looking at shapes, and the word is only found once the shape has stopped
                     // them. Neither is enough on its own.
-                    textDecoration = if (node.isDeletedByVector) TextDecoration.LineThrough else null,
+                    textDecoration = if (node.isDeletedByVector || node.isRetraction) TextDecoration.LineThrough else null,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

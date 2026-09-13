@@ -168,7 +168,7 @@ data class PaimonUnifiedDataFile(
     /** `_VALUE_STATS` per column, over every field of the schema or the ones `_VALUE_STATS_COLS` names. */
     val columnBounds: List<PaimonColumnBounds>? = null,
     private val rowsLoader: () -> List<UnifiedRow> = {
-        SampleRowReader.querySampleRows(path.toString()).map { UnifiedRow(it) }
+        SampleRowReader.querySampleRows(path.toString()).map(::unifiedRowOf)
     },
 ) {
     val rows: List<UnifiedRow> by lazy { rowsLoader() }

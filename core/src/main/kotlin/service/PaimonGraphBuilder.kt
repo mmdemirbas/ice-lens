@@ -317,6 +317,7 @@ object PaimonGraphBuilder {
                     id = "row_${fileNodeId}_$rowIndex",
                     data = mapOf("file_no" to simpleId, "row_idx" to rowIndex),
                     content = 0,
+                    vectorsResolved = false,
                     dataLoader = {
                         try {
                             val rows = dataFile.rows
@@ -327,13 +328,16 @@ object PaimonGraphBuilder {
                                 enriched["row_idx"] = rowIndex
                                 enriched["local_file_path"] = dataFile.path.toString()
                                 enriched.putAll(rowData.cells)
+                                // The file position, as the Iceberg builder carries it: DuckDB's
+                                // statement about the file, not a column the table declares.
+                                rowData.position?.let { enriched[GraphNode.RowNode.ROW_POSITION_KEY] = it }
                                 // A row-tracked file written by a commit records only its first
                                 // row id, and the rest follow in file order; a compaction's
                                 // output carries every row's id in a _ROW_ID column instead and
                                 // records no first id. So the id is derived here for the first
                                 // shape and read as a cell for the second — one column either way.
                                 val firstRowId = dataFile.metadata.file?.firstRowId
-                                val position = (rowData.cells[SampleRowReader.FILE_ROW_NUMBER] as? Number)?.toLong()
+                                val position = rowData.position
                                 if (firstRowId != null && position != null && ROW_ID_COLUMN !in enriched) {
                                     enriched[ROW_ID_COLUMN] = firstRowId + position
                                 }

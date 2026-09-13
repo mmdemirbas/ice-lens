@@ -389,6 +389,29 @@ class InspectorRenderTest {
     }
 
     /**
+     * A Paimon `-D` row beside a `+I` one: the card has to fade and strike the retraction the
+     * way an Iceberg row under a deletion vector is drawn, with `-D` in its title line, and the
+     * panel's `Row Kind` row has to say the word rather than the byte.
+     */
+    @Test
+    fun `a Paimon delete row is drawn as a retraction`() {
+        val graph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/dv").absolutePath)),
+            showRows = true,
+        )
+        val rows = graph.nodes.filterIsInstance<GraphNode.RowNode>()
+        val deleteRow = rows.first { it.paimonRowKind == model.PaimonRowKind.DELETE }
+        val insertRow = rows.first { it.paimonRowKind == model.PaimonRowKind.INSERT }
+        renderScene("paimon-row-cards-kinds", width = 700, height = 520) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                RowCard(insertRow)
+                RowCard(deleteRow)
+            }
+        }
+        renderInspector(graph, deleteRow.id, "paimon-row-node-delete", height = 1200)
+    }
+
+    /**
      * A snapshot expiry dropped, drawn as what it is rather than as a read error.
      *
      * The card says so in its eyebrow and the panel says so in an identity row, above a summary

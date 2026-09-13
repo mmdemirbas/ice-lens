@@ -548,7 +548,8 @@ data class UnifiedRow(
 )
 
 /** Splits DuckDB's generated position column off the row's real cells. */
-private fun unifiedRowOf(row: Map<String, Any>): UnifiedRow = UnifiedRow(
+/** A DuckDB row as a [UnifiedRow]: the file position moved out of the cells, the way both formats' readers want it. */
+internal fun unifiedRowOf(row: Map<String, Any>): UnifiedRow = UnifiedRow(
     cells = row - SampleRowReader.FILE_ROW_NUMBER,
     position = (row[SampleRowReader.FILE_ROW_NUMBER] as? Number)?.toLong(),
 )
