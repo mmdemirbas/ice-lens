@@ -116,6 +116,7 @@ desktop/src/main/kotlin/
     ├── GraphCanvas.kt         # Interactive graph: zoom/pan, node selection/drag, marquee, mini-map, viewport culling
     ├── NodeComponents.kt      # Node card composables (Iceberg + Paimon node types) + tooltip + copy buttons
     ├── NodeDetails.kt         # Inspector panel — header, multi-select, the shared sections and helpers the panels reach for
+    ├── MaintenanceSections.kt # The planners' sections — rewrite, manifest merge, expiry and its files, compaction, the table's summary line per procedure
     ├── NodePanels.kt          # Table, row, error and group panels
     ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
     ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
@@ -735,7 +736,7 @@ intellij/src/main/kotlin/plugin/
   small enough to draw whole. Data files first and in the error colour, `MAX_EXPIRY_FILE_ROWS`
   (200) listed
 - **The table panel sums the maintenance procedures to a line each, and computes none of them.**
-  `MaintenanceSection` in `ui/NodeDetails.kt` asks the four planners at the table's current
+  `MaintenanceSection` in `ui/MaintenanceSections.kt` asks the four planners at the table's current
   snapshot — `planRewrite`, `planManifestMerge`, `planExpiry` with `planExpiryFiles` on Iceberg;
   `planCompaction` / `paimonAppendVerdict` and the two `PaimonExpiryOptions` calls on Paimon —
   and prints a verdict, a detail and the panel that holds the reasoning, coloured only where a

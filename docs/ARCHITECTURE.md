@@ -99,6 +99,7 @@ ice-lens is a single-module Kotlin Compose Desktop application. All code lives i
 │  GraphCanvas.kt   Zoomable/pannable canvas, node/edge rendering, viewport culling
 │  NodeComponents.kt   Per-type node card rendering, copy-to-clipboard
 │  NodeDetails.kt      Inspector panel: header, multi-select, shared sections and helpers
+│  MaintenanceSections.kt  The planners' sections: rewrite, manifest merge, expiry and its files, compaction, the table's summary
 │  NodePanels.kt       Table / row / error / group panels
 │  IcebergNodePanels.kt  Metadata / snapshot / manifest / file panels
 │  PaimonNodePanels.kt   Paimon snapshot / schema / manifest list / manifest / data file panels

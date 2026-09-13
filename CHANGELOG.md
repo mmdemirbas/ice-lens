@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **The maintenance sections have a file of their own.** `MaintenanceSections.kt` holds the
+  nine sections the planners draw; `NodeDetails.kt` is down to 2,725 lines.
 - **The inspector's per-node panels are out of `NodeDetailsContent`.** Its 2,080-line `when`
   now dispatches to one composable per node kind — `NodePanels.kt` (table, row, error, group),
   `IcebergNodePanels.kt` (metadata, snapshot, manifest, file) and `PaimonNodePanels.kt` (the five
