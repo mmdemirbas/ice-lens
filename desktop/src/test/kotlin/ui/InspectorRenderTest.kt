@@ -48,6 +48,7 @@ import model.stepComparableSnapshot
 import model.publishedWapId
 import model.wapId
 import model.describe
+import model.metadataVersionFromFileName
 import model.ManifestEntryStatus
 import model.PaimonUnifiedTableModel
 import model.PredicateOp
@@ -429,6 +430,23 @@ class InspectorRenderTest {
         val third = sorted.nodes.filterIsInstance<GraphNode.SnapshotNode>()
             .filter { it.data.summary["operation"] == "append" }.maxBy { it.data.sequenceNumber ?: 0L }
         renderInspector(sorted, third.id, "snapshot-node-rewrite-left-alone", height = 3400)
+    }
+
+    /**
+     * `sweep` is `swept` before its expiry, complete: under `older_than = now` the plan removes the
+     * four older snapshots and frees the two data files the incremental cleanup frees — one
+     * removed on the live line, one added off it — beside the manifests and lists, so the
+     * section has both a coloured row and a plain one. `sweepb` is the reachable case, where the
+     * same removal frees no data file.
+     */
+    @Test
+    fun `a metadata file says what its expiry would free`() {
+        val sweep = graphFor("sweep")
+        val latest = sweep.nodes.filterIsInstance<GraphNode.MetadataNode>().maxBy { metadataVersionFromFileName(it.fileName) ?: -1 }
+        renderInspector(sweep, latest.id, "metadata-node-expiry-files", height = 5400)
+        val sweepb = graphFor("sweepb")
+        val latestB = sweepb.nodes.filterIsInstance<GraphNode.MetadataNode>().maxBy { metadataVersionFromFileName(it.fileName) ?: -1 }
+        renderInspector(sweepb, latestB.id, "metadata-node-expiry-files-reachable", height = 5400)
     }
 
     /**

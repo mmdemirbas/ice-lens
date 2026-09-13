@@ -216,6 +216,7 @@ internal fun ColumnScope.MetadataPanel(
         }
 
         ExpirySection(node.data, nowMs = expiryClock())
+        ExpiryFilesSection(node.data, currentGraph, nowMs = expiryClock())
 
         CountedSection("Snapshots", node.data.snapshots.size, "snapshots") {
             val snapshots = node.data.snapshots.sortedBy { it.timestampMs ?: Long.MAX_VALUE }

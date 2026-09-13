@@ -104,6 +104,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **The metadata panel says which files an expiry would free.** An `Expiry Files` section under
+  `Expiry` plans the `older_than = now` column's removals the way `RemoveSnapshots` cleans up —
+  the incremental cleanup with one ref, the reachable one with more — and lists every manifest
+  list, manifest, data file and statistics file that would go, data files first, with the rule
+  that frees each. Two tables copied on disk before their expiry (`sweep`/`swept`,
+  `sweepb`/`sweptb`) are the oracle: the plan names exactly the files the expiry took out, and a
+  sweep over every fixture holds that no planned file is one a retained snapshot still reads.
 - **The snapshot panel says what the next commit would do to the manifest list.** A `Manifest
   Merge` section plans the next append and the next merge-on-read delete the way
   `ManifestMergeManager` does on every batch write — bins by spec from the oldest end, a bin of

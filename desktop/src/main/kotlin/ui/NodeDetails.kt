@@ -69,7 +69,11 @@ import model.manifestTallies
 import model.partialRows
 import model.partitionBreakdown
 import model.planExpiry
+import model.ExpiryCleanup
+import model.ExpiryFileKind
 import model.ExpiryOptions
+import model.expiryFileInput
+import model.planExpiryFiles
 import model.PaimonCompactionOptions
 import model.ManifestMergeOptions
 import model.ManifestMergePlan
@@ -2436,6 +2440,78 @@ internal fun ExpirySection(metadata: TableMetadata, nowMs: Long) {
                 if (byDefaults.snapshots.first { it.snapshotId == id }.retained) null else colors.error
             },
         )
+    }
+}
+
+/** The file list a plan prints before it says how many more there are. */
+internal const val MAX_EXPIRY_FILE_ROWS = 200
+
+/**
+ * The files the `older_than = now` expiry above would delete, decided by [planExpiryFiles] — the
+ * rules of `IncrementalFileCleanup` and `ReachableFileCleanup`, chosen by the ref count the
+ * expiry leaves. Its own section under [ExpirySection] rather than a column in it, because the
+ * question changes: that table says what protects a snapshot, this one says what freeing the rest
+ * is worth, which is the figure a reader deciding whether to run the procedure came for. The
+ * lists and entries come off the drawn graph, so an expired snapshot — whose list is gone —
+ * contributes nothing, which is right: the expiry that removed it already ran.
+ */
+@Composable
+internal fun ExpiryFilesSection(metadata: TableMetadata, graph: GraphModel, nowMs: Long) {
+    val colors = MaterialTheme.colorScheme
+    val removed = metadata.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs)).removed.toSet()
+    val plan = graph.expiryFileInput(metadata).planExpiryFiles(removed)
+    CountedSection("Expiry Files — ${plan.describe}", plan.files.size, "files") {
+        Text(
+            "What the older_than = now expiry above would delete, the way RemoveSnapshots cleans " +
+                "up: every expired snapshot's manifest list; every manifest no retained snapshot lists; " +
+                "and data files by the strategy the ref count picks. With one ref (incremental) a file " +
+                "goes when an expired commit on the live line removed it, or when an expired commit off " +
+                "the live line — rolled back, or on no ref — added it. With more refs (reachable) a file " +
+                "goes only when it is live in a manifest that goes and live in none that stays, so a " +
+                "removal frees nothing while another ref can still read the file. Statistics files go " +
+                "with their snapshot either way.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        when (plan.cleanup) {
+            ExpiryCleanup.NONE -> Text("Nothing expires under older_than = now, so nothing is freed.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            else -> {
+                Text(
+                    "Cleanup: ${plan.cleanup.label}. ${formatBytes(plan.knownBytes)} the metadata can account for" +
+                        " — a manifest list records no size.",
+                    fontSize = TypeScale.small,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                if (plan.files.isEmpty()) Text("Every file of the expired snapshots is still read by a retained one.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+                else {
+                    // Data first: the files are what freeing is worth, the lists are bookkeeping.
+                    val kindOrder = listOf(ExpiryFileKind.DATA_FILE, ExpiryFileKind.DELETE_FILE, ExpiryFileKind.STATISTICS, ExpiryFileKind.MANIFEST, ExpiryFileKind.MANIFEST_LIST)
+                    val shown = plan.files.sortedBy { kindOrder.indexOf(it.kind) }.take(MAX_EXPIRY_FILE_ROWS)
+                    WideTable(
+                        headers = listOf("Kind", "Reason", "Snapshot", "Size", "File"),
+                        columnWidths = listOf(120.dp, 390.dp, 190.dp, 90.dp, 600.dp),
+                        rows = shown.map { f ->
+                            listOf(
+                                f.kind.label,
+                                f.reason.label,
+                                f.snapshotId?.toString() ?: "—",
+                                f.sizeBytes?.let { formatBytes(it) } ?: "—",
+                                f.path.substringAfterLast('/'),
+                            )
+                        },
+                        leadCellColors = shown.map { if (it.kind == ExpiryFileKind.DATA_FILE || it.kind == ExpiryFileKind.DELETE_FILE) colors.error else null },
+                    )
+                    if (plan.files.size > shown.size) Text(
+                        "${plan.files.size - shown.size} more not listed.",
+                        fontSize = TypeScale.small,
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        }
     }
 }
 

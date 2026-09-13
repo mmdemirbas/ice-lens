@@ -1,0 +1,129 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "a16594a6-b942-4121-bdc1-10d04608f690",
+  "location" : "/wh/default/sweptb",
+  "last-sequence-number" : 5,
+  "last-updated-ms" : 1789313198446,
+  "last-column-id" : 2,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : 1069833806646654058,
+  "refs" : {
+    "dev" : {
+      "snapshot-id" : 8337608489946395297,
+      "type" : "branch"
+    },
+    "main" : {
+      "snapshot-id" : 1069833806646654058,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "sequence-number" : 2,
+    "snapshot-id" : 8337608489946395297,
+    "parent-snapshot-id" : 5009872422281868339,
+    "timestamp-ms" : 1789313184532,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1789313179839",
+      "added-data-files" : "1",
+      "added-records" : "1",
+      "added-files-size" : "664",
+      "changed-partition-count" : "1",
+      "total-records" : "2",
+      "total-files-size" : "1328",
+      "total-data-files" : "2",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1789313179839",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/sweptb/metadata/snap-8337608489946395297-1-7a546a1c-ea71-4fa9-bb0b-0138eec7ec7f.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 5,
+    "snapshot-id" : 1069833806646654058,
+    "parent-snapshot-id" : 9183606671787645212,
+    "timestamp-ms" : 1789313184946,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1789313179839",
+      "added-data-files" : "1",
+      "added-records" : "1",
+      "added-files-size" : "664",
+      "changed-partition-count" : "1",
+      "total-records" : "3",
+      "total-files-size" : "2006",
+      "total-data-files" : "3",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1789313179839",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/sweptb/metadata/snap-1069833806646654058-1-c61d3c41-99f4-4feb-b0e4-177b9e1379e2.avro",
+    "schema-id" : 0
+  } ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1789313184946,
+    "snapshot-id" : 1069833806646654058
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1789313184260,
+    "metadata-file" : "/wh/default/sweptb/metadata/v1.metadata.json"
+  }, {
+    "timestamp-ms" : 1789313184388,
+    "metadata-file" : "/wh/default/sweptb/metadata/v2.metadata.json"
+  }, {
+    "timestamp-ms" : 1789313184532,
+    "metadata-file" : "/wh/default/sweptb/metadata/v3.metadata.json"
+  }, {
+    "timestamp-ms" : 1789313184563,
+    "metadata-file" : "/wh/default/sweptb/metadata/v4.metadata.json"
+  }, {
+    "timestamp-ms" : 1789313184699,
+    "metadata-file" : "/wh/default/sweptb/metadata/v5.metadata.json"
+  }, {
+    "timestamp-ms" : 1789313184820,
+    "metadata-file" : "/wh/default/sweptb/metadata/v6.metadata.json"
+  }, {
+    "timestamp-ms" : 1789313184946,
+    "metadata-file" : "/wh/default/sweptb/metadata/v7.metadata.json"
+  } ]
+}

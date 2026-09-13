@@ -67,6 +67,7 @@ core/src/main/kotlin/
 │   ├── BucketTransform.kt     # Iceberg's bucket[N], via the same Guava murmur3 the writer uses
 │   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
 │   ├── ManifestMergePlan.kt   # What the next commit does to the manifest list — ManifestMergeManager's bins and verdicts
+│   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
@@ -705,6 +706,29 @@ intellij/src/main/kotlin/plugin/
   defaults and `older_than = now`, because the reader's question is "what protects this snapshot"
   and only the age rule moves between them; ages are measured from `LocalExpiryClock`, which the
   render tests pin to the table's last write so a capture does not change with the calendar
+- **Which files an expiry frees is a second plan over the first, and the strategy is chosen by
+  the ref count.** `model/ExpiryFilePlan.kt` takes the snapshot ids `ExpiryPlan` would drop and
+  reads the manifest lists and manifest entries of the table *as it stands* — which is why it is
+  planned before the expiry and cannot be checked on `expired` or `retained`, whose removed
+  manifests are gone. `RemoveSnapshots.cleanExpiredSnapshots` picks `IncrementalFileCleanup`
+  when exactly one ref is left and `ReachableFileCleanup` otherwise, and they free different
+  things: both delete every expired snapshot's manifest list and every manifest no retained
+  snapshot lists, but **incremental** frees a data file when an expired commit on the live line
+  recorded it `DELETED` (the entry's own snapshot gone too) or when an expired commit *off* the
+  live line — rolled back, or on no ref — recorded it `ADDED`, while **reachable** frees a file
+  only when it is live in a manifest that goes and live in none that stays, so a `DELETED` entry
+  frees nothing while another ref can read the file. A cherry-picked commit, or one picked from
+  the live line, is left entirely alone. The oracle is `docs/fixtures/cleanup.sql`, which copies
+  each table on disk *before* running `expire_snapshots` on the original in place — same file
+  names in both — so `ExpiryFilePlanFixtureTest` requires the plan from `sweep` to name exactly
+  the files missing from `swept` (four lists, three manifests, a file removed on the live line and
+  a file added by the rolled-back commit) and the plan from `sweepb` to name what `sweptb` lost
+  (three lists and the delete's rewritten manifest, no data file — the branch still reads it).
+  The sweep every fixture is held to is the one wrong the planner must not do: no planned data or
+  delete file is live in a retained snapshot, which is where the ancestor rule earns its keep on
+  the two tables with a `rewrite_manifests`. The metadata panel's `Expiry Files` section plans
+  the `older_than = now` column's removals from `SnapshotNode.manifestList` and the manifest
+  nodes' entries, data files first and in the error colour, `MAX_EXPIRY_FILE_ROWS` (200) listed
 - **What `rewrite_data_files` would rewrite is planned the way `SizeBasedDataRewriter` plans it,
   and checked against the three rewrites the fixtures ran.** `model/RewritePlan.kt` reads the
   rules at Iceberg 1.8.1: one task per live data file carrying the delete files the scan pairs with
@@ -1467,7 +1491,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,040 tests across 129 files (786 in :core, 249 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,050 tests across 131 files (795 in :core, 250 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1565,6 +1589,7 @@ container invocation and the traps in it:
 | `default/expired` | `ExpiredSnapshotsFixtureTest` | snapshots dropped by `expire_snapshots` — the older metadata versions still list them, and they are drawn as expired, not as read errors |
 | `default/maint` | `MaintenanceFixtureTest` | `rewrite_position_delete_files` dropping two dangling deletes, then `rewrite_manifests` — the commit whose summary counts manifests |
 | `default/merged`, `mergedel`, `mergespec` | `ManifestMergeFixtureTest` | `commit.manifest.min-count-to-merge = 2` — every append merging the list into one manifest, a copy-on-write delete's filtered manifest alone in its bin, merging switched off; the delete side, where a second delete rewrote the first delete file; and a spec change merging the old spec's manifests under the default count |
+| `default/sweep`, `swept`, `sweepb`, `sweptb` | `ExpiryFilePlanFixtureTest` | two tables copied on disk before `expire_snapshots` ran on the original — `swept` with one ref (incremental cleanup: a removed file and a rolled-back commit's file freed), `sweptb` with a branch (reachable: a manifest freed, no file) |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
 | `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest`, `PaimonFileBoundsFixtureTest`, `PaimonScanPruningTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
