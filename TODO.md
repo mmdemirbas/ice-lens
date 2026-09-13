@@ -67,15 +67,15 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   the table's current snapshot and the `AS OF VERSION` form needs a snapshot id that is not known
   until the script has run, so it needs a second pass over the fixture.
 
-- **A file's history is answered on both formats, and the IDE strip does not list it.** Which
-  commit added a file, which removed it, which retained snapshots still list it live and whether
-  the expiry the table panel plans would free it (`model/FileHistory.kt`). Two edges stay open.
-  Paimon records no writer on a manifest entry, so a file older than the earliest retained
-  snapshot is `carried in` with no commit to credit, where Iceberg's `added_snapshot_id` still
-  names an expired one. And the IntelliJ tool window lists none of it: `GraphTree.details` reads
-  only what the node carries eagerly, and the history is a scan of every manifest's entries on
-  selection — cheap on a developer's table, a stall on the EDT for a large one, so it would need
-  the plugin's background task to warm it first.
+- **A file's history is answered on both formats, and the IDE strip lists it after the eager
+  rows.** Which commit added a file, which removed it, which retained snapshots still list it
+  live and whether the expiry the table panel plans would free it (`model/FileHistory.kt`). One
+  edge stays open: Paimon records no writer on a manifest entry, so a file older than the
+  earliest retained snapshot is `carried in` with no commit to credit, where Iceberg's
+  `added_snapshot_id` still names an expired one. The IntelliJ strip draws a `History` row
+  reading and fills it from `GraphTree.deferredDetails` on a `Task.Backgroundable`, dropping a
+  read that lands for an older selection; the scan is memoised on the node, so a second click is
+  instant.
 
 - **The Paimon merge rules stop at a multi-field removal group.** `deduplicate`, `first-row`,
   `partial-update` and `aggregation` are applied by the merged count and the row lookup

@@ -200,4 +200,25 @@ class GraphTreeTest {
         val line = GraphTree.details(table, nowMs = now).single { it.first == "Expiry (older_than = now)" }
         assertEquals("would remove 5 of 6 snapshots", line.second)
     }
+
+    /**
+     * The history row is the one detail that costs a read, so it is not in [GraphTree.details]
+     * — every other row is on screen before the scan starts — and the panel fills it in from
+     * [GraphTree.deferredDetails] off the EDT. `mor`'s compaction removed a file that older
+     * snapshots still list live, which is the line a reader opens a file's row for.
+     */
+    @Test
+    fun `a file's history is a deferred detail, on either format`() {
+        val mor = graphOf("mor")
+        val files = flatten(GraphTree.build(mor)).filterIsInstance<GraphNode.FileNode>()
+        assertTrue(files.all { GraphTree.hasDeferredDetails(it) && GraphTree.details(it).none { (f, _) -> f == GraphTree.HISTORY } })
+        val histories = files.map { GraphTree.deferredDetails(it).single() }
+        assertTrue(histories.all { it.first == GraphTree.HISTORY })
+        assertTrue(histories.any { it.second.startsWith("removed by snapshot") && "still listed live by" in it.second }, histories.toString())
+        assertTrue(histories.any { it.second.startsWith("live now — added by snapshot") }, histories.toString())
+        val table = flatten(GraphTree.build(mor)).first { it is GraphNode.TableNode }
+        assertTrue(!GraphTree.hasDeferredDetails(table) && GraphTree.deferredDetails(table).isEmpty())
+        val dv = flatten(GraphTree.build(paimonGraphOf("dv"))).filterIsInstance<GraphNode.PaimonDataFileNode>()
+        assertTrue(dv.map { GraphTree.deferredDetails(it).single().second }.any { it.startsWith("removed by snapshot") }, "dv's upgrade compactions remove files")
+    }
 }

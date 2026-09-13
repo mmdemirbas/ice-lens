@@ -147,12 +147,44 @@ class IceLensPanel(private val project: Project, parent: Disposable) : Disposabl
         show(GRAPH, null)
     }
 
+    /** Which selection the details table is showing; a read that lands for an older one is dropped. */
+    private var detailsGeneration = 0L
+
     private fun showDetails(item: GraphTree.Item?) {
         detailsModel.rowCount = 0
+        val generation = ++detailsGeneration
         item ?: return
         GraphTree.details(item.node).forEach { (field, value) ->
             detailsModel.addRow(arrayOf(field, value))
         }
+        if (!GraphTree.hasDeferredDetails(item.node)) return
+        // The eager rows are on screen; the history row is drawn reading and filled in when the
+        // scan lands — off the EDT, since it walks every retained snapshot's entries.
+        val placeholder = detailsModel.rowCount
+        detailsModel.addRow(arrayOf(GraphTree.HISTORY, "reading…"))
+        ProgressManager.getInstance().run(
+            object : Task.Backgroundable(project, "Reading file history", false) {
+                private var rows: List<Pair<String, String>> = emptyList()
+
+                override fun run(indicator: ProgressIndicator) {
+                    rows = runCatching { GraphTree.deferredDetails(item.node) }
+                        .onFailure { logger.warn("Could not read the history of ${item.node.id}", it) }
+                        .getOrDefault(listOf(GraphTree.HISTORY to "could not be read"))
+                }
+
+                override fun onSuccess() {
+                    if (generation != detailsGeneration || placeholder >= detailsModel.rowCount) return
+                    rows.forEachIndexed { i, (field, value) ->
+                        if (i == 0) {
+                            detailsModel.setValueAt(field, placeholder, 0)
+                            detailsModel.setValueAt(value, placeholder, 1)
+                        } else {
+                            detailsModel.insertRow(placeholder + i, arrayOf(field, value))
+                        }
+                    }
+                }
+            }
+        )
     }
 
     private fun show(card: String, text: String?) {

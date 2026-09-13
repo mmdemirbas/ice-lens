@@ -1236,7 +1236,12 @@ intellij/src/main/kotlin/plugin/
   reads by its add count and cannot be found by its path, which is right for a label and wrong for
   a search. `GraphTree.details` is *not* shared: the desktop inspector is a panel per node kind
   with tallies and drill-downs, and the tool window is a docked strip answering "what am I looking
-  at", so a shorter list is the design rather than a subset
+  at", so a shorter list is the design rather than a subset. **A row that costs a read is not
+  in `details`.** A file's history walks every retained snapshot's entries, so `GraphTree.details`
+  stays eager and `GraphTree.deferredDetails` holds the `History` row; `IceLensPanel.showDetails`
+  puts the eager rows up, draws that row as reading, and fills it from a `Task.Backgroundable`,
+  keyed by a selection generation so a scan landing for the previous click is dropped rather
+  than written under the wrong node
 - **The tree follows structural edges only.** An `affectsLayout = false` edge is an annotation —
   snapshot lineage, or a deletion vector pointing at the data file it covers — and both run between
   nodes at one depth, so following one would make every commit a child of the commit before it and
@@ -1699,7 +1704,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,140 tests across 144 files (871 in :core, 260 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,140 tests across 144 files (871 in :core, 260 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

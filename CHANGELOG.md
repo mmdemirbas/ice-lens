@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The IDE strip lists a file's history.** A `History` row under a data file on either format,
+  drawn reading and filled off the EDT — which commit added the file, which removed it, how many
+  retained snapshots still list it live.
 - **Paimon sequence groups are applied.** A `partial-update` table with `fields.*.sequence-group`
   is counted and looked up rather than reported as not applied: a retraction retracts its group's
   columns and the key stays, and under `partial-update.remove-record-on-sequence-group` a `-D` at
