@@ -1603,6 +1603,20 @@ class InspectorRenderTest {
                 scanFilter = model.ScanFilter.of(listOf(ScanPredicate("b", PredicateOp.EQ, "11"))),
             )
         }
+        // And on `pc`, a primary-key table whose bucket overlaps: `v = 'g'` is held by one
+        // level-0 file, so the level-5 file its own bounds rule out is read with its bucket —
+        // the rule once above the table, the bucket's reason leading that row's cell.
+        val pc = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pc").absolutePath)),
+            showRows = false,
+        )
+        // The section alone: on the whole table panel it sits below an expiry list of 26 rows,
+        // and the placement was judged on `pt` above.
+        renderScene("scan-pruning-paimon-pk", width = 1400, height = 5600) {
+            Column(Modifier.padding(16.dp)) {
+                ScanPruningSection(pc, model.ScanFilter.of(listOf(ScanPredicate("v", PredicateOp.EQ, "g")))) {}
+            }
+        }
     }
 
     /**

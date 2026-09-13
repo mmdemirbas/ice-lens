@@ -165,6 +165,12 @@ data class PaimonUnifiedDataFile(
     val keyMin: List<PaimonRowValue>? = null,
     /** `_MAX_KEY`, likewise. */
     val keyMax: List<PaimonRowValue>? = null,
+    /**
+     * `_KEY_STATS` per trimmed primary key — the bounds a scan prunes a file by on a key
+     * predicate, kept in full whatever `stats-mode` says of the value columns. Null on a table
+     * without a primary key, or when not decodable.
+     */
+    val keyBounds: List<PaimonColumnBounds>? = null,
     /** `_VALUE_STATS` per column, over every field of the schema, or `_WRITE_COLS`, or the ones `_VALUE_STATS_COLS` names. */
     val columnBounds: List<PaimonColumnBounds>? = null,
     /** A data-evolution patch file — [PaimonDataFileMeta.isPartialUnder] the schema the file's own `_SCHEMA_ID` names. */
@@ -552,6 +558,7 @@ private fun readPaimonManifest(
             val keysResolved = keyFields.size == keyNames.size && keyFields.isNotEmpty()
             val keyMin = file?.minKey?.takeIf { keysResolved }?.let { decodePaimonRow(it, keyFields) }
             val keyMax = file?.maxKey?.takeIf { keysResolved }?.let { decodePaimonRow(it, keyFields) }
+            val keyBounds = file?.keyStats?.takeIf { keysResolved }?.let { decodePaimonColumnBounds(it, keyFields) }
             // The value statistics cover the schema's fields in order — or _WRITE_COLS, for a file
             // that holds only the columns a MERGE INTO set — or the subset _VALUE_STATS_COLS
             // names; every name has to resolve, or a bound lands on the wrong column. The `de`
@@ -581,6 +588,7 @@ private fun readPaimonManifest(
                 partition = partition,
                 keyMin = keyMin,
                 keyMax = keyMax,
+                keyBounds = keyBounds,
                 columnBounds = columnBounds,
                 partial = file?.isPartialUnder(fileSchema) ?: false,
             )

@@ -243,6 +243,16 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
                 color = colors.onSurfaceVariant,
             )
         }
+        // A level-0 file of a first-row or deletion-vector table is never opened by a batch read,
+        // filter or no filter — not ruled out, and not read either, so it is neither figure above.
+        if (plan.unreadFiles > 0) {
+            Text(
+                "${formatCounted(plan.unreadFiles, "file")} at level 0 ${if (plan.unreadFiles == 1) "is" else "are"} never opened: " +
+                    "a batch read of this table skips level 0.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+            )
+        }
 
         val skippedColor = verdictSkippedColor()
         val unevaluatedColor = verdictUnevaluatedColor()
@@ -296,6 +306,11 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
         )
+        // A primary-key table's rule, said once: the reason cells below name a bucket where it
+        // decided a file, and this is what they refer to.
+        plan.primaryKeyRule?.let {
+            Text("$it.", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+        }
         // The one table whose read consults no file's bounds; said once here rather than on
         // every row, where the same sentence would be the reason cell of each.
         plan.fileBoundsWithheld?.let {
@@ -317,6 +332,7 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
                         FileFate.SKIPPED -> "SKIPPED"
                         FileFate.NOT_REACHED -> "not reached"
                         FileFate.UNEVALUATED -> "not evaluated"
+                        FileFate.NOT_READ -> "not read"
                         else -> "would be read"
                     },
                     label,
@@ -328,7 +344,7 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
                     FileFate.SKIPPED -> skippedColor
                     // Dimmer than the others on purpose: it is not this file's verdict. The row
                     // is here so the count adds up, not because anything was decided about it.
-                    FileFate.NOT_REACHED -> unreachedColor
+                    FileFate.NOT_REACHED, FileFate.NOT_READ -> unreachedColor
                     FileFate.UNEVALUATED -> unevaluatedColor
                     else -> null
                 }
@@ -479,7 +495,10 @@ private fun FormLabel(text: String, width: Dp) {
 private fun FilePruneResult?.summarise(): String {
     if (this == null) return "no filter"
     if (fate == FileFate.NOT_REACHED) return "its manifest was ruled out, so a scan never opens it"
-    return outcomes.summarise(proved = fate == FileFate.SKIPPED)
+    if (fate == FileFate.NOT_READ) return outcomes.firstOrNull()?.reason ?: "a batch read of this table never opens it"
+    val own = outcomes.summarise(proved = fate == FileFate.SKIPPED)
+    // A bucket's rule decided the fate; the file's own outcomes follow, since they are what it overrode.
+    return note?.let { "$it. Its own bounds: $own" } ?: own
 }
 
 private fun ManifestPruneResult?.summarise(): String =

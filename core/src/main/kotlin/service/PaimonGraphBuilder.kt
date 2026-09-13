@@ -275,6 +275,7 @@ object PaimonGraphBuilder {
                                     partition = unifiedDataFile.partition,
                                     keyMin = unifiedDataFile.keyMin,
                                     keyMax = unifiedDataFile.keyMax,
+                                    keyBounds = unifiedDataFile.keyBounds,
                                     columnBounds = unifiedDataFile.columnBounds,
                                     level = entry.file?.level,
                                     operationKind = entry.kind,

@@ -724,10 +724,23 @@ enum class FileFate {
 
     /** Reached, and nothing could be evaluated — so "would be read" carries no information. */
     UNEVALUATED,
+
+    /**
+     * Reached, and never opened whatever the filter: a level-0 file of a Paimon primary-key
+     * table whose batch reads skip level 0 — see [PaimonMergeRule.skipsLevel0].
+     */
+    NOT_READ,
 }
 
-/** Every predicate's outcome against one data file, and what a scan does with it. */
-data class FilePruneResult(val outcomes: List<PredicateOutcome>, val fate: FileFate) {
+/**
+ * Every predicate's outcome against one data file, and what a scan does with it.
+ *
+ * [note] is why the fate is not what the outcomes alone would give, where a rule about the
+ * file's *bucket* decided it — a Paimon primary-key table reads a bucket whole when its files
+ * overlap and any of them may match, so a file its own bounds rule out is still opened; see
+ * [evaluatePaimonPrimaryKeyFiles]. Null where the outcomes are the whole explanation.
+ */
+data class FilePruneResult(val outcomes: List<PredicateOutcome>, val fate: FileFate, val note: String? = null) {
     /** The first outcome that proved the file cannot match, or null when none did. */
     val skippedBy: PredicateOutcome? get() = outcomes.firstOrNull { it.effect == TermEffect.SKIPS }
 }
@@ -943,6 +956,8 @@ data class ScanPlan(
      * Paimon table under data evolution, see [paimonFileBoundsWithheld]; null everywhere else.
      */
     val fileBoundsWithheld: String? = null,
+    /** How a Paimon primary-key table's file stage decides — [PaimonScanRule.describe]; null on every other table. */
+    val primaryKeyRule: String? = null,
 ) {
     val skippedManifests: Int get() = manifests.values.count { it.isSkipped }
     val readFiles: Int get() = files.values.count { it.fate == FileFate.WOULD_BE_READ }
@@ -950,6 +965,8 @@ data class ScanPlan(
     val unreachedFiles: Int get() = files.values.count { it.fate == FileFate.NOT_REACHED }
     /** Reached and not ruled out, with nothing to evaluate — a scan opens these as it opens [readFiles]. */
     val unevaluatedFiles: Int get() = files.values.count { it.fate == FileFate.UNEVALUATED }
+    /** Reached and never opened — level 0 on a table whose batch reads skip it. */
+    val unreadFiles: Int get() = files.values.count { it.fate == FileFate.NOT_READ }
 }
 
 /**
@@ -985,6 +1002,13 @@ fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
         .filter { graph.nodeById[it.fromId].let { n -> n is GraphNode.ManifestNode || n is GraphNode.PaimonManifestNode } }
         .associate { it.toId to it.fromId }
 
+    fun manifestSkipped(fileId: String) = manifestOf[fileId]?.let { manifests[it]?.isSkipped } == true
+
+    // A Paimon primary-key table's file stage is not per file: a key predicate prunes a file on
+    // its own, and the rest of the filter is decided per bucket, the way the scan decides it.
+    val primaryKeyRule = paimonScanRule(graph)
+    val primaryKey = primaryKeyRule?.let { evaluatePaimonPrimaryKeyFiles(graph, filter, it, ::manifestSkipped) }
+
     // A Paimon table under data evolution reads a file stitched with the ones sharing its first
     // row id, so a column's bounds here may describe values a patch replaced; the scan consults
     // none of them, and neither does this.
@@ -993,20 +1017,22 @@ fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
         .mapNotNull { node ->
             val stats = when (node) {
                 is GraphNode.FileNode -> node.columnStats
-                is GraphNode.PaimonDataFileNode -> if (withheld == null) paimonColumnStats(node) else null
+                is GraphNode.PaimonDataFileNode -> {
+                    primaryKey?.let { return@mapNotNull node.id to it.getValue(node.id) }
+                    if (withheld == null) paimonColumnStats(node) else null
+                }
                 else -> return@mapNotNull null
             }
-            val manifestSkipped = manifestOf[node.id]?.let { manifests[it]?.isSkipped } == true
             val own = if (stats != null) evaluateFilePruning(stats, filter) else unevaluatedFile(filter, withheld.orEmpty())
-            node.id to if (manifestSkipped) own.copy(fate = FileFate.NOT_REACHED) else own
+            node.id to if (manifestSkipped(node.id)) own.copy(fate = FileFate.NOT_REACHED) else own
         }
         .toMap()
 
-    return ScanPlan(manifests, files, withheld)
+    return ScanPlan(manifests, files, withheld, primaryKeyRule?.describe())
 }
 
 /** Every predicate not evaluated against the file, for one [reason] that is about the table rather than the file. */
-private fun unevaluatedFile(filter: ScanFilter, reason: String): FilePruneResult {
+internal fun unevaluatedFile(filter: ScanFilter, reason: String): FilePruneResult {
     val outcomes = filter.pushNegation().predicates().map { predicate ->
         PredicateOutcome(predicate, fieldName = null, transform = null, effect = TermEffect.NOT_EVALUATED, reason = reason)
     }

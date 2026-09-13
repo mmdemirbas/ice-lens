@@ -864,6 +864,8 @@ sealed class GraphNode(
         /** `_MIN_KEY` / `_MAX_KEY` over the trimmed primary key, decoded; null on a table without one or when undecodable. */
         val keyMin: List<PaimonRowValue>? = null,
         val keyMax: List<PaimonRowValue>? = null,
+        /** `_KEY_STATS` per trimmed primary key, decoded — see [PaimonUnifiedDataFile.keyBounds]. */
+        val keyBounds: List<PaimonColumnBounds>? = null,
         /** `_VALUE_STATS` per column — the file's own bounds, decoded. Null when undecodable. */
         val columnBounds: List<PaimonColumnBounds>? = null,
         val level: Int? = null,

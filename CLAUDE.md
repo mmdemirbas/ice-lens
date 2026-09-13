@@ -1735,7 +1735,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,146 tests across 146 files (877 in :core, 261 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,151 tests across 147 files (882 in :core, 261 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2006,6 +2006,37 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   `PaimonScanPruningTest` reads its expectations off the `pt` script — `dt = 2024-03-07` skips two
   manifests, leaves five files unreached and one skipped by its own bound — and holds the direction
   that matters over every key the script wrote: no file holding a matching row is ever pruned
+- **A primary-key table's file stage is not per file, and the oracle is Paimon's own plan.**
+  `KeyValueFileStoreScan` at release-1.3.1 splits the filter: the top-level conjuncts naming
+  trimmed primary keys only (`pickTransformFieldMapping(splitAnd(predicate))`) prune a file on its
+  own against `_KEY_STATS` — a file whose key range excludes the key holds no record of it — while
+  the whole filter is applied **per bucket**, over the files the key stage left
+  (`filterWholeBucketByStats`): file by file where the bucket's files cannot overlap (all at one
+  level above 0), and otherwise the bucket is read whole if any file may match and skipped whole
+  if none may, because a key's latest record can sit in a file whose bounds do not match —
+  `PrimaryKeyFileStoreTable.nonPartitionFilterConsumer` carries the case, file 1 inserting
+  `value = 1` and file 2 updating it to `2`, where pruning `value = 1` per file returns a row the
+  table does not have. `partial-update` and `aggregation` without deletion vectors are never
+  pruned by value at all; a table whose batch reads skip level 0 (`first-row`, deletion vectors)
+  never opens a level-0 file (`FileFate.NOT_READ`) and prunes the rest each on its own
+  (`DataTableBatchScan`: `withLevelFilter(level > 0).enableValueFilter()`).
+  `evaluatePaimonPrimaryKeyFiles` in the bridge runs that over the latest snapshot's **live**
+  files, read off the table node's deferred `PaimonReadInput` — the graph also draws the entries
+  a compaction removed and the removal records, and those get their own bounds' verdict with a
+  note, since a scan never plans over them and their bounds must not decide a live file's bucket.
+  A file its own bounds rule out but the bucket keeps is `WOULD_BE_READ` with
+  `FilePruneResult.note` saying so, and the panel leads its reason cell with the note, or the row
+  would contradict itself; `ScanPlan.primaryKeyRule` is the rule in a sentence above the file
+  table. `_KEY_STATS` is decoded to `keyBounds` beside the value bounds for this, because under a
+  `stats-mode = none` the key still has a bound there (`sm`). The oracle is
+  `docs/fixtures/paimon-scan-plans.scala`, which runs `newReadBuilder().withFilter(…).newScan().plan()`
+  over copies of `pc`, `lk`, `pu`, `ag`, `dv`, `sm` and `pt` and prints the files each plan opens:
+  `PaimonPrimaryKeyScanPruningTest` holds twenty-three filters to those sets — `pc`'s `v = 'g'`
+  opens all three live files though only a level-0 one can hold it, `v = 'z'` none, `k = 7 AND v
+  = 'a'` none because the key stage leaves one file and it no longer overlaps; `lk`'s files at
+  levels 3, 4 and 5 count as overlapping; `pu` opens every file on `a = 'zzz'` and two of four on
+  `k = 1`; `dv` prunes `v = 'v2'` to one file with its level-0 file off the plan. Flipping the
+  overlap rule to per-file pruning failed two of them
 - **A Paimon snapshot's three record counts are checked against the manifests it names.**
   `paimonRecordTallies` in `model/PaimonReplay.kt` puts `totalRecordCount` beside the rows the
   replay ends holding, `deltaRecordCount` beside the delta list's entries summed the way the

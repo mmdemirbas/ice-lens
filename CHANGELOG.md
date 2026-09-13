@@ -37,6 +37,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is read whole when the filter left any file of it.
 
 ### Fixed
+- **A Paimon primary-key table's scan pruning follows the scan's own rule.** Every file was
+  pruned by its own value bounds, which is what an append table's scan does and what a
+  primary-key table's does not: a key predicate prunes a file on its own, the whole filter is
+  decided per bucket — file by file only where the bucket's files cannot overlap, otherwise the
+  bucket read whole if any file may match — and `partial-update` and `aggregation` without
+  deletion vectors are never pruned by value. On `pc`, `v = 'g'` opens all three live files where
+  the panel said one. A level-0 file of a table whose batch reads skip level 0 is `not read`; a
+  file read for its bucket's sake says so in its reason cell; the rule is stated once above the
+  file table. Held to the plans Paimon itself made (`docs/fixtures/paimon-scan-plans.scala`).
 - **A branch cut from another branch draws in a column of its own, and no column is reused.**
   Two children of one commit were ordered by write time unless one was on `main`, so a branch
   cut from a branch and committed to first took the older branch's column and put the fork
