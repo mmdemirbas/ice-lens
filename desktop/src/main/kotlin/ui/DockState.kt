@@ -91,6 +91,20 @@ class DockState(
         hiddenIds = if (id in hiddenIds) hiddenIds - id else hiddenIds + id
     }
 
+    /**
+     * The window `Ctrl/Cmd + <number>` names: the nth in the configured order, which is the
+     * order the bars list them in — so the chord's number is the position a reader can see.
+     * Null past the end, so an unassigned number does nothing rather than wrapping.
+     */
+    fun windowAt(number: Int): String? = windows.getOrNull(number - 1)?.id
+
+    /** [toggle] for the window [windowAt] names; false when the number names none, so the key falls through. */
+    fun toggleNumbered(number: Int): Boolean {
+        val id = windowAt(number) ?: return false
+        toggle(id)
+        return true
+    }
+
     fun hide(id: String) {
         hiddenIds = hiddenIds + id
     }

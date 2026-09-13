@@ -108,6 +108,17 @@ fun AboutDialog(
                     shortcutRow("Reset zoom", "Ctrl/Cmd + 0")
                     shortcutRow("Fit graph to view", "Ctrl/Cmd + Shift + F")
                     shortcutRow("Re-apply layout", "Ctrl/Cmd + L")
+                    shortcutRow("Find on the graph", "Ctrl/Cmd + F")
+                    HorizontalDivider(Modifier.padding(vertical = 2.dp))
+
+                    Spacer(Modifier.height(12.dp))
+                    Text("Tool Windows", fontWeight = FontWeight.Bold, fontSize = TypeScale.body)
+                    Spacer(Modifier.height(4.dp))
+                    shortcutRow("Show / hide Workspace", "Ctrl/Cmd + 1")
+                    shortcutRow("Show / hide Structure", "Ctrl/Cmd + 2")
+                    shortcutRow("Show / hide Inspector", "Ctrl/Cmd + 3")
+                    shortcutRow("Hide / show every tool window", "Double-click empty canvas")
+                    shortcutRow("Move a tool window", "Drag its bar button to an edge")
                     HorizontalDivider(Modifier.padding(vertical = 2.dp))
 
                     Spacer(Modifier.height(12.dp))

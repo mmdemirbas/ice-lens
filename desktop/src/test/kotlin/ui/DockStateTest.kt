@@ -53,6 +53,20 @@ class DockStateTest {
     }
 
     @Test
+    fun `a number chord names the window in that position of the bars, and one past the end names none`() {
+        val dock = dock()
+        assertEquals(listOf("workspace", "structure", "inspector"), (1..3).map { dock.windowAt(it) })
+        assertNull(dock.windowAt(4))
+        assertNull(dock.windowAt(0))
+        assertEquals(true, dock.toggleNumbered(2))
+        assertEquals(setOf("structure"), dock.hiddenIds)
+        assertEquals(true, dock.toggleNumbered(2))
+        assertEquals(emptySet(), dock.hiddenIds)
+        assertEquals(false, dock.toggleNumbered(9), "an unassigned number falls through and hides nothing")
+        assertEquals(emptySet(), dock.hiddenIds)
+    }
+
+    @Test
     fun `toggle all hides everything while anything shows, and shows everything once nothing does`() {
         val dock = dock()
         dock.toggle("inspector")

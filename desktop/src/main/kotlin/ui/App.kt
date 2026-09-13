@@ -27,6 +27,9 @@ import java.util.prefs.Preferences
 
 private val prefs = Preferences.userRoot().node("com.github.mmdemirbas.icelens")
 
+/** The number keys `Ctrl/Cmd + 1..9` map onto tool windows, in [DockState.windowAt]'s order. */
+private val DOCK_CHORD_KEYS = listOf(Key.One, Key.Two, Key.Three, Key.Four, Key.Five, Key.Six, Key.Seven, Key.Eight, Key.Nine)
+
 private const val PREF_ZOOM = "zoom"
 private const val PREF_IS_SELECT_MODE = "is_select_mode"
 private const val PREF_IS_DARK_MODE = "is_dark_mode"
@@ -164,6 +167,11 @@ fun App() {
                             ctrl && !keyEvent.isShiftPressed && keyEvent.key == Key.L -> {
                                 state.reapplyCurrentLayout()
                                 true
+                            }
+                            // Ctrl/Cmd + 1..9 shows or hides the tool window in that position of
+                            // the bars; a number past the last window falls through untouched.
+                            ctrl && !keyEvent.isShiftPressed && keyEvent.key in DOCK_CHORD_KEYS -> {
+                                dock.toggleNumbered(DOCK_CHORD_KEYS.indexOf(keyEvent.key) + 1)
                             }
                             // Opening an already-open bar re-focuses its field rather than
                             // closing it, which is what every other find bar does — the reader

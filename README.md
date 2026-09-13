@@ -147,6 +147,7 @@ Prebuilt installers are available on [GitHub Releases](https://github.com/mmdemi
 | Click node | Select |
 | Ctrl/Cmd + Click | Multi-select |
 | Drag (Select mode) | Marquee select |
+| Ctrl/Cmd + 1 / 2 / 3 | Show or hide the Workspace / Structure / Inspector tool window |
 | Double-click empty area | Toggle all panels |
 | Double-click node | Toggle inspector |
 
