@@ -5,8 +5,8 @@ package model
  * whole table at once — the question "is this table's metadata consistent" answered in one
  * place rather than one node at a time.
  *
- * It runs the checks the panels already run and none of its own: `manifestTallies` on every
- * distinct manifest, `snapshotChangeOf(...).tallies` on every retained commit and
+ * It runs the checks the panels already run and none of its own: `manifestTallies` and
+ * `partitionSummaryTallies` on every distinct manifest, `snapshotChangeOf(...).tallies` on every retained commit and
  * `snapshotTotals` on its closure for Iceberg; `paimonManifestTallies` on every distinct
  * manifest and `paimonRecordTallies` on every snapshot's replay, main and branches and the
  * tag-only snapshots, for Paimon. A figure a writer did not record is not a comparison, so
@@ -20,6 +20,7 @@ package model
  */
 enum class IntegrityCheck(val label: String) {
     MANIFEST_COUNTS("manifest counts"),
+    PARTITION_SUMMARIES("partition summaries"),
     COMMIT_SUMMARY("commit summary"),
     SNAPSHOT_TOTALS("snapshot totals"),
     RECORD_COUNTS("record counts"),
@@ -80,6 +81,9 @@ fun UnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_CHECKS
             if (!seenManifests.add(path)) return@forEach
             manifestTallies(m.metadata, m.dataFiles.map { it.metadata }).forEach {
                 t.count(IntegrityCheck.MANIFEST_COUNTS, path.substringAfterLast('/'), it.label, it.recorded, it.counted, it.agrees)
+            }
+            partitionSummaryTallies(m.partitionSummaries, m.dataFiles.map { it.partition }).forEach {
+                t.count(IntegrityCheck.PARTITION_SUMMARIES, path.substringAfterLast('/'), "${it.field}: ${it.figure.lowercase()}", it.recorded, it.counted, it.agrees)
             }
         }
         snapshotChangeOf(s).tallies.forEach { t.count(IntegrityCheck.COMMIT_SUMMARY, name(s), it.label, it.recorded, it.counted, it.agrees) }

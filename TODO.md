@@ -80,9 +80,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 - **The whole-table integrity check leaves the file reads out.** `model/Integrity.kt` runs the
   metadata-only comparisons everywhere; the statistics and partition-statistics files stay on the
   metadata panel because each is a file open (Puffin footer, DuckDB), and the two closure-walking
-  checks stop at fifty snapshots. What is not compared anywhere yet: a manifest list's
-  `partitions` summaries against the entries under them, which `ScanPruning` trusts the same way
-  a planner does.
+  checks stop at fifty snapshots. The manifest list's `partitions` summaries are compared now
+  (`model/PartitionSummaryTally.kt`); a data file's own column bounds against its rows are not,
+  and cannot be from the metadata — that is a file read per entry.
 
 - **A statistics blob's sketch is never decoded.** The `.stats` container is opened now and its
   footer shown against what `metadata.json` records (`model/TableStatistics.kt`), so a stale record

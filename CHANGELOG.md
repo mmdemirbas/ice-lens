@@ -112,6 +112,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A manifest's partition summaries are checked against its entries.** The bounds a scan prunes
+  on, folded from every entry's decoded partition and put beside the recorded ones on the
+  manifest panel's `Partition Ranges`, each row leading with a verdict; the whole-table check
+  covers them too.
 - **The table panel checks every recorded figure at once.** `Integrity`, behind a click: manifest
   counts, commit summaries and snapshot totals on Iceberg, manifest counts and record counts on
   Paimon — the checks each node's panel runs, over the whole table, listing the pairs that

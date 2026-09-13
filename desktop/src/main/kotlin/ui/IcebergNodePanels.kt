@@ -25,6 +25,7 @@ import model.ManifestEntryStatus
 import model.TermEffect
 import model.evaluatePruning
 import model.manifestTallies
+import model.partitionSummaryTallies
 import model.sourceSnapshotId
 import model.publishedWapId
 import model.wapId
@@ -819,46 +820,73 @@ internal fun ColumnScope.ManifestPanel(
         ManifestLedgerSection(manifestEntries)
 
         if (manifestEntries.isNotEmpty()) {
-            Spacer(Modifier.height(16.dp))
             // Above the entries on purpose: this is what a planner reads to decide
             // whether to open the manifest at all, so it is the answer to "would
             // my query touch this file" — a question asked before any entry is.
             val summaries = node.partitionSummaries
             if (summaries.isNotEmpty()) {
-                Section("Partition Ranges (${formatCount(summaries.size)})") {
+                // The recorded bounds against the entries under them — the manifestTallies rule
+                // for the figures a scan prunes on. One verdict per field, leading, coloured only
+                // where a figure disagrees, since a column of "agrees" is read by its exception.
+                val tallies = partitionSummaryTallies(summaries, manifestEntries.map { it.partition })
+                val byField = tallies.groupBy { it.field }
+                fun verdictOf(name: String): Pair<String, Boolean?> {
+                    val own = byField[name].orEmpty()
+                    val wrong = own.filter { it.agrees == false }
+                    return when {
+                        wrong.isNotEmpty() -> "DISAGREES: ${wrong.joinToString(", ") { it.figure.lowercase() }}" to false
+                        own.any { it.agrees == true } -> "agrees" to true
+                        else -> "not counted" to null
+                    }
+                }
+                fun countedOf(name: String, figure: String) = byField[name]?.firstOrNull { it.figure == figure }?.counted ?: "not counted"
+                val disagreeing = summaries.count { verdictOf(it.field.name ?: "N/A").second == false }
+                Section("Partition Ranges (${formatCount(summaries.size)})" + if (disagreeing > 0) " — $disagreeing disagree" else "") {
                     Text(
                         "The bounds a scan intersects with a partition predicate to decide whether to " +
-                            "open this manifest. One row per partition field, covering every file in it.",
+                            "open this manifest. One row per partition field, covering every entry in it " +
+                            "whatever its status, with the same bound folded from the entries beside it.",
                         fontSize = TypeScale.small,
                         color = colors.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
                     WideTable(
                         headers = listOf(
-                            "Field", "Lower", "Upper", "Holds", "Nulls", "NaNs",
+                            "Verdict", "Field", "Lower", "Counted Lower", "Upper", "Counted Upper", "Holds", "Nulls", "Counted Nulls", "NaNs",
                             "Transform", "Result Type"
                         ),
                         columnWidths = listOf(
-                            150.dp, 150.dp, 150.dp, 110.dp, 70.dp, 70.dp, 120.dp, 120.dp
+                            190.dp, 150.dp, 150.dp, 150.dp, 150.dp, 150.dp, 110.dp, 70.dp, 110.dp, 70.dp, 120.dp, 120.dp
                         ),
                         rows = summaries.map { summary ->
+                            val name = summary.field.name ?: "N/A"
                             listOf(
-                                summary.field.name ?: "N/A",
+                                verdictOf(name).first,
+                                name,
                                 summary.humanLower ?: "N/A",
+                                countedOf(name, "Lower bound"),
                                 summary.humanUpper ?: "N/A",
+                                countedOf(name, "Upper bound"),
                                 // A manifest whose bounds meet holds exactly one
                                 // partition, which is what a well-clustered write
                                 // produces and what makes pruning effective.
                                 if (summary.isSingleValue) "one partition" else "a range",
                                 if (summary.containsNull) "yes" else "no",
+                                countedOf(name, "Contains null"),
                                 summary.containsNan?.let { if (it) "yes" else "no" } ?: "not recorded",
                                 summary.field.transformName.ifEmpty { "N/A" },
                                 summary.type.typeName,
                             )
-                        }
+                        },
+                        leadCellColors = summaries.map { summary ->
+                            when (verdictOf(summary.field.name ?: "N/A").second) {
+                                false -> colors.error
+                                null -> verdictUnevaluatedColor()
+                                else -> null
+                            }
+                        },
                     )
                 }
-                Spacer(Modifier.height(16.dp))
             }
 
             Section("Manifest Entries (${formatCount(manifestEntries.size)})") {

@@ -75,6 +75,7 @@ core/src/main/kotlin/
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
+│   ├── PartitionSummaryTally.kt # manifest_file's partition summaries — the bounds a scan prunes on — against the entries' decoded partitions
 │   ├── ManifestLedger.kt      # Per-entry: what it added to a manifest's figures, or which rule dropped it
 │   ├── ScanPruning.kt         # Predicate → which manifests a scan would skip, and which term did it
 │   ├── GraphNavigation.kt     # Arrow keys → the next node, decided from where the nodes are drawn
@@ -420,7 +421,19 @@ intellij/src/main/kotlin/plugin/
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
   the read path checks them, so the inspector does. It is also the suite's only assertion that
   compares what this code decoded against what Iceberg recorded about the same bytes — a status
-  misread or an entry dropped shows up as a disagreement on a checked-in table
+  misread or an entry dropped shows up as a disagreement on a checked-in table.
+  **The partition summaries get the same treatment**, and they are the figures that matter more:
+  a scan skips or opens a manifest on `partitions[i].lower_bound` / `upper_bound` /
+  `contains_null` before it reads any count. `partitionSummaryTallies` in
+  `model/PartitionSummaryTally.kt` folds every entry's decoded partition — every entry whatever
+  its status, because `ManifestWriter.addEntry` runs `stats.update` after the status switch
+  (1.8.1) — and compares bounds as values through `compareValues`, never as text. A field with
+  an undecoded entry or two incomparable values is *not counted*, which is not a disagreement;
+  `contains_nan` and a null `lower_bound` are compared only where recorded. The manifest panel's
+  `Partition Ranges` leads each row with the verdict and puts the counted bound beside the
+  recorded one; `PartitionSummaryTallyTest` holds every engine-written manifest to agreement
+  across every transform the corpus carries and moves one bound by hand to see one figure
+  disagree
 - **What a positional delete file removes is counted by DuckDB, behind a button.**
   `SampleRowReader.queryPositionalDeleteTargets` runs `GROUP BY file_path` over the delete file's
   own rows, so what crosses back is one row per targeted data file whether the file holds one
@@ -741,7 +754,7 @@ intellij/src/main/kotlin/plugin/
   small enough to draw whole. Data files first and in the error colour, `MAX_EXPIRY_FILE_ROWS`
   (200) listed
 - **"Is this table consistent" is one click, and it runs the panels' own checks.**
-  `model/Integrity.kt` runs `manifestTallies` on every distinct manifest, each commit's
+  `model/Integrity.kt` runs `manifestTallies` and `partitionSummaryTallies` on every distinct manifest, each commit's
   `snapshotChangeOf(...).tallies` and `snapshotTotals` on its closure (Iceberg), and
   `paimonManifestTallies` on every distinct manifest with `paimonRecordTallies` on every
   snapshot's replay across main, the branches and the tag-only snapshots (Paimon), and lists the
@@ -1592,7 +1605,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,080 tests across 135 files (817 in :core, 255 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,080 tests across 136 files (820 in :core, 255 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
