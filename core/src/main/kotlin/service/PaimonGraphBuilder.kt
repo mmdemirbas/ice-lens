@@ -3,7 +3,6 @@ package service
 import model.*
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
-import java.nio.file.Paths
 import java.util.UUID
 
 private val logger = LoggerFactory.getLogger(PaimonGraphBuilder::class.java)
@@ -63,7 +62,7 @@ object PaimonGraphBuilder {
         fun vectorLoader(range: PaimonVectorRange?): DeferredRead<DeletionVector> {
             if (range == null) return DeferredRead.none()
             return DeferredRead.of {
-                runCatching { PaimonDeletionVectorReader.read(Paths.get(range.indexLocalPath), range.offset, range.length, range.dataFileName, range.cardinality) }
+                runCatching { PaimonDeletionVectorReader.read(StorageLocation.pathOf(range.indexLocalPath), range.offset, range.length, range.dataFileName, range.cardinality) }
                     .onFailure { logger.warn("Could not read the deletion vector in {}: {}", range.indexLocalPath, it.message) }
                     .getOrNull()
             }

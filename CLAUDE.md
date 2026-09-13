@@ -1281,7 +1281,11 @@ intellij/src/main/kotlin/plugin/
   wearing a plausible message. `pathOf` throws `UnsupportedLocationException` naming the scheme
   instead. Avro needed one more piece: `DataFileReader` seeks, and Avro ships adapters for exactly
   a `java.io.File` and a `ByteArray`, so `AvroReader.ChannelInput` adapts its `SeekableInput` to
-  the `SeekableByteChannel` that `Files.newByteChannel` returns for *any* filesystem
+  the `SeekableByteChannel` that `Files.newByteChannel` returns for *any* filesystem. **And a
+  node's `localPath` is that string** — `Path.toString()`, which prints a remote path as its
+  URL — so a reader turning it back into a path with `Paths.get` walks into the same trap one
+  step later; five vector readers had, and `ObjectFileSystemTest` now holds every file in core
+  to `pathOf`
 - `formatCount` / `formatBytes` / `formatBytesExact` live in `ui/FormatUtils.kt` — do not add
   private copies to a UI file. Byte units are binary and labelled as such (KiB, not KB)
 - **A `GraphNode`'s declared width/height is what ELK reserves, and Compose clips nothing.** A
@@ -1693,7 +1697,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,130 tests across 143 files (860 in :core, 260 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,130 tests across 143 files (861 in :core, 260 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

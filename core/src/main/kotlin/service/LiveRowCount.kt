@@ -6,7 +6,6 @@ import model.LookupDeleteFile
 import model.RowLookupInput
 import model.quoteSqlIdentifier
 import org.slf4j.LoggerFactory
-import java.nio.file.Paths
 import java.util.BitSet
 
 /**
@@ -90,7 +89,7 @@ object LiveRowCount {
     private fun vectorCardinality(delete: LookupDeleteFile, file: LookupDataFile): Long? =
         runCatching {
             PuffinReader.readDeletionVector(
-                Paths.get(delete.localPath), requireNotNull(delete.contentOffset), requireNotNull(delete.contentSizeInBytes),
+                StorageLocation.pathOf(delete.localPath), requireNotNull(delete.contentOffset), requireNotNull(delete.contentSizeInBytes),
                 file.recordedPath, delete.recordCount,
             ).cardinality
         }.onFailure { logger.warn("Could not read the vector in {}: {}", delete.localPath, it.message) }.getOrNull()
@@ -102,7 +101,7 @@ object LiveRowCount {
         val bits = BitSet()
         deletes.filter { it.kind == DeleteFileKind.DELETION_VECTOR }.forEach { vector ->
             val positions = vectors.getOrPut(vector.recordedPath) {
-                runCatching { PuffinReader.readDeletionVectorPositions(Paths.get(vector.localPath), requireNotNull(vector.contentOffset), requireNotNull(vector.contentSizeInBytes)) }
+                runCatching { PuffinReader.readDeletionVectorPositions(StorageLocation.pathOf(vector.localPath), requireNotNull(vector.contentOffset), requireNotNull(vector.contentSizeInBytes)) }
                     .onFailure { logger.warn("Could not read the vector in {}: {}", vector.localPath, it.message) }
                     .getOrNull()
             } ?: throw IllegalStateException("the vector in ${vector.recordedPath.substringAfterLast('/')} could not be read")

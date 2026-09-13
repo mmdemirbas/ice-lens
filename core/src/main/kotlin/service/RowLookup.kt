@@ -13,7 +13,6 @@ import model.ScanFilter
 import model.normalizeFilePath
 import model.toSql
 import org.slf4j.LoggerFactory
-import java.nio.file.Paths
 
 /**
  * Finding rows and deciding their fate, over the files a filter leaves — see [RowLookupInput]
@@ -103,7 +102,7 @@ object RowLookup {
                     val vector = vectors.getOrPut(delete.recordedPath) {
                         runCatching {
                             PuffinReader.readDeletionVector(
-                                Paths.get(delete.localPath), requireNotNull(delete.contentOffset), requireNotNull(delete.contentSizeInBytes),
+                                StorageLocation.pathOf(delete.localPath), requireNotNull(delete.contentOffset), requireNotNull(delete.contentSizeInBytes),
                                 file.recordedPath, delete.recordCount,
                             )
                         }.onFailure { logger.warn("Could not read the vector in {}: {}", delete.localPath, it.message) }.getOrNull()

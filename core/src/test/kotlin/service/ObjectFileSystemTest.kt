@@ -179,4 +179,25 @@ class ObjectFileSystemTest {
         // Windows path in the workspace.
         assertNull(StorageLocation.schemeOf("C:\\warehouse\\db"))
     }
+
+    /**
+     * The rule as a check: a location string becomes a [Path] through [StorageLocation.pathOf]
+     * and nowhere else in core. A node carries its file's location as a string — what DuckDB is
+     * handed — and `Paths.get(string)` on an `s3://` location is the relative-path trap above,
+     * which five readers of a delete vector's `localPath` had walked into before this existed.
+     */
+    @Test
+    fun `no reader in core turns a location string into a path on its own`() {
+        val root = generateSequence(java.io.File(".").absoluteFile) { it.parentFile }.first { java.io.File(it, "settings.gradle.kts").isFile }
+        val offenders = java.io.File(root, "core/src/main/kotlin").walkTopDown()
+            .filter { it.isFile && it.extension == "kt" && it.name != "StorageLocation.kt" }
+            // Code, not comments: the provider's own doc names the JDK call it serves.
+            .filter { file ->
+                val code = file.readLines().filterNot { it.trimStart().startsWith("*") || it.trimStart().startsWith("//") }.joinToString("\n")
+                code.contains("Paths.get(") || Regex("""\bPath\.of\(""").containsMatchIn(code)
+            }
+            .map { it.name }
+            .toList()
+        assertEquals(emptyList(), offenders)
+    }
 }

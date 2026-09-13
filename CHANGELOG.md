@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **A deletion vector in object storage is opened at its location, not at a relative path.** The
+  row lookups, the live and merged row counts and the Paimon file node turned a vector's location
+  string back into a path with `Paths.get`, which reads `s3://bucket/key` as a relative path and
+  reported every remote vector as unreadable. They go through `StorageLocation.pathOf` now, and a
+  test holds every file in core to it.
 - **A Paimon file listing every column in `_WRITE_COLS` is not a partial-column file.** A full
   compaction under `row-tracking.enabled` records every column plus `_ROW_ID` and
   `_SEQUENCE_NUMBER` there, and the table's figures read its rows as columns of rows other files

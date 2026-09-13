@@ -5,7 +5,6 @@ import model.PaimonLookupFile
 import model.PaimonReadInput
 import model.PaimonRowKind
 import org.slf4j.LoggerFactory
-import java.nio.file.Paths
 import java.util.BitSet
 
 /**
@@ -125,7 +124,7 @@ object PaimonMergedCount {
             val bits = vectored.associate { file ->
                 val range = requireNotNull(input.vectorFor(file.fileName))
                 file.fileName to vectors.getOrPut(file.fileName) {
-                    runCatching { PaimonDeletionVectorReader.readPositions(Paths.get(range.indexLocalPath), range.offset, range.length) }
+                    runCatching { PaimonDeletionVectorReader.readPositions(StorageLocation.pathOf(range.indexLocalPath), range.offset, range.length) }
                         .onFailure { logger.warn("Could not read the vector in {}: {}", range.indexLocalPath, it.message) }
                         .getOrNull()
                 }

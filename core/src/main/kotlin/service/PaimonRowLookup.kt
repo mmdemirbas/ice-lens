@@ -15,7 +15,6 @@ import model.paimonTypeAsIceberg
 import model.quoteSqlIdentifier
 import model.toSql
 import org.slf4j.LoggerFactory
-import java.nio.file.Paths
 
 /**
  * Finding rows in a Paimon table and deciding their fate — see [PaimonReadInput] for what
@@ -186,7 +185,7 @@ object PaimonRowLookup {
         if (vectorRef != null) {
             if (position == null) return RowHit(file.fileName, null, cells, RowFate.UNKNOWN, note = "no position: DuckDB numbers rows in Parquet only")
             val vector = vectors.getOrPut(file.fileName) {
-                runCatching { PaimonDeletionVectorReader.read(Paths.get(vectorRef.indexLocalPath), vectorRef.offset, vectorRef.length, file.fileName, vectorRef.cardinality) }
+                runCatching { PaimonDeletionVectorReader.read(StorageLocation.pathOf(vectorRef.indexLocalPath), vectorRef.offset, vectorRef.length, file.fileName, vectorRef.cardinality) }
                     .onFailure { logger.warn("Could not read the vector in {}: {}", vectorRef.indexLocalPath, it.message) }
                     .getOrNull()
             }
