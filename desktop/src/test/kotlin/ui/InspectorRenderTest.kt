@@ -432,6 +432,24 @@ class InspectorRenderTest {
     }
 
     /**
+     * `mergespec` at its second commit: the table's spec has changed since, so the next append's
+     * manifest goes under spec 1 and the two spec-0 manifests merge under the default count of a
+     * hundred while the bin holding the new manifest is kept — two verdicts in one table.
+     * `mergedel` at its second commit is the other capture, where `min-count-to-merge` is two and
+     * both an append and a merge-on-read delete would merge. `merged` is not captured: its last
+     * commit turned merging off, and the section reads the table's current options.
+     */
+    @Test
+    fun `a snapshot says what the next commit's manifest merge would do`() {
+        val mergespec = graphFor("mergespec")
+        val second = mergespec.nodes.filterIsInstance<GraphNode.SnapshotNode>().first { it.data.sequenceNumber == 2L }
+        renderInspector(mergespec, second.id, "snapshot-node-manifest-merge", height = 4600)
+        val mergedel = graphFor("mergedel")
+        val delete = mergedel.nodes.filterIsInstance<GraphNode.SnapshotNode>().first { it.data.sequenceNumber == 2L }
+        renderInspector(mergedel, delete.id, "snapshot-node-manifest-merge-deletes", height = 5200)
+    }
+
+    /**
      * `pc` at snapshot 5 is the one tree in the fixtures a batch writer compacts: five level-0
      * files, size amplification, into level 5 — and the snapshot after it is the COMPACT that
      * proves it. Rendered beside the append table `ao`, whose verdict is about `sys.compact`.

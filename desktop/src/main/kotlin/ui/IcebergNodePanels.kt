@@ -588,6 +588,7 @@ internal fun ColumnScope.SnapshotPanel(
         PartitionsSection(node)
 
         RewriteSection(node, currentGraph)
+        ManifestMergeSection(node, currentGraph)
 
         DeleteReachSection(node, children)
 

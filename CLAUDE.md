@@ -66,6 +66,7 @@ core/src/main/kotlin/
 │   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
 │   ├── BucketTransform.kt     # Iceberg's bucket[N], via the same Guava murmur3 the writer uses
 │   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
+│   ├── ManifestMergePlan.kt   # What the next commit does to the manifest list — ManifestMergeManager's bins and verdicts
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
@@ -724,6 +725,28 @@ intellij/src/main/kotlin/plugin/
   `sorted` left alone, `mor` still rewritten by both rules. `LiveFile.specId` exists for the
   spec rule; the snapshot panel's `Rewrite` section takes the target size and the current spec
   off the latest metadata node
+- **What the next commit does to the manifest list is planned the way `ManifestMergeManager`
+  does it, and it runs on every batch write.** `model/ManifestMergePlan.kt`, read at 1.8.1: the
+  manifests a commit is about to list — the one it wrote, then the ones it kept in list order,
+  minus any with neither added nor existing files — are grouped by partition spec and packed
+  **from the oldest end** into `commit.manifest.target-size-bytes` (8 MB) bins; a bin of one is
+  kept, a bin holding the *first* manifest (the commit's own, else the newest) is kept under
+  `commit.manifest.min-count-to-merge` (100), and **any other bin of two or more is merged whatever
+  the count**. That last clause is the one a reading of the docs misses, and `mergespec` is its
+  oracle: an append after `ADD PARTITION FIELD` merged the two spec-0 manifests under the default
+  hundred, because the new manifest is in the spec-1 group and theirs holds no first. `merged`
+  (`min-count-to-merge = 2`) shows the ordinary path — every append after the first folds the
+  list into one manifest with the earlier `ADDED` turned `EXISTING` and an earlier snapshot's
+  `DELETED` dropped — and its last commit runs with merging off. `mergedel` is the delete side,
+  and settled something else on the way: Spark 3.5 on 1.8.1 deletes at **file granularity**
+  (`SparkWriteConf` defaults it since #11478), so a second `DELETE` on a file that already has a
+  positional delete rewrites it — the new delete file holds both positions and the old one is
+  `DELETED` in the same commit, which is what a merged delete manifest of `1 ADDED + 1 DELETED`
+  means where the script's header had predicted `1 ADDED + 1 EXISTING`. `ManifestMergeFixtureTest`
+  sweeps every append and delete in every Iceberg fixture, reading whether the commit wrote a
+  manifest of each content off its own summary, and requires the plan from the parent to land on
+  the child's count; the snapshot panel's `Manifest Merge` section plans the next append and the
+  next merge-on-read delete from `SnapshotNode.manifestList` under the table's current options
 - **Paimon's expiry is planned the same way, from `ExpireSnapshotsImpl.expire()`, and checked
   against the one oracle a planner can have.** `model/PaimonExpiryPlan.kt` applies the six things
   that method reads: the newest `snapshot.num-retained.min` stay; everything below
@@ -1444,7 +1467,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,030 tests across 127 files (776 in :core, 248 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,040 tests across 129 files (786 in :core, 249 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1541,6 +1564,7 @@ container invocation and the traps in it:
 | `default/sorted` | `SortedFixtureTest` | three sort orders, a commit under each, then a sort compaction — rows sorted inside every file, `sort_order_id 0` on every file |
 | `default/expired` | `ExpiredSnapshotsFixtureTest` | snapshots dropped by `expire_snapshots` — the older metadata versions still list them, and they are drawn as expired, not as read errors |
 | `default/maint` | `MaintenanceFixtureTest` | `rewrite_position_delete_files` dropping two dangling deletes, then `rewrite_manifests` — the commit whose summary counts manifests |
+| `default/merged`, `mergedel`, `mergespec` | `ManifestMergeFixtureTest` | `commit.manifest.min-count-to-merge = 2` — every append merging the list into one manifest, a copy-on-write delete's filtered manifest alone in its bin, merging switched off; the delete side, where a second delete rewrote the first delete file; and a spec change merging the old spec's manifests under the default count |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
 | `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest`, `PaimonFileBoundsFixtureTest`, `PaimonScanPruningTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |

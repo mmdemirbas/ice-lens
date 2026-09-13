@@ -202,6 +202,7 @@ object IcebergGraphBuilder {
                         // An expired snapshot has no manifests to read a change from, compare,
                         // or pair deletes across; its summary is all that is left of it.
                         change = if (snapshot.expired) null else snapshotChangeOf(snapshot),
+                        manifestList = snapshot.manifests.map { it.metadata },
                         // Deferred, not computed: this walks the snapshot's whole manifest
                         // closure, and only two snapshots in a table are ever compared.
                         liveFilesLoader = if (snapshot.expired) DeferredRead.none() else DeferredRead.of { liveFilesOf(snapshot) },

@@ -421,6 +421,11 @@ sealed class GraphNode(
          */
         val change: SnapshotChange? = null,
         /**
+         * The manifest list as recorded, every entry in list order — what the next commit's
+         * manifest merge starts from. Empty for an expired snapshot, whose list is gone.
+         */
+        val manifestList: List<ManifestListEntry> = emptyList(),
+        /**
          * Every file the table holds at this snapshot, read on first ask — see [liveFiles].
          *
          * A [DeferredRead] for the same reason a deletion vector's blob is one, at a different

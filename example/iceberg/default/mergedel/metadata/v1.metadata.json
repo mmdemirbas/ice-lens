@@ -1,0 +1,48 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "faeed1da-210e-4cc8-a0ff-6d2fe5b0bec1",
+  "location" : "/wh/default/mergedel",
+  "last-sequence-number" : 0,
+  "last-updated-ms" : 1789273656118,
+  "last-column-id" : 2,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.delete.mode" : "merge-on-read",
+    "write.parquet.compression-codec" : "zstd",
+    "commit.manifest.min-count-to-merge" : "2"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ ]
+}

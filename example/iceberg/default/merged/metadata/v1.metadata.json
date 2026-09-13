@@ -1,0 +1,47 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "1def8143-8bf5-44c1-bad0-988445079832",
+  "location" : "/wh/default/merged",
+  "last-sequence-number" : 0,
+  "last-updated-ms" : 1789273652025,
+  "last-column-id" : 2,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.parquet.compression-codec" : "zstd",
+    "commit.manifest.min-count-to-merge" : "2"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ ]
+}

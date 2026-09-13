@@ -71,6 +71,11 @@ import model.partitionBreakdown
 import model.planExpiry
 import model.ExpiryOptions
 import model.PaimonCompactionOptions
+import model.ManifestMergeOptions
+import model.ManifestMergePlan
+import model.ManifestMergeVerdict
+import model.assumedManifestBytes
+import model.planManifestMerge
 import model.RewriteOptions
 import model.planRewrite
 import model.PaimonExpiryInput
@@ -2549,6 +2554,76 @@ internal fun RewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel) {
                 },
                 leadCellColors = plan.groups.map { if (it.rewritten) verdictSkippedColor() else null },
             )
+        }
+    }
+}
+
+/**
+ * What the next commit would do to this snapshot's manifest list, the way `ManifestMergeManager`
+ * decides it — see [planManifestMerge]. Two plans, because the two halves of the list merge
+ * separately and a commit writes to one of them: an append writes a data manifest, a
+ * merge-on-read delete a delete manifest. The new manifest is assumed at the newest listed one's
+ * length, which only decides whether it fits the open bin. The options come off the latest
+ * metadata, since a merge runs under the properties in force at the commit.
+ *
+ * One row per bin, the verdict first: a column of "kept" with one "MERGED" in it has to be
+ * findable, and the row says how far the bin is from `min-count-to-merge`, which is the figure
+ * a reader with forty manifests came for.
+ */
+@Composable
+internal fun ManifestMergeSection(node: GraphNode.SnapshotNode, graph: GraphModel) {
+    val colors = MaterialTheme.colorScheme
+    val latest = graph.nodes.filterIsInstance<GraphNode.MetadataNode>()
+        .maxByOrNull { metadataVersionFromFileName(it.fileName) ?: -1 }?.data
+    val options = ManifestMergeOptions.forTable(latest?.properties.orEmpty())
+    val listed = node.manifestList
+    fun planFor(content: Int): ManifestMergePlan =
+        planManifestMerge(listed, content, assumedManifestBytes(listed, content), latest?.defaultSpecId, options)
+    val data = planFor(ManifestContent.DATA)
+    val deletes = planFor(ManifestContent.DELETES)
+    val title = "Manifest Merge — next append: ${data.describe}"
+    CountedSection(title, listed.size, "manifests") {
+        Text(
+            "What the next commit would do to this manifest list, the way ManifestMergeManager does " +
+                "it on every batch write: the manifests are grouped by partition spec and packed from " +
+                "the oldest end into ${formatBytes(options.targetSizeBytes)} bins " +
+                "(commit.manifest.target-size-bytes); a bin of one is kept, a bin holding the new manifest " +
+                "is kept under ${options.minCountToMerge} (commit.manifest.min-count-to-merge), and any " +
+                "other bin of two or more is merged into one manifest — whatever the count, so a spec " +
+                "change merges the old spec's manifests at the next commit. Data and delete manifests " +
+                "merge separately; the first plan is for an append, the second for a merge-on-read delete.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        when {
+            node.expired -> Text("Not readable here — this snapshot's manifest list is gone.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            !options.enabled -> Text("Merging is off (commit.manifest-merge.enabled = false): every commit lists what it wrote beside everything kept.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            else -> {
+                val rows = listOf("append" to data, "merge-on-read delete" to deletes).flatMap { (commit, plan) ->
+                    plan.bins.map { bin ->
+                        listOf(
+                            when (bin.verdict) {
+                                ManifestMergeVerdict.MERGED -> "MERGED — ${bin.manifests.size} into 1" + if (bin.holdsFirst) "" else ", holds no new manifest"
+                                ManifestMergeVerdict.UNDER_MIN_COUNT -> "kept — ${bin.manifests.size} of ${options.minCountToMerge}"
+                                ManifestMergeVerdict.ALONE -> "kept — alone in its bin"
+                            },
+                            commit,
+                            if (plan.content == ManifestContent.DATA) "data" else "deletes",
+                            "${bin.specId}",
+                            "${bin.manifests.size}" + if (bin.holdsFirst) " incl. new" else "",
+                            formatBytes(bin.bytes),
+                        ) to bin
+                    }
+                }
+                if (rows.isEmpty()) Text("Nothing to merge: the list is empty.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+                else WideTable(
+                    headers = listOf("Verdict", "Next Commit", "Content", "Spec", "Manifests", "Bytes"),
+                    columnWidths = listOf(190.dp, 190.dp, 70.dp, 50.dp, 110.dp, 90.dp),
+                    rows = rows.map { it.first },
+                    leadCellColors = rows.map { if (it.second.merged) verdictSkippedColor() else null },
+                )
+            }
         }
     }
 }

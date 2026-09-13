@@ -51,6 +51,7 @@ so and the inspector lists all of them.
 - Per-snapshot partition breakdown, largest first; per-partition and table statistics files opened and shown against their records
 - What `expire_snapshots` would remove and what keeps the rest — a ref on Iceberg, a consumer or the retention bounds on Paimon; rollbacks read off the snapshot log
 - A Paimon bucket as its LSM tree — sorted runs against the compaction trigger — and what the next flush would compact, the way `UniversalCompaction` picks it
+- What `rewrite_data_files` would rewrite at a snapshot, and what the next commit would do to its manifest list — both planned the way Iceberg's own planners decide it, and checked against rewrites and merges the fixtures ran
 - Schema evolution view -- diffs between schema versions (added/dropped/renamed columns, type changes); table properties tracked across metadata versions
 - Find on the graph (`Ctrl/Cmd + F`) by path, partition, operation, branch or error text; arrow-key navigation over the drawing
 - Export the graph as SVG, PNG or JSON, and the file inventory as CSV

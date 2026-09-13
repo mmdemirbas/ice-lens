@@ -104,6 +104,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **The snapshot panel says what the next commit would do to the manifest list.** A `Manifest
+  Merge` section plans the next append and the next merge-on-read delete the way
+  `ManifestMergeManager` does on every batch write — bins by spec from the oldest end, a bin of
+  one kept, the bin holding the new manifest kept under `commit.manifest.min-count-to-merge`, any
+  other bin of two or more merged — one row per bin with the verdict first. Three new fixtures
+  are the oracle (`merged`, `mergedel`, `mergespec`), and the sweep over every Iceberg fixture
+  requires the plan from each parent to land on its child's manifest count. Two things the
+  fixtures settled: a partition-spec change merges the old spec's manifests at the next commit
+  under the default count of a hundred, and Spark 3.5 on Iceberg 1.8.1 rewrites a file's
+  existing positional delete on a second delete rather than adding beside it.
 - **An Iceberg snapshot says what `rewrite_data_files` would rewrite.** `Rewrite` on the
   snapshot panel plans a bare call the way `SizeBasedDataRewriter` does — every file outside
   75%–180% of the target size or with file-scoped deletes over 30% of its rows is a candidate,
