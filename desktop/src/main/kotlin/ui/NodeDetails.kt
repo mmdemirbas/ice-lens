@@ -1256,6 +1256,12 @@ fun NodeDetailsContent(
                             DetailRow("Table UUID", "${node.data.tableUuid ?: "N/A"}", copyable = true)
                             DetailRow("Location", "${node.data.location ?: "N/A"}", copyable = true)
                             DetailRow("Last Seq. Num.", "${node.data.lastSequenceNumber ?: "N/A"}")
+                            // The v3 row-id counter: where the next commit's ids start. Drawn on
+                            // every version because "none" is a fact about a v2 table.
+                            DetailRow(
+                                "Next Row ID",
+                                node.data.nextRowId?.toString() ?: "N/A — row lineage is tracked from format version 3",
+                            )
                             DetailRow("Last Updated", formatTimestamp(node.data.lastUpdatedMs))
                             DetailRow("Last Column ID", "${node.data.lastColumnId ?: "N/A"}")
                             DetailRow("Current Schema ID", "${node.data.currentSchemaId ?: "N/A"}")
@@ -1604,6 +1610,9 @@ fun NodeDetailsContent(
                                     ?: "0 — a v1 snapshot records none, and the format reads it as 0",
                             )
                             DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
+                            // Where this commit's row ids started — next-row-id as it stood. A
+                            // commit adding no data files records it and moves it by nothing.
+                            if (node.data.firstRowId != null) DetailRow("First Row ID", "${node.data.firstRowId}")
                             DetailRow("Timestamp", formatTimestamp(node.data.timestampMs))
                             val manifestList = node.data.manifestList
                             val manifestListLabel = if (manifestList == null) "N/A" else "${manifestList.substringAfterLast("/")} ($manifestList)"
@@ -1736,6 +1745,9 @@ fun NodeDetailsContent(
                             )
                             DetailRow("Partition Spec ID", "${node.data.partitionSpecId ?: "N/A"}")
                             DetailRow("Added Snapshot", "${node.data.addedSnapshotId ?: "N/A"}")
+                            // The id the manifest's data files without one of their own count up
+                            // from, in entry order; a delete manifest is never assigned one.
+                            if (node.data.firstRowId != null) DetailRow("First Row ID", "${node.data.firstRowId}")
                             DetailRow("Manifest Length", "${node.data.manifestLength ?: 0} bytes")
                             val manifestPath = node.data.manifestPath
                             val manifestPathLabel = if (manifestPath == null) "N/A" else "${manifestPath.substringAfterLast("/")} ($manifestPath)"
@@ -1988,6 +2000,22 @@ fun NodeDetailsContent(
                                 },
                             )
                             DetailRow("File Seq. Num.", "${node.entry.fileSequenceNumber ?: "N/A"}")
+                            // v3 row lineage, the same inheritance as the sequence number: an
+                            // entry the manifest's own commit wrote records nothing and counts
+                            // up from the manifest's first id in entry order; an entry carried
+                            // into a later manifest records its own. The range is what a reader
+                            // wants — which ids live in this file — unless the file carries a
+                            // `_row_id` column, which a rewrite does so its rows keep theirs, and
+                            // then the first id is only where rows without one would start.
+                            val firstRowId = node.firstRowId
+                            if (firstRowId != null) {
+                                val records = node.data.recordCount ?: 0L
+                                DetailRow(
+                                    "Row IDs",
+                                    (if (records > 0) "$firstRowId..${firstRowId + records - 1}" else "$firstRowId, no rows") +
+                                        (if (node.firstRowIdInherited) " (first id inherited from the manifest)" else " (first id recorded on the entry)"),
+                                )
+                            }
                             DetailRow("File Format", "${node.data.fileFormat ?: "N/A"}")
                             DetailRow("Record Count", "${node.data.recordCount ?: 0}")
                             DetailRow("File Size", "${node.data.fileSizeInBytes ?: 0} bytes")
@@ -2243,8 +2271,12 @@ fun NodeDetailsContent(
                                     },
                                 )
                             }
-                            node.data.entries
-                                .filterNot { it.key == "file_no" || it.key == "row_idx" }
+                            // The row's cells, once read. `data` is the placeholder the builder
+                            // emits before any file is opened — file_no and row_idx and nothing
+                            // else — and listing it here left the panel without a single cell of
+                            // the row that was selected, while the card beside it drew five.
+                            node.resolvedData.entries
+                                .filterNot { it.key == "file_no" || it.key == "row_idx" || it.key == GraphNode.RowNode.ROW_POSITION_KEY || it.key == "local_file_path" }
                                 .sortedBy { it.key }
                                 .forEach { (k, v) -> DetailRow(k, "$v") }
                         }

@@ -519,6 +519,13 @@ sealed class GraphNode(
          * pick one.
          */
         val manifestSequenceNumber: Long? = null,
+        /**
+         * v3 row lineage: the `_row_id` of this file's first row, and whether it was inherited
+         * from the manifest rather than recorded — see [UnifiedDataFile.firstRowId]. A row's id
+         * is this plus its position unless the file carries a `_row_id` column.
+         */
+        val firstRowId: Long? = null,
+        val firstRowIdInherited: Boolean = false,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         /**

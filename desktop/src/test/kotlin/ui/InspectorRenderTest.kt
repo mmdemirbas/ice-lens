@@ -52,6 +52,7 @@ import model.SnapshotRefLabel
 import model.UnifiedTableModel
 import service.AggregationPolicy
 import service.GraphLayoutService
+import service.IcebergGraphBuilder
 
 /**
  * Renders the inspector panel off-screen and writes a PNG per case.
@@ -328,6 +329,30 @@ class InspectorRenderTest {
         assertNotNull(file, "the promoted fixture's rewritten manifest lists a file with a dropped column's bound")
         assertEquals(model.IcebergType.IntType, file.columnStats.single { it.fieldId == 1 }.lowerBound?.writtenAs)
         renderInspector(graph, file.id, "file-node-promoted", height = 2400)
+    }
+
+    /**
+     * v3 row lineage, at the three places it is read by inheritance. The metadata panel's
+     * `Next Row ID`; the file panel's `Row IDs` range, which for the update's rewritten file has
+     * to say the first id was inherited though its one row carries its own; and that row's panel,
+     * where `_row_id` is the column the file wrote and `_last_updated_sequence_number` is the
+     * file's sequence number standing in for the null the rewrite wrote.
+     */
+    @Test
+    fun `row lineage reads through the metadata, the file and the row`() {
+        val graph = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/lineage").absolutePath)),
+            showRows = true,
+        )
+        val metadata = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().first { it.fileName == "v6.metadata.json" }
+        assertEquals(9L, metadata.data.nextRowId)
+        renderInspector(graph, metadata.id, "metadata-node-row-lineage", height = 1400)
+        val rewritten = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+            .first { it.firstRowId == 6L && it.entry.status == model.ManifestEntryStatus.ADDED }
+        renderInspector(graph, rewritten.id, "file-node-row-lineage", height = 1400)
+        val row = graph.nodes.filterIsInstance<GraphNode.RowNode>().first { it.id.startsWith("row_${rewritten.id}_") && "id" in it.resolvedData }
+        assertEquals(2L, (row.resolvedData[IcebergGraphBuilder.ROW_ID_COLUMN] as Number).toLong())
+        renderInspector(graph, row.id, "row-node-row-lineage", height = 1200)
     }
 
     /**

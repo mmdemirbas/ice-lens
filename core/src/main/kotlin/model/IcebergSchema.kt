@@ -19,6 +19,12 @@ data class TableMetadata(
     @SerialName("last-column-id") val lastColumnId: Int? = null,
     @SerialName("current-schema-id") val currentSchemaId: Int? = null,
     @SerialName("current-snapshot-id") val currentSnapshotId: Long? = null,
+    /**
+     * v3 row lineage: the next `_row_id` the table will hand out. Every commit that adds data
+     * files advances it by their record counts — a rewrite included, whose rows keep the ids they
+     * had — and a delete-only commit leaves it where it was. Null below v3.
+     */
+    @SerialName("next-row-id") val nextRowId: Long? = null,
     @SerialName("default-spec-id") val defaultSpecId: Int? = null,
     @SerialName("partition-specs") val partitionSpecs: List<PartitionSpec> = emptyList(),
     @SerialName("last-partition-id") val lastPartitionId: Int? = null,
@@ -183,6 +189,8 @@ data class Snapshot(
     @SerialName("schema-id") val schemaId: Int? = null,
     @SerialName("timestamp-ms") val timestampMs: Long? = null,
     @SerialName("manifest-list") val manifestList: String? = null, // Path to Avro file
+    /** v3 row lineage: where this commit's id allocation started — `next-row-id` as it stood. */
+    @SerialName("first-row-id") val firstRowId: Long? = null,
     val summary: Map<String, String> = emptyMap(),
 )
 
@@ -232,6 +240,11 @@ data class ManifestListEntry(
      * entries being read.
      */
     val partitions: List<PartitionFieldSummary>? = null,
+    /**
+     * v3 row lineage: the id the manifest's first ADDED data file starts at, from which each
+     * file's own `first_row_id` is assigned in order. Null on a delete manifest and below v3.
+     */
+    @SerialName("first_row_id") val firstRowId: Long? = null,
 )
 
 /**
@@ -346,6 +359,13 @@ data class DataFile(
     @SerialName("referenced_data_file") val referencedDataFile: String? = null,
     @SerialName("content_offset") val contentOffset: Long? = null,
     @SerialName("content_size_in_bytes") val contentSizeInBytes: Long? = null,
+    /**
+     * v3 row lineage: the `_row_id` of this file's first row, the rest following in file order
+     * — unless the file carries a `_row_id` column, which a file that rewrites rows does so they
+     * keep their ids; then this is only where the ids of rows *without* one start. Null on a
+     * delete file, which allocates nothing, and below v3.
+     */
+    @SerialName("first_row_id") val firstRowId: Long? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -368,7 +388,8 @@ data class DataFile(
             sortOrderId == other.sortOrderId &&
             referencedDataFile == other.referencedDataFile &&
             contentOffset == other.contentOffset &&
-            contentSizeInBytes == other.contentSizeInBytes
+            contentSizeInBytes == other.contentSizeInBytes &&
+            firstRowId == other.firstRowId
     }
 
     override fun hashCode(): Int {
@@ -391,6 +412,7 @@ data class DataFile(
         result = 31 * result + referencedDataFile.hashCode()
         result = 31 * result + contentOffset.hashCode()
         result = 31 * result + contentSizeInBytes.hashCode()
+        result = 31 * result + firstRowId.hashCode()
         return result
     }
 }

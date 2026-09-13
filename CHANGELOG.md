@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **A row's panel lists the row's cells.** It iterated the placeholder the builder emits before
+  any file is opened — `file_no` and `row_idx` — so the panel for a selected row showed no cell of
+  it while the card beside it drew five. It reads the resolved row now.
 - **A bound written before its column was widened, listed by a manifest rewritten after, reads as
   the value it is.** `rewrite_manifests` copies a file's bounds verbatim under the table's current
   schema, so a four-byte `int` bound sat under a `long` and was reported as `expected 8 bytes for
@@ -70,6 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **v3 row lineage is read, by inheritance, at every level it lives.** `next-row-id` on the
+  metadata panel; `first-row-id` on a snapshot and a manifest; a file's `Row IDs` range, saying
+  whether its first id was inherited from the manifest or recorded on the entry; and a sampled
+  row's `_row_id` and `_last_updated_sequence_number`, derived from the file's first id and data
+  sequence number where the file did not write them. `lineage` is the fixture, the first written
+  with a runtime newer than the image's (Iceberg 1.10).
 - **A data file's sort order is named, and the table's default is put beside it.** The file panel
   printed `Sort Order ID: 0` with nothing to resolve it against; it now reads the order the way
   `WRITE ORDERED BY` stated it, and when the table's default is a different order, a second row

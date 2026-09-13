@@ -596,6 +596,23 @@ intellij/src/main/kotlin/plugin/
   to decode with because a type only ever widens, so the newest definition is the widest. The
   fallback answers *only* where the manifest's schema does not, so `evolved` decodes exactly as
   before
+- **A v3 row id is read by inheritance at three levels, and the running sum is the part that
+  needs a fixture.** A snapshot's `first-row-id` is `next-row-id` as it stood; a manifest's
+  `first_row_id` is assigned in manifest-list order from that; a data file's is the manifest's
+  **plus the record counts of the files before it in the manifest that also recorded none**, so
+  it is decided in `UnifiedModel` where the entries are in order — `UnifiedDataFile.firstRowId` /
+  `.firstRowIdInherited`, carried to `FileNode` like the sequence number is — and a row's
+  `_row_id` is the file's plus its position unless the file wrote the column, which a rewrite does
+  so its rows keep their ids; a null `_last_updated_sequence_number` is the file's data sequence
+  number. `IcebergGraphBuilder.sampleRowFactory` fills both where absent, and a DuckDB null arrives
+  as the string `"null"`, so "absent" has two spellings there. Three things `lineage` settled that
+  the spec text states but a reader would not predict: an entry **carried into a rewritten
+  manifest has its inherited id written in** (0 and 2 on the update's DELETED and EXISTING
+  entries); a manifest with only existing rows still advances the allocation by them, so an
+  `UPDATE` of one row moved `next-row-id` by three and **ids 7 and 8 are burned**; and the added
+  file of that update inherits 6 though its one row carries `_row_id` 2. A deletion vector's
+  manifest and entry record none. `lineage` is partitioned so one INSERT writes two files into
+  one manifest, which is the only shape that exercises the sum
 - **A null sequence number on an entry means "the manifest's", never "unknown".** Iceberg inherits
   it: an entry written by the commit that wrote its manifest stores nothing, because every entry
   that commit adds shares one number, and only an entry *carried forward* records one of its own.
@@ -1229,7 +1246,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~940 tests across 109 files (708 in :core, 227 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~946 tests across 110 files (713 in :core, 228 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1311,6 +1328,7 @@ container invocation and the traps in it:
 | `default/mor` | `MergeOnReadFixtureTest` | positional deletes, a compaction, dangling deletes |
 | `default/eqdel` | `EqualityDeleteFixtureTest` | both delete kinds in one table |
 | `default/v3` | `FormatV3FixtureTest` | format-version 3 with deletion vectors |
+| `default/lineage` | `RowLineageFixtureTest` | format-version 3 row lineage, written by Iceberg 1.10 — `next-row-id`, a snapshot's and a manifest's `first-row-id`, files inheriting theirs in entry order, a rewritten file carrying `_row_id`, and a deletion vector allocating nothing |
 | `default/evolved` | `SchemaEvolutionFixtureTest` | three manifest schemas — `int`→`long`, `float`→`double`, a rename and a drop |
 | `default/promoted` | `PromotedBoundsFixtureTest` | `evolved` then `rewrite_manifests` — one manifest under the current schema carrying four-byte bounds under `long`/`double` and a bound for a dropped field |
 | `default/respec` | `PartitionSpecEvolutionTest` | two partition specs — dropped, rebucketed, `days`→`months` |
@@ -1351,6 +1369,13 @@ all**; `eqdel`'s is written by driving Iceberg's own `EqualityDeleteWriter` from
 (`docs/fixtures/eqdel-equality-deletes.scala`), which needs `MessageType` imported from
 `org.apache.iceberg.shaded.…` because the runtime jar relocates Parquet and Spark's own copy is
 also on the classpath.
+
+A third: **the image's Iceberg is 1.8.1, and a newer runtime can be dropped in.** `lineage` is
+written by the 1.10.0 Spark 3.5 runtime jar (`~/code/spark-kit/lakelab/.cache/`), mounted with
+`--jars` after the image's own `iceberg-spark-runtime-3.5_2.12-1.8.1.jar` and the three
+`iceberg-*-bundle-1.8.1.jar` are `rm`ed inside the container — two Iceberg versions on one
+classpath is not a configuration, it is whichever class loads first. That is what unblocks every
+v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` and variant remain.
 
 ## Supported table formats
 

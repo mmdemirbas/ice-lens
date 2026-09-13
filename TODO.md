@@ -40,11 +40,10 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 
 - **Iceberg v3 is half-modelled.** A deletion vector's Puffin blob is now opened and its
   positions decoded (`service/PuffinReader.kt`), so the inspector answers which rows a vector
-  deletes rather than only where the blob sits. What is still unsurfaced: **row lineage**
-  (`first-row-id`, `added-rows`, `_row_id`, `_last_updated_sequence_number` — **checked**: the v3
-  fixture's `metadata.json` carries no row-lineage field at all, so Iceberg 1.8.1 writes none and
-  this needs a newer image rather than different code here) and the **variant /
-  geometry / geography / timestamp_ns** types. What the vector work does *not* cover: an Iceberg
+  deletes rather than only where the blob sits. **Row lineage is in** (`lineage`, written with
+  the 1.10 runtime dropped into the image — see CLAUDE.md's fixture notes for the jar swap). What
+  is still unsurfaced: the **variant / geometry / geography / timestamp_ns** types, which the
+  same jar swap can now produce. What the vector work does *not* cover: an Iceberg
   **positional delete** file (v2) marks no rows, because its targets are one per row and only
   known after reading the file — the same reason there is no `e_dv_*`-style edge for it.
 
@@ -72,7 +71,8 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 - **`partition-statistics` is typed but has never been seen with a value in it.** Iceberg 1.8.1 —
   the version in the fixture image — has no `compute_partition_stats` procedure, so
   `docs/fixtures/stats.sql` cannot produce one and the three modelled fields are written from the
-  spec with no oracle. Needs a newer Iceberg in the image, not a different statement.
+  spec with no oracle. The 1.10 runtime the `lineage` fixture is written with has the
+  procedure; the statement is what is still missing.
 
 ---
 
@@ -307,6 +307,7 @@ What is left:
   | `default/mor` | merge-on-read v2: three positional delete files, six commits including a `rewrite_data_files` compaction that leaves two of them dangling |
   | `default/eqdel` | both delete kinds in one table — one positional and one equality delete file, the latter written with Iceberg's own `EqualityDeleteWriter` |
   | `default/v3` | format-version 3 with two deletion vectors (Puffin), the v3 representation of what `mor` carries as parquet |
+  | `default/lineage` | format-version 3 written by Iceberg 1.10 — row lineage at every level: `next-row-id` 9 after four commits, a rewrite that burns two ids, a file carrying `_row_id`, a deletion vector allocating none |
   | `default/evolved` | three manifest schemas in one table — `int`→`long`, `float`→`double`, a column renamed then dropped, one added |
   | `default/promoted` | `evolved` then `rewrite_manifests` — every live file under one manifest with the current schema; the schema-0 file's `id` and `amount` bounds are four bytes under `long` and `double`, and its `name` bound is keyed by a field the schema dropped |
   | `default/respec` | two partition specs in one table — a dropped field, a rebucketed one, `days` replaced by `months` |

@@ -19,6 +19,12 @@ object IcebergGraphBuilder {
     /** Max sample rows created per data file. */
     private const val MAX_ROWS_PER_FILE = 5
 
+    /** The two v3 row-lineage columns, by the reserved names the spec gives them (field ids 2147483540 and 2147483539). */
+    const val ROW_ID_COLUMN = "_row_id"
+    const val LAST_UPDATED_SEQUENCE_NUMBER_COLUMN = "_last_updated_sequence_number"
+
+    private fun Any?.isNullCell(): Boolean = this == null || this == "null"
+
     /**
      * Builds graph nodes and edges for the given Iceberg table model.
      *
@@ -274,6 +280,8 @@ object IcebergGraphBuilder {
                                         defaultSortOrder = defaultSortOrder,
                                         tableFieldsById = tableFieldsById,
                                         manifestSequenceNumber = unifiedManifest.metadata.sequenceNumber,
+                                        firstRowId = unifiedDataFile.firstRowId,
+                                        firstRowIdInherited = unifiedDataFile.firstRowIdInherited,
                                         deletionVectorLoader = deletionVectorLoader(dataFile, unifiedDataFile.path),
                                     )
                                 }
@@ -289,6 +297,7 @@ object IcebergGraphBuilder {
                                     identifierFields = snapshotIdentifierFields,
                                     filePathToSimpleId = filePathToSimpleId,
                                     vectorFor = { path -> vectorsByReferencedPath()[path] },
+                                    dataSequenceNumber = effectiveSequenceNumber(entry, unifiedManifest.metadata.sequenceNumber),
                                 )
                             }
                         }
@@ -428,6 +437,7 @@ object IcebergGraphBuilder {
         identifierFields: List<String>,
         filePathToSimpleId: Map<String, Int>,
         vectorFor: (String) -> GraphNode.FileNode?,
+        dataSequenceNumber: Long,
     ): () -> List<GraphNode.RowNode> = {
         if (!Files.isRegularFile(dataFile.path)) {
             emptyList()
@@ -464,6 +474,22 @@ object IcebergGraphBuilder {
                                     enriched["target_file_no"] = targetId
                                 }
                                 enriched.putAll(rowData.cells)
+                                // v3 row lineage is read by inheritance: a row's `_row_id` is the
+                                // file's first id plus its position unless the file carries the
+                                // column, and a null `_last_updated_sequence_number` is the file's
+                                // data sequence number — a rewrite writes null for the rows it
+                                // changed and copies the value for the rows it did not. So the
+                                // two columns are filled here where they are absent or null, and
+                                // a file with the columns keeps every value it wrote.
+                                // (A null cell arrives as the string "null" — see SampleRowReader.)
+                                if (contentType == DataFileContent.DATA && dataFile.firstRowId != null) {
+                                    if (enriched[ROW_ID_COLUMN].isNullCell()) {
+                                        rowData.position?.let { enriched[ROW_ID_COLUMN] = dataFile.firstRowId + it }
+                                    }
+                                    if (enriched[LAST_UPDATED_SEQUENCE_NUMBER_COLUMN].isNullCell()) {
+                                        enriched[LAST_UPDATED_SEQUENCE_NUMBER_COLUMN] = dataSequenceNumber
+                                    }
+                                }
                                 enriched
                             } else emptyMap()
                         } catch (e: Exception) {

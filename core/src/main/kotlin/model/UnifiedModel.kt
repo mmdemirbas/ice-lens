@@ -375,9 +375,23 @@ fun UnifiedManifest(
         // describe the same manifest and `partition_spec_id` ties them together, so there is no
         // ambiguity here of the kind the bounds have.
         partitionSummaries = decodePartitionSummaries(manifest.partitions, manifestSpec, manifestSchema),
-        dataFiles = dataFiles.entries.map { record ->
+        // v3 row lineage: a data file recording no `first_row_id` inherits the manifest's plus
+        // the record counts of every data file before it in this manifest that also recorded
+        // none — whatever its status, which is what assigns ids to the existing files of an
+        // upgraded table. The running sum is why this is decided here, in entry order, rather
+        // than per node. A delete file is never assigned one. (Spec: First Row ID Inheritance.)
+        dataFiles = dataFiles.entries.runningFold(0L to null as UnifiedDataFile?) { (assignedRows, _), record ->
             val dataFile = record.entry
             val dataFilePathInFile = dataFile.dataFile?.filePath.orEmpty()
+            val isDataFile = (dataFile.dataFile?.content ?: DataFileContent.DATA) == DataFileContent.DATA
+            val recordedFirstRowId = dataFile.dataFile?.firstRowId
+            val inheritsFirstRowId = isDataFile && recordedFirstRowId == null && manifest.firstRowId != null
+            val firstRowId = when {
+                !isDataFile -> null
+                recordedFirstRowId != null -> recordedFirstRowId
+                else -> manifest.firstRowId?.let { it + assignedRows }
+            }
+            val rowsAssigned = if (inheritsFirstRowId) dataFile.dataFile?.recordCount ?: 0L else 0L
 
             // Same rule as the manifests above: the path the table recorded, when the file is
             // actually there. Otherwise a file under the table is rebuilt by its sub-path under
@@ -412,13 +426,15 @@ fun UnifiedManifest(
                 rebuilt to PathResolution.FORCED_RELATIVE
             }
 
-            UnifiedDataFile(
+            (assignedRows + rowsAssigned) to UnifiedDataFile(
                 path = dataFilePathResolved,
                 metadata = dataFile,
                 partition = decodePartition(record.partition, manifestSpec, manifestSchema),
                 pathResolution = resolution,
+                firstRowId = firstRowId,
+                firstRowIdInherited = inheritsFirstRowId,
             )
-        },
+        }.mapNotNull { it.second },
         readErrors = manifestReadErrors,
     )
 }
@@ -503,6 +519,14 @@ data class UnifiedDataFile(
     /** How [path] was arrived at. Worth showing: a file reported missing means something
      *  different depending on whether the table named that path or this tool rebuilt it. */
     val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
+    /**
+     * v3 row lineage: the `_row_id` of this file's first row — the entry's own `first_row_id`, or
+     * the one inherited from its manifest in entry order (see the read above). Null on a delete
+     * file, on a manifest that was assigned none, and below v3.
+     */
+    val firstRowId: Long? = null,
+    /** Whether [firstRowId] was inherited from the manifest rather than recorded on the entry. */
+    val firstRowIdInherited: Boolean = false,
     private val rowsLoader: () -> List<UnifiedRow> = {
         SampleRowReader.querySampleRows(path.toString()).map(::unifiedRowOf)
     },
