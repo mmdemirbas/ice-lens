@@ -42,8 +42,11 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   positions decoded (`service/PuffinReader.kt`), so the inspector answers which rows a vector
   deletes rather than only where the blob sits. **Row lineage is in** (`lineage`, written with
   the 1.10 runtime dropped into the image — see CLAUDE.md's fixture notes for the jar swap). What
-  is still unsurfaced: the **variant / geometry / geography / timestamp_ns** types, which the
-  same jar swap can now produce. What the vector work does *not* cover: an Iceberg
+  is still unsurfaced: the **variant / geometry / geography / timestamp_ns** types and **column
+  defaults** (`initial-default` / `write-default`). The jar swap does not reach them: Spark 3.5
+  has no VARIANT type, and Iceberg 1.10's Spark 3.5 module answers `ALTER TABLE … ADD COLUMN … DEFAULT`
+  with `UnsupportedOperationException: setting default values in Spark is currently unsupported`
+  (run 2026-09-13). These need a Spark 4.0 image. What the vector work does *not* cover: an Iceberg
   **positional delete** file (v2) marks no rows, because its targets are one per row and only
   known after reading the file — the same reason there is no `e_dv_*`-style edge for it.
 
