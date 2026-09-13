@@ -111,7 +111,8 @@ object PaimonGraphBuilder {
             if (!logicalNodes.containsKey(snapId)) {
                 // Deferred: replaying a snapshot's base and delta is work only a comparison or
                 // the record tallies ask for, and one replay serves both.
-                val liveFiles = DeferredRead.of { paimonLiveFilesOf(unifiedSnapshot) }
+                val replay = DeferredRead.of { replayPaimonSnapshot(unifiedSnapshot) }
+                val liveFiles = DeferredRead.of { replay.value?.let { paimonLiveFilesOf(it) } }
                 logicalNodes[snapId] = GraphNode.PaimonSnapshotNode(
                     id = snapId,
                     data = snap,
@@ -122,6 +123,9 @@ object PaimonGraphBuilder {
                     recordTalliesLoader = DeferredRead.of {
                         paimonRecordTallies(unifiedSnapshot, liveFiles.value.orEmpty().sumOf { it.recordCount })
                     },
+                    bucketLsmsLoader = DeferredRead.of { replay.value?.let { paimonBucketLsms(it.liveEntries.values) } },
+                    tableOptions = unifiedSnapshot.schema?.options.orEmpty(),
+                    hasPrimaryKey = unifiedSnapshot.schema?.primaryKeys?.isNotEmpty() ?: true,
                     indexFiles = unifiedSnapshot.indexFiles,
                     statistics = unifiedSnapshot.statistics,
                     tags = tagNames,

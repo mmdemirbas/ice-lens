@@ -712,6 +712,16 @@ sealed class GraphNode(
          * is the same walk [liveFiles] runs; the builder threads one deferred replay into both.
          */
         private val recordTalliesLoader: DeferredRead<List<CommitTally>> = DeferredRead.none(),
+        /**
+         * Each bucket's live files as the LSM tree its writer would restore — see
+         * [paimonBucketLsms]. Off the same deferred replay as [liveFiles]: the tree is the live
+         * set grouped and ordered, and the compaction section is the only thing that asks.
+         */
+        private val bucketLsmsLoader: DeferredRead<List<PaimonBucketLsm>> = DeferredRead.none(),
+        /** The options of the schema this snapshot names — the ones its writer ran under. */
+        val tableOptions: Map<String, String> = emptyMap(),
+        /** False on an append table, which has no LSM tree and compacts only when asked. */
+        val hasPrimaryKey: Boolean = true,
         /** The names of the tags under `tag/` that are copies of this snapshot. */
         val tags: List<String> = emptyList(),
         /**
@@ -744,6 +754,7 @@ sealed class GraphNode(
         override val liveFiles: List<LiveFile>? get() = liveFilesLoader.value
         override val canDiff: Boolean get() = liveFilesLoader.isPresent
         val recordTallies: List<CommitTally>? get() = recordTalliesLoader.value
+        val bucketLsms: List<PaimonBucketLsm>? get() = bucketLsmsLoader.value
     }
 
     /** Paimon schema node. */

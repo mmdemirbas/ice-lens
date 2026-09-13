@@ -721,6 +721,29 @@ intellij/src/main/kotlin/plugin/
   = now`, which is as far as a call goes without `retain_max`, so what the second column still
   keeps is what no call can remove. `InspectorUnderTest` pins the clock to the last Paimon commit
   plus a second for the same reason it pins Iceberg's to the last metadata write
+- **A Paimon bucket is drawn as the LSM tree its writer restores, and the next flush's compaction
+  is planned the way `UniversalCompaction.pick()` plans it.** `model/PaimonCompaction.kt`:
+  `paimonBucketLsms` groups a snapshot's live files by partition and bucket into sorted runs —
+  every level-0 file its own run, newest first by `maxSequenceNumber` with `Levels`' tie-breaks,
+  each higher level one run — and `planCompaction` applies the four branches read at 1.3.1: under
+  `num-sorted-run.compaction-trigger` nothing; at it, size amplification (the runs newer than the
+  oldest against 200% of it, into the top level) else size ratio (the newest runs within 1% of
+  each other, into the level below the first left out, never level 0); above it, the run count
+  takes the newest regardless. A lookup, deletion-vector, `first-row` or `force-lookup` table
+  wraps that in `ForceUpLevel0Compaction`, which is why `dv` and `lk` compact after every append;
+  `write-only` turns it off. **The oracle is the writer itself**: `pc` is seven one-row inserts on
+  every default, and Paimon compacted after the fifth — five near-identical level-0 files,
+  400% against 200% — so `PaimonCompactionFixtureTest` holds the plan at each snapshot to whether
+  the next commit is a `COMPACT`, and sweeps that over every primary-key fixture (the forced-up
+  ones compact every time, `px` never, the rest never reach the trigger). An append table has no
+  tree and no writer-driven compaction — Spark writes never run `AppendCompactCoordinator` — so
+  its side is what `sys.compact` would pack: the files under 7/10 of `target-file-size` per
+  partition, a task at `compaction.min.file-num` of them, which `rt`'s explicit compaction at
+  `min.file-num = 2` pins. The trees ride the same deferred replay as the live files, on
+  `PaimonSnapshotNode.bucketLsms`, with the schema's options and key-ness beside them; the
+  snapshot panel's `Compaction` section leads each bucket with the verdict and marks a bucket
+  past `num-sorted-run.stop-trigger` in the error colour, because that is the one where the
+  writer blocks
 - **A rollback is read from the snapshot log, because it is written nowhere else.**
   `set_current_snapshot`, `rollback_to_snapshot` and `rollback_to_timestamp` write no snapshot:
   they move `main` and append a `snapshot-log` entry naming a snapshot the log already holds, and
@@ -1398,7 +1421,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,013 tests across 124 files (761 in :core, 246 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,025 tests across 126 files (772 in :core, 247 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1510,6 +1533,7 @@ container invocation and the traps in it:
 | `paimon/db.db/lk` | `PaimonRowKindTest` | `changelog-producer = lookup` — the `-U` / `+U` pair a re-inserted key produces, carried by the COMPACT snapshot the lookup ran in, and a `-D` with the value it removed |
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |
 | `paimon/db.db/px`, `pxa` | `PaimonExpiryFixtureTest` | one table written twice — six commits, a tag on 2, a consumer at 4; `px` as it is, `pxa` after `expire_snapshots(retain_max = 2, retain_min = 1)` — the survivors the plan for `px` is checked against |
+| `paimon/db.db/pc` | `PaimonCompactionFixtureTest` | a primary-key table on every default, seven one-row inserts — the fifth flush is the one the writer compacted, by size amplification into level 5, and the COMPACT after it is the oracle |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 

@@ -338,6 +338,7 @@ What is left:
   | `paimon/db.db/sm` | `fields.v.stats-mode = none` — `_VALUE_STATS_COLS` names two of three columns, and every bound lands on its own column |
   | `paimon/db.db/se` | `ADD COLUMN` between two writes, then `sys.compact` — the compaction's delta manifest is under schema 1 and removes a schema-0 file, whose two-field stats decode only against its own schema |
   | `paimon/db.db/px`, `pxa` | one table written twice, six commits, a tag and a consumer — `px` unexpired, `pxa` after `expire_snapshots(retain_max = 2, retain_min = 1)`; the expiry planner's oracle |
+  | `paimon/db.db/pc` | a primary-key table on every default, seven one-row inserts — the fifth flush compacts by size amplification; the compaction planner's oracle |
 
   **Still missing:** the `write.metadata.path` layout is built at runtime by
   `RecordedPathResolutionTest`, a rearrangement of the minimal fixture rather than a table an

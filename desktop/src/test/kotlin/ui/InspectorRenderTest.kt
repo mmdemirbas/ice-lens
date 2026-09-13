@@ -414,6 +414,28 @@ class InspectorRenderTest {
         renderInspector(paimon, last.id, "paimon-snapshot-node-partitions", height = 2600)
     }
 
+    /**
+     * `pc` at snapshot 5 is the one tree in the fixtures a batch writer compacts: five level-0
+     * files, size amplification, into level 5 — and the snapshot after it is the COMPACT that
+     * proves it. Rendered beside the append table `ao`, whose verdict is about `sys.compact`.
+     */
+    @Test
+    fun `a snapshot says what the next flush would compact`() {
+        val pc = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pc").absolutePath)),
+            showRows = false,
+        )
+        val fifth = pc.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().first { it.data.id == 5L }
+        assertEquals("L0×5", fifth.bucketLsms!!.single().describeLevels())
+        renderInspector(pc, fifth.id, "paimon-snapshot-node-compaction", height = 2600)
+        val ao = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/ao").absolutePath)),
+            showRows = false,
+        )
+        val aoLast = ao.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().maxBy { it.data.id ?: 0L }
+        renderInspector(ao, aoLast.id, "paimon-snapshot-node-compaction-append", height = 2600)
+    }
+
     /** The refs table with retention set on two of three refs, as ages rather than milliseconds. */
     @Test
     fun `refs with retention render their ages`() {

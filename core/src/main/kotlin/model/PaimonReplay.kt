@@ -224,8 +224,11 @@ fun replayPaimonSnapshot(
  * Paimon has no positional or equality delete files, so every live file is `DataFileContent.DATA`
  * by definition rather than by inspection — a removal is an entry kind, not a file.
  */
-fun paimonLiveFilesOf(snapshot: PaimonUnifiedSnapshot?): List<LiveFile> =
-    replayPaimonSnapshot(snapshot).liveEntries.map { (key, entry) ->
+fun paimonLiveFilesOf(snapshot: PaimonUnifiedSnapshot?): List<LiveFile> = paimonLiveFilesOf(replayPaimonSnapshot(snapshot))
+
+/** The same, from a replay already run — the builder shares one replay between the file set and the LSM trees. */
+fun paimonLiveFilesOf(replay: PaimonReplay): List<LiveFile> =
+    replay.liveEntries.map { (key, entry) ->
         val meta = entry.metadata.file
         LiveFile(
             path = meta?.fileName?.takeIf { it.isNotBlank() } ?: key,

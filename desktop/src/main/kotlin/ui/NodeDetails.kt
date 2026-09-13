@@ -95,7 +95,10 @@ import model.planExpiry
 import model.checkPartitionStatistics
 import model.PartitionStatsVerdict
 import model.ExpiryOptions
+import model.PaimonCompactionOptions
 import model.PaimonExpiryInput
+import model.paimonAppendVerdict
+import model.planCompaction
 import model.PaimonExpiryOptions
 import model.TableMetadata
 import model.stepComparableSnapshot
@@ -2564,6 +2567,7 @@ fun NodeDetailsContent(
                         }
                         PaimonRecordsSection(node)
                         PartitionsSection(node)
+                        PaimonCompactionSection(node)
                         PaimonIndexFilesSection(node)
                         PaimonStatisticsSection(node)
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
@@ -3752,6 +3756,120 @@ internal fun DeletedRowCount(
  * manifest at all is an answer, and a section that is simply absent cannot be told from one this
  * panel does not know how to render.
  */
+/**
+ * Each bucket as the LSM tree its writer would restore at this snapshot, and what the next flush
+ * would compact — `planCompaction`, the rules of `UniversalCompaction.pick()`, on the same
+ * deferred replay the records and partitions above already ran. An append table has no tree, so
+ * its side is the small-file count `sys.compact` would pack per partition.
+ *
+ * The verdict leads: "will the next write compact, and why" is the question, and a bucket that
+ * would stall the writer is the one row that has to be findable without reading the others.
+ */
+@Composable
+private fun PaimonCompactionSection(node: GraphNode.PaimonSnapshotNode) {
+    val colors = MaterialTheme.colorScheme
+    if (!node.hasPrimaryKey) {
+        AppendCompactionSection(node)
+        return
+    }
+    val lsms = node.bucketLsms
+    val options = PaimonCompactionOptions.from(node.tableOptions)
+    val verdicts = lsms?.map { it.planCompaction(options) }.orEmpty()
+    val compacting = verdicts.count { it.compacts }
+    val title = "Compaction" + when {
+        verdicts.any { it.stalls } -> " — a writer would wait"
+        compacting > 0 -> " — $compacting due"
+        else -> ""
+    }
+    CountedSection(title, verdicts.size, "buckets") {
+        Text(
+            "Each bucket is an LSM tree: every level-0 file is a sorted run of its own, each higher " +
+                "level is one run, and the writer asks UniversalCompaction.pick() on every flush. " +
+                "Under num-sorted-run.compaction-trigger (${options.trigger}) runs it picks nothing; " +
+                "at it, by size — the runs newer than the oldest against " +
+                "${options.maxSizeAmplificationPercent}% of the oldest, else the newest runs within " +
+                "${options.sizeRatioPercent}% of each other; above it, regardless. Past " +
+                "num-sorted-run.stop-trigger (${options.stopTrigger}) the writer waits for the " +
+                "compaction." +
+                (if (options.forceUpLevel0) " This table forces level 0 up on every flush (lookup, deletion vectors or first-row)." else "") +
+                (if (options.writeOnly) " This table is write-only: nothing compacts." else ""),
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (lsms == null) {
+            Text("Not readable here — this snapshot's manifests are not retained.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+        } else if (verdicts.isNotEmpty()) {
+            WideTable(
+                headers = listOf("Next Flush", "Partition", "Bucket", "Sorted Runs", "Levels", "Files", "Bytes"),
+                columnWidths = listOf(190.dp, 190.dp, 70.dp, 100.dp, 190.dp, 70.dp, 110.dp),
+                rows = verdicts.map { v ->
+                    listOf(
+                        v.describe(),
+                        v.lsm.partition.ifEmpty { "(unpartitioned)" },
+                        "${v.lsm.bucket}",
+                        "${v.lsm.sortedRunCount} of ${options.trigger}",
+                        v.lsm.describeLevels(),
+                        "${v.lsm.fileCount}",
+                        formatBytes(v.lsm.runs.sumOf { it.sizeBytes }),
+                    )
+                },
+                leadCellColors = verdicts.map { v ->
+                    when {
+                        v.stalls -> colors.error
+                        v.compacts -> verdictSkippedColor()
+                        else -> null
+                    }
+                },
+            )
+        }
+    }
+}
+
+/** The append-table side of [PaimonCompactionSection]: what `sys.compact` would pack, per partition. */
+@Composable
+private fun AppendCompactionSection(node: GraphNode.PaimonSnapshotNode) {
+    val colors = MaterialTheme.colorScheme
+    val entries = node.bucketLsms
+    val verdicts = entries?.let { lsms ->
+        // The append rule is per partition and size-only; the trees carry the same files.
+        lsms.groupBy { it.partition }.entries.sortedBy { it.key }.map { (partition, trees) ->
+            val files = trees.flatMap { t -> t.runs.flatMap { it.files } }
+            paimonAppendVerdict(partition, files, node.tableOptions)
+        }
+    }.orEmpty()
+    val packing = verdicts.count { it.wouldPack }
+    CountedSection("Compaction" + (if (packing > 0) " — sys.compact would run on $packing" else ""), verdicts.size, "partitions") {
+        Text(
+            "An append table has no levels and compacts only when sys.compact or a compaction job " +
+                "runs. It packs the files under 7/10 of target-file-size per partition, and a pack is " +
+                "a task once it holds compaction.min.file-num files or twice the target in bytes.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (entries == null) {
+            Text("Not readable here — this snapshot's manifests are not retained.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+        } else if (verdicts.isNotEmpty()) {
+            WideTable(
+                headers = listOf("sys.compact", "Partition", "Small Files", "Files", "Small Bytes", "Threshold"),
+                columnWidths = listOf(190.dp, 190.dp, 90.dp, 70.dp, 110.dp, 110.dp),
+                rows = verdicts.map { v ->
+                    listOf(
+                        v.describe(),
+                        v.partition.ifEmpty { "(unpartitioned)" },
+                        "${v.smallFileCount}",
+                        "${v.fileCount}",
+                        formatBytes(v.smallFileBytes),
+                        formatBytes(v.compactionFileSizeBytes),
+                    )
+                },
+                leadCellColors = verdicts.map { if (it.wouldPack) verdictSkippedColor() else null },
+            )
+        }
+    }
+}
+
 /**
  * The snapshot file's three record counts against the manifests it names — `paimonRecordTallies`.
  * The total is checked against the replay's live rows, which is the same walk the comparison

@@ -98,6 +98,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A Paimon snapshot shows each bucket's LSM tree and what the next flush would compact.**
+  `Compaction` on the snapshot panel lists every bucket's sorted runs and levels (`L0×5`,
+  `L0×2, L5×1`) and the verdict `UniversalCompaction.pick()` would reach — size amplification,
+  size ratio, run count, level 0 forced up on a lookup or deletion-vector table, never on a
+  write-only one — with the files and level it lands in, and marks a bucket past the stop trigger,
+  where the writer waits. An append table gets the `sys.compact` side: small files per partition
+  against `compaction.min.file-num`. Checked against the writer: `pc`, where the fifth of seven
+  inserts is the one Paimon compacted.
 - **What `expire_snapshots` would remove from a Paimon table, and why.** `Expiry` on the table
   panel, beside the consumers, plans the run the way `ExpireSnapshotsImpl.expire()` decides it —
   `snapshot.num-retained.min`/`.max`, `snapshot.time-retained`, `snapshot.expire.limit`, every
