@@ -190,6 +190,23 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
                 }
             }
         }
+        // The bytes and rows behind the file count: a scan's cost is what it reads, not how
+        // many files that is, and a filter that leaves three files of a thousand has not
+        // helped if they are the three large ones.
+        val sizeOf = remember(graph) {
+            graph.nodes.associate { node ->
+                node.id to when (node) {
+                    is GraphNode.FileNode -> (node.data.fileSizeInBytes ?: 0L) to (node.data.recordCount ?: 0L)
+                    is GraphNode.PaimonDataFileNode -> (node.entry.file?.fileSize ?: 0L) to (node.entry.file?.rowCount ?: 0L)
+                    else -> 0L to 0L
+                }
+            }
+        }
+        val readIds = files.map { it.first }.filter { plan.files[it]?.fate == FileFate.WOULD_BE_READ }
+        val readBytes = readIds.sumOf { sizeOf.getValue(it).first }
+        val readRecords = readIds.sumOf { sizeOf.getValue(it).second }
+        val allBytes = files.sumOf { sizeOf.getValue(it.first).first }
+        val allRecords = files.sumOf { sizeOf.getValue(it.first).second }
         val unevaluated = manifests.count { (id, _) -> results[id]?.isUnevaluated == true }
 
         Spacer(Modifier.height(8.dp))
@@ -197,7 +214,8 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
         // it read and never which, and the manifest count is the intermediate step that produced
         // it — worth showing, and worth showing second.
         Text(
-            "Would read ${formatCount(plan.readFiles)} of ${formatCounted(files.size, "data file")} drawn",
+            "Would read ${formatCount(plan.readFiles)} of ${formatCounted(files.size, "data file")} drawn — " +
+                "${formatBytes(readBytes)} of ${formatBytes(allBytes)}, ${formatCount(readRecords)} of ${formatCount(allRecords)} rows",
             fontSize = TypeScale.body,
             fontWeight = FontWeight.Bold,
         )

@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **The scan-pruning headline carries bytes and rows** — `1.94 KiB of 7.78 KiB, 1 of 4 rows`
+  beside the file count, since a scan's cost is what it reads and three files of a thousand may
+  be the three large ones.
 - **The maintenance sections have a file of their own.** `MaintenanceSections.kt` holds the
   nine sections the planners draw; `NodeDetails.kt` is down to 2,725 lines.
 - **The inspector's per-node panels are out of `NodeDetailsContent`.** Its 2,080-line `when`
