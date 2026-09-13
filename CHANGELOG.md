@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the panel said one. A level-0 file of a table whose batch reads skip level 0 is `not read`; a
   file read for its bucket's sake says so in its reason cell; the rule is stated once above the
   file table. Held to the plans Paimon itself made (`docs/fixtures/paimon-scan-plans.scala`).
+- **Iceberg's two pruning stages are held to Iceberg's own plans.**
+  `docs/fixtures/iceberg-scan-plans.scala` prints the data files `planFiles()` opens for 41
+  filters over five checked-in tables — every transform shape, both partition specs, three
+  manifest schemas, `IN`, `BETWEEN`, `NOT`, `OR`, `LIKE`, `IS NULL` — and `IcebergScanPlanTest`
+  requires no file Iceberg opens to be skipped here; all 36 filtered plans agree file for file.
 - **A branch cut from another branch draws in a column of its own, and no column is reused.**
   Two children of one commit were ordered by write time unless one was on `main`, so a branch
   cut from a branch and committed to first took the older branch's column and put the fork

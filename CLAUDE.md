@@ -620,7 +620,17 @@ intellij/src/main/kotlin/plugin/
   can: `IS NOT NULL` is proved empty when `null_value_count == value_count`. **The two are composed
   in one function on purpose**: a scan that ruled a manifest out never opens the entries inside it,
   so a file under it is `NOT_REACHED` and not `SKIPPED`, whatever its own bounds say. Reporting it
-  as skipped would credit the wrong term and double-count it against the file stage
+  as skipped would credit the wrong term and double-count it against the file stage. **Both
+  stages are held to Iceberg's own plans**: `docs/fixtures/iceberg-scan-plans.scala` runs
+  `table.newScan().filter(expr).planFiles()` on 1.8.1 over `parted`, `respec`, `evolved`, `pstats`
+  and `mor` — `ManifestEvaluator` over the partition summaries and `InclusiveMetricsEvaluator`
+  over the file bounds, the two `evaluateScan` reproduces — and prints the data files each of 41
+  plans opens; `IcebergScanPlanTest` requires every file a plan opens to be *would be read* here,
+  which is the direction that loses rows, and pins that all 36 filtered plans agree file for file.
+  Every other pruning test reads its expectation off the script that wrote the rows, which is an
+  oracle for the rows and not for the planner: a wrong skip of a file holding no matching row
+  passes it. An `Or` proved by one branch — the unsound reading — is caught by `id IN (1, 2)` on
+  `parted` skipping the two files Iceberg opens
 - **A filter is a boolean expression, and `NOT` is removed before anything is evaluated.**
   `model/ScanFilter.kt` holds `Term`/`And`/`Or`/`Not`; `evaluateScan`, `evaluatePruning` and
   `evaluateFilePruning` each take one, and the list form every existing caller passes is wrapped
@@ -1735,7 +1745,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,151 tests across 147 files (882 in :core, 261 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,153 tests across 148 files (884 in :core, 261 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

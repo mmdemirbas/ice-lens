@@ -38,8 +38,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   into one. What has no way in at all is a comparison **between two columns**, and nothing recorded
   in a manifest could answer one anyway. A Paimon primary-key table follows the scan's own rule
   now — a key predicate per file, the rest per bucket, never by value under `partial-update` or
-  `aggregation` without deletion vectors — held to the plans `paimon-scan-plans.scala` printed;
-  what that leaves is a filter through a **file index** (`fileIndexReadEnabled`, the bloom filter
+  `aggregation` without deletion vectors — held to the plans `paimon-scan-plans.scala` printed,
+  and the Iceberg stages to the 41 `planFiles()` printed by `iceberg-scan-plans.scala`, every
+  filtered plan agreeing file for file; what that leaves is a filter through a **file index** (`fileIndexReadEnabled`, the bloom filter
   `fi` carries), which the scan consults after the bounds and this does not decode.
 
 - **Iceberg v3 is modelled up to what Spark 3.5 can write.** A deletion vector's Puffin blob is
