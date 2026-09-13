@@ -1287,7 +1287,10 @@ intellij/src/main/kotlin/plugin/
   rendered in a test (it owns the preferences node and the coroutines), so `DockLayoutTest` is
   where the layout is seen at all, and its assertion is the row's arithmetic: the centre gets the
   width minus bars, panes and dividers, which a `Row` that neither wraps nor clips would get
-  wrong silently
+  wrong silently. `Ctrl/Cmd + 1..9` toggles the tool window in that position of the bars
+  (`DockState.windowAt`, the configured order — Workspace, Structure, Inspector), and a number
+  past the last window falls through; the chord is in `App.kt`'s key handler beside the zoom
+  chords, not in `navKey`, which deliberately leaves modifiers alone
 - **Tab-reachability of the chrome is asserted, not assumed.** `KeyboardReachTest` drives
   `ImageComposeScene.sendKeyEvent` — the skiko `KeyEvent(key, type)` constructor, not the AWT
   wrapper, which the scene casts and throws on — through the tool-window bar and a pane's close
@@ -1527,7 +1530,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,060 tests across 132 files (802 in :core, 252 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,060 tests across 132 files (802 in :core, 253 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

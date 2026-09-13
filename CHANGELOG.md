@@ -106,6 +106,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+
+- **`Ctrl/Cmd + 1 / 2 / 3` shows or hides the Workspace, Structure and Inspector tool windows**, in the order the bars list them; the cheat sheet has a Tool Windows group.
 - **The Paimon table panel says which files an expiry would free, and which a tag holds.** An
   `Expiry Files` section plans the `retain_min = 1, older_than = now` call's removals the way
   `ExpireSnapshotsImpl.expireUntil` runs — the data files later commits removed, the changelog,
