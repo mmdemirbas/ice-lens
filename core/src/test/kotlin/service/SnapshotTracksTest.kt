@@ -137,7 +137,7 @@ class SnapshotTracksTest {
         assertTrue(forks > 0, "no fixture forked, so the rule was never exercised")
     }
 
-    /** A column may only be reused once nothing drawn later is still waiting for it. */
+    /** A column is one line: nothing drawn between a commit and its parent may sit in it. */
     @Test
     fun `a column is never held by two branches at once`() {
         val snapshots = graphOf("branched").snapshots()
@@ -254,5 +254,42 @@ class SnapshotTracksTest {
             columns.size, columns.map { it.x }.distinct().size,
             "and each column is at its own x",
         )
+    }
+
+    /**
+     * A branch cut from another branch keeps the older branch's line where it was.
+     *
+     * `nested` (`docs/fixtures/nested.scala`) cuts `b2` from `b1`'s first commit and commits to
+     * `b2` before `b1` commits again. On write time alone `b2`'s commit is the first child of the
+     * fork, takes the column `b1` was drawn in, and `b1`'s own line moves sideways — the fork
+     * commit, which is `b1`'s, ends up under a column labelled `b2`. That is the `branched3`
+     * defect again one level down, and the trunk rule cannot reach it: neither child is on
+     * `main`. What decides it is the metadata log — `b1` is listed by v4 and `b2` by v6 — so the
+     * older branch keeps its column through the fork and every commit sits under the name of a
+     * branch that reaches it.
+     */
+    @Test
+    fun `a branch forked from a branch opens a column and leaves the older line where it was`() {
+        val graph = graphOf("nested")
+        val snapshots = graph.snapshots()
+        assertEquals(7, snapshots.size, "the fixture is seven commits")
+        val byId = snapshots.associateBy { it.data.snapshotId }
+        fun tipOf(branch: String) = snapshots.single { node -> node.refs.any { it.isBranch && it.name == branch } }
+        assertEquals(4, tipOf("b1").refs.single().createdInVersion, "b1 is first listed by the version CREATE BRANCH b1 wrote")
+        assertEquals(6, tipOf("b2").refs.single().createdInVersion)
+
+        val tracks = snapshotTracks(snapshots)
+        assertEquals(3, tracks.values.distinct().size, "main and two branches: $tracks")
+        val fork = byId.getValue(tipOf("b1").data.parentSnapshotId)
+        assertEquals(tracks[tipOf("b1").id]!!, tracks[fork.id]!!, "b1's first commit is in b1's column, not b2's")
+        assertTrue(tracks[tipOf("b2").id] != tracks[fork.id], "b2 opened a column of its own at the fork")
+        assertEquals(0, tracks[tipOf("main").id])
+        assertTrue(byId.getValue(tipOf("b2").data.parentSnapshotId).data.timestampMs!! < tipOf("b1").data.timestampMs!!, "the fixture's trap: b2 committed first")
+
+        // And the columns are named by the branch whose line they are, all the way up.
+        val columns = snapshotColumns(snapshots) { id -> graph.layoutPositions.getValue(id) }
+        val named = columns.associate { column -> column.labels.single().name to column.x }
+        assertEquals(setOf("main", "b1", "b2"), named.keys)
+        assertEquals(named.getValue("b1"), graph.layoutPositions.getValue(fork.id).x.toDouble(), "the fork commit is drawn under b1")
     }
 }

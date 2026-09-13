@@ -60,14 +60,19 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   an equality delete has no target at all. Drawing the first would mean reading every delete row
   at graph-build time, which is the cost aggregation exists to avoid.
 
-- **The branch columns are exercised at three branches now, and it found a defect.**
-  `example/iceberg/default/branched3` forks three times at three different points, and building it
-  showed the main line changing column halfway down with the trunk's column labelled `staging` —
-  `lineageChildren` gave the parent's column to whichever child was written first, which on any
-  long-lived branch is not the trunk. Fixed by preferring the `main` tip's ancestors in the sibling
-  order. What is still not covered is a branch forked from another *branch*: `CREATE BRANCH` takes
-  the table's current snapshot and the `AS OF VERSION` form needs a snapshot id that is not known
-  until the script has run, so it needs a second pass over the fixture.
+- **The branch columns are exercised at three branches and at a branch cut from a branch, and
+  each found a defect.** `example/iceberg/default/branched3` forks three times at three
+  different points, and building it showed the main line changing column halfway down with the
+  trunk's column labelled `staging` — `lineageChildren` gave the parent's column to whichever
+  child was written first, which on any long-lived branch is not the trunk. `nested` cuts `b2`
+  from `b1`'s first commit (`docs/fixtures/nested.scala`, the snapshot id read back from `.refs`
+  for `AS OF VERSION`) and commits to `b2` first, which put `b1`'s fork commit under `b2` and,
+  through column reuse, `main`'s three commits under `b2` as well. Both are decided now by
+  ranking lines — `main`, then the other branches by the metadata version that first lists them
+  — and by never reusing a column. What the ranking cannot see is a table whose metadata log no
+  longer holds the versions that created its branches (`write.metadata.previous-versions-max`
+  passed, or one file copied down): two branches forked from one commit then order by name,
+  which is stable and may not be the order they were made in.
 
 - **A file's history is answered on both formats, and the IDE strip lists it after the eager
   rows.** Which commit added a file, which removed it, which retained snapshots still list it
@@ -351,6 +356,7 @@ What is left:
   | `default/stats` | a Puffin statistics file — four theta sketches, one per column |
   | `default/pstats` | a partition statistics file from Iceberg 1.10's `compute_partition_stats` — three partitions, `eu` with a positional delete; the writer's `.partitions` output is in the script |
   | `default/branched3` | three branches forked at three points, plus a tag on the trunk's tip |
+  | `default/nested` | a branch cut from a branch, committing before the older branch does again |
   | `default/wap` | write-audit-publish — a snapshot staged under `spark.wap.id` with no ref, main moving past it, then `publish_changes` writing a new commit on main that names it in `source-snapshot-id` |
   | `default/extdata` | `write.data.path` outside the table — `metadata/` and no `data/`, two files beside the table; the engine-written shape the resolver's third rule was written against |
   | `default/sorted` | `WRITE ORDERED BY` twice, then `rewrite_data_files(strategy => 'sort')` — three sort orders, `default-sort-order-id` 2, rows sorted inside every file written under an order, and `sort_order_id 0` on every data file including the compacted one, which is what Spark records |

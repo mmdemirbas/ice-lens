@@ -15,15 +15,17 @@ import model.GraphNode
  * ## The assignment
  *
  * Walked in the order the snapshots are drawn in, top to bottom. A commit takes the track its
- * parent reserved for it; a commit nobody reserved for takes the leftmost free track. Then it
+ * parent reserved for it; a commit nobody reserved for opens a track of its own. Then it
  * reserves for its own children: the **first** child continues in its track, and every later
  * child opens a new one and holds it until the walk reaches it. Holding is the point — a track
  * reserved for a second branch stays empty for the whole of the first branch's run, which is
  * what makes the two read as parallel rather than sequential.
  *
- * A track is reused once nothing is reserved in it, so an unrelated root chain that starts below
- * where another one ended draws in the same column. Reuse is safe precisely because the vertical
- * order is depth-first: rows of one subtree never interleave with rows of another.
+ * A track is never reused, though the depth-first order would make that safe for overlap: a
+ * column is named by the branch at its bottom ([snapshotColumns]), so a column has to be one
+ * line, and a branch forked below where an older line ended would otherwise take that line's
+ * column and put its name under the older line's commits — on `nested`, `main`'s three commits
+ * under `b2`. An unrelated root chain opens a column of its own for the same reason.
  *
  * On a linear history every snapshot has one child, so every commit inherits track 0 and the
  * result is empty of information — which is why the caller does nothing at all when the highest
@@ -35,13 +37,11 @@ internal fun snapshotTracks(snapshots: List<GraphNode.SnapshotNode>): Map<String
     val children = lineageChildren(snapshots)
     val drawn = snapshots.sortedBy { order[it.id] ?: Int.MAX_VALUE }
 
-    // One slot per track. A slot holds the snapshot id that track is being kept for, or null when
-    // the track is free. Reserving by id rather than by position is what survives the whole first
-    // subtree being walked in between.
+    // One slot per track. A slot holds the snapshot id that track is being kept for, or null once
+    // the walk has reached it. Reserving by id rather than by position is what survives the whole
+    // first subtree being walked in between.
     val reservedFor = mutableListOf<Long?>()
-    fun claimFreeTrack(): Int {
-        val free = reservedFor.indexOfFirst { it == null }
-        if (free >= 0) return free
+    fun openTrack(): Int {
         reservedFor.add(null)
         return reservedFor.size - 1
     }
@@ -50,13 +50,13 @@ internal fun snapshotTracks(snapshots: List<GraphNode.SnapshotNode>): Map<String
     drawn.forEach { node ->
         val commit = node.data.snapshotId
         val mine = reservedFor.indexOfFirst { it != null && it == commit }.takeIf { it >= 0 }
-            ?: claimFreeTrack()
+            ?: openTrack()
         reservedFor[mine] = null
         tracks[node.id] = mine
 
         children[commit].orEmpty().forEachIndexed { index, child ->
             val childCommit = child.data.snapshotId ?: return@forEachIndexed
-            reservedFor[if (index == 0) mine else claimFreeTrack()] = childCommit
+            reservedFor[if (index == 0) mine else openTrack()] = childCommit
         }
     }
     return tracks
@@ -166,16 +166,17 @@ internal fun lineageChildren(
     snapshots: List<GraphNode.SnapshotNode>,
 ): Map<Long?, List<GraphNode.SnapshotNode>> {
     val byCommit = snapshots.mapNotNull { node -> node.data.snapshotId?.let { it to node } }.toMap()
-    val trunk = trunkCommits(snapshots, byCommit)
+    val lines = lineRanks(snapshots, byCommit)
     val siblingOrder = compareBy<GraphNode.SnapshotNode>(
-        // The trunk first, ahead of time. Everything below orders siblings by when they were
-        // written, and on that alone a branch that commits before the trunk's next commit is the
-        // "first child" — so it takes the column its parent was drawn in and the trunk is pushed
-        // into a new one. The result is a drawing where the root commit sits under a feature
-        // branch's name and the main line changes column halfway down, which is not a rendering
-        // detail: it is the graph saying the wrong thing about which line is which. Measured on
-        // `branched3`, where `main` landed in column 3 and column 0 was labelled `staging`.
-        { if (it.data.snapshotId in trunk) 0 else 1 },
+        // The older line first, ahead of time. Everything below orders siblings by when they were
+        // written, and on that alone a branch that commits before the line it forked from does
+        // is the "first child" — so it takes the column its parent was drawn in and the line it
+        // left is pushed into a new one. The result is a drawing where the fork commit sits under
+        // the forked branch's name and the older line changes column halfway down, which is not
+        // a rendering detail: it is the graph saying the wrong thing about which line is which.
+        // Measured on `branched3`, where `main` landed in column 3 and column 0 was labelled
+        // `staging`, and on `nested`, where `b1`'s first commit sat under `b2`.
+        { lines[it.data.snapshotId] ?: Int.MAX_VALUE },
         { it.data.timestampMs ?: Long.MAX_VALUE },
         { it.data.sequenceNumber ?: Long.MAX_VALUE },
         { it.data.snapshotId ?: Long.MAX_VALUE },
@@ -187,25 +188,35 @@ internal fun lineageChildren(
 }
 
 /**
- * The commits on the table's main line: the `main` tip and everything it descends from.
+ * Which line each commit belongs to, as a rank: 0 for the `main` tip and everything it descends
+ * from, then each other branch's tip and ancestors in the order the branches were made, a commit
+ * taking the lowest rank of any branch that reaches it. A commit no drawn branch reaches — staged,
+ * rolled back, on a tag alone — has none.
  *
  * `main` is not a convention borrowed from git here — Iceberg's spec requires the branch and ties
  * `current-snapshot-id` to it, so it is the table's own statement about which line an unqualified
- * read resolves to. That is the only thing that distinguishes two children of one commit when both
- * are the tip of their own line, which is exactly the case `branched3`'s last fork produces.
+ * read resolves to. Between two other branches the format records no such thing, and what it does
+ * keep is the metadata log: a branch cut from another is listed by a later metadata version than
+ * the one it was cut from ([model.SnapshotRefLabel.createdInVersion]), so at their fork the older
+ * branch keeps its column and the newer opens one. Two branches the log cannot tell apart — the
+ * versions that made them expired, or one file read on its own — fall to name order, which is at
+ * least the same answer on every open.
  *
- * Empty when no branch called `main` is drawn — a graph filtered to one branch, or a format that
- * does not have the concept — and then every sibling order is what it always was.
+ * Empty when no branch is drawn — a graph filtered to one branch, or a format that does not have
+ * the concept — and then every sibling order is what it always was.
  */
-private fun trunkCommits(
+private fun lineRanks(
     snapshots: List<GraphNode.SnapshotNode>,
     byCommit: Map<Long, GraphNode.SnapshotNode>,
-): Set<Long> {
-    val tip = snapshots.firstOrNull { node -> node.refs.any { it.isBranch && it.name == "main" } }
-        ?: return emptySet()
-    return buildSet {
+): Map<Long, Int> {
+    val tips = snapshots.flatMap { node -> node.refs.filter { it.isBranch }.map { it to node } }
+        .sortedWith(compareBy({ it.first.name != "main" }, { it.first.createdInVersion ?: Int.MAX_VALUE }, { it.first.name }))
+    val ranks = mutableMapOf<Long, Int>()
+    tips.forEachIndexed { rank, (_, tip) ->
         var commit = tip.data.snapshotId
-        // `add` returning false ends the walk, so a parent chain that somehow loops terminates.
-        while (commit != null && add(commit)) commit = byCommit[commit]?.data?.parentSnapshotId
+        // A commit already ranked was reached by an older line, and so was everything below it;
+        // that also ends a parent chain that somehow loops.
+        while (commit != null && ranks.putIfAbsent(commit, rank) == null) commit = byCommit[commit]?.data?.parentSnapshotId
     }
+    return ranks
 }

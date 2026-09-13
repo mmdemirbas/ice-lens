@@ -1382,12 +1382,24 @@ intellij/src/main/kotlin/plugin/
   so a branch that commits before the trunk's next commit was the "first child" and took the
   column its parent was drawn in — leaving the main line to change column halfway down and the
   root commit sitting under a feature branch's name. `branched3` is where that shows: `main`
-  landed in column 3 and column 0 was labelled `staging`. `trunkCommits` puts the `main` tip and
-  its ancestors first in the sibling order, which is the only thing that separates two children
-  of one commit when both are the tip of their own line. `main` is not a borrowed git convention
-  here — Iceberg's spec requires the branch and ties `current-snapshot-id` to it — and a graph
-  with no `main` drawn falls back to exactly the order it always had. It returns before touching a node when
-  the highest column is 0, so a linear history draws exactly where it drew before. It also stands
+  landed in column 3 and column 0 was labelled `staging`. `lineRanks` ranks every line — the
+  `main` tip and its ancestors first, then each other branch's in the order the branches were
+  made, a commit taking the lowest rank of any branch reaching it — and the sibling order puts
+  the older line first, which is the only thing that separates two children of one commit when
+  both are the tip of their own line. `main` is not a borrowed git convention here — Iceberg's
+  spec requires the branch and ties `current-snapshot-id` to it. **Between two other branches
+  the format records no such thing, and what it does keep is the metadata log**: a ref carries
+  no time, but `CREATE BRANCH` writes a metadata version, so the lowest retained version whose
+  `refs` lists the name (`SnapshotRefLabel.createdInVersion`, read off every version by the
+  builder) says which branch is the older line — `nested` is the fixture, `b2` cut from `b1`'s
+  first commit and committing before `b1` does again, where write order alone put `b1`'s fork
+  commit under `b2`. Two branches the log cannot tell apart fall to name order. **And a column
+  is never reused**: the depth-first walk would make that safe for overlap, but a column is
+  named by the branch at its bottom, so it has to be one line — on `nested`, `b2`'s reservation
+  was made after `main`'s last commit had freed column 0, and `main`'s three commits drew under
+  `b2`. A graph with no branch drawn falls back to exactly the order it always had. It returns
+  before touching a node when the highest column is 0, so a linear history draws exactly where
+  it drew before. It also stands
   down entirely if the snapshots are not all at one x, since the shift is defined relative to
   that. `lineageChildren` is shared with `snapshotLineageOrder` because the two have to agree on
   which child is first: one walks it next, the other gives it the parent's column
@@ -1570,7 +1582,7 @@ intellij/src/main/kotlin/plugin/
   from — the relationship a reader of a WAP table came to see, and the one the lineage alone
   cannot say. `Snapshot.wapId` / `.publishedWapId` / `.sourceSnapshotId` read the summary keys
   (`IcebergSchema.kt`), the audit id is searchable from both ends, and `wap` is the fixture.
-  `trunkCommits` is what keeps the staged commit out of `main`'s column: it and main's next
+  `lineRanks` is what keeps the staged commit out of `main`'s column: it and main's next
   commit are both children of one snapshot, and the staged one was written first
 - **Four layouts, and only one of them gets the refinements.** `GraphLayoutAlgorithm` offers
   layered left-to-right (the default, and the right shape for a containment hierarchy drawn as
@@ -1723,7 +1735,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,144 tests across 146 files (876 in :core, 260 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,146 tests across 146 files (877 in :core, 261 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1823,6 +1835,7 @@ container invocation and the traps in it:
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
 | `default/pstats` | `PartitionStatsFixtureTest` | a partition statistics file, written by Iceberg 1.10 — three partitions, one with a positional delete, checked against the writer's `.partitions` and this app's own live-file walk |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
+| `default/nested` | `SnapshotTracksTest` | a branch cut from another branch's first commit and committing before it does again, written by `docs/fixtures/nested.scala` — the id `AS OF VERSION` needs read back from `.refs`; the metadata log is what says `b1` is the older line |
 | `default/wap` | `WapFixtureTest` | write-audit-publish — a staged snapshot on no ref, main moving past it, `publish_changes` cherry-picking it with `source-snapshot-id` and `published-wap-id` |
 | `default/rolled` | `RolledBackFixtureTest` | main set back to an earlier snapshot by `set_current_snapshot` — a second `snapshot-log` entry for the target, the abandoned commit retained on no ref, the next commit forking from the target |
 | `default/retained` | `RetainedFixtureTest` | refs with retention — a tag `RETAIN 90 DAYS`, a branch `RETAIN 30 DAYS WITH SNAPSHOT RETENTION 2 SNAPSHOTS` — and an `expire_snapshots` that kept what each ref's own settings say |

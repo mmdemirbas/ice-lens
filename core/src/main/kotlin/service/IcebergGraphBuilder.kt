@@ -551,15 +551,23 @@ object IcebergGraphBuilder {
      * every snapshot in the table. Refs are a statement about the table's present state, so they
      * come from one place: the current metadata.
      */
-    private fun currentRefsBySnapshot(tableModel: UnifiedTableModel): Map<Long, List<SnapshotRefLabel>> =
-        tableModel.metadatas.lastOrNull()?.metadata?.refs.orEmpty()
+    private fun currentRefsBySnapshot(tableModel: UnifiedTableModel): Map<Long, List<SnapshotRefLabel>> {
+        // The version that first lists each name: which of two branches is the older line, when
+        // they fork from one commit and the metadata log still holds the version that created it.
+        val createdIn = mutableMapOf<String, Int>()
+        tableModel.metadatas.forEach { meta ->
+            val version = metadataVersionFromFileName(meta.path.fileName.toString()) ?: return@forEach
+            meta.metadata.refs.orEmpty().keys.forEach { name -> createdIn.merge(name, version, ::minOf) }
+        }
+        return tableModel.metadatas.lastOrNull()?.metadata?.refs.orEmpty()
             .mapNotNull { (name, ref) ->
                 ref.snapshotId?.let { id ->
-                    id to SnapshotRefLabel(name, isBranch = !ref.type.equals("tag", ignoreCase = true))
+                    id to SnapshotRefLabel(name, isBranch = !ref.type.equals("tag", ignoreCase = true), createdInVersion = createdIn[name])
                 }
             }
             .groupBy({ it.first }, { it.second })
             .mapValues { (_, labels) -> labels.sortedWith(compareBy({ it.name != "main" }, { it.name })) }
+    }
 
     // --- Table summary ---
 

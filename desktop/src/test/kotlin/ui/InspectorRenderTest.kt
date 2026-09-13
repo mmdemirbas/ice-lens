@@ -1776,6 +1776,20 @@ class InspectorRenderTest {
     }
 
     /**
+     * A branch cut from a branch. What to look for: `b1`'s two commits in one column under its
+     * name, `b2`'s two in a column of their own with a lineage edge back into `b1`'s first, and
+     * `main`'s three commits under `main` — not under `b2`, which is where a reused column put
+     * them before `SnapshotTracks` stopped reusing one.
+     */
+    @Test
+    fun `the canvas draws a branch forked from a branch beside it`() {
+        val graph = graphFor("nested")
+        val columns = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().map { it.x }.distinct()
+        assertTrue(columns.size == 3, "main and two branches should occupy three columns, got $columns")
+        renderCanvas("graph-canvas-nested", graph, AggregationPolicy.DEFAULT_PAGE_SIZE, zoom = 0.35f)
+    }
+
+    /**
      * Two snapshots compared, which is a panel only a two-node selection reaches.
      *
      * Rendered on `mor` rather than `branched`: the interesting shape is a compaction, where files

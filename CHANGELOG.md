@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is read whole when the filter left any file of it.
 
 ### Fixed
+- **A branch cut from another branch draws in a column of its own, and no column is reused.**
+  Two children of one commit were ordered by write time unless one was on `main`, so a branch
+  cut from a branch and committed to first took the older branch's column and put the fork
+  commit under its own name; and a branch reserved after another line had ended reused that
+  line's column, which put `main`'s commits under `b2` on the same table. Lines are ranked now —
+  `main`, then the other branches by the metadata version that first lists them — and every
+  line keeps a column of its own. `nested` is the fixture.
 - **A Paimon key with no insert record is not a row.** Every engine but `aggregation` answers
   no row for a key whose records are all retractions — ignored under `ignore-delete`, or
   retracting by group — and the merged count took them as rows; they are counted as *never

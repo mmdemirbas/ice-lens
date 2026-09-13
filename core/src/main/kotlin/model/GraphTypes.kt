@@ -1044,7 +1044,13 @@ data class ConsumerSummary(
     val nextSnapshotPresent: Boolean,
 )
 
-data class SnapshotRefLabel(val name: String, val isBranch: Boolean) {
+/**
+ * A branch or tag on a snapshot. [createdInVersion] is the lowest retained metadata version
+ * whose `refs` lists the name — the closest thing the format keeps to when the ref was made,
+ * since a ref itself carries no time — and null where no version's `refs` names it (a Paimon
+ * branch, or a table read from one metadata file). It orders lines at a fork and is not identity.
+ */
+data class SnapshotRefLabel(val name: String, val isBranch: Boolean, val createdInVersion: Int? = null) {
     val display: String get() = if (isBranch) name else "$name (tag)"
 }
 
