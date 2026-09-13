@@ -62,6 +62,7 @@ object IcebergGraphBuilder {
             tableNodeId,
             tableSummary,
             unreferencedFiles = DeferredRead.of { findUnreferencedFiles(tableModel) },
+            expiryFiles = DeferredRead.of { tableModel.expiryFileInput() },
         )
 
         // Deletion vectors by the data file each one covers, built on first use rather than here:

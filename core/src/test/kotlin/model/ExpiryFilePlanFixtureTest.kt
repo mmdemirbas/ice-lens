@@ -131,6 +131,23 @@ class ExpiryFilePlanFixtureTest {
         assertTrue(checked >= 30, "checked only $checked plans")
     }
 
+    /**
+     * The panel's input rides the table node, built from the model. Built from the drawn graph
+     * it was wrong on any real table: at a page size of one, aggregation folds every snapshot
+     * and manifest but the first out of the graph, and a plan over what is drawn misses the
+     * older lists — which are the ones an expiry removes.
+     */
+    @Test
+    fun `the table node's input is the model's, whatever the page size draws`() {
+        val m = model("sweep")
+        val graph = service.GraphLayoutService.layoutGraph(m, showRows = false, policy = service.AggregationPolicy(pageSize = 1))
+        val table = graph.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        assertTrue(graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().size < m.metadatas.last().metadata.snapshots.size, "the page size should have folded snapshots out")
+        val (expiry, fromModel) = planFor("sweep")
+        val fromNode = table.expiryFiles.value!!.planExpiryFiles(expiry.removed.toSet())
+        assertEquals(fromModel.files, fromNode.files)
+    }
+
     @Test
     fun `nothing removed plans nothing`() {
         val m = model("sweep")

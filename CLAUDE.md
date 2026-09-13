@@ -727,8 +727,12 @@ intellij/src/main/kotlin/plugin/
   The sweep every fixture is held to is the one wrong the planner must not do: no planned data or
   delete file is live in a retained snapshot, which is where the ancestor rule earns its keep on
   the two tables with a `rewrite_manifests`. The metadata panel's `Expiry Files` section plans
-  the `older_than = now` column's removals from `SnapshotNode.manifestList` and the manifest
-  nodes' entries, data files first and in the error colour, `MAX_EXPIRY_FILE_ROWS` (200) listed
+  the `older_than = now` column's removals from `TableNode.expiryFiles`, a `DeferredRead` the
+  builder fills from the **model** — never from the drawn nodes, because aggregation folds the
+  snapshots and manifests past the page size out of the graph, and those are exactly the older
+  lists an expiry removes; the first version read the graph and was complete only on tables
+  small enough to draw whole. Data files first and in the error colour, `MAX_EXPIRY_FILE_ROWS`
+  (200) listed
 - **The table panel sums the maintenance procedures to a line each, and computes none of them.**
   `MaintenanceSection` in `ui/NodeDetails.kt` asks the four planners at the table's current
   snapshot — `planRewrite`, `planManifestMerge`, `planExpiry` with `planExpiryFiles` on Iceberg;

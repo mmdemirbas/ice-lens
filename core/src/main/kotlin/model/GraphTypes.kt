@@ -351,6 +351,13 @@ sealed class GraphNode(
          * walk of the whole table directory, so deferred to a click rather than run at build.
          */
         val unreferencedFiles: DeferredRead<UnreferencedFilesReport> = DeferredRead.none(),
+        /**
+         * What an Iceberg expiry's file plan reads — see [ExpiryFileInput] — built from the model,
+         * never from the drawn graph: aggregation folds snapshots and manifests past the page
+         * size out of the graph, and a plan over the drawn part alone misses exactly the older
+         * lists an expiry removes. Nothing on Paimon.
+         */
+        val expiryFiles: DeferredRead<ExpiryFileInput> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 240.0, 96.0)

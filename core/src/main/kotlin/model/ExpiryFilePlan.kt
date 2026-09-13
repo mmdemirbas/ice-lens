@@ -96,15 +96,6 @@ fun UnifiedTableModel.expiryFileInput(): ExpiryFileInput {
     return ExpiryFileInput(latest.metadata, lists) { byPath[normalizeFilePath(it)] }
 }
 
-/** The same input read off a drawn graph, for [metadata]: every snapshot's list and every manifest's entries are on the nodes. */
-fun GraphModel.expiryFileInput(metadata: TableMetadata): ExpiryFileInput {
-    val lists = nodes.filterIsInstance<GraphNode.SnapshotNode>().filter { !it.expired }
-        .mapNotNull { n -> n.data.snapshotId?.let { it to n.manifestList } }.toMap()
-    val byPath = nodes.filterIsInstance<GraphNode.ManifestNode>()
-        .mapNotNull { n -> n.data.manifestPath?.let { normalizeFilePath(it) to n.entries.map { e -> e.entry } } }.toMap()
-    return ExpiryFileInput(metadata, lists) { byPath[normalizeFilePath(it)] }
-}
-
 /**
  * Plans the files for the snapshots in [removed] — the ids [planExpiry] would drop, or any set
  * — from [input], the table as it stands.

@@ -2484,11 +2484,15 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, graph: GraphModel) {
                 if (merge.mergedBins.isNotEmpty()) verdictSkippedColor() else null,
             )
             val expiry = meta.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs))
-            val freed = graph.expiryFileInput(meta).planExpiryFiles(expiry.removed.toSet())
+            val freed = node.expiryFiles.value?.copy(metadata = meta)?.planExpiryFiles(expiry.removed.toSet())
             rows += Row(
                 if (expiry.removed.isEmpty()) "nothing expires" else "would remove ${countNoun(expiry.removed.size, "snapshot")}",
                 "expire_snapshots (older_than = now)",
-                if (expiry.removed.isEmpty()) "every snapshot is kept by a ref" else "frees ${freed.describe} — ${formatBytes(freed.knownBytes)} the metadata accounts for, ${freed.cleanup.label}",
+                when {
+                    expiry.removed.isEmpty() -> "every snapshot is kept by a ref"
+                    freed == null -> "what that frees is not readable here"
+                    else -> "frees ${freed.describe} — ${formatBytes(freed.knownBytes)} the metadata accounts for, ${freed.cleanup.label}"
+                },
                 "${latest.fileName} → Expiry, Expiry Files",
                 if (expiry.removed.isEmpty()) null else verdictSkippedColor(),
             )
@@ -2563,8 +2567,11 @@ internal const val MAX_EXPIRY_FILE_ROWS = 200
 internal fun ExpiryFilesSection(metadata: TableMetadata, graph: GraphModel, nowMs: Long) {
     val colors = MaterialTheme.colorScheme
     val removed = metadata.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs)).removed.toSet()
-    val plan = graph.expiryFileInput(metadata).planExpiryFiles(removed)
-    CountedSection("Expiry Files — ${plan.describe}", plan.files.size, "files") {
+    // The input comes off the table node's model-built read, never the drawn nodes: aggregation
+    // folds older snapshots and manifests out of the graph, which are the ones an expiry removes.
+    val input = graph.nodes.filterIsInstance<GraphNode.TableNode>().firstOrNull()?.expiryFiles?.value?.copy(metadata = metadata)
+    val plan = input?.planExpiryFiles(removed)
+    CountedSection("Expiry Files — ${plan?.describe ?: "not readable"}", plan?.files?.size ?: 0, "files") {
         Text(
             "What the older_than = now expiry above would delete, the way RemoveSnapshots cleans " +
                 "up: every expired snapshot's manifest list; every manifest no retained snapshot lists; " +
@@ -2578,7 +2585,8 @@ internal fun ExpiryFilesSection(metadata: TableMetadata, graph: GraphModel, nowM
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
         )
-        when (plan.cleanup) {
+        when (plan?.cleanup) {
+            null -> Text("Not readable here — the table's manifests could not be read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
             ExpiryCleanup.NONE -> Text("Nothing expires under older_than = now, so nothing is freed.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
             else -> {
                 Text(
