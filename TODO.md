@@ -38,11 +38,12 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   into one. What has no way in at all is a comparison **between two columns**, and nothing recorded
   in a manifest could answer one anyway.
 
-- **Iceberg v3 is half-modelled.** A deletion vector's Puffin blob is now opened and its
-  positions decoded (`service/PuffinReader.kt`), so the inspector answers which rows a vector
-  deletes rather than only where the blob sits. **Row lineage is in** (`lineage`, written with
-  the 1.10 runtime dropped into the image — see CLAUDE.md's fixture notes for the jar swap). What
-  is still unsurfaced: the **variant / geometry / geography / timestamp_ns** types and **column
+- **Iceberg v3 is modelled up to what Spark 3.5 can write.** A deletion vector's Puffin blob is
+  opened and its positions decoded (`service/PuffinReader.kt`), so the inspector answers which
+  rows a vector deletes rather than only where the blob sits. **Row lineage is in** (`lineage`,
+  written with the 1.10 runtime dropped into the image — see CLAUDE.md's fixture notes for the
+  jar swap), down to a snapshot's `added-rows` being the id space it took rather than its
+  `added-records`. What is still unsurfaced: the **variant / geometry / geography / timestamp_ns** types and **column
   defaults** (`initial-default` / `write-default`). The jar swap does not reach them: Spark 3.5
   has no VARIANT type, and Iceberg 1.10's Spark 3.5 module answers `ALTER TABLE … ADD COLUMN … DEFAULT`
   with `UnsupportedOperationException: setting default values in Spark is currently unsupported`
