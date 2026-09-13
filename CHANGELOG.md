@@ -91,6 +91,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A partition statistics file is checked against the live files it describes.** Each row
+  leads with `yes` or `NO — data files: 9 recorded, 2 counted`, a live partition the file omits
+  and a listed partition with no live file are both disagreements, and the section's note says how
+  many rows disagree — a stale file after a cleanup or a rewrite is otherwise invisible, since a
+  planner reads it instead of walking the manifests.
 - **The metadata panel says what `expire_snapshots` would remove, and what keeps the rest.** An
   `Expiry` section plans the procedure the way Iceberg's `RemoveSnapshots` does — ref by ref, a
   branch's own snapshot age standing in for `older_than` on what it reaches — under the table's
