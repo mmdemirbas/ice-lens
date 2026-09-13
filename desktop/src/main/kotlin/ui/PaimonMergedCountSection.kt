@@ -82,14 +82,6 @@ internal fun PaimonMergedCountSection(
 @Composable
 private fun ResultBody(result: PaimonMergedCount.Result) {
     val colors = MaterialTheme.colorScheme
-    if (!result.applied) {
-        Text(
-            "${result.rule}; ${formatCount(result.fileRows)} rows are in the files.",
-            fontSize = TypeScale.small,
-            color = verdictUnevaluatedColor(),
-        )
-        return
-    }
     if (result.rule.isNotEmpty()) {
         Text(result.rule + ".", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
     }

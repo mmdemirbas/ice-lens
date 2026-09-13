@@ -1981,6 +1981,15 @@ class InspectorRenderTest {
                 PaimonMergedCountSection(four, startRequested = true) { sgdSettled.set(true) }
             }
         }
+        // `sgm` at snapshot 4: the group versioned by two fields, the rule naming both.
+        val (sgm, _) = latest("sgm")
+        val sgmFour = sgm.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().single { it.branch == null && it.data.id == 4L }
+        val sgmSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-merged-rows-sgm", width = 1400, height = 620, ready = sgmSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                PaimonMergedCountSection(sgmFour, startRequested = true) { sgmSettled.set(true) }
+            }
+        }
     }
 
     /**

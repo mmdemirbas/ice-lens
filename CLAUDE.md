@@ -1721,7 +1721,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,140 tests across 146 files (875 in :core, 260 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,144 tests across 146 files (876 in :core, 260 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1850,6 +1850,7 @@ container invocation and the traps in it:
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 | `paimon/db.db/pu`, `ag`, `fr` | `PaimonMergeEngineFixtureTest` | one primary-key table per merge engine other than the default — `partial-update` folding two writes and removing a key on `-D` until its re-insert, `aggregation` summing, and `first-row`, whose DELETE Spark ran as a file rewrite to level 0 that a batch read of a first-row table never reads: Paimon's own reads printed one row where the statements describe two |
+| `paimon/db.db/sgm` | `PaimonMergeEngineFixtureTest` | `partial-update` with a sequence group of two fields, `fields.g1,g2.sequence-group = a`, and `remove-record-on-sequence-group = g2` — an insert with a null in the tuple ordered below the row's, and Paimon's read at every snapshot |
 | `paimon/db.db/sg`, `sgd` | `PaimonMergeEngineFixtureTest` | `partial-update` with two sequence groups — `sg` inserts only, a lower group value not overriding a higher; `sgd` with `remove-record-on-sequence-group = ga`, a DELETE writing a `-D` that removes the key and an insert bringing it back, Paimon's read at every snapshot |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
@@ -2170,8 +2171,16 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   Spark's DELETE takes the upsert path under that option and writes a `-D` carrying the row's
   current `ga`, at or above itself — and `PaimonMergeEngineFixtureTest` holds every snapshot's
   count to what Paimon printed (2, 2, 3, 2, 3, 3) and the removed key's three records at
-  snapshot 5 to superseded, retraction, live. A group of several sequence fields named by the
-  option is the one shape left "not applied". **And `DataTableBatchScan` filters `level > 0` for a first-row table or a primary-key
+  snapshot 5 to superseded, retraction, live. **A group versioned by several fields compares as
+  a tuple** — field by field in the key's order, a null below every value, two nulls equal, which
+  is the generated comparator's order (`ComparatorCodeGenerator`, `nullIsLast = false`) — and the
+  option removes on a `-D` whichever of the group's fields it names, since
+  `retractWithSequenceGroup` walks the group's fields and removes at the first named one. `sgm`
+  is that oracle (`fields.g1,g2.sequence-group`, `g2` named): its counts by snapshot are 3, 3, 3,
+  2, 1, 1, 2, and snapshot 4 is the one that carries the null order — a key's second insert holds
+  `(1, NULL)` against the row's `(1, 1)`, and only with a null *below* 1 does the `-D` carrying
+  `(1, 1)` land at or above it; read the other way the count is 3, which the suite saw when the
+  comparison was flipped. **And `DataTableBatchScan` filters `level > 0` for a first-row table or a primary-key
   table with deletion vectors** (`batchScanSkipLevel0`): the writer's forced compaction is
   supposed to have moved every level-0 record up, so a batch read trusts that and never opens
   level 0. `fr` is where trusting it fails — Spark refuses an upsert delete on a first-row table

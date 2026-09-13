@@ -79,13 +79,16 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   read that lands for an older selection; the scan is memoised on the node, so a second click is
   instant.
 
-- **The Paimon merge rules stop at a multi-field removal group.** `deduplicate`, `first-row`,
-  `partial-update` and `aggregation` are applied by the merged count and the row lookup
-  (`model/PaimonMergeRule.kt`), each on a table written under it; `partial-update` with
-  `fields.*.sequence-group` is applied too, its `remove-record-on-sequence-group` folded per key
-  (`service/PaimonSequenceGroups.kt`, `sg` and `sgd`), except where the option names a group of
-  several sequence fields — the generated comparator's order over a partly-null tuple is not
-  reproduced here, and that shape is reported as not applied. Two more edges: the bucket's other files are read for a hit's key without pruning on their
+- **The Paimon merge rules are applied on every shape a fixture has been written for.**
+  `deduplicate`, `first-row`, `partial-update` and `aggregation` are applied by the merged count
+  and the row lookup (`model/PaimonMergeRule.kt`), each on a table written under it;
+  `partial-update` with `fields.*.sequence-group` too, its `remove-record-on-sequence-group`
+  folded per key (`service/PaimonSequenceGroups.kt`, `sg`, `sgd`, and `sgm` for a group of two
+  fields, whose tuple order with a null the count at one snapshot depends on). What no fixture
+  reaches: a `-D` *below* the row's group value, since Spark's DELETE writes the merged row's own
+  values back, so that branch of the fold is pinned by a unit test alone; and `fields.<f>.aggregate-function`
+  inside a partial-update group, which changes the row's values and never whether the key is a
+  row. Two edges on the reads: the bucket's other files are read for a hit's key without pruning on their
   `_MIN_KEY`/`_MAX_KEY`, which a large bucket would want; and a data-evolution split is stitched
   on `file_row_number`, which DuckDB assigns in Parquet only — an ORC data-evolution table
   reports the split as unreadable rather than reading its files apart.

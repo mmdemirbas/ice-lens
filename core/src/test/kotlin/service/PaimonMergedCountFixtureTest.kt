@@ -9,7 +9,6 @@ import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -32,7 +31,9 @@ class PaimonMergedCountFixtureTest {
     private val expected = mapOf(
         // primary-key tables, merged
         "lk" to 3, "dv" to 1497, "pc" to 7, "px" to 6, "pxa" to 6, "cs" to 4, "se" to 3, "cl" to 2, "tg" to 2,
-        "pt" to 10, "br" to 5, "fi" to 5, "ep" to 3, "sm" to 3, "pea" to 7,
+        "pt" to 10, "br" to 5, "fi" to 5, "ep" to 3, "sm" to 3, "pe" to 7, "pea" to 7,
+        // partial-update under sequence groups: inserts only, a -D removing by a single field, and by one of two
+        "sg" to 3, "sgd" to 3, "sgm" to 2,
         // the other merge engines: partial-update, aggregation, and first-row — whose one row is
         // what Paimon's own read printed, the DELETE's rewritten file sitting at level 0 unread
         "pu" to 4, "ag" to 2, "fr" to 1,
@@ -46,8 +47,14 @@ class PaimonMergedCountFixtureTest {
             val model = model(fixture)
             val result = countOf(model, model.snapshots.last())
             assertEquals(rows.toLong(), result.merged, "$fixture: $result")
-            assertTrue(result.applied && result.failed == 0 && result.bucketsLeft == 0, "$fixture: $result")
+            assertTrue(result.failed == 0 && result.bucketsLeft == 0, "$fixture: $result")
         }
+    }
+
+    /** A table added under `example/` gets a figure here or fails here — `test` is Flink-written, and no script printed its read. */
+    @Test
+    fun `every Paimon fixture but the Flink-written one has a figure`() {
+        assertEquals(model.FixtureCatalog.paimon.toSet() - "test", expected.keys)
     }
 
     @Test
@@ -89,21 +96,5 @@ class PaimonMergedCountFixtureTest {
         val br = model("br")
         val dev = br.branches.single { it.name == "dev" }
         assertEquals(4L, countOf(br, dev.snapshots.last()).merged, "keys 1, 2, 3 from the tag and 5 from the branch")
-    }
-
-    @Test
-    fun `remove-record-on-sequence-group naming a multi-field group is reported, not applied`() {
-        val pc = model("pc")
-        val input = assertNotNull(pc.paimonReadInputOf(pc.snapshots.last(), replayPaimonSnapshot(pc.snapshots.last())))
-        val options = input.schema.options + mapOf(
-            "merge-engine" to "partial-update", "fields.k,v.sequence-group" to "v", "partial-update.remove-record-on-sequence-group" to "k",
-        )
-        val result = PaimonMergedCount.count(input.copy(rule = model.paimonMergeRuleOf(options, hasPrimaryKey = true)))
-        assertTrue(!result.applied)
-        assertNull(result.merged)
-        assertEquals("partial-update", result.mergeEngine)
-        // A single-field group there, or no removal option at all, is applied.
-        assertTrue(model.paimonMergeRuleOf(options + ("fields.k,v.sequence-group" to "") - "fields.k,v.sequence-group" + ("fields.k.sequence-group" to "v"), hasPrimaryKey = true).applied)
-        assertTrue(model.paimonMergeRuleOf(options - "partial-update.remove-record-on-sequence-group", hasPrimaryKey = true).applied)
     }
 }

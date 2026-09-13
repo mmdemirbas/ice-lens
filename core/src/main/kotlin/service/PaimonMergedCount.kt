@@ -56,8 +56,6 @@ object PaimonMergedCount {
     data class Result(
         val snapshotId: Long,
         val mergeEngine: String,
-        /** Whether the merge engine's rule was applied; false leaves [merged] null. */
-        val applied: Boolean,
         /** Whether the answer came from the metadata alone — an append table's. */
         val fromMetadata: Boolean,
         val buckets: List<BucketCount>,
@@ -70,7 +68,7 @@ object PaimonMergedCount {
         /** The rule, for the panel to state. */
         val rule: String = "",
     ) {
-        val merged: Long? get() = if (applied && buckets.none { it.error != null } && bucketsLeft == 0) buckets.sumOf { it.merged } else null
+        val merged: Long? get() = if (buckets.none { it.error != null } && bucketsLeft == 0) buckets.sumOf { it.merged } else null
         val retracted: Long get() = buckets.sumOf { it.retracted }
         val insertless: Long get() = buckets.sumOf { it.insertless }
         val vectorMarked: Long get() = buckets.sumOf { it.vectorMarked }
@@ -90,13 +88,7 @@ object PaimonMergedCount {
                 val rows = files.sumOf { it.recordCount ?: 0L }
                 BucketCount(scope.first, scope.second, files.size, rows, rows - partial, 0, vectors)
             }
-            return Result(input.snapshotId, input.mergeEngine, applied = true, fromMetadata = true, buckets = counted, bucketsLeft = 0, fileRows = fileRows)
-        }
-        if (!rule.applied) {
-            return Result(
-                input.snapshotId, input.mergeEngine, applied = false, fromMetadata = false, buckets = emptyList(), bucketsLeft = buckets.size,
-                fileRows = fileRows, skippedFiles = skipped.size, skippedRows = skipped.sumOf { it.recordCount ?: 0L }, rule = rule.describe(),
-            )
+            return Result(input.snapshotId, input.mergeEngine, fromMetadata = true, buckets = counted, bucketsLeft = 0, fileRows = fileRows)
         }
         val keyColumns = input.trimmedPrimaryKeys.map { PaimonRowLookup.KEY_PREFIX + it }
         val toRead = buckets.take(MAX_BUCKETS)
@@ -107,7 +99,7 @@ object PaimonMergedCount {
                 .getOrElse { BucketCount(scope.first, scope.second, files.size, files.sumOf { f -> f.recordCount ?: 0L }, 0, 0, 0, it.message ?: it.toString()) }
         }
         return Result(
-            input.snapshotId, input.mergeEngine, applied = true, fromMetadata = false, buckets = counted, bucketsLeft = buckets.size - toRead.size,
+            input.snapshotId, input.mergeEngine, fromMetadata = false, buckets = counted, bucketsLeft = buckets.size - toRead.size,
             fileRows = fileRows, skippedFiles = skipped.size, skippedRows = skipped.sumOf { it.recordCount ?: 0L }, rule = rule.describe(),
         )
     }

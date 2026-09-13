@@ -218,7 +218,7 @@ object PaimonRowLookup {
             val files = input.bucketOf(bucketRaws.first().file)
             runCatching {
                 val states = queryKeyStates(files, keyColumns, casts, keys, input.rule.removingKinds)
-                if (input.rule.applied && input.rule.sequenceGroupRemovals.isNotEmpty()) withSequenceGroupRemovals(input, files, keyColumns, casts, keys, states) else states
+                if (input.rule.sequenceGroupRemovals.isNotEmpty()) withSequenceGroupRemovals(input, files, keyColumns, casts, keys, states) else states
             }
                 .onFailure { logger.warn("Could not read bucket {}: {}", scope, it.message) }
                 .getOrDefault(emptyMap())
@@ -420,7 +420,6 @@ object PaimonRowLookup {
             val how = when {
                 rule.retractionsIgnored -> ", ignored under ignore-delete"
                 rule.retractionsRejected -> ", which a read of this table fails on"
-                !rule.applied -> ", under a rule not applied here"
                 rule.sequenceGroups && sequence != null && state?.removals?.contains(sequence) == true ->
                     ", at or above the row's $fields: removed the key (remove-record-on-sequence-group)"
                 rule.sequenceGroups && kind == PaimonRowKind.DELETE && rule.sequenceGroupRemovals.isNotEmpty() ->
@@ -437,10 +436,6 @@ object PaimonRowLookup {
         // anyway; under a folding engine it is the one thing that does.
         val removal = state.lastRemoval?.takeIf { it > sequence }
         return when {
-            !rule.applied -> RowHit(
-                file.fileName, position, cells, RowFate.UNKNOWN,
-                note = "merge-engine = ${rule.engine} with remove-record-on-sequence-group on a multi-field group; not applied here",
-            )
             state.anyRetraction && rule.retractionsRejected -> RowHit(
                 file.fileName, position, cells, RowFate.UNKNOWN, note = "the key has a retraction, which a read of this table fails on",
             )

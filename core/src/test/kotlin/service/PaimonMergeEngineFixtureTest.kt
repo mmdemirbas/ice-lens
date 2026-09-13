@@ -48,18 +48,18 @@ class PaimonMergeEngineFixtureTest {
         assertTrue(first.skipsLevel0 && first.retractionsRejected && first.removingKinds.isEmpty())
         assertTrue(paimonMergeRuleOf(mapOf("merge-engine" to "first-row", "first-row.ignore-delete" to "true"), hasPrimaryKey = true).retractionsIgnored)
         val partial = paimonMergeRuleOf(mapOf("merge-engine" to "partial-update"), hasPrimaryKey = true)
-        assertTrue(partial.retractionsRejected && partial.removingKinds.isEmpty() && partial.applied)
+        assertTrue(partial.retractionsRejected && partial.removingKinds.isEmpty())
         val partialRemoving = paimonMergeRuleOf(mapOf("merge-engine" to "partial-update", "partial-update.remove-record-on-delete" to "true"), hasPrimaryKey = true)
         assertEquals(setOf(PaimonRowKind.DELETE), partialRemoving.removingKinds)
         assertTrue(!partialRemoving.retractionsRejected)
         val grouped = paimonMergeRuleOf(mapOf("merge-engine" to "partial-update", "fields.b.sequence-group" to "s"), hasPrimaryKey = true)
-        assertTrue(grouped.applied && grouped.sequenceGroups && !grouped.retractionsRejected && grouped.removingKinds.isEmpty() && grouped.sequenceGroupRemovals.isEmpty())
+        assertTrue(grouped.sequenceGroups && !grouped.retractionsRejected && grouped.removingKinds.isEmpty() && grouped.sequenceGroupRemovals.isEmpty())
         val groupedRemoving = paimonMergeRuleOf(
             mapOf("merge-engine" to "partial-update", "fields.b.sequence-group" to "s", "partial-update.remove-record-on-sequence-group" to "b"),
             hasPrimaryKey = true,
         )
         assertEquals(listOf(listOf("b")), groupedRemoving.sequenceGroupRemovals)
-        assertTrue(groupedRemoving.applied && groupedRemoving.removingKinds.isEmpty(), "a -D removes by its value on b, not by its kind")
+        assertTrue(groupedRemoving.removingKinds.isEmpty(), "a -D removes by its value on b, not by its kind")
         assertTrue(dedup.keyNeedsInsert && !paimonMergeRuleOf(mapOf("merge-engine" to "aggregation"), hasPrimaryKey = true).keyNeedsInsert)
         val agg = paimonMergeRuleOf(mapOf("merge-engine" to "aggregation"), hasPrimaryKey = true)
         assertTrue(agg.removingKinds.isEmpty() && !agg.retractionsRejected && agg.keeps == PaimonMergeKeeps.COMBINED)
@@ -133,7 +133,7 @@ class PaimonMergeEngineFixtureTest {
     @Test
     fun `sequence groups fold, and a -D removes the key only at or above the row's named sequence field`() {
         val sg = assertNotNull(model("sg").paimonRowLookupInput())
-        assertTrue(sg.rule.sequenceGroups && sg.rule.applied && sg.rule.sequenceGroupRemovals.isEmpty())
+        assertTrue(sg.rule.sequenceGroups && sg.rule.sequenceGroupRemovals.isEmpty())
         assertEquals(3L, PaimonMergedCount.count(sg).merged, "Paimon printed three rows")
         val keyOne = lookup("sg", "k", "1").hits
         assertEquals(listOf(RowFate.MERGED, RowFate.MERGED), keyOne.map { it.fate }.sortedBy { it.name }, "two inserts folded, whichever group each moved: $keyOne")
@@ -144,7 +144,6 @@ class PaimonMergeEngineFixtureTest {
         for ((id, rows) in expected) {
             val snapshot = sgd.snapshots.single { it.metadata.id == id }
             val result = PaimonMergedCount.count(assertNotNull(sgd.paimonReadInputOf(snapshot, replayPaimonSnapshot(snapshot))))
-            assertTrue(result.applied, "snapshot $id")
             assertEquals(rows, result.merged, "snapshot $id: ${result.buckets}")
         }
         // At snapshot 5 the key's three records are all live files: the first insert dropped by
@@ -158,6 +157,34 @@ class PaimonMergeEngineFixtureTest {
         assertEquals(0L, PaimonMergedCount.count(atFive).buckets.single().retracted, "no key's last record is that -D any more")
         val four = sgd.snapshots.single { it.metadata.id == 4L }
         assertEquals(1L, PaimonMergedCount.count(assertNotNull(sgd.paimonReadInputOf(four, replayPaimonSnapshot(four)))).buckets.single().retracted, "at snapshot 4 it is")
+    }
+
+    /**
+     * `sgm` versions its group by two fields (`fields.g1,g2.sequence-group = a`) and names the
+     * second of them in `remove-record-on-sequence-group`. Paimon's read at every snapshot is in
+     * the script's header — 3, 3, 3, 2, 1, 1, 2 — and the figure that carries the comparator's
+     * null order is snapshot 4: key 2's second insert holds `(1, NULL)` against the row's `(1, 1)`,
+     * and only with a null *below* 1 does the row's tuple stay `(1, 1)` for the `-D` carrying
+     * `(1, 1)` to be at or above it. Read as above, the key would survive and the count be 3.
+     */
+    @Test
+    fun `a sequence group of two fields compares as a tuple, a null lowest, and a -D removes on either field named`() {
+        val sgm = model("sgm")
+        val rule = assertNotNull(sgm.paimonRowLookupInput()).rule
+        assertEquals(listOf(listOf("g1", "g2")), rule.sequenceGroupRemovals, "g2 is named, and the group is both")
+        assertTrue(rule.describe().contains("at or above the row's g1,g2"), rule.describe())
+        val expected = mapOf(1L to 3L, 2L to 3L, 3L to 3L, 4L to 2L, 5L to 1L, 6L to 1L, 7L to 2L)
+        for ((id, rows) in expected) {
+            val snapshot = sgm.snapshots.single { it.metadata.id == id }
+            val result = PaimonMergedCount.count(assertNotNull(sgm.paimonReadInputOf(snapshot, replayPaimonSnapshot(snapshot))))
+            assertEquals(rows, result.merged, "snapshot $id: ${result.buckets}")
+        }
+        // Key 2 at snapshot 4: two inserts dropped by the -D, and the -D that removed the key.
+        val four = sgm.snapshots.single { it.metadata.id == 4L }
+        val atFour = assertNotNull(sgm.paimonReadInputOf(four, replayPaimonSnapshot(four)))
+        val keyTwo = PaimonRowLookup.lookup(atFour, ScanFilter.Term(ScanPredicate("k", PredicateOp.EQ, "2")), emptySet()).hits.sortedBy { it.cells["_SEQUENCE_NUMBER"].toString().toLong() }
+        assertEquals(listOf(RowFate.SUPERSEDED, RowFate.SUPERSEDED, RowFate.RETRACTION), keyTwo.map { it.fate }, keyTwo.toString())
+        assertTrue(assertNotNull(keyTwo[2].note).contains("at or above the row's g1,g2: removed the key"), keyTwo[2].note.orEmpty())
     }
 
     /** The fold alone, on the shapes the fixture cannot write: a `-D` below the row's value, a null one, a key never inserted. */
@@ -174,5 +201,12 @@ class PaimonMergeEngineFixtureTest {
         assertTrue(!reinserted.gone && reinserted.removals.map { it.sequence } == listOf(2L), "the row starts over after a removal, so a lower value inserts")
         assertTrue(PaimonSequenceGroups.fold(listOf(rec(1, delete, 5)), notNull).gone, "never inserted")
         assertTrue(PaimonSequenceGroups.fold(listOf(rec(1, insert, 10), rec(2, PaimonRowKind.UPDATE_BEFORE, 11)), notNull).let { !it.gone && it.removals.isEmpty() }, "a -U never removes")
+        // A group of two fields: the tuple decides, a null below any value, and (1, NULL) is not an empty group.
+        fun pair(s: Long, kind: Int, g1: Int?, g2: Int?) = PaimonSequenceGroups.Record(s, kind, "f$s", listOf(listOf(g1, g2)))
+        val pairNotNull = listOf(listOf(false, false))
+        assertTrue(!PaimonSequenceGroups.fold(listOf(pair(1, insert, 1, 1), pair(2, delete, 1, null)), pairNotNull).gone, "(1, NULL) is below (1, 1): the key stays")
+        assertTrue(PaimonSequenceGroups.fold(listOf(pair(1, insert, 1, null), pair(2, delete, 1, 1)), pairNotNull).gone, "(1, 1) is above (1, NULL): removed")
+        assertTrue(PaimonSequenceGroups.fold(listOf(pair(1, insert, 2, null), pair(2, delete, 1, 9)), pairNotNull).gone.not(), "the first field decides before the second is looked at")
+        assertTrue(PaimonSequenceGroups.fold(listOf(pair(1, insert, 1, null), pair(2, insert, 1, 1), pair(3, insert, 1, null), pair(4, delete, 1, 1)), pairNotNull).gone, "sgm's key 2: the row's tuple stays (1, 1) through the lower insert")
     }
 }

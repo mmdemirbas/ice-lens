@@ -26,8 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is counted and looked up rather than reported as not applied: a retraction retracts its group's
   columns and the key stays, and under `partial-update.remove-record-on-sequence-group` a `-D` at
   or above the row's value on the named field removes the key — folded per key in sequence order,
-  the way `PartialUpdateMergeFunction` decides it. `sg` and `sgd` are the fixtures; a group of
-  several sequence fields named by the option is the one shape still not applied.
+  the way `PartialUpdateMergeFunction` decides it. `sg` and `sgd` are the fixtures, and `sgm`
+  for a group versioned by two fields — compared as a tuple with a null below every value, the
+  generated comparator's order, and removed on a `-D` whichever of its fields the option names.
 - **The Paimon row lookup reads a data-evolution split stitched.** Files sharing a first row id
   are joined on their row number, each column from the freshest file holding it, and the filter
   runs over the stitched row — so on `de` a lookup answers `(1, 11, 1)` with `b from <patch>` as

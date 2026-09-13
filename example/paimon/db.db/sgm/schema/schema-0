@@ -1,0 +1,41 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT NOT NULL"
+  }, {
+    "id" : 1,
+    "name" : "a",
+    "type" : "INT"
+  }, {
+    "id" : 2,
+    "name" : "g1",
+    "type" : "INT"
+  }, {
+    "id" : 3,
+    "name" : "g2",
+    "type" : "INT"
+  }, {
+    "id" : 4,
+    "name" : "b",
+    "type" : "INT"
+  }, {
+    "id" : 5,
+    "name" : "gb",
+    "type" : "INT"
+  } ],
+  "highestFieldId" : 5,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ "k" ],
+  "options" : {
+    "bucket" : "1",
+    "owner" : "root",
+    "fields.g1,g2.sequence-group" : "a",
+    "merge-engine" : "partial-update",
+    "partial-update.remove-record-on-sequence-group" : "g2",
+    "fields.gb.sequence-group" : "b"
+  },
+  "timeMillis" : 1789332671537
+}
