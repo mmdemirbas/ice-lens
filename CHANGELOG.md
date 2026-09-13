@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panel's `Delete Files` section asks the delete files a scan pairs with the row's file, behind
   a click — the panel's `Deleted` row could only answer for a v3 vector, and said *not by a
   deletion vector* of a row a v2 positional delete had removed.
+- **A sampled Paimon record says what the merge engine does with it.** The row panel's `Merge`
+  section runs the table's row lookup for the record's key, behind a click — superseded by the
+  file holding the later write, a retraction, folded, live — with the key's other records under
+  it.
 - **The IDE strip lists a file's history.** A `History` row under a data file on either format,
   drawn reading and filled off the EDT — which commit added the file, which removed it, how many
   retained snapshots still list it live.

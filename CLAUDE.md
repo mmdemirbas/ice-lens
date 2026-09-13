@@ -137,6 +137,7 @@ desktop/src/main/kotlin/
     ├── PaimonMergedCountSection.kt # The rows a read of a Paimon snapshot returns, behind a click on a primary-key table
     ├── LiveRowsSection.kt     # The rows a read of an Iceberg snapshot returns, behind a click where a delete manifest is listed
     ├── RowDeletesSection.kt   # Whether a read returns a sampled Iceberg row: the delete files paired with its file, asked for it behind a click
+    ├── PaimonRowMergeSection.kt # The same on Paimon: the merge engine over the record's key, the row lookup run for it behind a click
     ├── TimeTravelSection.kt   # A typed time and the snapshot it resolves to, on the metadata panel and the Paimon table panel
     ├── RowLookupSection.kt    # The scan filter one step further: the matching rows read from the files it leaves, each with its fate — both formats
     ├── NodePanels.kt          # Table, row, error and group panels
@@ -540,7 +541,11 @@ intellij/src/main/kotlin/plugin/
   and until this the panel's `Deleted` row said *not by a deletion vector* of a row a positional
   delete had removed. `RowFateFixtureTest` holds `mor`'s id 7 to deleted under the compacted file
   and live under the copy the compaction removed — the delete written after it does not reach
-  that file — and `eqdel`'s 2 and 3 to their two kinds
+  that file — and `eqdel`'s 2 and 3 to their two kinds. `PaimonRowMergeSection` is the Paimon
+  twin on the same panel: a record is a version of a row and its fate depends on the key's
+  other records in other files, so it runs the table's row lookup for the record's own key,
+  leads with the record's line and lists the key's other records under it — `lk`'s superseded
+  record is the capture
 - **A deletion vector is decoded, and decoded lazily.** `service/PuffinReader.kt` reads the
   Puffin container and the `deletion-vector-v1` blob inside it — a 4-byte big-endian length, the
   magic `D1 D3 39 64`, a 64-bit "portable" Roaring bitmap, and a 4-byte big-endian **CRC-32**

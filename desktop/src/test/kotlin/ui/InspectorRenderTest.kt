@@ -59,6 +59,7 @@ import model.SnapshotRefLabel
 import model.UnifiedTableModel
 import service.AggregationPolicy
 import service.GraphLayoutService
+import service.PaimonRowLookup
 import service.IcebergGraphBuilder
 
 /**
@@ -2031,6 +2032,26 @@ class InspectorRenderTest {
         renderUntil("row-node-deleted-asked", width = 1400, height = 460, ready = rowSettled::get) {
             Column(Modifier.padding(16.dp)) {
                 RowDeletesSection(seven, mor, startRequested = true) { rowSettled.set(true) }
+            }
+        }
+        // And a Paimon record's own panel on `lk`: the updated key's old record, superseded by
+        // the file holding the update, with the key's other records under it.
+        val lkRows = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/lk").absolutePath)),
+            showRows = true,
+        )
+        val lkInput = requireNotNull(lkRows.nodes.filterIsInstance<GraphNode.TableNode>().single().paimonRowLookup.value)
+        val superseded = lkRows.nodes.filterIsInstance<GraphNode.RowNode>().first { row ->
+            val parent = lkRows.edges.first { it.toId == row.id }.let { lkRows.nodeById[it.fromId] as GraphNode.PaimonDataFileNode }
+            val file = lkInput.files.firstOrNull { it.fileName == parent.entry.file?.fileName } ?: return@first false
+            val key = row.resolvedData["_KEY_k"]?.toString() ?: return@first false
+            val hits = PaimonRowLookup.lookup(lkInput, ScanFilter.Term(model.ScanPredicate("k", model.PredicateOp.EQ, key)), emptySet()).hits
+            hits.any { it.filePath == file.fileName && it.position == row.filePosition && it.fate == model.RowFate.SUPERSEDED }
+        }
+        val mergeSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-row-node-merge", width = 1400, height = 620, ready = mergeSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                PaimonRowMergeSection(superseded, lkRows, startRequested = true) { mergeSettled.set(true) }
             }
         }
         // And on `de`, data evolution: a filter on the patched value finds the row, stitched from
