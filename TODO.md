@@ -43,9 +43,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   filtered plan agreeing file for file. The **file index** is decoded too — the bloom filter, its
   two hashes, and the rule for when a read consults it, which on a primary-key table is only a
   split read raw (`model/PaimonFileIndexPruning.kt`, `fa` and `fi` against `FileIndexPredicate`).
-  What is left of the index is the other types (`bitmap`, `bsi`, `dynamic-bitmap`), named and
-  not read, and a bloom filter over a `TIMESTAMP` column, whose hash needs the precision and is
-  declined rather than guessed.
+  The temporal hashes are in too (`ft`: a date's epoch day, a timestamp's microseconds). What
+  is left of the index is the other types (`bitmap`, `bsi`, `dynamic-bitmap`), named and not
+  read.
 
 - **Iceberg v3 is modelled up to what Spark 3.5 can write.** A deletion vector's Puffin blob is
   opened and its positions decoded (`service/PuffinReader.kt`), so the inspector answers which

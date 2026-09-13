@@ -57,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fi` the two files merge-read and their indexes are never opened, which the rows say too. The
   panel's `File Index` row names the columns and index types. Held to `FileIndexPredicate` and
   the plan on both tables (`docs/fixtures/paimon-scan-plans.scala`).
+- **A Paimon bloom filter over a timestamp, time or date column is asked.** `FastHash`'s
+  temporal half: a date over its epoch day, a time over its milliseconds of the day, a
+  timestamp of either kind over its microseconds since the epoch (milliseconds at precision 3
+  and below). `ft` is the fixture, and Paimon's plan is the oracle — a value the file holds is
+  kept, and the same second without its microseconds is skipped though it sits inside the
+  file's bounds.
 - **The delete pairing applies Iceberg's partition and bounds rules.** A delete is keyed by the
   spec and partition it was written under and weighed only against data files under the same
   key — a vector or a positional delete naming one file is keyed by path instead, and an

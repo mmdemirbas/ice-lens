@@ -1775,7 +1775,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,175 tests across 155 files (905 in :core, 262 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,176 tests across 155 files (906 in :core, 262 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1896,6 +1896,7 @@ container invocation and the traps in it:
 | `paimon/db.db/cs` | `PaimonConsumerFixtureTest` | a consumer standing on snapshot 2, and an `expire_snapshots(retain_max = 1)` that left snapshots 2 and 3 because of it |
 | `paimon/db.db/fi` | `PaimonFileIndexFixtureTest`, `PaimonFileIndexPruningTest` | a bloom-filter file index both ways — a 599 KB `.index` beside the first data file, 117 bytes embedded in the second entry — on a primary-key table, whose merge read consults neither |
 | `paimon/db.db/fa` | `PaimonFileIndexTest`, `PaimonFileIndexPruningTest` | the append twin — bloom filters on both columns, a 1,290-byte `.index` then an embedded one, and a 43-byte value for xxHash64's stripe; the table whose scan and read actually ask the index |
+| `paimon/db.db/ft` | `PaimonFileIndexTest`, `PaimonFileIndexPruningTest` | an append table with a bloom filter on a `TIMESTAMP(6)`, a `TIMESTAMP(6) WITH LOCAL TIME ZONE` and a `DATE` column, embedded — the temporal hashes, held to the plan on three values a column and on two misses inside the bounds that only a microsecond hash answers |
 | `paimon/db.db/ep` | `PaimonExternalPathFixtureTest` | `data-file.external-paths` — no bucket under the table, both files at `example/paimon/ep-files/bucket-0/` beside it, `_EXTERNAL_PATH` recorded |
 | `paimon/db.db/rt` | `PaimonRowTrackingFixtureTest` | `row-tracking.enabled` — two appends recording first ids 0 and 3, then a full compaction whose output records none and carries `_ROW_ID` per row |
 | `paimon/db.db/sm` | `PaimonStatsModeFixtureTest` | `fields.v.stats-mode = none` — `_VALUE_STATS` over two of three columns, named in `_VALUE_STATS_COLS`; the oracle for the subset decoding |
@@ -2324,9 +2325,15 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   `BloomFilter64`'s bit set, probed Kirsch–Mitzenmacher-style over one 64-bit hash — and **the
   hash is `FastHash`'s, two functions by type**: xxHash64 with seed 0 over a string's bytes
   (`xxHash64`, written from the published algorithm and held to its vectors) and Thomas Wang's
-  64-bit integer hash over anything numeric widened to a long, a date as its epoch day, a float
-  as its bits. `paimonFastHash` answers null for `BOOLEAN`, `DECIMAL` and the nested types,
-  which the writer refuses to index. `applyPaimonFileIndex` (`model/PaimonFileIndexPruning.kt`)
+  64-bit integer hash over anything numeric widened to a long, a date as its epoch day, a time
+  as its milliseconds of the day, a float as its bits, and a timestamp of either kind as its
+  microseconds since the epoch — its milliseconds at precision 3 and below, which no writer in
+  the corpus reaches, so that half is the source's word only. `ft` holds the temporal hashes to
+  the plan: three values a column may be held, and `ts = 2024-03-07 00:00:00` inside a file
+  whose bound is `…00:00:00.000001` is skipped, which a hash over milliseconds would not see. A
+  zone-less literal against a `WITH LOCAL TIME ZONE` column is read at UTC, the convention
+  `compareValues` already applies to the bounds. `paimonFastHash` answers null for `BOOLEAN`,
+  `DECIMAL` and the nested types, which the writer refuses to index. `applyPaimonFileIndex` (`model/PaimonFileIndexPruning.kt`)
   then marks every `=` the filter rules out as proved — `IN` is a disjunction of them by then —
   and re-folds the verdict; an index the writer left empty is a skip for any equality, as
   `EmptyFileIndexReader` reads it. **When it is asked is the finding, and it is not "always".**

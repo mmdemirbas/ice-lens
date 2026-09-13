@@ -67,6 +67,41 @@ class PaimonFileIndexTest {
         assertEquals(480, k.numBits)
     }
 
+    /**
+     * `ft`'s embedded index over its three temporal columns, held to the values the script wrote
+     * and to the plan oracle's two negatives — `ts = 2024-03-07 00:00:00` and
+     * `lz = 2024-03-06 11:30:00.001Z`, both inside the file's bounds and both skipped by Paimon's
+     * plan, which a hash over milliseconds rather than microseconds would answer "may hold".
+     */
+    @Test
+    fun `ft's index hashes a timestamp over its microseconds and a date over its epoch day`() {
+        val entry = FixtureCatalog.paimonModel("ft").snapshots.single().deltaManifests.single().entries.single()
+        val index = PaimonFileIndexReader.decode(entry.metadata.file!!.embeddedFileIndex!!)
+        assertEquals(setOf("ts", "lz", "d"), index.columns.keys)
+        val ts = assertNotNull(index.bloomFilter("ts"))
+        val ldt = { s: String -> java.time.LocalDateTime.parse(s.replace(' ', 'T')) }
+        for (present in listOf("2024-03-05 10:00:00.123456", "2024-03-06 11:30:00", "2024-03-07 00:00:00.000001")) {
+            assertTrue(ts.mightContain(paimonFastHash("TIMESTAMP(6)", ldt(present))!!), present)
+        }
+        assertFalse(ts.mightContain(paimonFastHash("TIMESTAMP(6)", ldt("2024-03-07 00:00:00"))!!))
+        assertFalse(ts.mightContain(paimonFastHash("TIMESTAMP(6)", ldt("2024-03-05 10:00:00.123"))!!))
+        val lz = assertNotNull(index.bloomFilter("lz"))
+        val lzType = "TIMESTAMP(6) WITH LOCAL TIME ZONE"
+        for (present in listOf("2024-03-05T10:00:00.123456Z", "2024-03-06T11:30:00Z", "2024-03-07T00:00:00.000001Z")) {
+            assertTrue(lz.mightContain(paimonFastHash(lzType, java.time.Instant.parse(present))!!), present)
+        }
+        assertFalse(lz.mightContain(paimonFastHash(lzType, java.time.Instant.parse("2024-03-06T11:30:00.001Z"))!!))
+        // A zone-less literal against the zoned column is read at UTC, as the bounds comparison reads it.
+        assertEquals(paimonFastHash(lzType, java.time.Instant.parse("2024-03-06T11:30:00Z")), paimonFastHash(lzType, ldt("2024-03-06 11:30:00")))
+        val d = assertNotNull(index.bloomFilter("d"))
+        for (present in 5..7) assertTrue(d.mightContain(paimonFastHash("DATE", java.time.LocalDate.of(2024, 3, present))!!), "d = $present")
+        assertFalse(d.mightContain(paimonFastHash("DATE", java.time.LocalDate.of(2024, 3, 8))!!))
+        // Precision 3 and below hash the milliseconds instead — FastHash's rule, with no writer in the corpus to hold it to.
+        assertEquals(wangHash(1_709_632_800_123L), paimonFastHash("TIMESTAMP(3)", ldt("2024-03-05 10:00:00.123456")))
+        assertEquals(wangHash(1_709_632_800_123_456L), paimonFastHash("TIMESTAMP", ldt("2024-03-05 10:00:00.123456")))
+        assertEquals(wangHash(36_000_123L), paimonFastHash("TIME", java.time.LocalTime.parse("10:00:00.123456")))
+    }
+
     @Test
     fun `a type FastHash does not hash is not hashed here either`() {
         assertNull(paimonFastHash("BOOLEAN", true))

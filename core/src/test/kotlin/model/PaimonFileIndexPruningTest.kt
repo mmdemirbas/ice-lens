@@ -26,6 +26,7 @@ class PaimonFileIndexPruningTest {
     private val fa2 = "data-bb8cf341-0c49-40e3-a995-5f9fab42118f-0.parquet"   // k 4, 6, index embedded
     private val fi1 = "data-c207bd15-64eb-4893-a09f-c6ef8e5d7693-0.parquet"   // k 1..3, .index beside it
     private val fi2 = "data-f13e0a5f-77b4-4f0f-909a-bdc2152578d2-0.parquet"   // k 4..5, index embedded
+    private val ft1 = "data-831f46cf-d7a2-4d48-a916-d55bc4e917bf-0.parquet"   // three rows, temporal bloom filters embedded
 
     /** [planned] is what the plan opened; [rawSkipped] the planned files a raw read's index then ruled out; [merged] the planned files read through a merge, index unconsulted. */
     private class Case(val fixture: String, val filter: String, val planned: Set<String>, val rawSkipped: Set<String> = emptySet(), val merged: Set<String> = emptySet())
@@ -42,6 +43,18 @@ class PaimonFileIndexPruningTest {
         Case("fi", "k = 4 AND v = 'dog'", setOf(fi2), rawSkipped = setOf(fi2)),
         Case("fi", "k = 2 AND v = 'bob'", setOf(fi1), rawSkipped = setOf(fi1)),
         Case("fi", "v = 'beta'", setOf(fi1, fi2), merged = setOf(fi1, fi2)),
+        // ft: the temporal hashes. The two negatives inside the file's bounds are what the index alone rules out.
+        Case("ft", "ts = '2024-03-05 10:00:00.123456'", setOf(ft1)),
+        Case("ft", "ts = '2024-03-06 11:30:00'", setOf(ft1)),
+        Case("ft", "ts = '2024-03-07 00:00:00.000001'", setOf(ft1)),
+        Case("ft", "ts = '2024-03-07 00:00:00'", emptySet()),
+        Case("ft", "lz = '2024-03-05 10:00:00.123456'", setOf(ft1)),
+        Case("ft", "lz = '2024-03-06T11:30:00Z'", setOf(ft1)),
+        Case("ft", "lz = '2024-03-07 00:00:00.000001'", setOf(ft1)),
+        Case("ft", "lz = '2024-03-06T11:30:00.001Z'", emptySet()),
+        Case("ft", "d = '2024-03-05'", setOf(ft1)),
+        Case("ft", "d = '2024-03-06'", setOf(ft1)),
+        Case("ft", "d = '2024-03-07'", setOf(ft1)),
     )
 
     private fun fileNodes(graph: GraphModel) = graph.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
@@ -54,7 +67,7 @@ class PaimonFileIndexPruningTest {
             val graph = graphs.getValue(case.fixture)
             val plan = evaluateScan(graph, (parseScanFilter(case.filter) as ScanFilterParse.Parsed).filter)
             val nodes = fileNodes(graph)
-            assertEquals(2, nodes.size, case.fixture)
+            assertEquals(if (case.fixture == "ft") 1 else 2, nodes.size, case.fixture)
             for ((name, node) in nodes) {
                 val result = plan.files.getValue(node.id)
                 val label = "${case.fixture}: ${case.filter} — $name: $result"

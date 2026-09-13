@@ -1,0 +1,32 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT"
+  }, {
+    "id" : 1,
+    "name" : "ts",
+    "type" : "TIMESTAMP(6)"
+  }, {
+    "id" : 2,
+    "name" : "lz",
+    "type" : "TIMESTAMP(6) WITH LOCAL TIME ZONE"
+  }, {
+    "id" : 3,
+    "name" : "d",
+    "type" : "DATE"
+  } ],
+  "highestFieldId" : 3,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ ],
+  "options" : {
+    "owner" : "root",
+    "file-index.bloom-filter.d.items" : "100",
+    "file-index.bloom-filter.lz.items" : "100",
+    "file-index.bloom-filter.ts.items" : "100",
+    "file-index.bloom-filter.columns" : "ts,lz,d"
+  },
+  "timeMillis" : 1789341326554
+}

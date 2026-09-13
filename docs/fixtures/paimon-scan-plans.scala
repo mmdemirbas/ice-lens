@@ -18,7 +18,7 @@
 // Run with the Paimon Spark 3.5 runtime jar, version 1.3, over copies of the tables:
 //
 //   WH=$PWD/tmp/plans-wh; rm -rf "$WH"; mkdir -p "$WH/db.db"
-//   for t in pc lk pu ag dv sm pt fa fi; do cp -R example/paimon/db.db/$t "$WH/db.db/$t"; done
+//   for t in pc lk pu ag dv sm pt fa fi ft; do cp -R example/paimon/db.db/$t "$WH/db.db/$t"; done
 //   JAR=~/code/spark-kit/lakelab/tasks/01_FlinkUpsertRead/.run/jars/paimon-spark-3.5-local.jar
 //   docker run --rm --entrypoint bash \
 //     -v "$WH:/wh" -v "$JAR:/opt/paimon-spark.jar:ro" \
@@ -84,8 +84,14 @@ def lit(v: Any): AnyRef = v match {
   case s: String => BinaryString.fromString(s)
   case i: Int => Int.box(i)
   case l: Long => Long.box(l)
+  case t: java.time.LocalDateTime => org.apache.paimon.data.Timestamp.fromLocalDateTime(t)
+  case i: java.time.Instant => org.apache.paimon.data.Timestamp.fromInstant(i)
+  case d: java.time.LocalDate => Int.box(d.toEpochDay.toInt)
   case other => other.asInstanceOf[AnyRef]
 }
+def ldt(s: String) = java.time.LocalDateTime.parse(s.replace(' ', 'T'))
+def inst(s: String) = java.time.Instant.parse(s.replace(' ', 'T'))
+def date(s: String) = java.time.LocalDate.parse(s)
 
 def isEq(name: String, v: Any) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.equal(t.getFieldIndex(name), lit(v))
 def and(ps: ((PredicateBuilder, org.apache.paimon.types.RowType) => Predicate)*) =
@@ -156,3 +162,22 @@ indexes("fi", "v = 'dog'", isEq("v", "dog"))
 indexes("fi", "k = 4 AND v = 'dog'", and(isEq("k", 4), isEq("v", "dog")))
 indexes("fi", "k = 2 AND v = 'bob'", and(isEq("k", 2), isEq("v", "bob")))
 indexes("fi", "v = 'beta'", isEq("v", "beta"))
+
+// ft: an append table with a bloom filter on a TIMESTAMP(6), a TIMESTAMP(6) WITH LOCAL TIME ZONE
+// and a DATE column, embedded — the temporal hashes. A value present on each column remains; the
+// same instant at millisecond precision is a different microsecond count and is skipped.
+plan("ft", "no filter", (b, t) => null)
+plan("ft", "ts = 2024-03-05 10:00:00.123456", isEq("ts", ldt("2024-03-05 10:00:00.123456")))
+plan("ft", "ts = 2024-03-05 10:00:00.123", isEq("ts", ldt("2024-03-05 10:00:00.123")))
+plan("ft", "ts = 2024-03-06 11:30:00", isEq("ts", ldt("2024-03-06 11:30:00")))
+plan("ft", "ts = 2024-03-07 00:00:00.000001", isEq("ts", ldt("2024-03-07 00:00:00.000001")))
+plan("ft", "ts = 2024-03-07 00:00:00", isEq("ts", ldt("2024-03-07 00:00:00")))
+plan("ft", "lz = 2024-03-05 10:00:00.123456Z", isEq("lz", inst("2024-03-05 10:00:00.123456Z")))
+plan("ft", "lz = 2024-03-06 11:30:00Z", isEq("lz", inst("2024-03-06 11:30:00Z")))
+plan("ft", "lz = 2024-03-07 00:00:00.000001Z", isEq("lz", inst("2024-03-07 00:00:00.000001Z")))
+plan("ft", "lz = 2024-03-06 11:30:00.001Z", isEq("lz", inst("2024-03-06 11:30:00.001Z")))
+plan("ft", "d = 2024-03-05", isEq("d", date("2024-03-05")))
+plan("ft", "d = 2024-03-06", isEq("d", date("2024-03-06")))
+plan("ft", "d = 2024-03-07", isEq("d", date("2024-03-07")))
+indexes("ft", "d = 2024-03-08", isEq("d", date("2024-03-08")))
+indexes("ft", "ts = 2024-03-05 10:00:00.123", isEq("ts", ldt("2024-03-05 10:00:00.123")))

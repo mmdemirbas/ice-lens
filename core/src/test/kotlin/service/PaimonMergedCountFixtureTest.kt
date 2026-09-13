@@ -38,7 +38,7 @@ class PaimonMergedCountFixtureTest {
         // what Paimon's own read printed, the DELETE's rewritten file sitting at level 0 unread
         "pu" to 4, "ag" to 2, "fr" to 1,
         // append tables, from the metadata
-        "ad" to 5, "ao" to 6, "rt" to 5, "de" to 3, "fa" to 5,
+        "ad" to 5, "ao" to 6, "rt" to 5, "de" to 3, "fa" to 5, "ft" to 3,
     )
 
     @Test

@@ -1,6 +1,10 @@
 package model
 
 import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.LocalTime
+import java.time.LocalDateTime
+import java.time.Instant
 
 /**
  * A Paimon file index, decoded from its container — see [service.PaimonFileIndexReader].
@@ -83,8 +87,12 @@ class PaimonBloomFilter(val numHashFunctions: Int, private val bits: ByteArray) 
  * Two functions, chosen by type: a string or binary is xxHash64 (seed 0) over its bytes, and
  * everything numeric is Thomas Wang's 64-bit integer hash over the value widened to a `long` —
  * a `FLOAT` over its `floatToIntBits`, a `DOUBLE` over its `doubleToLongBits`, a `DATE` over its
- * epoch day, a `TIMESTAMP(p)` over its milliseconds when `p <= 3` and its microseconds otherwise.
- * The value is what [parseLiteral] produced for the column's Iceberg reading of the type.
+ * epoch day, a `TIME` over its milliseconds of the day, and a `TIMESTAMP(p)` of either kind over
+ * its milliseconds since the epoch when `p <= 3` and its microseconds otherwise — the precision
+ * defaulting to 6, which is what the type prints without one. The value is what [parseLiteral]
+ * produced for the column's Iceberg reading of the type; a zone-less literal against a
+ * `WITH LOCAL TIME ZONE` column is read at UTC, the convention [compareValues] already applies
+ * to the bounds, and the `ft` fixture is written at UTC so the two agree on it.
  */
 fun paimonFastHash(paimonType: String, value: Any): Long? {
     val head = Regex("""^([A-Z_]+)(?:\((\d+)(?:,\s*(\d+))?\))?""").find(paimonType.trim().uppercase()) ?: return null
@@ -95,6 +103,20 @@ fun paimonFastHash(paimonType: String, value: Any): Long? {
         "FLOAT" -> (value as? Number)?.let { wangHash(java.lang.Float.floatToIntBits(it.toFloat()).toLong()) }
         "DOUBLE" -> (value as? Number)?.let { wangHash(java.lang.Double.doubleToLongBits(it.toDouble())) }
         "DATE" -> (value as? LocalDate)?.let { wangHash(it.toEpochDay()) }
+        "TIME" -> (value as? LocalTime)?.let { wangHash(it.toNanoOfDay() / 1_000_000) }
+        "TIMESTAMP", "TIMESTAMP_LTZ" -> {
+            val precision = head.groupValues[2].toIntOrNull() ?: 6
+            val utc = when (value) {
+                is LocalDateTime -> value
+                is Instant -> LocalDateTime.ofInstant(value, ZoneOffset.UTC)
+                else -> return null
+            }
+            // Paimon's Timestamp keeps milliseconds and the nanoseconds within the millisecond,
+            // and `toMicros` floors the latter to microseconds.
+            val millis = utc.toLocalDate().toEpochDay() * 86_400_000L + utc.toLocalTime().toNanoOfDay() / 1_000_000
+            val nanoOfMilli = utc.toLocalTime().toNanoOfDay() % 1_000_000
+            wangHash(if (precision <= 3) millis else millis * 1_000 + nanoOfMilli / 1_000)
+        }
         else -> null
     }
 }
