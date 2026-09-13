@@ -106,7 +106,9 @@ fun formatAppTimestampExact(ms: Long): String =
 fun parseAppTimestamp(text: String): Long? {
     val t = text.trim()
     if (t.isEmpty()) return null
-    t.toLongOrNull()?.let { return it }
+    // Twelve digits or more: epoch milliseconds since 2001. A bare year or a short number would
+    // otherwise read as a moment in 1970 and resolve to nothing, with nothing looking wrong.
+    if (t.length >= 12 && t.all { it.isDigit() }) t.toLongOrNull()?.let { return it }
     runCatching { return Instant.parse(t).toEpochMilli() }
     val zone = ZoneId.systemDefault()
     for (pattern in listOf("yyyy-MM-dd HH:mm:ss.SSS", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm")) {

@@ -78,6 +78,7 @@ class FormatUtilsTest {
         assertEquals(midnight, parseAppTimestamp("2026-08-14"))
         assertEquals(midnight + 6 * 3_600_000 + 34 * 60_000, parseAppTimestamp("2026-08-14 06:34"))
         assertEquals(null, parseAppTimestamp("yesterday"))
+        assertEquals(null, parseAppTimestamp("2026"), "a bare year is not a moment in 1970")
         assertEquals(null, parseAppTimestamp(""))
     }
 }
