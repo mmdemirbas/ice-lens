@@ -356,6 +356,19 @@ class InspectorRenderTest {
     }
 
     /**
+     * A partition statistics file, read: the record's table gains the size on disk beside the
+     * size it claims, and below it one row per partition with the figures a planner reads. The
+     * delete columns have to be judged against a row that has one, which `eu` is.
+     */
+    @Test
+    fun `a partition statistics file is read below its record`() {
+        val graph = graphFor("pstats")
+        val metadata = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().single { it.data.partitionStatistics.isNotEmpty() }
+        assertEquals(3, metadata.partitionStatistics.value?.values?.single()?.rows?.size)
+        renderInspector(graph, metadata.id, "metadata-node-partition-stats", height = 7200)
+    }
+
+    /**
      * A snapshot expiry dropped, drawn as what it is rather than as a read error.
      *
      * The card says so in its eyebrow and the panel says so in an identity row, above a summary

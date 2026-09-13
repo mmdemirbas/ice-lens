@@ -172,6 +172,8 @@ object IcebergGraphBuilder {
                     rawJson = metadata.rawJson,
                     statisticsFooters = if (meta.statistics.isEmpty()) DeferredRead.none()
                     else DeferredRead.of { readStatisticsFooters(metadata.path, meta) },
+                    partitionStatistics = if (meta.partitionStatistics.isEmpty()) DeferredRead.none()
+                    else DeferredRead.of { readPartitionStatisticsFiles(metadata.path, meta) },
                 )
             }
             val tableEdgeId = "e_table_${tableNodeId}_to_$mId"
@@ -795,6 +797,19 @@ object IcebergGraphBuilder {
  * opens both. A failure is captured rather than thrown, because a statistics file that has been
  * cleaned up is a thing to *report*, not a reason a metadata panel cannot be drawn.
  */
+/** Same resolution as [readStatisticsFooters]: the recorded path when it is there, its name under the metadata dir otherwise. */
+private fun readPartitionStatisticsFiles(
+    metadataPath: java.nio.file.Path,
+    metadata: TableMetadata,
+): Map<String, PartitionStatisticsRead> {
+    val metadataDir = metadataPath.parent ?: metadataPath
+    return metadata.partitionStatistics.mapNotNull { file ->
+        val recorded = file.statisticsPath ?: return@mapNotNull null
+        val (path, resolution) = resolveRecordedOrRelative(metadataDir, recorded)
+        recorded to readPartitionStatistics(path, resolution)
+    }.toMap()
+}
+
 private fun readStatisticsFooters(
     metadataPath: java.nio.file.Path,
     metadata: TableMetadata,

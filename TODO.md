@@ -68,11 +68,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   or a cleaned-up file is visible. What is not done is reading the theta sketch itself — it needs
   the datasketches library, and it yields no figure the `ndv` property does not already carry, so
   the only thing it would add is catching an `ndv` that disagrees with its own sketch.
-- **`partition-statistics` is typed but has never been seen with a value in it.** Iceberg 1.8.1 —
-  the version in the fixture image — has no `compute_partition_stats` procedure, so
-  `docs/fixtures/stats.sql` cannot produce one and the three modelled fields are written from the
-  spec with no oracle. The 1.10 runtime the `lineage` fixture is written with has the
-  procedure; the statement is what is still missing.
+- ~~**`partition-statistics` is typed but has never been seen with a value in it.**~~ Done: `pstats`
+  is written with the 1.10 runtime's `compute_partition_stats`, and the file's rows are read and
+  shown under the record (`model/PartitionStatistics.kt`).
 
 ---
 
@@ -313,6 +311,7 @@ What is left:
   | `default/respec` | two partition specs in one table — a dropped field, a rebucketed one, `days` replaced by `months` |
   | `default/branched` | a fork, four refs across five commits, one snapshot with two, and ten metadata versions |
   | `default/stats` | a Puffin statistics file — four theta sketches, one per column |
+  | `default/pstats` | a partition statistics file from Iceberg 1.10's `compute_partition_stats` — three partitions, `eu` with a positional delete; the writer's `.partitions` output is in the script |
   | `default/branched3` | three branches forked at three points, plus a tag on the trunk's tip |
   | `default/extdata` | `write.data.path` outside the table — `metadata/` and no `data/`, two files beside the table; the engine-written shape the resolver's third rule was written against |
   | `default/sorted` | `WRITE ORDERED BY` twice, then `rewrite_data_files(strategy => 'sort')` — three sort orders, `default-sort-order-id` 2, rows sorted inside every file written under an order, and `sort_order_id 0` on every data file including the compacted one, which is what Spark records |

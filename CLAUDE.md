@@ -62,6 +62,7 @@ core/src/main/kotlin/
 │   ├── IcebergTypes.kt        # Iceberg type model + parser (field-id → type, from a manifest's own schema)
 │   ├── SingleValueDecoder.kt  # Appendix D: bytes + type → DecodedValue (bounds, partition values)
 │   ├── PuffinSchema.kt        # Puffin footer JSON + DeletionVector (positions, and the two figures it is checked against)
+│   ├── PartitionStatistics.kt # A partition statistics file's rows, read through DuckDB, and the record they are checked against
 │   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
 │   ├── BucketTransform.kt     # Iceberg's bucket[N], via the same Guava murmur3 the writer uses
 │   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
@@ -448,6 +449,21 @@ intellij/src/main/kotlin/plugin/
   "the file was read and holds no such blob" would otherwise look identical**, and the second is
   the one that means the table is pointing a planner at statistics that are gone. The file also
   answers three things the record cannot: each blob's compressed size, its codec, and `created-by`
+- **A partition statistics file is the same shape one level over, and its rows are Parquet.**
+  `partition-statistics` in `metadata.json` names a file per snapshot and nothing more; the
+  figures — one row per partition, `data_record_count`, `data_file_count`, the size, the delete
+  counts, `last_updated_snapshot_id` — are inside it, which is what a planner reads instead of
+  walking every manifest. `model/PartitionStatistics.kt` reads them through the same DuckDB
+  connection a data file's rows go through (`SampleRowReader.queryPartitionStats`, with the
+  `partition` struct rendered `p=eu` the way a path carries it), under `MAX_PARTITION_STATS_ROWS`
+  rather than the sample cap, since a table has as many rows here as partitions.
+  `MetadataNode.partitionStatistics` is a `DeferredRead` for the reason `statisticsFooters` is,
+  and the panel puts the size on disk beside the size the record claims. `pstats` is the fixture,
+  written with the 1.10 runtime because `compute_partition_stats` does not exist in 1.8.1, and it
+  has **two oracles**: the writer's own `pstats.partitions` output, printed by the script, and this
+  app's live-file walk of the current snapshot grouped by partition — two ways of counting one set.
+  `total_record_count` is optional in the spec and 1.10 writes it null, which the panel says
+  rather than printing a figure
 - **Pruning has two stages and they prune on different things.** `evaluateScan` in
   `model/ScanPruning.kt` returns a `ScanPlan` carrying both: a manifest is ruled out by the
   partition summaries its list records, a **file** by the `lower_bounds`/`upper_bounds` it records
@@ -1246,7 +1262,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~946 tests across 110 files (713 in :core, 228 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~951 tests across 111 files (717 in :core, 229 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1334,6 +1350,7 @@ container invocation and the traps in it:
 | `default/respec` | `PartitionSpecEvolutionTest` | two partition specs — dropped, rebucketed, `days`→`months` |
 | `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
+| `default/pstats` | `PartitionStatsFixtureTest` | a partition statistics file, written by Iceberg 1.10 — three partitions, one with a positional delete, checked against the writer's `.partitions` and this app's own live-file walk |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
 | `default/extdata` | `ExternalDataPathFixtureTest` | `write.data.path` outside the table — no `data/` under it, two files beside it under `example/iceberg/extdata-files/` |
 | `default/sorted` | `SortedFixtureTest` | three sort orders, a commit under each, then a sort compaction — rows sorted inside every file, `sort_order_id 0` on every file |

@@ -61,7 +61,7 @@ class SequenceInheritanceTest {
      */
     @Test
     fun `only a v1 manifest leaves an entry at the default sequence number`() {
-        val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "maint", "v1", "extdata", "sorted", "promoted", "lineage")
+        val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "maint", "v1", "extdata", "sorted", "promoted", "lineage", "pstats")
         val defaultedIn = fixtures.filter { name ->
             table(name).metadatas.last().snapshots.flatMap { it.manifests }
                 .any { manifest -> manifest.metadata.sequenceNumber == null && manifest.dataFiles.isNotEmpty() }

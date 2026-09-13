@@ -1530,17 +1530,77 @@ fun NodeDetailsContent(
                             node.data.partitionStatistics.size,
                             "partition statistics files",
                         ) {
+                            // The record, with the file's size on disk beside the size it claims —
+                            // the same "record against the file" rule as the Puffin statistics
+                            // above, because a cleanup can remove the file and leave the record.
+                            val reads = node.partitionStatistics.value.orEmpty()
                             WideTable(
-                                headers = listOf("File", "Snapshot", "Size"),
+                                headers = listOf("File", "Snapshot", "Size", "On Disk", "Resolved"),
                                 rows = node.data.partitionStatistics.map { file ->
+                                    val read = reads[file.statisticsPath]
                                     listOf(
                                         fileNameFromPath(file.statisticsPath.orEmpty()),
                                         file.snapshotId?.toString() ?: "N/A",
-                                        file.fileSizeInBytes?.let { formatBytes(it) } ?: "N/A",
+                                        // Exact bytes on both sides: the comparison is the point.
+                                        file.fileSizeInBytes?.let { "${formatCount(it)} B" } ?: "N/A",
+                                        read?.sizeOnDisk?.let { "${formatCount(it)} B" } ?: "missing",
+                                        read?.let { pathResolutionLabel(it.resolution) } ?: "not read",
                                     )
                                 },
-                                columnWidths = listOf(260.dp, 150.dp, 80.dp),
+                                columnWidths = listOf(260.dp, 150.dp, 130.dp, 130.dp, 420.dp),
                             )
+                            // Then what is inside: one row per partition, the figures a planner
+                            // reads instead of walking the manifests. Widest-read columns first,
+                            // the partition's identity leading, snapshot and spec at the end.
+                            node.data.partitionStatistics.forEach { file ->
+                                val read = reads[file.statisticsPath] ?: return@forEach
+                                Spacer(Modifier.height(8.dp))
+                                val rows = read.rows
+                                if (rows == null) {
+                                    Text(
+                                        "${fileNameFromPath(file.statisticsPath.orEmpty())}: not read — ${read.problem ?: "unknown problem"}",
+                                        fontSize = TypeScale.small,
+                                        color = colors.error,
+                                    )
+                                    return@forEach
+                                }
+                                Text(
+                                    "${fileNameFromPath(file.statisticsPath.orEmpty())}: ${formatCount(rows.size.toLong())} partitions" +
+                                        (if (read.truncated) " shown of more — the first ${formatCount(model.MAX_PARTITION_STATS_ROWS.toLong())} rows of the file" else "") +
+                                        ". Record counts are before deletes; a delete file's records are the positions or keys it holds.",
+                                    fontSize = TypeScale.small,
+                                    color = colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(bottom = 4.dp),
+                                )
+                                WideTable(
+                                    headers = listOf(
+                                        "Partition", "Data Records", "Data Files", "Data Size",
+                                        "Pos. Delete Records", "Pos. Delete Files", "Eq. Delete Records", "Eq. Delete Files",
+                                        "Total Records", "Last Updated", "Last Snapshot", "Spec",
+                                    ),
+                                    rows = rows.map { row ->
+                                        listOf(
+                                            row.partition.ifEmpty { "(unpartitioned)" },
+                                            row.dataRecordCount?.let { formatCount(it) } ?: "N/A",
+                                            row.dataFileCount?.let { formatCount(it.toLong()) } ?: "N/A",
+                                            row.totalDataFileSizeInBytes?.let { formatBytes(it) } ?: "N/A",
+                                            row.positionDeleteRecordCount?.let { formatCount(it) } ?: "N/A",
+                                            row.positionDeleteFileCount?.let { formatCount(it.toLong()) } ?: "N/A",
+                                            row.equalityDeleteRecordCount?.let { formatCount(it) } ?: "N/A",
+                                            row.equalityDeleteFileCount?.let { formatCount(it.toLong()) } ?: "N/A",
+                                            row.totalRecordCount?.let { formatCount(it) } ?: "not written",
+                                            formatTimestampShort(row.lastUpdatedAtMs),
+                                            row.lastUpdatedSnapshotId?.toString() ?: "N/A",
+                                            row.specId?.toString() ?: "N/A",
+                                        )
+                                    },
+                                    columnWidths = listOf(
+                                        160.dp, 110.dp, 90.dp, 100.dp,
+                                        150.dp, 130.dp, 140.dp, 130.dp,
+                                        110.dp, 200.dp, 200.dp, 60.dp,
+                                    ),
+                                )
+                            }
                         }
 
                         Section("Raw metadata.json") {

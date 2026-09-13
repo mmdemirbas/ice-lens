@@ -73,6 +73,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A partition statistics file is read, and shown under its record.** The metadata panel listed
+  the file's name, snapshot and claimed size; it now opens the Parquet and draws one row per
+  partition — data records, files and bytes, delete records and files, last updated, last
+  snapshot — with the size on disk beside the size the record claims. `pstats` is the fixture,
+  written with Iceberg 1.10's `compute_partition_stats`.
 - **v3 row lineage is read, by inheritance, at every level it lives.** `next-row-id` on the
   metadata panel; `first-row-id` on a snapshot and a manifest; a file's `Row IDs` range, saying
   whether its first id was inherited from the manifest or recorded on the entry; and a sampled

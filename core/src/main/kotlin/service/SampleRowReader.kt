@@ -182,6 +182,37 @@ object SampleRowReader {
      * sequence and target rules before anything is opened — and [MAX_DELETE_FILES_PER_COUNT] caps
      * it rather than building SQL of unbounded length.
      */
+    /**
+     * The rows of a partition statistics file, up to [limit], with the `partition` struct rendered
+     * as `name=value` pairs the way a data file's path carries it. A null cell is a Kotlin null
+     * here — unlike [querySampleRows], whose "null" string is a display choice for a data row —
+     * because the model reads these as numbers, not as cells to print.
+     */
+    fun queryPartitionStats(filePath: String, limit: Int): List<Map<String, Any?>> {
+        val (safePath, ext) = resolveForQuery(filePath)
+        require(ext == "parquet") { "A partition statistics file is Parquet, got .$ext" }
+        return DuckDb.withConnection { conn ->
+            conn.prepareStatement("SELECT * FROM read_parquet(?) LIMIT $limit").use { pstmt ->
+                pstmt.setString(1, safePath)
+                val rs = pstmt.executeQuery()
+                val meta = rs.metaData
+                val rows = mutableListOf<Map<String, Any?>>()
+                while (rs.next()) {
+                    rows += (1..meta.columnCount).associate { i ->
+                        val value = rs.getObject(i)
+                        meta.getColumnName(i) to if (value is org.duckdb.DuckDBStruct) {
+                            value.map.entries.joinToString("/") { (k, v) -> "$k=$v" }
+                        } else {
+                            value
+                        }
+                    }
+                }
+                rs.close()
+                rows
+            }
+        }
+    }
+
     fun queryDeletedRowCount(deleteFilePaths: List<String>, dataFilePath: String): Long {
         if (deleteFilePaths.isEmpty()) return 0L
         require(deleteFilePaths.size <= MAX_DELETE_FILES_PER_COUNT) {

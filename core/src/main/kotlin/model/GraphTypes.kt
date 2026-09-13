@@ -357,6 +357,12 @@ sealed class GraphNode(
          * each, once the table is in object storage — for a panel that shows one.
          */
         val statisticsFooters: DeferredRead<Map<String, StatisticsFileFooter>> = DeferredRead.none(),
+        /**
+         * Each partition statistics file this metadata names, opened and read, keyed by recorded
+         * path — deferred for the same reason as [statisticsFooters]. The record says a file
+         * exists; the rows are the figures a planner reads, and they are in the file alone.
+         */
+        val partitionStatistics: DeferredRead<Map<String, PartitionStatisticsRead>> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         // 100, not 96. `CardHeightTest`'s stress pass measured this card at exactly 96.0dp of a
