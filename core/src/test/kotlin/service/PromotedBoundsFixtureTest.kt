@@ -33,8 +33,10 @@ class PromotedBoundsFixtureTest {
 
     private val tableDir: Path = Paths.get(File(repoRoot, "example/iceberg/default/promoted").absolutePath)
     private val model = UnifiedTableModel(tableDir)
-    private val rewrite = model.metadatas.last().snapshots.maxBy { it.metadata.sequenceNumber ?: 0 }
+    private val snapshots = model.metadatas.last().snapshots.sortedBy { it.metadata.sequenceNumber }
+    private val rewrite = snapshots.single { it.metadata.summary.containsKey("manifests-replaced") }
     private val rewritten = rewrite.manifests.single()
+    private val compaction = snapshots.last()
 
     @Test
     fun `the rewrite put every live file into one manifest under the current schema`() {
@@ -78,11 +80,12 @@ class PromotedBoundsFixtureTest {
         assertNull(bare.type)
         assertNull(bare.lowerBound, "without a type the bytes are left undecoded rather than guessed at")
 
-        // The same file is drawn twice: ADDED under the manifest its commit wrote, whose schema-0
-        // still names field 2 `name`, and EXISTING under the rewritten one, where it is dropped.
+        // The same file is drawn three times: ADDED under the manifest its commit wrote, whose
+        // schema-0 still names field 2 `name`; EXISTING under the rewritten one, where it is
+        // dropped; and DELETED under the compaction's, dropped again.
         val graph = GraphLayoutService.layoutGraph(model, showRows = false)
         val nodes = graph.nodes.filterIsInstance<GraphNode.FileNode>().filter { it.data.filePath == oldFile.metadata.dataFile?.filePath }
-        assertEquals(setOf(ManifestEntryStatus.ADDED, ManifestEntryStatus.EXISTING), nodes.map { it.entry.status }.toSet())
+        assertEquals(setOf(ManifestEntryStatus.ADDED, ManifestEntryStatus.EXISTING, ManifestEntryStatus.DELETED), nodes.map { it.entry.status }.toSet())
         val original = nodes.single { it.entry.status == ManifestEntryStatus.ADDED }.columnStats.single { it.fieldId == 2 }
         assertEquals("name" to false, original.columnName to original.dropped, "under its own manifest the field is simply there")
         val node = nodes.single { it.entry.status == ManifestEntryStatus.EXISTING }
@@ -92,6 +95,30 @@ class PromotedBoundsFixtureTest {
         assertEquals(IcebergType.StringType, named.type)
         assertEquals("alpha" to "bravo", named.lowerBound?.value to named.upperBound?.value)
         assertTrue(node.columnStats.filter { it.fieldId != 2 }.none { it.dropped })
+    }
+
+    /**
+     * The contrast: `rewrite_data_files` writes the rows again, so its one file's bounds are
+     * encoded under schema 2 — eight bytes for `id` and `amount`, and no bound at all for the
+     * dropped column — while the DELETED entries beside it in the same manifest still carry A's
+     * four-byte bounds verbatim. Same manifest, same schema, two encodings, told apart by width.
+     */
+    @Test
+    fun `a data rewrite re-encodes the bounds, and only a data rewrite does`() {
+        assertEquals("replace", compaction.metadata.summary["operation"])
+        assertEquals("1" to "3", compaction.metadata.summary["added-data-files"] to compaction.metadata.summary["deleted-data-files"])
+        val own = compaction.manifests.filter { it.metadata.addedSnapshotId == compaction.metadata.snapshotId }
+        val added = own.flatMap { it.dataFiles }.single { it.metadata.status == ManifestEntryStatus.ADDED }
+        assertEquals(5L, added.metadata.dataFile?.recordCount)
+        val stats = columnStatsFor(added.metadata.dataFile!!, own.first().schema)
+        assertEquals(listOf(1, 3, 4), stats.map { it.fieldId }, "no bound for the dropped column in a file written without it")
+        assertEquals(1L to 5_000_000_000L, stats[0].lowerBound?.value to stats[0].upperBound?.value)
+        assertEquals(8, stats[0].lowerBound?.raw?.size)
+        assertNull(stats[0].lowerBound?.writtenAs)
+        assertEquals(1.5 to 5.5, stats[1].lowerBound?.value to stats[1].upperBound?.value)
+        assertNull(stats[1].upperBound?.writtenAs)
+        val removedA = own.flatMap { it.dataFiles }.single { it.metadata.status == ManifestEntryStatus.DELETED && it.metadata.dataFile?.filePath == oldFile.metadata.dataFile?.filePath }
+        assertEquals(IcebergType.IntType, columnStatsFor(removedA.metadata.dataFile!!, own.first().schema).single { it.fieldId == 1 }.lowerBound?.writtenAs)
     }
 
     /** The rule stands down where the manifest's own schema answers; `evolved` is untouched by it. */

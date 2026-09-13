@@ -611,7 +611,9 @@ intellij/src/main/kotlin/plugin/
   dropped), with `ColumnStats.dropped` set so the panel says `label (dropped)`. That type is safe
   to decode with because a type only ever widens, so the newest definition is the widest. The
   fallback answers *only* where the manifest's schema does not, so `evolved` decodes exactly as
-  before
+  before. `promoted` ends with a `rewrite_data_files` for the contrast: a **data** rewrite
+  re-encodes — its one file has eight-byte bounds and none for the dropped column — while the
+  DELETED entries beside it in the same manifest still carry the old file's four bytes
 - **A v3 row id is read by inheritance at three levels, and the running sum is the part that
   needs a fixture.** A snapshot's `first-row-id` is `next-row-id` as it stood; a manifest's
   `first_row_id` is assigned in manifest-list order from that; a data file's is the manifest's
@@ -1279,7 +1281,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~956 tests across 112 files (721 in :core, 230 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~957 tests across 112 files (722 in :core, 230 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1363,7 +1365,7 @@ container invocation and the traps in it:
 | `default/v3` | `FormatV3FixtureTest` | format-version 3 with deletion vectors |
 | `default/lineage` | `RowLineageFixtureTest` | format-version 3 row lineage, written by Iceberg 1.10 — `next-row-id`, a snapshot's and a manifest's `first-row-id`, files inheriting theirs in entry order, a rewritten file carrying `_row_id`, a deletion vector allocating nothing, and a compaction that keeps every id |
 | `default/evolved` | `SchemaEvolutionFixtureTest` | three manifest schemas — `int`→`long`, `float`→`double`, a rename and a drop |
-| `default/promoted` | `PromotedBoundsFixtureTest` | `evolved` then `rewrite_manifests` — one manifest under the current schema carrying four-byte bounds under `long`/`double` and a bound for a dropped field |
+| `default/promoted` | `PromotedBoundsFixtureTest` | `evolved` then `rewrite_manifests` — one manifest under the current schema carrying four-byte bounds under `long`/`double` and a bound for a dropped field — then `rewrite_data_files`, which re-encodes |
 | `default/respec` | `PartitionSpecEvolutionTest` | two partition specs — dropped, rebucketed, `days`→`months` |
 | `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |

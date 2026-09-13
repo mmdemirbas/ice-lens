@@ -1,9 +1,9 @@
 {
   "format-version" : 2,
-  "table-uuid" : "270bf192-5111-4915-9113-2024f4b5e450",
+  "table-uuid" : "41d06fcb-306f-466b-b953-69b6dee40002",
   "location" : "/wh/default/promoted",
   "last-sequence-number" : 0,
-  "last-updated-ms" : 1789258216773,
+  "last-updated-ms" : 1789261559993,
   "last-column-id" : 3,
   "current-schema-id" : 0,
   "schemas" : [ {

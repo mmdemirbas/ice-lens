@@ -307,7 +307,7 @@ What is left:
   | `default/v3` | format-version 3 with two deletion vectors (Puffin), the v3 representation of what `mor` carries as parquet |
   | `default/lineage` | format-version 3 written by Iceberg 1.10 — row lineage at every level: `next-row-id` 14 after five commits, a rewrite that burns two ids, a file carrying `_row_id`, a deletion vector allocating none, a compaction keeping every id |
   | `default/evolved` | three manifest schemas in one table — `int`→`long`, `float`→`double`, a column renamed then dropped, one added |
-  | `default/promoted` | `evolved` then `rewrite_manifests` — every live file under one manifest with the current schema; the schema-0 file's `id` and `amount` bounds are four bytes under `long` and `double`, and its `name` bound is keyed by a field the schema dropped |
+  | `default/promoted` | `evolved` then `rewrite_manifests` — every live file under one manifest with the current schema; the schema-0 file's `id` and `amount` bounds are four bytes under `long` and `double`, and its `name` bound is keyed by a field the schema dropped — then `rewrite_data_files`, whose one file is re-encoded at the new widths |
   | `default/respec` | two partition specs in one table — a dropped field, a rebucketed one, `days` replaced by `months` |
   | `default/branched` | a fork, four refs across five commits, one snapshot with two, and ten metadata versions |
   | `default/stats` | a Puffin statistics file — four theta sketches, one per column |

@@ -21,6 +21,9 @@
 --   5  ALTER    DROP COLUMN label                                          schema 2
 --   6  INSERT   (5000000000, 5.5, 'fifth')                                 snapshot 3: file C
 --   7  CALL     rewrite_manifests                                          snapshot 4: one manifest under schema 2 holding A, B, C as EXISTING
+--   8  CALL     rewrite_data_files (min-input-files 2)                     snapshot 5: A, B, C compacted into one file written under schema 2 — its bounds
+--                                                                          re-encoded at the new widths (8 bytes for id and amount) and no bound for the
+--                                                                          dropped column, which is the contrast with the manifest rewrite above
 --
 -- To regenerate (see docs/fixtures/parted.sql for why --entrypoint bash is required):
 --
@@ -75,3 +78,6 @@ INSERT INTO lens.default.promoted (id, amount, note) VALUES
 
 -- One manifest under schema 2, every live file carried into it with its bounds as written.
 CALL lens.system.rewrite_manifests('default.promoted');
+
+-- And then the data itself rewritten, which re-encodes: the one contrast a manifest rewrite needs.
+CALL lens.system.rewrite_data_files(table => 'default.promoted', options => map('min-input-files', '2'));
