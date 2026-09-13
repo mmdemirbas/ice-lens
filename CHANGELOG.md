@@ -119,8 +119,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a `_VALUE_KIND` — `+I`, `-U`, `+U`, `-D` — and a `-D` is a retraction, not a value: merged
   with the levels below it removes the key. The card draws such a row faded and struck with the
   kind in its title, the panel names the code (`-D (delete) — a retraction …`), and the IDE tree
-  lists it as `Row kind`. The panel no longer says `not by a deletion vector` of a Paimon row,
-  which no vector was looked up for.
+  lists it as `Row kind`; a `+U` row carries the word in its title too. The panel no longer says
+  `not by a deletion vector` of a Paimon row, which no vector was looked up for. The update pair
+  has an oracle: `lk`, written with `changelog-producer = lookup`.
 - **The IDE tool window lists the newer facts where a table has them.** `Next row id`, a
   snapshot's `First row id`, `WAP id` and `Published from`, a file's `Row ids` and `Sort order` —
   each only on a table that carries it.

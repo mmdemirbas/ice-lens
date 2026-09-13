@@ -1426,6 +1426,7 @@ container invocation and the traps in it:
 | `paimon/db.db/sm` | `PaimonStatsModeFixtureTest` | `fields.v.stats-mode = none` — `_VALUE_STATS` over two of three columns, named in `_VALUE_STATS_COLS`; the oracle for the subset decoding |
 | `paimon/db.db/se` | `PaimonSchemaEvolutionFixtureTest` | `ADD COLUMN` between two writes, then a compaction — a schema-1 manifest listing a schema-0 file, whose stats decode only against its own schema |
 | `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted |
+| `paimon/db.db/lk` | `PaimonRowKindTest` | `changelog-producer = lookup` — the `-U` / `+U` pair a re-inserted key produces, carried by the COMPACT snapshot the lookup ran in, and a `-D` with the value it removed |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1478,8 +1479,10 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   kind.** The Parquet file's columns are `_KEY_<col>` per key field, `_SEQUENCE_NUMBER`,
   `_VALUE_KIND` and then the value fields, so a `DELETE` is a `-D` row at level 0 with the key's
   last value still in it, removed only when a compaction merges it with the levels below. The codes
-  are `PaimonRowKind` in `model/PaimonSchema.kt` — 0 `+I`, 1 `-U`, 2 `+U`, 3 `-D`, from the
-  file's own bytes on `cl` and `se` — and a `RowNode.isRetraction` row is drawn as the
+  are `PaimonRowKind` in `model/PaimonSchema.kt` — 0 `+I`, 1 `-U`, 2 `+U`, 3 `-D`, all four from
+  the files' own bytes: `+I` and `-D` on `dv` and `cl`, the update pair on `lk`, whose `lookup`
+  producer computes the change at commit time and writes it in the **COMPACT** snapshot that
+  follows each APPEND, not in the APPEND itself — and a `RowNode.isRetraction` row is drawn as the
   Iceberg-vector-deleted row is: faded, struck, the kind in the title. The card lists keys
   beginning with `_` **last**, because the file's physical order puts the three system columns
   first and a card of four lines would otherwise show none of the row's own. A Paimon row goes

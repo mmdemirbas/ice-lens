@@ -822,6 +822,9 @@ fun RowCard(node: GraphNode.RowNode, isSelected: Boolean = false) {
                     // Paimon's own short form: the byte says what the row does to its key.
                     node.paimonRowKind == model.PaimonRowKind.DELETE -> " — -D"
                     node.paimonRowKind == model.PaimonRowKind.UPDATE_BEFORE -> " — -U"
+                    // The after-image is a live row and drawn as one; the word is what tells it
+                    // from an insert, since the -U beside it is the only other trace of the update.
+                    node.paimonRowKind == model.PaimonRowKind.UPDATE_AFTER -> " — +U"
                     else -> ""
                 },
                 fontSize = TypeScale.micro,

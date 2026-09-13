@@ -19,7 +19,7 @@ class PaimonRecordTalliesTest {
     private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }
         .first { File(it, "settings.gradle.kts").isFile }
 
-    private val fixtures = listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi", "ep", "rt", "sm", "se", "de")
+    private val fixtures = listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi", "ep", "rt", "sm", "se", "de", "lk")
 
     private fun model(name: String) =
         PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/$name").absolutePath))

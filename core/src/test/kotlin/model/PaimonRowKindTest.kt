@@ -43,14 +43,26 @@ class PaimonRowKindTest {
 
     /**
      * `cl`'s changelog is the input as written (`changelog-producer = input`), so its rows are
-     * `+I` and the `-D` of its DELETE; the update pair `-U` / `+U` is what a `lookup` or
-     * `full-compaction` producer would write and no fixture here has one — the two are read by
-     * the same byte and named here without an oracle.
+     * `+I` and the `-D` of its DELETE. The update pair is `lk`'s: a `lookup` producer computes
+     * the change at commit time, so the second INSERT of k = 2 is `-U (2, 'b')` then
+     * `+U (2, 'B')` beside the `+I (4, 'd')`, and the DELETE is `-D (3, 'c')` — each carried by
+     * the COMPACT snapshot the lookup ran in, not by the APPEND before it.
      */
     @Test
-    fun `a changelog file's rows carry the kind the input had`() {
+    fun `a changelog file's rows carry the kind the input had, or the pair the lookup computed`() {
         val kinds = rows("paimon", "cl").mapNotNull { it.paimonRowKind }.toSet()
         assertEquals(setOf(PaimonRowKind.INSERT, PaimonRowKind.DELETE), kinds)
+
+        val lk = PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/lk").absolutePath))
+        assertEquals(listOf("APPEND", "COMPACT", "APPEND", "COMPACT", "APPEND", "COMPACT"), lk.snapshots.map { it.metadata.commitKind })
+        assertEquals(listOf(false, true, false, true, false, true), lk.snapshots.map { it.changelogManifests.isNotEmpty() }, "the lookup's COMPACT carries the changelog")
+        fun changelogRows(snapshotIndex: Int) = lk.snapshots[snapshotIndex].changelogManifests.single().entries.single().rows
+            .map { row -> Triple((row.cells[PaimonRowKind.COLUMN] as Number).toInt(), row.cells["k"], row.cells["v"].toString()) }
+        assertEquals(
+            listOf(Triple(PaimonRowKind.UPDATE_BEFORE, 2, "b"), Triple(PaimonRowKind.UPDATE_AFTER, 2, "B"), Triple(PaimonRowKind.INSERT, 4, "d")),
+            changelogRows(3).sortedWith(compareBy({ it.second.toString() }, { it.first })),
+        )
+        assertEquals(listOf(Triple(PaimonRowKind.DELETE, 3, "c")), changelogRows(5))
         assertEquals("-U (update, the value before)", PaimonRowKind.describe(PaimonRowKind.UPDATE_BEFORE))
         assertEquals("+U (update, the value after)", PaimonRowKind.describe(PaimonRowKind.UPDATE_AFTER))
         assertTrue(PaimonRowKind.isRetraction(PaimonRowKind.UPDATE_BEFORE) && !PaimonRowKind.isRetraction(PaimonRowKind.UPDATE_AFTER))

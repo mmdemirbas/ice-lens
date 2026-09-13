@@ -464,10 +464,19 @@ class InspectorRenderTest {
         val rows = graph.nodes.filterIsInstance<GraphNode.RowNode>()
         val deleteRow = rows.first { it.paimonRowKind == model.PaimonRowKind.DELETE }
         val insertRow = rows.first { it.paimonRowKind == model.PaimonRowKind.INSERT }
-        renderScene("paimon-row-cards-kinds", width = 700, height = 520) {
+        // The update pair comes from lk, whose lookup producer writes -U / +U into its changelog.
+        val lkRows = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/lk").absolutePath)),
+            showRows = true,
+        ).nodes.filterIsInstance<GraphNode.RowNode>()
+        val before = lkRows.first { it.paimonRowKind == model.PaimonRowKind.UPDATE_BEFORE }
+        val after = lkRows.first { it.paimonRowKind == model.PaimonRowKind.UPDATE_AFTER }
+        renderScene("paimon-row-cards-kinds", width = 700, height = 900) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 RowCard(insertRow)
                 RowCard(deleteRow)
+                RowCard(before)
+                RowCard(after)
             }
         }
         renderInspector(graph, deleteRow.id, "paimon-row-node-delete", height = 1200)
