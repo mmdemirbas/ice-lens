@@ -530,24 +530,30 @@ private fun readPaimonManifest(
         val schema = schemasById[meta.schemaId?.toInt()] ?: schemasById.values.maxByOrNull { it.id ?: -1 }
         val partitionKeys = schema?.partitionKeys.orEmpty()
         val partitionFields = partitionKeys.mapNotNull { key -> schema?.fields?.firstOrNull { it.name == key } }
-        // The key bounds are over the trimmed primary key — every primary key that is not a
-        // partition key, in primary-key order — which is what Paimon's key type is once the
-        // partition has been taken out of it.
-        val keyNames = schema?.primaryKeys.orEmpty().filterNot { it in partitionKeys }
-        val keyFields = keyNames.mapNotNull { key -> schema?.fields?.firstOrNull { it.name == key } }
         result.entries.map { entry ->
             val partition = entry.partition
                 ?.takeIf { partitionFields.size == partitionKeys.size }
                 ?.let { decodePaimonPartition(it, partitionFields, schema?.options.orEmpty()) }
             val (dataFilePath, pathResolution) = resolveDataFilePath(tablePath, entry, partition)
             val file = entry.file
+            // A file's key and value statistics are rows over the schema the FILE was written
+            // under, which its own `_SCHEMA_ID` names and which is not always the manifest's: a
+            // compaction's delta manifest, written under the new schema, records the old-schema
+            // files it removed. Decoded against the manifest's schema, a two-field row read as
+            // three has the wrong arity and decodes to nothing — the `se` fixture.
+            val fileSchema = file?.schemaId?.let { schemasById[it.toInt()] } ?: schema
+            // The key bounds are over the trimmed primary key — every primary key that is not a
+            // partition key, in primary-key order — which is what Paimon's key type is once the
+            // partition has been taken out of it.
+            val keyNames = fileSchema?.primaryKeys.orEmpty().filterNot { it in partitionKeys }
+            val keyFields = keyNames.mapNotNull { key -> fileSchema?.fields?.firstOrNull { it.name == key } }
             val keysResolved = keyFields.size == keyNames.size && keyFields.isNotEmpty()
             val keyMin = file?.minKey?.takeIf { keysResolved }?.let { decodePaimonRow(it, keyFields) }
             val keyMax = file?.maxKey?.takeIf { keysResolved }?.let { decodePaimonRow(it, keyFields) }
             // The value statistics cover the schema's fields in order, or the subset
             // _VALUE_STATS_COLS names — every name has to resolve, or a bound lands on the wrong column.
-            val statsNames = file?.valueStatsCols ?: schema?.fields?.mapNotNull { it.name }.orEmpty()
-            val statsFields = statsNames.mapNotNull { name -> schema?.fields?.firstOrNull { it.name == name } }
+            val statsNames = file?.valueStatsCols ?: fileSchema?.fields?.mapNotNull { it.name }.orEmpty()
+            val statsFields = statsNames.mapNotNull { name -> fileSchema?.fields?.firstOrNull { it.name == name } }
             val columnBounds = file?.valueStats
                 ?.takeIf { statsFields.size == statsNames.size && statsFields.isNotEmpty() }
                 ?.let { decodePaimonColumnBounds(it, statsFields) }

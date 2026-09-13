@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **A Paimon data file written under an older schema than the manifest listing it keeps its
+  bounds.** Key and value statistics were decoded against the manifest's `_SCHEMA_ID`; a
+  compaction's delta manifest, written under the new schema, records the old-schema files it
+  removed, and their two-field stats rows failed the three-field arity check and came out as no
+  bounds at all. They are decoded against the file's own `_SCHEMA_ID` now, and the Column Bounds
+  section says so. `se` is the fixture.
 - **A Paimon table whose data was written to `data-file.external-paths` opens with its files
   found.** The entry records the external location in `_EXTERNAL_PATH` and the resolver built
   the path from the table root regardless, so every such file read as missing. The recorded

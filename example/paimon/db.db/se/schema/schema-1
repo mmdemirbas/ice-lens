@@ -1,0 +1,26 @@
+{
+  "version" : 3,
+  "id" : 1,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT NOT NULL"
+  }, {
+    "id" : 1,
+    "name" : "v",
+    "type" : "STRING"
+  }, {
+    "id" : 2,
+    "name" : "w",
+    "type" : "INT"
+  } ],
+  "highestFieldId" : 2,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ "k" ],
+  "options" : {
+    "bucket" : "1",
+    "owner" : "root",
+    "compaction.min.file-num" : "2"
+  },
+  "timeMillis" : 1789257675994
+}

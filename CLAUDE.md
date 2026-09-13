@@ -1211,7 +1211,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~930 tests across 107 files (699 in :core, 226 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~934 tests across 108 files (703 in :core, 226 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1312,6 +1312,7 @@ container invocation and the traps in it:
 | `paimon/db.db/ep` | `PaimonExternalPathFixtureTest` | `data-file.external-paths` — no bucket under the table, both files at `example/paimon/ep-files/bucket-0/` beside it, `_EXTERNAL_PATH` recorded |
 | `paimon/db.db/rt` | `PaimonRowTrackingFixtureTest` | `row-tracking.enabled` — two appends recording first ids 0 and 3, then a full compaction whose output records none and carries `_ROW_ID` per row |
 | `paimon/db.db/sm` | `PaimonStatsModeFixtureTest` | `fields.v.stats-mode = none` — `_VALUE_STATS` over two of three columns, named in `_VALUE_STATS_COLS`; the oracle for the subset decoding |
+| `paimon/db.db/se` | `PaimonSchemaEvolutionFixtureTest` | `ADD COLUMN` between two writes, then a compaction — a schema-1 manifest listing a schema-0 file, whose stats decode only against its own schema |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1395,7 +1396,14 @@ also on the classpath.
   document does not settle: **a string bound is lexicographic over the whole value** (`v1..v999`
   over a thousand rows, `v1001..v2` over three), and **`_DELETE_ROW_COUNT` counts the `-D` rows
   inside a file**, not the rows a deletion vector marks — 3 on `dv`'s level-0 delete file, 0 on
-  the two files its vector covers
+  the two files its vector covers. **Those rows are decoded against the schema the file's own
+  `_SCHEMA_ID` names, never the manifest's** — the same rule as an Iceberg manifest's own spec,
+  and the two differ as soon as a manifest written under a new schema lists a file written under
+  the old, which a compaction's delta manifest does because it records the files it removed. Read
+  against the manifest's schema, a two-field stats row is three fields short of the arity check
+  and decodes to nothing — silently, since `decodePaimonRow` answers null for a wrong arity. `se`
+  is the fixture: `ADD COLUMN` between two writes, then `sys.compact`, and the removed schema-0
+  file's `k 1..2, v a..b` are what the entry has to say
 - **Scan pruning answers for Paimon through a bridge, not a second evaluator.**
   `model/PaimonPruningBridge.kt` puts what a Paimon manifest and file record into the vocabulary
   the pruning rules are written in: a manifest's per-column partition range becomes one identity

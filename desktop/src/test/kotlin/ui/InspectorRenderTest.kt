@@ -950,6 +950,19 @@ class InspectorRenderTest {
         assertNotNull(external, "the ep fixture's files should be re-rooted under the local warehouse")
         renderInspector(epGraph, external.id, "paimon-file-node-external", height = 1800)
 
+        // And a file written under an older schema than the manifest that lists it: `Schema ID`
+        // says 0 and the Column Bounds section has two columns where the manifest's schema has
+        // three, because the stats were decoded against the file's own schema.
+        val seGraph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/se").absolutePath)),
+            showRows = false,
+        )
+        val oldSchemaRemoved = seGraph.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
+            .firstOrNull { it.entry.file?.schemaId == 0L && it.operationKind == model.PaimonEntryKind.DELETE }
+        assertNotNull(oldSchemaRemoved, "the se fixture's compaction removes a schema-0 file")
+        assertEquals(listOf("k", "v"), oldSchemaRemoved.columnBounds?.map { it.name })
+        renderInspector(seGraph, oldSchemaRemoved.id, "paimon-file-node-old-schema", height = 2200)
+
         // And row tracking, both shapes: an appended file's `Row IDs` row states the range its
         // first id implies, and a compaction's output says the ids are in the file.
         val rtGraph = GraphLayoutService.layoutGraph(

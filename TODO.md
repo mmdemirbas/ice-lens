@@ -329,6 +329,7 @@ What is left:
   | `paimon/db.db/ep` | `data-file.external-paths` — the data files beside the table under `ep-files/`, `_EXTERNAL_PATH` recorded, no bucket under the table |
   | `paimon/db.db/rt` | `row-tracking.enabled` — first ids on appended files, `_ROW_ID` inside a compaction's output, `nextRowId` on every snapshot |
   | `paimon/db.db/sm` | `fields.v.stats-mode = none` — `_VALUE_STATS_COLS` names two of three columns, and every bound lands on its own column |
+  | `paimon/db.db/se` | `ADD COLUMN` between two writes, then `sys.compact` — the compaction's delta manifest is under schema 1 and removes a schema-0 file, whose two-field stats decode only against its own schema |
 
   **Still missing:** the `write.metadata.path` layout is built at runtime by
   `RecordedPathResolutionTest`, a rearrangement of the minimal fixture rather than a table an

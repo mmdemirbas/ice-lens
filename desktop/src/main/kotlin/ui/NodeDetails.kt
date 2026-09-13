@@ -2518,8 +2518,9 @@ fun NodeDetailsContent(
                                 Text(
                                     "From the entry's _VALUE_STATS: a per-column minimum, maximum and null " +
                                         "count over the rows in this file, two BinaryRows decoded against the " +
-                                        "schema the manifest names. A string bound is the whole value, not a " +
-                                        "truncated prefix." +
+                                        "schema the file's own _SCHEMA_ID names — the one it was written under, " +
+                                        "which is not always the manifest's. A string bound is the whole value, " +
+                                        "not a truncated prefix." +
                                         // A subset is a decision the writer recorded — fields.<col>.stats-mode
                                         // = none under the dense store — and the columns left out are the
                                         // ones a scan cannot prune this file on.
