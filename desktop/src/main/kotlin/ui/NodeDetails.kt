@@ -4,6 +4,8 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.FirstPage
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.UnfoldLess
@@ -89,6 +91,7 @@ import model.snapshotHistory
 import model.SnapshotLogKind
 import model.partialRows
 import model.partitionBreakdown
+import model.stepComparableSnapshot
 import model.UNDECODED_PARTITION
 import model.LiveFile
 import model.describe
@@ -838,6 +841,12 @@ fun NodeDetailsContent(
      */
     expandedGroupIds: Set<String> = emptySet(),
     onCollapseGroupsUnder: (String) -> Unit = {},
+    /**
+     * Replaces the selection. The comparison's step controls use it: stepping one snapshot is
+     * selecting the pair with that side moved, so the panel needs no state of its own and the
+     * canvas highlights the pair it is showing. Defaulted so a render needs no app.
+     */
+    onSelectNodes: (Set<String>) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     SelectionContainer {
@@ -865,7 +874,7 @@ fun NodeDetailsContent(
                     Box(Modifier.fillMaxSize()) {
                         val scroll = rememberScrollState()
                         Column(Modifier.fillMaxSize().verticalScroll(scroll).padding(8.dp)) {
-                            SnapshotComparison(pair.first, pair.second)
+                            SnapshotComparison(pair.first, pair.second, multiGraph, onSelectNodes)
                         }
                         VerticalScrollbar(
                             adapter = rememberScrollbarAdapter(scroll),
@@ -3005,8 +3014,60 @@ private fun comparableSnapshots(
  * What is deferred is the walk itself: `SnapshotNode.liveFiles` is a `DeferredRead`, so a table of
  * twenty commits never walks twenty closures to answer a question about two.
  */
+/**
+ * The two step buttons for one side of a comparison. A button is drawn disabled at the end of the
+ * history rather than dropped, so the row keeps its shape and the reader sees there is no further
+ * to go; the label names the commit the click would move to, since a step whose target is a
+ * mystery is a step nobody takes on a table they do not know.
+ */
 @Composable
-private fun SnapshotComparison(from: ComparableSnapshot, to: ComparableSnapshot) {
+private fun ComparisonStepRow(
+    label: String,
+    stepped: ComparableSnapshot,
+    pinned: ComparableSnapshot,
+    graph: GraphModel,
+    onSelectNodes: (Set<String>) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val older = graph.stepComparableSnapshot(stepped.nodeId, -1)?.takeIf { it.nodeId != pinned.nodeId }
+        ?: graph.stepComparableSnapshot(stepped.nodeId, -2)
+    val newer = graph.stepComparableSnapshot(stepped.nodeId, 1)?.takeIf { it.nodeId != pinned.nodeId }
+        ?: graph.stepComparableSnapshot(stepped.nodeId, 2)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "$label — snapshot ${stepped.displayNumber}:",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.width(190.dp),
+        )
+        TextButton(
+            onClick = { older?.let { onSelectNodes(setOf(pinned.nodeId, it.nodeId)) } },
+            enabled = older != null,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            modifier = Modifier.height(28.dp),
+        ) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = null, modifier = Modifier.size(14.dp))
+            Text(older?.let { "older (snapshot ${it.displayNumber})" } ?: "older (none)", fontSize = TypeScale.small)
+        }
+        TextButton(
+            onClick = { newer?.let { onSelectNodes(setOf(pinned.nodeId, it.nodeId)) } },
+            enabled = newer != null,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            modifier = Modifier.height(28.dp),
+        ) {
+            Text(newer?.let { "newer (snapshot ${it.displayNumber})" } ?: "newer (none)", fontSize = TypeScale.small)
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(14.dp))
+        }
+    }
+}
+
+@Composable
+private fun SnapshotComparison(
+    from: ComparableSnapshot,
+    to: ComparableSnapshot,
+    graph: GraphModel,
+    onSelectNodes: (Set<String>) -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     val diff = remember(from.nodeId, to.nodeId) {
         snapshotDiff(
@@ -3021,6 +3082,12 @@ private fun SnapshotComparison(from: ComparableSnapshot, to: ComparableSnapshot)
         fontWeight = FontWeight.Bold,
         color = colors.onSurface,
     )
+    Spacer(Modifier.height(8.dp))
+    // Pin one side and step the other: each side moves to its neighbour in commit order while the
+    // other stays, which is how a branch is compared against successive points on main. Stepping
+    // is selecting, so the canvas keeps showing the pair the panel is about.
+    ComparisonStepRow("Older side", from, to, graph, onSelectNodes)
+    ComparisonStepRow("Newer side", to, from, graph, onSelectNodes)
     Spacer(Modifier.height(8.dp))
 
     DetailTable {

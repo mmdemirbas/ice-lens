@@ -88,6 +88,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A comparison can be stepped.** Each side of the two-snapshot comparison has older / newer
+  controls that move that snapshot to its neighbour in commit order while the other stays pinned —
+  a branch against successive points on `main` is a click per point. Each button names the commit
+  it would move to and is disabled at the end of history.
 - **A snapshot lists its live files by partition.** A `Partitions` section on both formats'
   snapshot panels — data files, records, bytes, delete files and delete records per partition,
   largest first, with the largest's share of the bytes stated above the table — folded from the

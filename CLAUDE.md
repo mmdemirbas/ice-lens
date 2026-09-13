@@ -278,7 +278,13 @@ intellij/src/main/kotlin/plugin/
   `NodeDetailsContent`, not a picker — and orders them oldest-first by **sequence number**, because
   a timestamp is a clock and two commits from a fast writer can share one. `MAX_DIFF_ROWS` caps the
   file list at 500 and says so on screen when it bites; files on both sides are counted and not
-  listed, because on any real table they are almost all of it
+  listed, because on any real table they are almost all of it. **Each side can be stepped while
+  the other stays pinned**: `GraphModel.stepComparableSnapshot` (core, `SnapshotDiff.kt`) answers
+  the neighbour in the same commit order the panel sorts the pair by, skipping expired snapshots,
+  and the panel's two rows of older / newer buttons call `onSelectNodes` with the pair moved —
+  stepping *is* selecting, so the panel holds no state and the canvas highlights what it shows. A
+  button at the end of history is disabled, not dropped, so the row keeps its shape; each names the
+  commit it would move to. `SnapshotSteppingTest` pins the order and the ends
 - **A snapshot's partition breakdown is folded from the same live set the comparison uses.**
   `List<LiveFile>.partitionBreakdown()` in `model/SnapshotDiff.kt` groups a snapshot's live files
   by their decoded partition — `LiveFile.partition`, carried out of `liveFilesOf` by zipping the
@@ -1318,7 +1324,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~975 tests across 116 files (735 in :core, 234 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~977 tests across 117 files (737 in :core, 234 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

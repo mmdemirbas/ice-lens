@@ -228,3 +228,31 @@ fun snapshotDiff(fromId: Long?, from: List<LiveFile>, toId: Long?, to: List<Live
         },
     )
 }
+
+/**
+ * The drawn snapshots a comparison can step through, in commit order — the order the panel puts
+ * two selected snapshots in, so "the next one" means the same thing whichever side is stepped.
+ * Expired snapshots are left out: they have no manifests to compare.
+ */
+fun GraphModel.comparableSnapshotsInOrder(): List<ComparableSnapshot> =
+    nodes.filterIsInstance<ComparableSnapshot>()
+        .filter { it.canDiff }
+        .sortedWith(
+            compareBy(
+                { it.commitOrder ?: Long.MAX_VALUE },
+                { it.commitTimeMs ?: Long.MAX_VALUE },
+                { it.commitId ?: Long.MAX_VALUE },
+            ),
+        )
+
+/**
+ * The snapshot [steps] commits from [nodeId] in [comparableSnapshotsInOrder] — negative for
+ * older — or null off either end. Stepping one side of a comparison while the other stays
+ * pinned is how a branch is compared against successive points on `main`.
+ */
+fun GraphModel.stepComparableSnapshot(nodeId: String, steps: Int): ComparableSnapshot? {
+    val ordered = comparableSnapshotsInOrder()
+    val index = ordered.indexOfFirst { it.nodeId == nodeId }
+    if (index < 0) return null
+    return ordered.getOrNull(index + steps)
+}

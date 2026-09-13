@@ -199,6 +199,7 @@ fun App() {
                 onScanFilterChange = state::updateScanFilter,
                 expandedGroupIds = state.expandedGroupIds,
                 onCollapseGroupsUnder = state::collapseGroupsUnder,
+                onSelectNodes = { state.selectedNodeIds = it },
             )
         }
     }

@@ -44,6 +44,7 @@ import model.GraphModel
 import model.GraphSearch
 import model.GraphNode
 import model.partitionBreakdown
+import model.stepComparableSnapshot
 import model.publishedWapId
 import model.wapId
 import model.describe
@@ -1578,6 +1579,11 @@ class InspectorRenderTest {
         val pair = setOf(snapshots.first().id, snapshots.last().id)
 
         renderInspector(graph, pair, "snapshot-compare", height = 2600)
+        // Stepping is selecting: the newer side stepped back once selects the pair with that side
+        // moved, and the panel drawn for it says so in its own header rows.
+        val stepped = graph.stepComparableSnapshot(snapshots.last().id, -1)!!
+        assertTrue(stepped.nodeId != snapshots.first().id && stepped.nodeId != snapshots.last().id)
+        renderInspector(graph, setOf(snapshots.first().id, stepped.nodeId), "snapshot-compare-stepped", height = 1000)
     }
 
     /**

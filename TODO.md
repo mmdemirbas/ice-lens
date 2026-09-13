@@ -258,10 +258,12 @@ What is left:
 - **Snapshot compare exists, and its way in is selection.** `model/SnapshotDiff.kt` answers "what
   is different between these two" for any pair, and selecting two snapshots on the canvas opens
   it, for either format — `ComparableSnapshot` is the seam, and `PaimonSnapshotDiffTest` runs the
-  Paimon side over every multi-commit fixture, including a branch's snapshot against main's. One
-  thing is unfinished: selection is the only route — there is no way to pin one snapshot and step
-  the other through history, which is what comparing a branch against successive points on
-  `main` wants.
+  Paimon side over every multi-commit fixture, including a branch's snapshot against main's.
+  Stepping is done too: each side of the comparison has older / newer controls that move that
+  snapshot to its neighbour in commit order while the other stays, and stepping is selecting, so
+  the canvas keeps highlighting the pair the panel is about. What is still not offered is a step
+  along *lineage* rather than commit order — on a table with several branches the neighbour in
+  commit order can be on another branch, and the panel says so only through its Relationship row.
 
 - **Different layout algorithms — done, with one limit stated.** Layered left-to-right (default),
   layered top-to-bottom, tree and force-directed, from a toolbar menu, persisted.
