@@ -223,8 +223,12 @@ fun paimonLiveFilesOf(snapshot: PaimonUnifiedSnapshot?): List<LiveFile> =
             content = DataFileContent.DATA,
             recordCount = meta?.rowCount ?: 0L,
             sizeBytes = meta?.fileSize ?: 0L,
+            partial = meta?.writeCols != null,
         )
     }
+
+/** The rows of a snapshot's partial-column files — counted in `totalRecordCount`, read as no rows of their own. */
+fun List<LiveFile>.partialRows(): Long = filter { it.partial }.sumOf { it.recordCount }
 
 /**
  * The three record counts a Paimon snapshot file records, each beside the same figure read from

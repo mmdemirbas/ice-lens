@@ -91,6 +91,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a dashed `e_patch_*` edge, the patch's panel says `b only — a partial-column file: a read
   stitches it with <file> by row id`, the patched file's says `Patched By`, and the IDE tree lists
   `Columns`. `de` is the fixture, and its script's final SELECT is the oracle for the stitched rows.
+  The snapshot's panel leads its record tallies with the figure a scan returns — `the snapshot's 5
+  rows read as 3` — because Paimon's `totalRecordCount` sums file rows and a patch file's rows are
+  rows the table already had.
 - **A v3 snapshot's panel says which row ids it took.** `added-rows` is read, and `Row IDs` prints
   the range with the summary's `added-records` beside it where they differ — `6..8 (3 ids for 1
   added record — the other 2 went to existing rows in a data manifest this commit wrote)` on

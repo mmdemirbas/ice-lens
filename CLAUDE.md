@@ -1617,8 +1617,10 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   `e_patch_<patch>_to_<whole>` between `ADD` entries of one partition, bucket and first row id,
   withheld from ELK like `e_dv_*` since both ends sit in one layer, and each file's panel names the
   other end — `Columns: b only — … stitched with <file>` and `Patched By: <file> (b)`. The
-  snapshot's `totalRecordCount` still sums file rows, so `de` reads 5 for a table of 3 rows, and
-  `nextRowId` moves only by the not-matched row the merge inserted
+  snapshot's `totalRecordCount` still sums file rows, so `de` records 5 for a table of 3 rows —
+  `LiveFile.partial` carries the flag out of the replay and the snapshot panel's record tallies
+  lead with `the snapshot's 5 rows read as 3`, the same shape as the vector note — and `nextRowId`
+  moves only by the not-matched row the merge inserted
 - **A file index lives in one of two places, and the one beside the data file is the table's.**
   Where a Paimon file index goes is its size against `file-index.in-manifest-threshold` (500
   bytes): larger is `<file>.index` beside the data file, named in the entry's `_EXTRA_FILES`;

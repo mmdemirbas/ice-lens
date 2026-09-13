@@ -406,6 +406,8 @@ class InspectorRenderTest {
         renderCanvas("graph-canvas-data-evolution", graph, pageSize = AggregationPolicy.DEFAULT_PAGE_SIZE)
         renderInspector(graph, edge.fromId, "paimon-file-node-patch", height = 2200)
         renderInspector(graph, edge.toId, "paimon-file-node-patched", height = 2200)
+        val merge = graph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().first { it.data.id == 2L }
+        renderInspector(graph, merge.id, "paimon-snapshot-node-data-evolution", height = 2600)
     }
 
     /**

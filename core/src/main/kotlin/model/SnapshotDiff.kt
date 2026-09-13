@@ -15,6 +15,12 @@ data class LiveFile(
     val sizeBytes: Long,
     /** What a snapshot summary charges the file at — see [EntryContribution.chargedSizeBytes]. */
     val chargedSizeBytes: Long = sizeBytes,
+    /**
+     * A Paimon data-evolution patch file: it holds some columns of rows another live file
+     * already holds (`_WRITE_COLS` set), so its [recordCount] adds no rows to the table.
+     * Always false for Iceberg, which has no such file.
+     */
+    val partial: Boolean = false,
 )
 
 /**

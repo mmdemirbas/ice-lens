@@ -46,6 +46,10 @@ class PaimonDataEvolutionFixtureTest {
         assertEquals(2L, newRow.metadata.file?.firstRowId)
         assertEquals(3L, merge.metadata.nextRowId, "the patch took no ids; the new row took one")
         assertEquals(5L, merge.metadata.totalRecordCount, "file rows summed — the two patched rows counted twice")
+        val live = paimonLiveFilesOf(merge)
+        assertEquals(3, live.size)
+        assertEquals(2L, live.partialRows(), "the rows a scan does not return twice")
+        assertEquals(3L, live.sumOf { it.recordCount } - live.partialRows(), "what the script's SELECT printed")
         assertTrue(model.readErrors.isEmpty() && merge.deltaManifests.single().readErrors.isEmpty())
     }
 

@@ -85,6 +85,7 @@ import model.sourceSnapshotId
 import model.publishedWapId
 import model.wapId
 import model.describeRowIds
+import model.partialRows
 import model.describe
 import model.PaimonFileSource
 import model.paimonManifestTallies
@@ -3601,6 +3602,23 @@ private fun PaimonRecordsSection(node: GraphNode.PaimonSnapshotNode) {
     val disagreeing = tallies.count { it.agrees == false }
     val title = "Recorded Records" + if (disagreeing > 0) " — $disagreeing DISAGREE" else ""
     Section(title) {
+        // Data evolution: a patch file's rows are rows the table already had, and Paimon's total
+        // sums file rows, so the figure a scan returns is stated before the table that agrees
+        // with the writer — the same shape as the vector note in the index section.
+        val live = node.liveFiles.orEmpty()
+        val partialRows = live.partialRows()
+        if (partialRows > 0) {
+            val partialFiles = live.count { it.partial }
+            Text(
+                "${formatCount(partialRows)} rows in ${formatCount(partialFiles.toLong())} partial-column " +
+                    "${if (partialFiles == 1) "file" else "files"} are columns of rows other files hold" +
+                    (node.data.totalRecordCount?.let { " — the snapshot's ${formatCount(it)} rows read as ${formatCount(it - partialRows)}" } ?: "") +
+                    ".",
+                fontSize = TypeScale.small,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
         Text(
             "The three record counts the snapshot file carries, beside the same figures read from the " +
                 "manifests it names: the total against the rows the replay ends holding, the delta as " +
