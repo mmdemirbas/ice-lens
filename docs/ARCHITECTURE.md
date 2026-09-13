@@ -98,7 +98,10 @@ ice-lens is a single-module Kotlin Compose Desktop application. All code lives i
 │  AboutDialog.kt   About dialog with version info, diagnostics, cheat sheet
 │  GraphCanvas.kt   Zoomable/pannable canvas, node/edge rendering, viewport culling
 │  NodeComponents.kt   Per-type node card rendering, copy-to-clipboard
-│  NodeDetails.kt      Per-type inspector panel rendering
+│  NodeDetails.kt      Inspector panel: header, multi-select, shared sections and helpers
+│  NodePanels.kt       Table / row / error / group panels
+│  IcebergNodePanels.kt  Metadata / snapshot / manifest / file panels
+│  PaimonNodePanels.kt   Paimon snapshot / schema / manifest list / manifest / data file panels
 │  Sidebar.kt          Workspace tree, table selection
 │  NavigationTree.kt   Parent/child tree navigation in inspector
 │  ToolWindow.kt       Dockable panel framework
@@ -250,7 +253,7 @@ To add a new table format (e.g., Delta Lake, Hudi), follow the pattern establish
 
 ### UI rendering
 - `NodeComponents.kt` — add node card rendering + colors for new `GraphNode` subtypes
-- `NodeDetails.kt` — add inspector panels for new node types
+- `NodeDetails.kt` — dispatch to a panel in `NodePanels.kt` / `IcebergNodePanels.kt` / `PaimonNodePanels.kt` for new node types
 - `Sidebar.kt` — add format badge in `WorkspaceRootItem`
 - `AppState.loadTableModel()` — single dispatch point for table model construction; add the new format here
 

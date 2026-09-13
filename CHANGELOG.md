@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **The inspector's per-node panels are out of `NodeDetailsContent`.** Its 2,080-line `when`
+  now dispatches to one composable per node kind — `NodePanels.kt` (table, row, error, group),
+  `IcebergNodePanels.kt` (metadata, snapshot, manifest, file) and `PaimonNodePanels.kt` (the five
+  Paimon kinds) — and `NodeDetails.kt` keeps the header, the multi-select branches and the
+  sections and helpers the panels share. No behaviour change; every inspector capture renders
+  as before.
 - **The tool-window layout is out of `App.kt`.** `DockState` holds where each window sits,
   which are hidden, the pane sizes and a drag in flight, with the rules as functions that
   `DockStateTest` asserts on — where a drop lands, how far a pane may grow, what a bar lists.

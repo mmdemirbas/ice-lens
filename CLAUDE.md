@@ -112,7 +112,10 @@ desktop/src/main/kotlin/
     ├── WorkspaceUtils.kt      # Table detection, recursive scanning, native file chooser, workspace dedup
     ├── GraphCanvas.kt         # Interactive graph: zoom/pan, node selection/drag, marquee, mini-map, viewport culling
     ├── NodeComponents.kt      # Node card composables (Iceberg + Paimon node types) + tooltip + copy buttons
-    ├── NodeDetails.kt         # Inspector panel — detailed metadata, JSON highlighting, changelogs, sample rows
+    ├── NodeDetails.kt         # Inspector panel — header, multi-select, the shared sections and helpers the panels reach for
+    ├── NodePanels.kt          # Table, row, error and group panels
+    ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
+    ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
     ├── RemoteLocations.kt      # A location in object storage and how to reach it — persisted, minus the secret
     ├── RemoteLocationDialog.kt # The form for a location no file chooser can browse to
     ├── Sidebar.kt             # Workspace panel — add/remove roots, search, drag-to-reorder, format badges (ICE/PMN)
@@ -1838,7 +1841,7 @@ The `sealed` keyword ensures the compiler flags every `when` that needs a new ca
 8. Add `GraphNode` subtypes to `GraphTypes.kt`, and give each one an `AggregationKind` in
    `aggregationKind()` — a node type with no kind is never aggregated, which is right for errors
    and wrong for anything that fans out
-9. Add node rendering to `NodeComponents.kt` and `NodeDetails.kt`
+9. Add node rendering to `NodeComponents.kt`, and a panel in the `*NodePanels.kt` file for its format, dispatched from `NodeDetailsContent`
 10. Add post-processing comparators to `GraphLayoutService.enforceChronologicalVerticalOrder()`
 11. Add alignment/overlap layers to `alignParentsWithChildren()` / `preventOverlaps()`
 12. Add format badge to `Sidebar.kt`
