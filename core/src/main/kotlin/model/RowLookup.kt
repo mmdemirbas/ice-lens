@@ -107,9 +107,20 @@ fun UnifiedTableModel.rowLookupInput(): RowLookupInput? {
     val currentId = newest.currentSnapshotId ?: return null
     val snapshot = metadatas.asReversed().firstNotNullOfOrNull { um -> um.snapshots.firstOrNull { it.metadata.snapshotId == currentId } }
         ?.takeIf { !it.expired } ?: return null
+    return rowLookupInputOf(snapshot, liveFilesOf(snapshot), deleteReach(snapshot))
+}
+
+/**
+ * The read input for one snapshot, from its live-file walk and its delete pairing already run —
+ * the snapshot node holds both deferred, so a panel that compared and then counted walks once.
+ * Column names for an equality delete's field ids come from the newest metadata's current schema.
+ */
+fun UnifiedTableModel.rowLookupInputOf(snapshot: UnifiedSnapshot, liveFiles: List<LiveFile>, reach: List<DeleteReach>): RowLookupInput? {
+    val newest = metadatas.lastOrNull()?.metadata ?: return null
+    val currentId = snapshot.metadata.snapshotId ?: return null
     val schema = newest.schemas.firstOrNull { it.schemaId == newest.currentSchemaId }?.let(::tableSchemaModel)
         ?: newest.schemas.lastOrNull()?.let(::tableSchemaModel)
-    val live = liveFilesOf(snapshot).map { normalizeFilePath(it.path) }.toSet()
+    val live = liveFiles.map { normalizeFilePath(it.path) }.toSet()
     val data = mutableMapOf<String, LookupDataFile>()
     val deletes = mutableMapOf<String, LookupDeleteFile>()
     snapshot.manifests.forEach { m ->
@@ -132,5 +143,5 @@ fun UnifiedTableModel.rowLookupInput(): RowLookupInput? {
             }
         }
     }
-    return RowLookupInput(currentId, schema, data.values.toList(), deletes.values.toList(), deleteReach(snapshot))
+    return RowLookupInput(currentId, schema, data.values.toList(), deletes.values.toList(), reach)
 }

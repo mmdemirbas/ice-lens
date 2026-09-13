@@ -202,6 +202,8 @@ object IcebergGraphBuilder {
                 val sId = "snap_${snap.snapshotId}"
                 if (!logicalNodes.containsKey(sId)) {
                     val simpleSnapshotId = nextSnapshotSimpleId++
+                    val liveFiles = if (snapshot.expired) DeferredRead.none() else DeferredRead.of { liveFilesOf(snapshot) }
+                    val reach = if (snapshot.expired) DeferredRead.none() else DeferredRead.of { deleteReach(snapshot) }
                     logicalNodes[sId] = GraphNode.SnapshotNode(
                         id = sId,
                         data = snap,
@@ -217,10 +219,13 @@ object IcebergGraphBuilder {
                         manifestList = snapshot.manifests.map { it.metadata },
                         // Deferred, not computed: this walks the snapshot's whole manifest
                         // closure, and only two snapshots in a table are ever compared.
-                        liveFilesLoader = if (snapshot.expired) DeferredRead.none() else DeferredRead.of { liveFilesOf(snapshot) },
+                        liveFilesLoader = liveFiles,
                         // Deferred for the same reason, and it costs that walk again: the pairing
                         // is a question about one commit, asked of one panel.
-                        deleteReachLoader = if (snapshot.expired) DeferredRead.none() else DeferredRead.of { deleteReach(snapshot) },
+                        deleteReachLoader = reach,
+                        readInput = if (snapshot.expired) DeferredRead.none() else DeferredRead.of {
+                            tableModel.rowLookupInputOf(snapshot, liveFiles.value.orEmpty(), reach.value.orEmpty())
+                        },
                     )
                 }
                 snapshot.readErrors.forEach { error ->

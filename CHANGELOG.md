@@ -125,6 +125,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **The IDE tool window's table row says what an expiry would remove** — `older_than = now` on
   Iceberg, a bare call on Paimon — the one maintenance line that needs no walk.
+- **An Iceberg snapshot says what `SELECT count(*)` returns.** `Live Rows` on the snapshot
+  panel: each data file's `record_count` less the rows the delete files a scan pairs with it
+  remove — a vector's cardinality, a positional delete's positions for the file, an equality
+  delete's matches on its columns, one bit set per file — drawn at once where the snapshot lists
+  no delete manifest and behind a click where it does. Checked against the rows every fixture
+  with deletes left, and commit by commit on `maint`.
 - **A Paimon snapshot says what `SELECT count(*)` returns.** `Merged Rows` on the snapshot panel:
   the merge a read runs over each bucket's files — one record per key, less the keys whose latest
   record is a `-D` or `-U`, less the keys whose latest record a deletion vector marks — behind a

@@ -95,6 +95,7 @@ core/src/main/kotlin/
 │   ├── RowLookup.kt           # The rows a filter matches, read through DuckDB, and each one's fate under the delete files paired with its file
 │   ├── PaimonRowLookup.kt     # The same on Paimon: a record's fate under its file's vector, its own `_VALUE_KIND`, and the bucket's later writes for its key
 │   ├── PaimonMergedCount.kt   # What `SELECT count(*)` returns as of a Paimon snapshot: the merge over each bucket's files, less retractions and vector-marked keys
+│   ├── LiveRowCount.kt        # The same on Iceberg: each data file's record_count less the rows the delete files the scan pairs with it remove
 │   ├── PaimonDeletionVectorReader.kt # A Paimon index file's vector at (offset, length) → the row positions it marks; v1 32-bit, v2 as Iceberg's blob
 │   ├── StorageLocation.kt     # A location string → the Path that opens it. The one place a scheme is resolved
 │   ├── DuckDb.kt              # The shared DuckDB connection, and the object-store credentials configured on it
@@ -132,6 +133,7 @@ desktop/src/main/kotlin/
     ├── FileHistorySection.kt  # A file's life on both file panels: which commit removed it, and what still keeps it on disk
     ├── IntegritySection.kt    # The whole-table check behind a click on the table panel, and its findings
     ├── PaimonMergedCountSection.kt # The rows a read of a Paimon snapshot returns, behind a click on a primary-key table
+    ├── LiveRowsSection.kt     # The rows a read of an Iceberg snapshot returns, behind a click where a delete manifest is listed
     ├── TimeTravelSection.kt   # A typed time and the snapshot it resolves to, on the metadata panel and the Paimon table panel
     ├── RowLookupSection.kt    # The scan filter one step further: the matching rows read from the files it leaves, each with its fate — both formats
     ├── NodePanels.kt          # Table, row, error and group panels
@@ -1691,7 +1693,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,120 tests across 142 files (854 in :core, 259 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,130 tests across 143 files (860 in :core, 260 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2079,6 +2081,24 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   the `mergedRecordCount` Paimon wrote, which is the one engine-written figure of its kind. The
   snapshot panel's `Merged Rows` section sits under the recorded counts, behind a click on a
   primary-key table, capped at `MAX_BUCKETS` and said so
+- **And the Iceberg twin is per data file, over the delete files the scan pairs with it.**
+  `total-records` and every `record_count` count rows as written, and a merge-on-read delete
+  touches neither; subtracting the delete files' own `record_count` is wrong the moment one is
+  dangling. `service/LiveRowCount.kt` takes the snapshot's `RowLookupInput`
+  (`SnapshotNode.readInput`, threaded through the same deferred walk and pairing as `liveFiles`
+  and `deleteReach`, built by `rowLookupInputOf`) and counts each data file by what reaches it:
+  nothing → `record_count`, unopened; a vector alone → less its cardinality, decoded and unopened,
+  since a vector's positions are distinct by construction; a positional or an equality delete →
+  the file opened once, DuckDB streaming back the positions the positional deletes name for it
+  (`file_path` as recorded) or an equality delete's rows match on its columns (`IS NOT DISTINCT
+  FROM`, nulls matching nulls as Iceberg compares them), into one bit set with the vector's whole
+  positions (`PuffinReader.readDeletionVectorPositions`) — a row two deletes remove is one row
+  gone. The pairing carries the sequence rule, so a delete written before the file was is never
+  applied to it. `LiveRowCountFixtureTest` holds every fixture with deletes to its script and
+  walks `maint` commit by commit — `4, 8, 7, 6, 6, 5, 5, 7, 6, 6`, the two rewrites changing the
+  files and not the answer — and requires a table with no delete files to open nothing. The
+  snapshot panel's `Live Rows` sits under the totals, drawn at once where the manifest list names
+  no delete manifest and behind a click where it does, capped at `MAX_FILES` opened
 - **A file index lives in one of two places, and the one beside the data file is the table's.**
   Where a Paimon file index goes is its size against `file-index.in-manifest-threshold` (500
   bytes): larger is `<file>.index` beside the data file, named in the entry's `_EXTRA_FILES`;

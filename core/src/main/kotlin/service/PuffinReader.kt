@@ -8,6 +8,7 @@ import java.nio.ByteOrder
 import java.nio.channels.SeekableByteChannel
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.BitSet
 import java.util.zip.CRC32
 
 /**
@@ -122,6 +123,35 @@ object PuffinReader {
             file.readFully(length.toInt())
         }
         return decodeDeletionVector(blob, referencedDataFile, recordedCardinality)
+    }
+
+    /**
+     * Every position the vector marks, as a bit set — for a count that has to be exact over a
+     * whole file, where [DeletionVector.positions] stops at [MAX_POSITIONS]. A position past what
+     * a bit set holds is refused rather than folded; no data file has that many rows.
+     */
+    fun readDeletionVectorPositions(path: Path, offset: Long, length: Long): BitSet {
+        if (length < 12) throw PuffinFormatException("a $length-byte blob is too short to hold a vector")
+        val blob = Files.newByteChannel(path).use { file ->
+            if (offset < 0 || offset + length > file.size()) {
+                throw PuffinFormatException("blob at $offset+$length lies outside a ${file.size()}-byte file")
+            }
+            file.position(offset)
+            file.readFully(length.toInt())
+        }
+        val declared = ByteBuffer.wrap(blob).order(ByteOrder.BIG_ENDIAN).getInt()
+        if (declared < 4 || 4 + declared + 4 > blob.size) {
+            throw PuffinFormatException("the vector declares $declared bytes, which does not fit its ${blob.size}-byte blob")
+        }
+        if (!blob.copyOfRange(4, 8).contentEquals(VECTOR_MAGIC)) {
+            throw PuffinFormatException("the blob does not carry the deletion-vector magic D1 D3 39 64")
+        }
+        val bits = BitSet()
+        forEachPosition(blob.copyOfRange(8, 4 + declared)) { position ->
+            if (position < 0 || position > Int.MAX_VALUE) throw PuffinFormatException("position $position is past what a bit set holds")
+            bits.set(position.toInt())
+        }
+        return bits
     }
 
     /**

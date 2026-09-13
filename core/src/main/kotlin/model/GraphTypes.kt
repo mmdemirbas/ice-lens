@@ -466,6 +466,11 @@ sealed class GraphNode(
          * there is a delete manifest to be about, which the list records without being opened.
          */
         private val deleteReachLoader: DeferredRead<List<DeleteReach>> = DeferredRead.none(),
+        /**
+         * What reading this snapshot takes — see [RowLookupInput] — for the live row count,
+         * threaded through the same deferred walk and pairing as [liveFiles] and [deleteReach].
+         */
+        val readInput: DeferredRead<RowLookupInput> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         // The card grows for its ref chips rather than clipping them. Node height is what ELK

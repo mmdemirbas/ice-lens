@@ -50,7 +50,7 @@ so and the inspector lists all of them.
 - Delete files paired with the data files they reach, dangling deletes named, deletion vectors decoded to the rows they mark, and the live row count behind a click
 - **Row lookup** on either format: the rows a filter matches, read from the files it leaves, each with its fate — live, or deleted by which vector, positional delete or equality delete on Iceberg; live, vector-marked, a retraction, or superseded by which later write on Paimon
 - One click checks every figure the metadata records against the same figure counted — manifest counts, commit summaries, snapshot totals, Paimon record counts — over the whole table
-- What `SELECT count(*)` returns as of a Paimon snapshot — the merge over each bucket's files, less retractions and vector-marked keys — beside the file-row total the snapshot records
+- What `SELECT count(*)` returns as of a snapshot, on either format — on Iceberg the delete files applied per data file, on Paimon the merge over each bucket's files less retractions and vector-marked keys — beside the row total the snapshot records
 - A file's history on either format — the commit that added it, the one that removed it, and the retained snapshots that still list it live and so keep it on disk
 - Per-snapshot partition breakdown, largest first; per-partition and table statistics files opened and shown against their records
 - Which snapshot a read as of a time lands on, the way each engine resolves it — including the abandoned commit a rolled-back table's log still points a time at

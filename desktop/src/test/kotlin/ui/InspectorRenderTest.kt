@@ -1896,6 +1896,34 @@ class InspectorRenderTest {
     }
 
     /**
+     * The live row count on `eqdel`'s current snapshot — 4 of 7, an equality delete and a positional
+     * delete reaching two files — behind the click; and on `test`, whose snapshot lists no delete
+     * manifest and is answered at once.
+     */
+    @Test
+    fun `an Iceberg snapshot says what a read of it returns`() {
+        fun current(name: String): GraphNode.SnapshotNode {
+            val graph = graphFor(name)
+            val id = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().maxBy { it.simpleId }.data.currentSnapshotId
+            return graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().single { it.data.snapshotId == id }
+        }
+        val eqdel = current("eqdel")
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("live-rows-eqdel", width = 1400, height = 640, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                LiveRowsSection(eqdel, startRequested = true) { settled.set(true) }
+            }
+        }
+        val plain = current("test")
+        val plainSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("live-rows-plain", width = 1400, height = 300, ready = plainSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                LiveRowsSection(plain) { plainSettled.set(true) }
+            }
+        }
+    }
+
+    /**
      * The merged row count on `dv`'s latest snapshot — 1,497 of 1,500, three keys marked by
      * vectors, read from the bucket's files — and on `pt`, partitioned, where the per-bucket table
      * is drawn; both wait for the merge. `ad`'s is the metadata's and needs no click.

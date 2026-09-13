@@ -598,6 +598,7 @@ internal fun ColumnScope.SnapshotPanel(
         node.change?.let { CommitSection(it) }
 
         TotalsSection(node)
+        LiveRowsSection(node)
 
         PartitionsSection(node)
 
