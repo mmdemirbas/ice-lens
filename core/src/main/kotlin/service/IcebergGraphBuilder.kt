@@ -63,6 +63,15 @@ object IcebergGraphBuilder {
             tableSummary,
             unreferencedFiles = DeferredRead.of { findUnreferencedFiles(tableModel) },
             expiryFiles = DeferredRead.of { tableModel.expiryFileInput() },
+            // Closes over `logicalNodes` like the vector index below: it is read after the
+            // traversal has filled it, so the current snapshot's node is there whether or not
+            // aggregation goes on to draw it.
+            maintenance = DeferredRead.of {
+                tableModel.metadatas.lastOrNull()?.let { newest ->
+                    val meta = newest.metadata
+                    IcebergMaintenanceInput(meta, newest.path.fileName.toString(), meta.currentSnapshotId?.let { logicalNodes["snap_$it"] as? GraphNode.SnapshotNode })
+                }
+            },
         )
 
         // Deletion vectors by the data file each one covers, built on first use rather than here:

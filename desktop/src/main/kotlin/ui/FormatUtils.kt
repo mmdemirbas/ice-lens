@@ -92,6 +92,3 @@ fun formatRetentionMs(ms: Long?): String {
     }
     return "$human (${formatCount(ms)} ms)"
 }
-
-/** `1 bucket`, `3 buckets` — a count with its noun agreed, for a sentence a table's figures go into. */
-fun countNoun(count: Int, noun: String, plural: String = noun + "s"): String = "$count ${if (count == 1) noun else plural}"

@@ -14,6 +14,8 @@ import model.ManifestContent
 import model.isEmpty
 import model.GraphModel
 import model.GraphNode
+import model.IcebergMaintenanceInput
+import model.PaimonMaintenanceInput
 import model.planExpiry
 import model.ExpiryCleanup
 import model.ExpiryFileKind
@@ -35,8 +37,6 @@ import model.planCompaction
 import model.PaimonExpiryOptions
 import model.TableMetadata
 import model.describe
-import model.metadataVersionFromFileName
-import java.io.File
 
 /*
  * The inspector's maintenance sections: what each procedure would do if run now, each planned by
@@ -45,6 +45,16 @@ import java.io.File
  * snapshot's `Compaction`, the Paimon table's `Expiry` and `Expiry Files`, and the table panel's
  * `Maintenance` line-per-procedure summary over all of them.
  */
+
+/** The table root, which aggregation never folds and a snapshot filter always reaches. */
+private fun GraphModel.tableNode(): GraphNode.TableNode? = nodeById["table_root"] as? GraphNode.TableNode
+
+/**
+ * The newest metadata, off the table root's [model.MaintenanceInput] rather than the drawn
+ * metadata nodes — the drawn ones stop at the page size and at the snapshot filter, and the
+ * newest is exactly the one both leave out.
+ */
+private fun GraphModel.newestMetadata(): TableMetadata? = (tableNode()?.maintenance?.value as? IcebergMaintenanceInput)?.metadata
 
 /**
  * Each bucket as the LSM tree its writer would restore at this snapshot, and what the next flush
@@ -227,53 +237,56 @@ internal fun ExpirySection(metadata: TableMetadata, nowMs: Long) {
  * where a procedure would act, and in the error colour where a writer would block.
  */
 @Composable
-internal fun MaintenanceSection(node: GraphNode.TableNode, graph: GraphModel) {
+internal fun MaintenanceSection(node: GraphNode.TableNode) {
     val colors = MaterialTheme.colorScheme
     val summary = node.summary
     val nowMs = expiryClock()
     data class Row(val verdict: String, val procedure: String, val detail: String, val where: String, val color: androidx.compose.ui.graphics.Color?)
     val rows = mutableListOf<Row>()
     val paimonExpiry = summary.paimonExpiry
-    if (paimonExpiry == null) {
-        val latest = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().maxByOrNull { metadataVersionFromFileName(it.fileName) ?: -1 }
-        val current = summary.currentSnapshotId?.let { graph.nodeById["snap_$it"] as? GraphNode.SnapshotNode }
-        if (latest != null && current != null && !current.expired) {
-            val meta = latest.data
+    val input = node.maintenance.value
+    if (input is IcebergMaintenanceInput) {
+        val meta = input.metadata
+        // A current snapshot whose manifests are gone plans no rewrite and no merge; the
+        // expiry row needs only the metadata, so a table with no snapshot still gets its line.
+        val current = input.current?.takeIf { !it.expired }
+        if (current != null) {
             val snapshotPanel = "snapshot ${current.simpleId}"
             val rewrite = current.liveFiles?.let { planRewrite(it, current.deleteReach.orEmpty(), RewriteOptions.forTable(meta.properties, meta.defaultSpecId)) }
             val rewritten = rewrite?.rewrittenGroups.orEmpty()
             rows += when {
                 rewrite == null -> Row("not readable", "rewrite_data_files", "the current snapshot's manifests are not retained", "$snapshotPanel → Rewrite", null)
-                rewritten.isNotEmpty() -> Row("would rewrite ${countNoun(rewritten.sumOf { it.files.size }, "file")}", "rewrite_data_files", "${rewritten.size} of ${countNoun(rewrite.groups.size, "group")}, ${formatBytes(rewritten.sumOf { it.inputBytes })}", "$snapshotPanel → Rewrite", verdictSkippedColor())
-                rewrite.candidateCount > 0 -> Row("left alone", "rewrite_data_files", "${countNoun(rewrite.candidateCount, "candidate")} in ${countNoun(rewrite.groups.size, "group")}, none reaching min-input-files (${rewrite.options.minInputFiles})", "$snapshotPanel → Rewrite", null)
+                rewritten.isNotEmpty() -> Row("would rewrite ${formatCounted(rewritten.sumOf { it.files.size }, "file")}", "rewrite_data_files", "${rewritten.size} of ${formatCounted(rewrite.groups.size, "group")}, ${formatBytes(rewritten.sumOf { it.inputBytes })}", "$snapshotPanel → Rewrite", verdictSkippedColor())
+                rewrite.candidateCount > 0 -> Row("left alone", "rewrite_data_files", "${formatCounted(rewrite.candidateCount, "candidate")} in ${formatCounted(rewrite.groups.size, "group")}, none reaching min-input-files (${rewrite.options.minInputFiles})", "$snapshotPanel → Rewrite", null)
                 else -> Row("nothing to do", "rewrite_data_files", "every live file is within the size range and under the delete ratio", "$snapshotPanel → Rewrite", null)
             }
             val mergeOptions = ManifestMergeOptions.forTable(meta.properties)
             val listed = current.manifestList
             val merge = planManifestMerge(listed, ManifestContent.DATA, assumedManifestBytes(listed, ManifestContent.DATA), meta.defaultSpecId, mergeOptions)
             rows += Row(
-                if (merge.mergedBins.isNotEmpty()) "would merge ${countNoun(merge.mergedBins.sumOf { it.manifests.size }, "manifest")}" else "nothing merges",
+                if (merge.mergedBins.isNotEmpty()) "would merge ${formatCounted(merge.mergedBins.sumOf { it.manifests.size }, "manifest")}" else "nothing merges",
                 "next append's manifest merge",
-                "${countNoun(listed.count { (it.content ?: ManifestContent.DATA) == ManifestContent.DATA }, "data manifest")} listed; ${merge.describe}" + if (mergeOptions.enabled) " under min-count-to-merge ${mergeOptions.minCountToMerge}" else "",
+                "${formatCounted(listed.count { (it.content ?: ManifestContent.DATA) == ManifestContent.DATA }, "data manifest")} listed; ${merge.describe}" + if (mergeOptions.enabled) " under min-count-to-merge ${mergeOptions.minCountToMerge}" else "",
                 "$snapshotPanel → Manifest Merge",
                 if (merge.mergedBins.isNotEmpty()) verdictSkippedColor() else null,
             )
-            val expiry = meta.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs))
-            val freed = node.expiryFiles.value?.copy(metadata = meta)?.planExpiryFiles(expiry.removed.toSet())
-            rows += Row(
-                if (expiry.removed.isEmpty()) "nothing expires" else "would remove ${countNoun(expiry.removed.size, "snapshot")}",
-                "expire_snapshots (older_than = now)",
-                when {
-                    expiry.removed.isEmpty() -> "every snapshot is kept by a ref"
-                    freed == null -> "what that frees is not readable here"
-                    else -> "frees ${freed.describe} — ${formatBytes(freed.knownBytes)} the metadata accounts for, ${freed.cleanup.label}"
-                },
-                "${latest.fileName} → Expiry, Expiry Files",
-                if (expiry.removed.isEmpty()) null else verdictSkippedColor(),
-            )
         }
-    } else {
-        val current = summary.currentSnapshotId?.let { graph.nodeById["psnap_$it"] as? GraphNode.PaimonSnapshotNode }
+        val expiry = meta.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs))
+        val freed = node.expiryFiles.value?.planExpiryFiles(expiry.removed.toSet())
+        rows += Row(
+            if (expiry.removed.isEmpty()) "nothing expires" else "would remove ${formatCounted(expiry.removed.size, "snapshot")}",
+            "expire_snapshots (older_than = now)",
+            when {
+                meta.snapshots.isEmpty() -> "the table has no snapshots"
+                expiry.removed.isEmpty() -> "every snapshot is kept by a ref"
+                freed == null -> "what that frees is not readable here"
+                else -> "frees ${freed.describe} — ${formatBytes(freed.knownBytes)} the metadata accounts for, ${freed.cleanup.label}"
+            },
+            "${input.metadataFileName} → Expiry, Expiry Files",
+            if (expiry.removed.isEmpty()) null else verdictSkippedColor(),
+        )
+    } else if (input is PaimonMaintenanceInput && paimonExpiry != null) {
+        val current = input.current
         if (current != null) {
             val snapshotPanel = "snapshot ${current.simpleId}"
             val lsms = current.bucketLsms
@@ -284,18 +297,18 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, graph: GraphModel) {
                 val stalled = verdicts.count { it.stalls }
                 rows += when {
                     lsms == null -> Row("not readable", "compaction", "the latest snapshot's manifests could not be replayed", "$snapshotPanel → Compaction", null)
-                    options.writeOnly -> Row("never — write-only", "compaction", "${countNoun(lsms.size, "bucket")}, ${countNoun(lsms.sumOf { it.level0FileCount }, "level-0 file")} piling up", "$snapshotPanel → Compaction", null)
+                    options.writeOnly -> Row("never — write-only", "compaction", "${formatCounted(lsms.size, "bucket")}, ${formatCounted(lsms.sumOf { it.level0FileCount }, "level-0 file")} piling up", "$snapshotPanel → Compaction", null)
                     stalled > 0 -> Row("a writer would wait on $stalled", "compaction", "$due of ${lsms.size} buckets due, $stalled past num-sorted-run.stop-trigger (${options.stopTrigger})", "$snapshotPanel → Compaction", colors.error)
-                    due > 0 -> Row("${countNoun(due, "bucket")} due", "compaction", "$due of ${countNoun(lsms.size, "bucket")} would compact on the next flush", "$snapshotPanel → Compaction", verdictSkippedColor())
-                    else -> Row("not yet", "compaction", "${countNoun(lsms.size, "bucket")}, every one under num-sorted-run.compaction-trigger (${options.trigger})", "$snapshotPanel → Compaction", null)
+                    due > 0 -> Row("${formatCounted(due, "bucket")} due", "compaction", "$due of ${formatCounted(lsms.size, "bucket")} would compact on the next flush", "$snapshotPanel → Compaction", verdictSkippedColor())
+                    else -> Row("not yet", "compaction", "${formatCounted(lsms.size, "bucket")}, every one under num-sorted-run.compaction-trigger (${options.trigger})", "$snapshotPanel → Compaction", null)
                 }
             } else {
                 val verdicts = lsms?.groupBy { it.partition }?.entries?.map { (partition, trees) ->
                     paimonAppendVerdict(partition, trees.flatMap { t -> t.runs.flatMap { it.files } }, current.tableOptions)
                 }.orEmpty()
                 val packing = verdicts.count { it.wouldPack }
-                rows += if (packing > 0) Row("sys.compact would run on $packing", "compaction", "$packing of ${countNoun(verdicts.size, "partition")} have enough small files; a write never compacts an append table", "$snapshotPanel → Compaction", verdictSkippedColor())
-                else Row("nothing to pack", "compaction", "${countNoun(verdicts.size, "partition")}, none at compaction.min.file-num small files", "$snapshotPanel → Compaction", null)
+                rows += if (packing > 0) Row("sys.compact would run on $packing", "compaction", "$packing of ${formatCounted(verdicts.size, "partition")} have enough small files; a write never compacts an append table", "$snapshotPanel → Compaction", verdictSkippedColor())
+                else Row("nothing to pack", "compaction", "${formatCounted(verdicts.size, "partition")}, none at compaction.min.file-num small files", "$snapshotPanel → Compaction", null)
             }
         }
         val bare = runCatching { paimonExpiry.planExpiry(PaimonExpiryOptions(nowMs = nowMs)) }.getOrNull()
@@ -304,7 +317,7 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, graph: GraphModel) {
         val freeing = freed?.let { ", freeing ${it.describe}" + if (it.protectedByTag.isNotEmpty()) " (${it.protectedByTag.size} kept by a tag)" else "" } ?: ""
         rows += when {
             bare == null || byAge == null -> Row("rejected", "expire_snapshots", "the table's snapshot.* options are ones the procedure refuses", "table → Expiry", colors.error)
-            bare.removed.isNotEmpty() -> Row("would remove ${countNoun(bare.removed.size, "snapshot")}", "expire_snapshots", "a bare call removes ${bare.removed.size}; retain_min = 1 with older_than = now removes ${byAge.removed.size}$freeing", "table → Expiry, Expiry Files", verdictSkippedColor())
+            bare.removed.isNotEmpty() -> Row("would remove ${formatCounted(bare.removed.size, "snapshot")}", "expire_snapshots", "a bare call removes ${bare.removed.size}; retain_min = 1 with older_than = now removes ${byAge.removed.size}$freeing", "table → Expiry, Expiry Files", verdictSkippedColor())
             byAge.removed.isNotEmpty() -> Row("nothing on a bare call", "expire_snapshots", "retain_min = 1 with older_than = now would remove ${byAge.removed.size}$freeing", "table → Expiry, Expiry Files", null)
             else -> Row("nothing expires", "expire_snapshots", "no call removes anything: the bounds, a consumer or a tag keep every snapshot", "table → Expiry", null)
         }
@@ -346,7 +359,7 @@ internal fun ExpiryFilesSection(metadata: TableMetadata, graph: GraphModel, nowM
     val removed = metadata.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs)).removed.toSet()
     // The input comes off the table node's model-built read, never the drawn nodes: aggregation
     // folds older snapshots and manifests out of the graph, which are the ones an expiry removes.
-    val input = graph.nodes.filterIsInstance<GraphNode.TableNode>().firstOrNull()?.expiryFiles?.value?.copy(metadata = metadata)
+    val input = graph.tableNode()?.expiryFiles?.value?.copy(metadata = metadata)
     val plan = input?.planExpiryFiles(removed)
     CountedSection("Expiry Files — ${plan?.describe ?: "not readable"}", plan?.files?.size ?: 0, "files") {
         Text(
@@ -443,7 +456,7 @@ internal fun PaimonExpiryFilesSection(node: GraphNode.TableNode, input: PaimonEx
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
                 if (plan.protectedByTag.isNotEmpty()) Text(
-                    "${countNoun(plan.protectedByTag.size, "removed file")} stay on disk because a tag still holds them: " +
+                    "${formatCounted(plan.protectedByTag.size, "removed file")} stay on disk because a tag still holds them: " +
                         plan.protectedByTag.groupBy { it.tag }.entries.joinToString("; ") { (tag, files) -> "$tag (snapshot ${files.first().tagSnapshotId}) keeps ${files.size}" } + ".",
                     fontSize = TypeScale.small,
                     fontWeight = FontWeight.Bold,
@@ -538,8 +551,7 @@ internal fun PaimonExpirySection(input: PaimonExpiryInput, nowMs: Long) {
 @Composable
 internal fun RewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel) {
     val colors = MaterialTheme.colorScheme
-    val latest = graph.nodes.filterIsInstance<GraphNode.MetadataNode>()
-        .maxByOrNull { metadataVersionFromFileName(it.fileName) ?: -1 }?.data
+    val latest = graph.newestMetadata()
     val options = RewriteOptions.forTable(latest?.properties.orEmpty(), latest?.defaultSpecId)
     val live = node.liveFiles
     val plan = live?.let { planRewrite(it, node.deleteReach.orEmpty(), options) }
@@ -597,8 +609,7 @@ internal fun RewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel) {
 @Composable
 internal fun ManifestMergeSection(node: GraphNode.SnapshotNode, graph: GraphModel) {
     val colors = MaterialTheme.colorScheme
-    val latest = graph.nodes.filterIsInstance<GraphNode.MetadataNode>()
-        .maxByOrNull { metadataVersionFromFileName(it.fileName) ?: -1 }?.data
+    val latest = graph.newestMetadata()
     val options = ManifestMergeOptions.forTable(latest?.properties.orEmpty())
     val listed = node.manifestList
     fun planFor(content: Int): ManifestMergePlan =

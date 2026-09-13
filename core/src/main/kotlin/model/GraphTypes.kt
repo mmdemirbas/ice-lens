@@ -360,6 +360,12 @@ sealed class GraphNode(
         val expiryFiles: DeferredRead<ExpiryFileInput> = DeferredRead.none(),
         /** The Paimon twin — see [PaimonExpiryFileInput]; nothing on Iceberg. */
         val paimonExpiryFiles: DeferredRead<PaimonExpiryFileInput> = DeferredRead.none(),
+        /**
+         * The newest metadata and the current snapshot's node, for the planners — see
+         * [MaintenanceInput] for why they are carried here rather than looked up on the drawn
+         * graph. Deferred because the builder makes this node before the snapshot nodes exist.
+         */
+        val maintenance: DeferredRead<MaintenanceInput> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 240.0, 96.0)

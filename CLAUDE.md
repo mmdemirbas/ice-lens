@@ -67,6 +67,7 @@ core/src/main/kotlin/
 │   ├── BucketTransform.kt     # Iceberg's bucket[N], via the same Guava murmur3 the writer uses
 │   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
 │   ├── ManifestMergePlan.kt   # What the next commit does to the manifest list — ManifestMergeManager's bins and verdicts
+│   ├── MaintenanceInput.kt    # The newest metadata and the current snapshot's node, carried on the table node for the planners — never read off the drawn graph
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
@@ -743,8 +744,15 @@ intellij/src/main/kotlin/plugin/
   procedure would act and in the error colour where a writer would block. It is on the table
   panel because that is where a reader starts and the verdicts otherwise sit three panels deep;
   it calls the same functions the detail sections call, so it cannot drift from them, and it
-  costs the current snapshot's deferred walk once. `countNoun` in `ui/FormatUtils.kt` agrees a
-  count with its noun, because `1 candidates in 1 groups` was the first render
+  costs the current snapshot's deferred walk once. `formatCounted` in `ui/FormatUtils.kt` agrees
+  a count with its noun, because `1 candidates in 1 groups` was the first render. **What it
+  plans from rides the table node** — `TableNode.maintenance`, a `MaintenanceInput` the builder
+  fills off its full node set with the newest metadata and the current snapshot's node — and the
+  snapshot panel's `Rewrite` and `Manifest Merge` read the newest metadata's options from the
+  same place. All three first looked them up on the drawn graph, and both are the last of their
+  siblings in drawn order, so a page size or a snapshot filter that folded them left the sections
+  planning under an older version's options with nothing failing, or not drawn at all.
+  `MaintenanceInputTest` is the page size of one that did it
 - **What `rewrite_data_files` would rewrite is planned the way `SizeBasedDataRewriter` plans it,
   and checked against the three rewrites the fixtures ran.** `model/RewritePlan.kt` reads the
   rules at Iceberg 1.8.1: one task per live data file carrying the delete files the scan pairs with
@@ -1530,7 +1538,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,060 tests across 132 files (802 in :core, 253 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,060 tests across 133 files (805 in :core, 253 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

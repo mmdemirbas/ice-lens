@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **The maintenance summary and the snapshot panel's rewrite and merge sections plan from the
+  newest metadata and the current snapshot whatever the page size draws.** They looked both up on
+  the drawn graph, where each is the last of its siblings — so a page size that folded them, or a
+  snapshot filter, had the sections planning under an older version's options, or not drawn at
+  all. `TableNode.maintenance` now carries both off the builder's full node set.
 - **An unpartitioned spec and an unsorted order say so.** Each drew a table with one row of
   `N/A` in every cell, which read as a decode that failed; they are one line of text now, and the
   spec heading marks `(default)` the way the order heading already did.
