@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 import model.isEmpty
 import model.GraphModel
 import model.GraphNode
+import model.recordedColumnStats
 import model.MAIN_BRANCH
 import model.PaimonFileSource
 import model.paimonManifestTallies
@@ -347,6 +348,7 @@ internal fun ColumnScope.PaimonDataFilePanel(
                     },
                 )
             }
+            StatsCheckSection(node.id, node.localPath, node.recordedColumnStats(), file?.rowCount)
         }
         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 }

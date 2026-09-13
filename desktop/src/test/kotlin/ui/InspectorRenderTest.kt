@@ -56,6 +56,7 @@ import model.PaimonUnifiedTableModel
 import model.PredicateOp
 import model.ScanPredicate
 import model.deleteKindOf
+import model.recordedColumnStats
 import model.SnapshotRefLabel
 import model.UnifiedTableModel
 import service.AggregationPolicy
@@ -1628,6 +1629,38 @@ class InspectorRenderTest {
         renderScene("scan-pruning-paimon-fa", width = 1400, height = 2400) {
             Column(Modifier.padding(16.dp)) {
                 ScanPruningSection(fa, model.ScanFilter.of(listOf(ScanPredicate("v", PredicateOp.EQ, "delta")))) {}
+            }
+        }
+    }
+
+    /**
+     * A file's recorded statistics against its rows, behind a click — captured settled on one
+     * of `parted`'s files, every type the corpus carries in one table, and once more with a
+     * bound moved past a row and a null count off, since a verdict column is judged by the
+     * exception it has to make findable. A section that only ever says "agrees" checks nothing.
+     */
+    @Test
+    fun `the statistics check renders agreement and a planted disagreement`() {
+        val graph = graphFor("parted")
+        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().first { deleteKindOf(it.data) == null && it.localPath?.let { p -> File(p).isFile } == true }
+        val recorded = file.recordedColumnStats()
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("stats-check", width = 1400, height = 700, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                StatsCheckSection(file.id, file.localPath, recorded, file.data.recordCount, startRequested = true) { settled.set(true) }
+            }
+        }
+        val moved = recorded.map {
+            when (it.name) {
+                "id" -> it.copy(lower = (it.lower as Number).toLong() + 1, lowerShown = "${(it.lower as Number).toLong() + 1}")
+                "name" -> it.copy(nullCount = (it.nullCount ?: 0L) + 1)
+                else -> it
+            }
+        }
+        val settledMoved = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("stats-check-disagreeing", width = 1400, height = 700, ready = settledMoved::get) {
+            Column(Modifier.padding(16.dp)) {
+                StatsCheckSection(file.id + "-moved", file.localPath, moved, (file.data.recordCount ?: 0L) + 1, startRequested = true) { settledMoved.set(true) }
             }
         }
     }

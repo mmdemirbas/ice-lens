@@ -117,8 +117,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   metadata-only comparisons everywhere; the statistics and partition-statistics files stay on the
   metadata panel because each is a file open (Puffin footer, DuckDB), and the two closure-walking
   checks stop at fifty snapshots. The manifest list's `partitions` summaries are compared now
-  (`model/PartitionSummaryTally.kt`); a data file's own column bounds against its rows are not,
-  and cannot be from the metadata — that is a file read per entry.
+  (`model/PartitionSummaryTally.kt`); a data file's own column bounds against its rows are
+  checked on the file panel behind a click (`model/StatsCheck.kt`), one file at a time, since
+  that is a file read per entry and cannot come from the metadata.
 
 - **A statistics blob's sketch is never decoded.** The `.stats` container is opened now and its
   footer shown against what `metadata.json` records (`model/TableStatistics.kt`), so a stale record

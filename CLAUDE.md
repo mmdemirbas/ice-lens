@@ -70,6 +70,7 @@ core/src/main/kotlin/
 │   ├── MaintenanceInput.kt    # The newest metadata and the current snapshot's node, carried on the table node for the planners — never read off the drawn graph
 │   ├── FileHistory.kt         # One file across the retained snapshots — added by, removed by, still listed live by — on either format
 │   ├── Integrity.kt           # Every recorded figure against the same figure counted, over the whole table at once — the panels' checks, run everywhere
+│   ├── StatsCheck.kt          # A data file's recorded column bounds and counts against the same figures counted from its rows — the one check Integrity leaves out, being a file read
 │   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
 │   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing — and the fates a hit can have, both formats
 │   ├── PaimonRowLookup.kt     # What reading a Paimon snapshot takes: the live files by bucket, the index manifest's vectors, the merge rule — for the row lookup and the merged count
@@ -97,6 +98,7 @@ core/src/main/kotlin/
 │   ├── PaimonRowLookup.kt     # The same on Paimon: a record's fate under its file's vector, its own `_VALUE_KIND`, and the bucket's later writes for its key
 │   ├── PaimonMergedCount.kt   # What `SELECT count(*)` returns as of a Paimon snapshot: the merge over each bucket's files, less retractions and vector-marked keys
 │   ├── LiveRowCount.kt        # The same on Iceberg: each data file's record_count less the rows the delete files the scan pairs with it remove
+│   ├── StatsCheckReader.kt    # One DuckDB statement per file — count, min, max, nulls per recorded column, NaNs kept out — for StatsCheck; columns found by field id where the Parquet file carries one
 │   ├── PaimonDeletionVectorReader.kt # A Paimon index file's vector at (offset, length) → the row positions it marks; v1 32-bit, v2 as Iceberg's blob
 │   ├── PaimonSequenceGroups.kt # partial-update's remove-record-on-sequence-group, folded over a key's records in sequence order
 │   ├── StorageLocation.kt     # A location string → the Path that opens it. The one place a scheme is resolved
@@ -136,6 +138,7 @@ desktop/src/main/kotlin/
     ├── IntegritySection.kt    # The whole-table check behind a click on the table panel, and its findings
     ├── PaimonMergedCountSection.kt # The rows a read of a Paimon snapshot returns, behind a click on a primary-key table
     ├── LiveRowsSection.kt     # The rows a read of an Iceberg snapshot returns, behind a click where a delete manifest is listed
+    ├── StatsCheckSection.kt   # A data file's recorded statistics beside the counted ones, behind a click on either format's file panel
     ├── RowDeletesSection.kt   # Whether a read returns a sampled Iceberg row: the delete files paired with its file, asked for it behind a click
     ├── PaimonRowMergeSection.kt # The same on Paimon: the merge engine over the record's key, the row lookup run for it behind a click
     ├── TimeTravelSection.kt   # A typed time and the snapshot it resolves to, on the metadata panel and the Paimon table panel
@@ -516,6 +519,28 @@ intellij/src/main/kotlin/plugin/
   panel that scales with the data rather than the metadata, and on a remote table it is a subtree
   listing. A `Path` is an `Iterable<Path>` of its own segments, so the referenced set is built with
   `add`, never `+=`, which would append the segments and compile
+- **A data file's own statistics are the last recorded figures, and they are checked behind a
+  click.** `model/StatsCheck.kt` puts each column's recorded lower and upper bound, null count
+  and (Iceberg) value and NaN count beside the same figures `service/StatsCheckReader.kt` counts
+  from the file's rows in one DuckDB statement, and the entry's row count beside `count(*)`.
+  They are what a scan prunes on without opening the file, so nothing on the read path checks
+  them, and a bound a writer got wrong loses rows with nothing failing — which is why the
+  table-level `Integrity` check leaves them out (a file read per entry) and the file panel
+  offers them behind a button on both formats. The comparison is **one-sided on the bounds and
+  exact on the counts**: Iceberg truncates string metrics to sixteen characters and increments
+  the upper one, so a bound may be wider than the values and disagrees only when a row lies
+  outside it. Three things the corpus settled: NaNs are kept out of a float's bounds by both
+  writers, so they are counted apart with `FILTER (WHERE isnan(...))`; a Paimon `DATE` is an
+  int32 without the date annotation and comes back as its epoch day; and DuckDB's JDBC driver
+  hands a `DECIMAL` aggregate back as text — both coerced to the recorded bound's kind before
+  `compareValues`. A positional delete's reserved `file_path` and `pos` columns are in no table
+  schema, so their bounds are decoded by the types the spec fixes and checked too. Columns are
+  found by **field id** through `parquet_schema`, so a column renamed since the file was
+  written is still its column. `StatsCheckFixtureTest` sweeps every Parquet file of every
+  fixture — 100-odd Iceberg files and 129 Paimon ones, every type the corpus carries, nothing
+  left "not checked" but a column a rewritten manifest records for a file that never had it —
+  and moves one bound past a row to see the disagreement named, since a check that never
+  disagrees may not be looking
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
@@ -1775,7 +1800,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,179 tests across 155 files (909 in :core, 262 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,183 tests across 156 files (912 in :core, 263 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

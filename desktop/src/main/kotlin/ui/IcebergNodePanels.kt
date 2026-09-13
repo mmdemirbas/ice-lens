@@ -21,6 +21,7 @@ import model.isEmpty
 import model.DataFileContent
 import model.GraphModel
 import model.GraphNode
+import model.recordedColumnStats
 import model.ManifestEntryStatus
 import model.TermEffect
 import model.evaluatePruning
@@ -1261,6 +1262,7 @@ internal fun ColumnScope.FilePanel(
                     }
                 )
             }
+            StatsCheckSection(node.id, node.localPath, node.recordedColumnStats(), node.data.recordCount)
         }
 
         RecursiveDataTableSection(node = node, graphModel = currentGraph)

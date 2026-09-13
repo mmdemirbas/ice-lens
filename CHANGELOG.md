@@ -57,6 +57,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fi` the two files merge-read and their indexes are never opened, which the rows say too. The
   panel's `File Index` row names the columns and index types. Held to `FileIndexPredicate` and
   the plan on both tables (`docs/fixtures/paimon-scan-plans.scala`).
+- **A data file's recorded statistics are checked against its rows.** `Statistics Check` on
+  both formats' file panels, behind a click: each column's recorded bounds, null count and
+  (Iceberg) value and NaN count beside the same figures counted from the file, and the entry's
+  row count beside `count(*)` — one-sided on the bounds, since a string bound is truncated,
+  exact on the counts. These are what a scan prunes on without opening the file, so nothing on
+  the read path checks them. Every Parquet file of every fixture agrees; the check names a
+  bound moved past a row.
 - **A Paimon bitmap file index is read, and it answers exactly.** One Roaring bitmap per
   distinct value and one for null, so the scan-pruning section rules a value out by the
   dictionary — no false positive, unlike a bloom filter — and answers `<>`, `IS NULL` and
