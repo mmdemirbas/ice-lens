@@ -6,7 +6,11 @@ import model.GraphModel
 import model.GraphNode
 import model.PaimonRowKind
 import model.PaimonRowValue
+import model.ExpiryOptions
+import model.IcebergMaintenanceInput
+import model.PaimonExpiryOptions
 import model.displayLabel
+import model.planExpiry
 import model.sourceSnapshotId
 import model.publishedWapId
 import model.wapId
@@ -67,8 +71,8 @@ object GraphTree {
      * answers is "what am I looking at" rather than "explain this number". Anything longer belongs
      * in the desktop shell, which is one keystroke away.
      */
-    fun details(node: GraphNode): List<Pair<String, String>> =
-        rows(node).map { (field, value) -> field to (value?.takeIf { it.isNotBlank() } ?: ABSENT) }
+    fun details(node: GraphNode, nowMs: Long = System.currentTimeMillis()): List<Pair<String, String>> =
+        rows(node, nowMs).map { (field, value) -> field to (value?.takeIf { it.isNotBlank() } ?: ABSENT) }
 
     /**
      * The rows before absent values are rendered.
@@ -77,7 +81,7 @@ object GraphTree {
      * coercing it in one place means every one of them looks the same on screen rather than each
      * branch choosing its own dash — and a branch that forgets cannot print "null".
      */
-    private fun rows(node: GraphNode): List<Pair<String, String?>> = when (node) {
+    private fun rows(node: GraphNode, nowMs: Long): List<Pair<String, String?>> = when (node) {
         is GraphNode.TableNode -> listOf(
             "Name" to node.summary.tableName,
             "Location" to (node.summary.location ?: node.summary.tablePath),
@@ -88,6 +92,11 @@ object GraphTree {
             "Records (current)" to "%,d".format(node.summary.current.recordCount) +
                 (node.summary.current.partialRecordCount.takeIf { it > 0 }?.let { " (%,d in partial-column files; %,d read)".format(it, node.summary.current.readRecordCount) } ?: ""),
             "Size (current)" to "%,d bytes".format(node.summary.current.dataSizeBytes),
+            // The one maintenance line that costs no walk: an expiry is planned from the
+            // metadata alone, and "what would expire_snapshots do now" is the question a table's
+            // row is opened for most. The rest of the maintenance summary walks a closure and
+            // stays in the desktop shell.
+            "Expiry (older_than = now)" to expiryLine(node, nowMs),
         )
         is GraphNode.MetadataNode -> listOf(
             "File" to node.fileName,
@@ -189,6 +198,23 @@ object GraphTree {
     }
 
     /** What an absent optional field looks like. One rendering, so a column of them scans. */
+    private fun expiryLine(node: GraphNode.TableNode, nowMs: Long): String? {
+        val paimon = node.summary.paimonExpiry
+        if (paimon != null) {
+            val plan = runCatching { paimon.planExpiry(PaimonExpiryOptions(nowMs = nowMs)) }.getOrNull()
+                ?: return "the table's snapshot.* options are ones the procedure refuses"
+            return if (plan.removed.isEmpty()) "a bare call removes nothing"
+            else "a bare call would remove %,d of %,d snapshots".format(plan.removed.size, plan.snapshots.size)
+        }
+        val meta = (node.maintenance.value as? IcebergMaintenanceInput)?.metadata ?: return null
+        val plan = meta.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs))
+        return when {
+            meta.snapshots.isEmpty() -> "no snapshots"
+            plan.removed.isEmpty() -> "nothing — every snapshot is kept by a ref"
+            else -> "would remove %,d of %,d snapshots".format(plan.removed.size, plan.snapshots.size)
+        }
+    }
+
     const val ABSENT = "\u2014"
 
     /** `0..3`, or the absent mark when the manifest list recorded no range. */

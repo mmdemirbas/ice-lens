@@ -112,6 +112,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The IDE tool window's table row says what an expiry would remove** — `older_than = now` on
+  Iceberg, a bare call on Paimon — the one maintenance line that needs no walk.
 - **Row lookup.** Under the scan filter on an Iceberg table panel, a click reads the files the
   filter leaves and lists the matching rows with each one's fate — live, deleted by a vector, by a
   positional delete or by an equality delete, naming the file that did it. Equality deletes are

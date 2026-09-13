@@ -164,4 +164,19 @@ class GraphTreeTest {
         val sorted = flatten(GraphTree.build(graphOf("sorted"))).flatMap { GraphTree.details(it) }
         assertTrue(sorted.none { it.first == "Sort order" }, "every file of the sorted table claims order 0, the unsorted one, and that is not listed")
     }
+
+    /**
+     * The table's row carries the one maintenance line that costs no walk: what an expiry with
+     * `older_than = now` would remove, planned from the metadata alone. `mor` keeps only its
+     * current snapshot by a ref, so five of six go; the clock is passed so the answer is the
+     * desktop panel's whatever day the test runs.
+     */
+    @Test
+    fun `the table row says what an expiry would remove`() {
+        val graph = graphOf("mor")
+        val table = flatten(GraphTree.build(graph)).filterIsInstance<GraphNode.TableNode>().first()
+        val now = java.time.Instant.parse("2099-01-01T00:00:00Z").toEpochMilli()
+        val line = GraphTree.details(table, nowMs = now).single { it.first == "Expiry (older_than = now)" }
+        assertEquals("would remove 5 of 6 snapshots", line.second)
+    }
 }
