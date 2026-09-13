@@ -20,11 +20,13 @@ import kotlin.test.assertTrue
  * Every other test of the pairing reads its expectation off the script that wrote the table;
  * this one reads it off the planner.
  *
- * What the corpus separates and what it does not: a target rule weakened to "unsettled" is
- * caught (`eqdel`'s positional delete would be left unsettled for the file it does not name),
- * and so is a proof that names the wrong file; the sequence rule's boundary is not — no fixture
- * writes a delete in the same commit as a data file it could apply to, so `>` and `>=` agree on
- * every pair here, and that boundary stays pinned by `DeleteAssignmentTest`'s hand-built entries.
+ * What the corpus separates: a target rule weakened to "unsettled" is caught (`eqdel`'s
+ * positional delete would be left unsettled for the file it does not name), and so is a proof
+ * that names the wrong file; and the sequence rule's boundary is caught both ways on `fup`, the
+ * Flink-written table whose commit 1 holds a data file, a positional delete for it and an
+ * equality delete beside it at one sequence number — an equality delete applied at `>=` pairs
+ * with the file Iceberg does not attach it to, and a positional delete applied at `>` misses
+ * the one Iceberg does.
  */
 class IcebergDeletePairingPlanTest {
 
@@ -87,9 +89,9 @@ class IcebergDeletePairingPlanTest {
                 checked += "${pairing.table}/$file"
             }
         }
-        // Twenty-eight tables' current snapshots, eighty data files — pinned so a table quietly
-        // answering nothing is seen.
-        assertTrue(checked.size >= 80, "only ${checked.size} files checked")
+        // Twenty-nine tables' current snapshots, eighty-two data files — pinned so a table
+        // quietly answering nothing is seen.
+        assertTrue(checked.size >= 82, "only ${checked.size} files checked")
     }
 
     @Test

@@ -68,10 +68,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   targets one per row, so the link exists but at row granularity and only after reading the file;
   an equality delete has no target at all. Drawing the first would mean reading every delete row
   at graph-build time, which is the cost aggregation exists to avoid. The pairing itself is held
-  to Iceberg's plan on every table (`IcebergDeletePairingPlanTest`); what the corpus cannot
-  separate is the sequence rule's boundary — no fixture writes a delete in the same commit as a
-  data file it could apply to. A `MERGE INTO` on a merge-on-read table writes both in one commit
-  and would; it is the one delete fixture still worth writing.
+  to Iceberg's plan on every table (`IcebergDeletePairingPlanTest`), the sequence rule's
+  boundary included, since `fup` — Flink's upsert sink — writes a delete in the same commit as
+  the data file it applies to.
 
 - **The branch columns are exercised at three branches and at a branch cut from a branch, and
   each found a defect.** `example/iceberg/default/branched3` forks three times at three

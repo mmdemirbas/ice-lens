@@ -57,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fi` the two files merge-read and their indexes are never opened, which the rows say too. The
   panel's `File Index` row names the columns and index types. Held to `FileIndexPredicate` and
   the plan on both tables (`docs/fixtures/paimon-scan-plans.scala`).
+- **A Flink-written merge-on-read table joins the fixtures.** `fup` is Flink 1.20's upsert
+  sink on a v2 table: each commit's equality delete sits beside its data file at one sequence
+  number, and a key upserted twice in one checkpoint gets a positional delete in that same
+  commit — the shape no Spark statement writes, and the one that separates "at or below" from
+  "strictly below" in the pairing. Read back by Flink as `(1, a2), (2, b2), (4, d)`, which the
+  live row count and the row lookup both answer.
 - **The delete pairing is held to Iceberg's own plan.** `FileScanTask.deletes()` over every
   checked-in table's current snapshot (28 tables, 80 data files) is checked in as an oracle, and
   `deleteReach` agrees with it both ways: every delete Iceberg applies is reached or unsettled,

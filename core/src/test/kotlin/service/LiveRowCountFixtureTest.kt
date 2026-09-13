@@ -36,7 +36,7 @@ class LiveRowCountFixtureTest {
     private fun countOf(model: UnifiedTableModel, snapshot: UnifiedSnapshot): LiveRowCount.Result =
         LiveRowCount.count(assertNotNull(model.rowLookupInputOf(snapshot, liveFilesOf(snapshot), deleteReach(snapshot))))
 
-    private val expected = mapOf("mor" to 5, "eqdel" to 4, "v3" to 4, "maint" to 6, "lineage" to 5, "pstats" to 4)
+    private val expected = mapOf("mor" to 5, "eqdel" to 4, "v3" to 4, "maint" to 6, "lineage" to 5, "pstats" to 4, "fup" to 3)
 
     @Test
     fun `every table with deletes reads as the rows its script left`() {

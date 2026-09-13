@@ -410,8 +410,10 @@ intellij/src/main/kotlin/plugin/
   vector in the corpus is left unsettled — the plan's deletes are exactly the proved ones plus the
   equality deletes, which only sequence and partition attach. `test` is the one table left out,
   its manifest list recorded at the path it was written to. A target rule weakened to "unsettled"
-  is caught on `eqdel`; the sequence rule's `>` against `>=` is not, since no fixture writes a
-  delete in the same commit as a data file it could apply to
+  is caught on `eqdel`, and the sequence rule's boundary both ways on `fup` — the Flink upsert
+  sink is the one writer that puts a delete in the same commit as the data file it can apply
+  to: commit 1 holds a data file, a positional delete for its position 0 and an equality delete
+  for its keys at one sequence number, and Iceberg attaches the first and not the second
 - **The live row count exists only by reading the delete files, and the pairing is what makes that
   cheap.** `record_count` counts rows *before* deletes, and subtracting the delete files' own
   `record_count` is wrong the moment one is dangling — on `mor` that subtraction gives 3 where the
@@ -1756,7 +1758,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,164 tests across 152 files (895 in :core, 261 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,167 tests across 153 files (898 in :core, 261 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1865,6 +1867,7 @@ container invocation and the traps in it:
 | `default/expired` | `ExpiredSnapshotsFixtureTest` | snapshots dropped by `expire_snapshots` — the older metadata versions still list them, and they are drawn as expired, not as read errors |
 | `default/maint` | `MaintenanceFixtureTest` | `rewrite_position_delete_files` dropping two dangling deletes, then `rewrite_manifests` — the commit whose summary counts manifests |
 | `default/merged`, `mergedel`, `mergespec` | `ManifestMergeFixtureTest` | `commit.manifest.min-count-to-merge = 2` — every append merging the list into one manifest, a copy-on-write delete's filtered manifest alone in its bin, merging switched off; the delete side, where a second delete rewrote the first delete file; and a spec change merging the old spec's manifests under the default count |
+| `default/fup` | `FlinkUpsertFixtureTest`, `IcebergDeletePairingPlanTest` | Flink 1.20's upsert sink on a v2 table — each commit's equality delete and data file at one sequence number, and a positional delete for a key upserted twice in one checkpoint; `(1, a2), (2, b2), (4, d)` read back |
 | `default/sweep`, `swept`, `sweepb`, `sweptb` | `ExpiryFilePlanFixtureTest` | two tables copied on disk before `expire_snapshots` ran on the original — `swept` with one ref (incremental cleanup: a removed file and a rolled-back commit's file freed), `sweptb` with a branch (reachable: a manifest freed, no file) |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
@@ -1905,7 +1908,12 @@ the file outright instead of writing a positional delete — so a delete-file fi
 all**; `eqdel`'s is written by driving Iceberg's own `EqualityDeleteWriter` from `spark-shell`
 (`docs/fixtures/eqdel-equality-deletes.scala`), which needs `MessageType` imported from
 `org.apache.iceberg.shaded.…` because the runtime jar relocates Parquet and Spark's own copy is
-also on the classpath.
+also on the classpath. **Flink's upsert sink writes both kinds without help**, and
+`docs/fixtures/flink-upsert.sql` runs it in one container — `flink:1.20-scala_2.12-java17` with
+the released `iceberg-flink-runtime-1.20` 1.10.0 and Hadoop 3.3.6 jars from lakelab's cache
+mounted into `lib/`, a local cluster started in the same shell, `sql-client.sh -f` with
+`table.dml-sync` so each statement's job finishes before the next — which is what makes `fup`
+the engine-written equality delete, and the one table with a delete beside its own data.
 
 A third: **the image's Iceberg is 1.8.1, and a newer runtime can be dropped in.** `lineage` is
 written by the 1.10.0 Spark 3.5 runtime jar (`~/code/spark-kit/lakelab/.cache/`), mounted with
