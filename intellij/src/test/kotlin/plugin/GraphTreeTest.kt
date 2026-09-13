@@ -149,7 +149,7 @@ class GraphTreeTest {
     @Test
     fun `optional facts are listed only where the table has them`() {
         val plain = flatten(GraphTree.build(graphOf("test"))).flatMap { GraphTree.details(it) }.map { it.first }.toSet()
-        listOf("Next row id", "Row ids", "WAP id", "Published from", "Sort order").forEach {
+        listOf("Next row id", "Row ids", "WAP id", "Published from", "Sort order", "Rolled back", "Columns").forEach {
             assertTrue(it !in plain, "$it listed on a table that has none")
         }
         val lineage = flatten(GraphTree.build(graphOf("lineage"))).flatMap { GraphTree.details(it) }
@@ -159,6 +159,8 @@ class GraphTreeTest {
         val wap = flatten(GraphTree.build(graphOf("wap"))).flatMap { GraphTree.details(it) }
         assertTrue(wap.any { it.first == "WAP id" && it.second.startsWith("audit-1") })
         assertTrue(wap.any { it.first == "Published from" && "wap.id audit-1" in it.second })
+        val rolled = flatten(GraphTree.build(graphOf("rolled"))).flatMap { GraphTree.details(it) }
+        assertEquals(1, rolled.filter { it.first == "Rolled back" }.toSet().size, "one abandoned commit, listed under each metadata version naming it")
         val sorted = flatten(GraphTree.build(graphOf("sorted"))).flatMap { GraphTree.details(it) }
         assertTrue(sorted.none { it.first == "Sort order" }, "every file of the sorted table claims order 0, the unsorted one, and that is not listed")
     }

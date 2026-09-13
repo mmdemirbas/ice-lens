@@ -643,6 +643,21 @@ intellij/src/main/kotlin/plugin/
   introduced the snapshot on every commit of `lineage`, and `Snapshot.describeRowIds()` prints the
   range with the summary's figure beside it where the two differ. It is one function in core
   because both shells list it and two spellings of "the other 2 went to existing rows" drift
+- **A rollback is read from the snapshot log, because it is written nowhere else.**
+  `set_current_snapshot`, `rollback_to_snapshot` and `rollback_to_timestamp` write no snapshot:
+  they move `main` and append a `snapshot-log` entry naming a snapshot the log already holds, and
+  the commit they moved past stays in `snapshots` until an expiry removes it, on no ref and not an
+  ancestor of the current snapshot. `model/SnapshotHistory.kt` reads the log in time order —
+  an id's first entry is its commit, a later entry is a `RESET`, and the entries between the two
+  are what it `leftBehind` — and `currentAncestorIds()` walks the parent chain from
+  `current-snapshot-id`, which is the flag Iceberg's own `.history` table prints as
+  `is_current_ancestor` and the oracle `RolledBackFixtureTest` holds it to (`true, true, false,
+  true, true` down `rolled`'s log). The builder carries `SnapshotNode.leftBehindAt` from the
+  newest metadata, so the abandoned commit's panel and IDE row say which reset stranded it; the
+  metadata panel's log leads with the event and colours the reset row, since a column of "made
+  current" with one "set back" in it has to be findable without reading every row. The abandoned
+  commit gets a column of its own from `snapshotTracks` for free: it is a second child of the
+  reset's target, and the trunk rule keeps `main` where it was
 - **A null sequence number on an entry means "the manifest's", never "unknown".** Iceberg inherits
   it: an entry written by the commit that wrote its manifest stores nothing, because every entry
   that commit adds shares one number, and only an entry *carried forward* records one of its own.
@@ -1291,7 +1306,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~967 tests across 114 files (729 in :core, 232 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~971 tests across 115 files (732 in :core, 233 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1382,6 +1397,7 @@ container invocation and the traps in it:
 | `default/pstats` | `PartitionStatsFixtureTest` | a partition statistics file, written by Iceberg 1.10 — three partitions, one with a positional delete, checked against the writer's `.partitions` and this app's own live-file walk |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
 | `default/wap` | `WapFixtureTest` | write-audit-publish — a staged snapshot on no ref, main moving past it, `publish_changes` cherry-picking it with `source-snapshot-id` and `published-wap-id` |
+| `default/rolled` | `RolledBackFixtureTest` | main set back to an earlier snapshot by `set_current_snapshot` — a second `snapshot-log` entry for the target, the abandoned commit retained on no ref, the next commit forking from the target |
 | `default/extdata` | `ExternalDataPathFixtureTest` | `write.data.path` outside the table — no `data/` under it, two files beside it under `example/iceberg/extdata-files/` |
 | `default/sorted` | `SortedFixtureTest` | three sort orders, a commit under each, then a sort compaction — rows sorted inside every file, `sort_order_id 0` on every file |
 | `default/expired` | `ExpiredSnapshotsFixtureTest` | snapshots dropped by `expire_snapshots` — the older metadata versions still list them, and they are drawn as expired, not as read errors |

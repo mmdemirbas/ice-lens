@@ -392,6 +392,24 @@ class InspectorRenderTest {
     }
 
     /**
+     * A rollback is drawn from the log: the metadata panel's snapshot log has to mark the entry
+     * that set main back and say what it left behind, the abandoned commit's panel has to name the
+     * rollback, and the canvas has to give it a column beside the trunk.
+     */
+    @Test
+    fun `a rolled-back table shows the rollback in the log and on the commit it abandoned`() {
+        val graph = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/rolled").absolutePath)),
+            showRows = false,
+        )
+        val abandoned = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().single { it.leftBehindAt != null }
+        val newest = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().maxBy { it.data.snapshotLog.size }
+        renderCanvas("graph-canvas-rolled", graph, pageSize = AggregationPolicy.DEFAULT_PAGE_SIZE)
+        renderInspector(graph, abandoned.id, "snapshot-node-rolled-back", height = 1400)
+        renderInspector(graph, newest.id, "metadata-node-rolled", height = 4400)
+    }
+
+    /**
      * A data-evolution patch file and the file it patches: the canvas has to draw the `e_patch_*`
      * edge dashed between two files of one layer, and each file's panel has to name the other —
      * "holds b only, stitched with …" on one side and "patched by … (b)" on the other.

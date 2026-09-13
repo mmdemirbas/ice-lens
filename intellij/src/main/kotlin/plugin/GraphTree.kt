@@ -107,6 +107,7 @@ object GraphTree {
             "Manifest list" to (node.data.manifestList ?: "—"),
         ) + listOfNotNull(
             node.data.describeRowIds()?.let { "Row ids" to it },
+            node.leftBehindAt?.let { "Rolled back" to "main set back to ${it.snapshotId}, leaving this commit behind" },
             node.data.wapId?.let { "WAP id" to "$it — staged, on no branch until published" },
             node.data.sourceSnapshotId?.let { "Published from" to "snapshot $it" + (node.data.publishedWapId?.let { id -> " (wap.id $id)" } ?: "") },
         )

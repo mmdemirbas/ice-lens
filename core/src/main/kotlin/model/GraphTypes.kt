@@ -386,6 +386,12 @@ sealed class GraphNode(
         /** See [UnifiedSnapshot.expired]: listed by an older metadata version, gone from the current one. */
         val expired: Boolean = false,
         /**
+         * The `snapshot-log` entry that set `main` back past this commit, or null — see
+         * [leftBehindBy]. Such a snapshot is on no ref and is not an ancestor of the current
+         * one; it is drawn because the metadata still lists it.
+         */
+        val leftBehindAt: SnapshotLogEntry? = null,
+        /**
          * Branch and tag names from `refs` that point at this snapshot, `main` first.
          *
          * A ref is what keeps a snapshot from expiring, so it is the reason a commit is still

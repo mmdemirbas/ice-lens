@@ -85,6 +85,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A rollback is shown as one.** A snapshot-log entry naming a snapshot the log already holds is
+  `main set back to it — left behind: <ids>` in the metadata panel, leading the row and coloured,
+  with an `Ancestor of Current` column that matches Iceberg's `.history`; the commit it stranded
+  says `Rolled Back: main was set back to <id> at <time>, leaving this commit behind` under its
+  empty refs, and the IDE tree lists the same. `rolled` is the fixture — `set_current_snapshot`
+  to a tag, the tag dropped, a commit after.
 - **A Paimon data-evolution patch file is drawn against the file it patches.** A `MERGE INTO`
   on a table with `data-evolution.enabled` writes the columns it set to a file of their own, with
   `_WRITE_COLS` and the same first row id as the file holding the rest; the graph draws the pair as

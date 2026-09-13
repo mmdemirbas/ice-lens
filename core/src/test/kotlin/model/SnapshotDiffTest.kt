@@ -50,7 +50,7 @@ class SnapshotDiffTest {
      */
     @Test
     fun `the live files at the current snapshot are what the table's current figures count`() {
-        listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "maint", "v1", "extdata", "sorted", "promoted", "lineage", "pstats", "wap").forEach { fixture ->
+        listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "maint", "v1", "extdata", "sorted", "promoted", "lineage", "pstats", "wap", "rolled").forEach { fixture ->
             val current = IcebergGraphBuilder.buildTableSummary(model(fixture)).current
             val live = liveFilesOf(currentSnapshotOf(fixture))
 

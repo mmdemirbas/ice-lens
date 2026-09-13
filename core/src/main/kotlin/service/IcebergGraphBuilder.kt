@@ -39,6 +39,9 @@ object IcebergGraphBuilder {
         val edgeIds = mutableSetOf<String>()
         val pendingLineage = mutableListOf<Pair<Long, Long?>>()
         val currentRefs = currentRefsBySnapshot(tableModel)
+        // Read off the newest metadata's log: a rollback writes no snapshot, so this is the one
+        // place a commit that main was moved back past is recorded as such.
+        val leftBehind = tableModel.metadatas.lastOrNull()?.metadata?.leftBehindBy().orEmpty()
         val processedManifests = mutableSetOf<String>()
         val manifestPathToId = mutableMapOf<String, String>()
         val tableNodeId = "table_root"
@@ -195,6 +198,7 @@ object IcebergGraphBuilder {
                         pathResolution = snapshot.pathResolution,
                         expired = snapshot.expired,
                         refs = snap.snapshotId?.let { currentRefs[it] }.orEmpty(),
+                        leftBehindAt = snap.snapshotId?.let { leftBehind[it] },
                         // An expired snapshot has no manifests to read a change from, compare,
                         // or pair deletes across; its summary is all that is left of it.
                         change = if (snapshot.expired) null else snapshotChangeOf(snapshot),

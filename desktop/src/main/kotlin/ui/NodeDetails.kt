@@ -85,13 +85,14 @@ import model.sourceSnapshotId
 import model.publishedWapId
 import model.wapId
 import model.describeRowIds
+import model.snapshotHistory
+import model.SnapshotLogKind
 import model.partialRows
 import model.describe
 import model.PaimonFileSource
 import model.paimonManifestTallies
 import model.KeyValuePairLong
 import model.MetadataLogEntry
-import model.SnapshotLogEntry
 import model.TableSchema
 import model.TableSchemaField
 import model.metadataVersionFromFileName
@@ -796,14 +797,6 @@ private fun PaimonReplayTraceSection(node: GraphNode.PaimonManifestNode) {
 private fun withSign(value: Long): String =
     if (value > 0) "+${formatCount(value)}" else formatCount(value)
 
-private fun renderSnapshotLogRows(items: List<SnapshotLogEntry>): List<List<String>> =
-    items.sortedBy { it.timestampMs ?: Long.MAX_VALUE }.map { entry ->
-        listOf(
-            formatTimestampShort(entry.timestampMs),
-            "${entry.snapshotId ?: "N/A"}"
-        )
-    }
-
 private fun renderMetadataLogRows(items: List<MetadataLogEntry>): List<List<String>> =
     items.sortedBy { it.timestampMs ?: Long.MAX_VALUE }.map { entry ->
         listOf(
@@ -1427,13 +1420,31 @@ fun NodeDetailsContent(
                             )
                         }
 
+                        // Every entry is a moment main was pointed somewhere. An id appearing a
+                        // second time is a rollback, which writes no snapshot and is recorded
+                        // nowhere else; the ancestor column is what Iceberg's own .history table
+                        // prints as is_current_ancestor.
                         CountedSection("Snapshot Log", node.data.snapshotLog.size, "snapshot log entries") {
-                            DetailTable {
-                                DetailRow("Timestamp", "Snapshot ID", isHeader = true)
-                                renderSnapshotLogRows(node.data.snapshotLog).forEach { row ->
-                                    DetailRow(row.getOrElse(0) { "N/A" }, row.getOrElse(1) { "N/A" })
-                                }
-                            }
+                            val history = node.data.snapshotHistory()
+                            WideTable(
+                                headers = listOf("Event", "Snapshot ID", "Timestamp", "Ancestor of Current"),
+                                columnWidths = listOf(360.dp, 180.dp, 230.dp, 130.dp),
+                                rows = history.map { event ->
+                                    listOf(
+                                        when (event.kind) {
+                                            SnapshotLogKind.COMMIT -> "made current — its commit"
+                                            SnapshotLogKind.RESET ->
+                                                "main set back to it" +
+                                                    event.leftBehind.takeIf { it.isNotEmpty() }
+                                                        ?.let { " — left behind: ${it.joinToString(", ")}" }.orEmpty()
+                                        },
+                                        "${event.entry.snapshotId ?: "N/A"}",
+                                        formatTimestampShort(event.entry.timestampMs),
+                                        if (event.currentAncestor) "yes" else "no",
+                                    )
+                                },
+                                leadCellColors = history.map { if (it.kind == SnapshotLogKind.RESET) verdictSkippedColor() else null },
+                            )
                         }
 
                         CountedSection("Metadata Log", node.data.metadataLog.size, "metadata log entries") {
@@ -1674,6 +1685,16 @@ fun NodeDetailsContent(
                                         "None — kept only by a metadata version, not by a branch or tag"
                                     },
                             )
+                            // A rollback writes no snapshot: the log entry that set main back is
+                            // the only record, and the commit it moved past stays listed with no
+                            // ref and no place in the current lineage.
+                            node.leftBehindAt?.let { reset ->
+                                DetailRow(
+                                    "Rolled Back",
+                                    "main was set back to snapshot ${reset.snapshotId} at ${formatTimestampShort(reset.timestampMs)}, " +
+                                        "leaving this commit behind — it is not an ancestor of the current snapshot, and the next commit forked from ${reset.snapshotId}",
+                                )
+                            }
                             // Write-audit-publish, from the summary: a staged write names its
                             // audit id; a published commit names the staged snapshot its files
                             // came from, which its parent edge does not say.
