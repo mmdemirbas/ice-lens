@@ -136,6 +136,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   delete's matches on its columns, one bit set per file — drawn at once where the snapshot lists
   no delete manifest and behind a click where it does. Checked against the rows every fixture
   with deletes left, and commit by commit on `maint`.
+- **The Paimon merge engines are applied, and the level-0 files a batch read skips are named.**
+  `partial-update`, `aggregation` and `first-row` decide the merged row count and a looked-up
+  record's fate the way `deduplicate` already did — a record folded into the key's row, a key
+  removed by a `-D` under `remove-record-on-delete`, the first record kept — each on a table
+  written under it and checked against Paimon's own read. A batch read of a first-row table, or
+  of a primary-key table with deletion vectors, never reads level-0 files; both sections say
+  which live files that leaves unread, and `fr` shows why it matters: a DELETE Spark ran as a
+  file rewrite left the surviving row at level 0, and Paimon reads the table as one row.
 - **A Paimon snapshot says what `SELECT count(*)` returns.** `Merged Rows` on the snapshot panel:
   the merge a read runs over each bucket's files — one record per key, less the keys whose latest
   record is a `-D` or `-U`, less the keys whose latest record a deletion vector marks — behind a

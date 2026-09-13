@@ -1,9 +1,9 @@
 package service
 
-import model.DEFAULT_PAIMON_MERGE_ENGINE
 import model.DeletionVector
 import model.LookupFileOutcome
 import model.PaimonLookupFile
+import model.PaimonMergeKeeps
 import model.PaimonRowKind
 import model.PaimonReadInput
 import model.RowFate
@@ -43,8 +43,26 @@ object PaimonRowLookup {
 
     private class Raw(val file: PaimonLookupFile, val position: Long?, val cells: Map<String, Any?>)
 
-    /** What the bucket holds for a key: its latest sequence number, the file holding it, that record's kind, and how many records. */
-    private class KeyState(val latest: Long, val holder: String, val latestKind: Int?, val records: Long)
+    /**
+     * What the bucket's read files hold for a key: its latest sequence number, the file holding
+     * it, that record's kind, its first sequence number, how many records, and whether any is a
+     * retraction.
+     */
+    class KeyState(
+        val latest: Long,
+        val holder: String,
+        val latestKind: Int?,
+        val first: Long,
+        val firstHolder: String,
+        val records: Long,
+        val anyRetraction: Boolean,
+        /** The sequence number of the last record whose kind removes the key under the rule, and its file; null where none. */
+        val lastRemoval: Long?,
+        val removalHolder: String?,
+        val removalKind: Int?,
+        /** The insert records after the last removal — what a folding engine builds the row from. */
+        val folded: Long,
+    )
 
     /**
      * Reads the files the filter leaves — every live data file whose name is not in
@@ -72,10 +90,16 @@ object PaimonRowLookup {
             }
         }
         val keyColumns = input.trimmedPrimaryKeys.map { KEY_PREFIX + it }
-        val keyStates = if (input.hasPrimaryKey) keyStatesFor(input, raws, keyColumns) else emptyMap()
+        val skipped = input.skippedFiles.map { it.fileName }.toSet()
+        val keyStates = if (input.hasPrimaryKey) keyStatesFor(input, raws.filter { it.file.fileName !in skipped }, keyColumns) else emptyMap()
         val vectors = mutableMapOf<String, DeletionVector?>()
         val hits = raws.map { raw -> decide(input, raw, keyColumns, keyStates[raw.file.partition to raw.file.bucket].orEmpty(), vectors) }
-        return RowLookupResult(outcomes, input.files.size - candidates.size, candidates.size - toRead.size, hits)
+        return RowLookupResult(
+            outcomes, input.files.size - candidates.size, candidates.size - toRead.size, hits,
+            rule = if (input.hasPrimaryKey) input.rule.describe() else null,
+            skippedFiles = input.skippedFiles.size,
+            skippedRows = input.skippedFiles.sumOf { it.recordCount ?: 0L },
+        )
     }
 
     private fun readMatches(file: PaimonLookupFile, where: String, params: List<String>): List<Map<String, Any?>> {
@@ -114,7 +138,7 @@ object PaimonRowLookup {
         return raws.groupBy { it.file.partition to it.file.bucket }.mapValues { (scope, bucketRaws) ->
             val keys = bucketRaws.map { keyOf(it.cells, keyColumns) }.distinct()
             val files = input.bucketOf(bucketRaws.first().file)
-            runCatching { queryKeyStates(files, keyColumns, casts, keys) }
+            runCatching { queryKeyStates(files, keyColumns, casts, keys, input.rule.removingKinds) }
                 .onFailure { logger.warn("Could not read bucket {}: {}", scope, it.message) }
                 .getOrDefault(emptyMap())
         }
@@ -125,11 +149,13 @@ object PaimonRowLookup {
         keyColumns: List<String>,
         casts: List<String?>,
         keys: List<List<String?>>,
+        removingKinds: Set<Int>,
     ): Map<List<String?>, KeyState> {
         val keyList = keyColumns.joinToString(", ", transform = ::quoteSqlIdentifier)
         val tuple = "(" + casts.joinToString(", ") { cast -> if (cast == null) "?" else "CAST(? AS $cast)" } + ")"
         val inList = keys.joinToString(", ") { tuple }
-        val sql = "SELECT $keyList, latest, holder, kind, records FROM (${latestPerKeySql(files, keyColumns)}) " +
+        val sql = "SELECT $keyList, latest, holder, kind, first, firstHolder, records, retracted, lastRemoval, removalHolder, removalKind, folded " +
+            "FROM (${latestPerKeySql(files, keyColumns, removingKinds)}) " +
             "WHERE ($keyList) IN ($inList)"
         return DuckDb.withConnection { conn ->
             conn.prepareStatement(sql).use { pstmt ->
@@ -142,10 +168,17 @@ object PaimonRowLookup {
                     while (rs.next()) {
                         val key = (1..n).map { rs.getObject(it)?.toString() }
                         states[key] = KeyState(
-                            latest = rs.getLong(n + 1),
-                            holder = rs.getString(n + 2).substringAfterLast('/'),
-                            latestKind = (rs.getObject(n + 3) as? Number)?.toInt(),
-                            records = rs.getLong(n + 4),
+                            latest = rs.getLong("latest"),
+                            holder = rs.getString("holder").substringAfterLast('/'),
+                            latestKind = (rs.getObject("kind") as? Number)?.toInt(),
+                            first = rs.getObject("first")?.let { (it as Number).toLong() } ?: Long.MAX_VALUE,
+                            firstHolder = rs.getString("firstHolder")?.substringAfterLast('/') ?: "",
+                            records = rs.getLong("records"),
+                            anyRetraction = rs.getBoolean("retracted"),
+                            lastRemoval = rs.getObject("lastRemoval")?.let { (it as Number).toLong() },
+                            removalHolder = rs.getString("removalHolder")?.substringAfterLast('/'),
+                            removalKind = rs.getObject("removalKind")?.let { (it as Number).toInt() },
+                            folded = rs.getLong("folded"),
                         )
                     }
                     states
@@ -156,18 +189,31 @@ object PaimonRowLookup {
 
     /**
      * The merge a read runs over a bucket, as SQL: one row per key with its latest sequence
-     * number, the file and position holding that record, the record's kind, and how many records
-     * the key has — a `UNION ALL` over the bucket's files with one `?` per file, in [files] order.
-     * The key columns come first, then `latest`, `holder`, `kind`, `pos`, `records`.
+     * number, the file and position holding that record, the record's kind, its first sequence
+     * number, how many records the key has and whether any is a retraction — a `UNION ALL` over
+     * the bucket's files with one `?` per file, in [files] order — and, for the [removingKinds]
+     * the merge rule names, the last record of such a kind and its file. The key columns come
+     * first, then `latest`, `holder`, `kind`, `pos`, `first`, `firstHolder`, `records`,
+     * `retracted`, `lastRemoval`, `removalHolder`, `removalKind`, `folded`.
      */
-    internal fun latestPerKeySql(files: List<PaimonLookupFile>, keyColumns: List<String>): String {
+    internal fun latestPerKeySql(files: List<PaimonLookupFile>, keyColumns: List<String>, removingKinds: Set<Int>): String {
         val keyList = keyColumns.joinToString(", ", transform = ::quoteSqlIdentifier)
         val branches = files.joinToString(" UNION ALL ") {
             "SELECT $keyList, ${quoteSqlIdentifier(SEQUENCE_NUMBER)} AS s, ${quoteSqlIdentifier(PaimonRowKind.COLUMN)} AS k, " +
                 "filename AS f, ${SampleRowReader.FILE_ROW_NUMBER} AS p FROM read_parquet(?, filename = true, file_row_number = true)"
         }
-        return "SELECT $keyList, max(s) AS latest, arg_max(f, s) AS holder, arg_max(k, s) AS kind, arg_max(p, s) AS pos, count(*) AS records " +
-            "FROM ($branches) GROUP BY $keyList"
+        val retractions = "(${PaimonRowKind.UPDATE_BEFORE}, ${PaimonRowKind.DELETE})"
+        val removing = removingKinds.takeIf { it.isNotEmpty() }?.joinToString(", ", "(", ")") ?: "(-1)"
+        // `lr` is the key's last removing record, as a window so the records after it can be
+        // counted in the same pass: those are the ones a folding engine builds the row from.
+        val windowed = "SELECT u.*, max(s) FILTER (WHERE k IN $removing) OVER (PARTITION BY $keyList) AS lr FROM ($branches) u"
+        return "SELECT $keyList, max(s) AS latest, arg_max(f, s) AS holder, arg_max(k, s) AS kind, arg_max(p, s) AS pos, " +
+            "min(s) FILTER (WHERE k NOT IN $retractions) AS first, arg_min(f, s) FILTER (WHERE k NOT IN $retractions) AS firstHolder, " +
+            "count(*) AS records, bool_or(k IN $retractions) AS retracted, " +
+            "max(lr) AS lastRemoval, arg_max(f, s) FILTER (WHERE k IN $removing) AS removalHolder, " +
+            "arg_max(k, s) FILTER (WHERE k IN $removing) AS removalKind, " +
+            "count(*) FILTER (WHERE k NOT IN $retractions AND s > coalesce(lr, -1)) AS folded " +
+            "FROM ($windowed) GROUP BY $keyList"
     }
 
     private fun decide(
@@ -196,27 +242,54 @@ object PaimonRowLookup {
             }
         }
         if (!input.hasPrimaryKey) return RowHit(file.fileName, position, cells, RowFate.LIVE, note = note)
+        val rule = input.rule
+        if (rule.skipsLevel0 && (file.level ?: 0) == 0) {
+            return RowHit(file.fileName, position, cells, RowFate.SKIPPED, note = "at level 0, which a batch read of this table skips")
+        }
 
         val kind = (cells[PaimonRowKind.COLUMN] as? Number)?.toInt()
         if (kind != null && PaimonRowKind.isRetraction(kind)) {
-            return RowHit(file.fileName, position, cells, RowFate.RETRACTION, note = "${PaimonRowKind.describe(kind)}, not a row")
+            val how = when {
+                rule.retractionsIgnored -> ", ignored under ignore-delete"
+                rule.retractionsRejected -> ", which a read of this table fails on"
+                rule.keeps == PaimonMergeKeeps.COMBINED && !rule.removes(kind) -> ", folded into the row"
+                else -> ", not a row"
+            }
+            return RowHit(file.fileName, position, cells, RowFate.RETRACTION, note = PaimonRowKind.describe(kind) + how)
         }
         val sequence = (cells[SEQUENCE_NUMBER] as? Number)?.toLong()
             ?: return RowHit(file.fileName, position, cells, RowFate.UNKNOWN, note = "the record carries no $SEQUENCE_NUMBER")
         val state = bucketKeys[keyOf(cells, keyColumns)]
             ?: return RowHit(file.fileName, position, cells, RowFate.UNKNOWN, note = "the bucket's files could not be read for the key")
+        // A removing retraction after this record: under deduplicate any later record shadows it
+        // anyway; under a folding engine it is the one thing that does.
+        val removal = state.lastRemoval?.takeIf { it > sequence }
         return when {
-            state.records <= 1 -> RowHit(file.fileName, position, cells, RowFate.LIVE, note = note)
-            input.mergeEngine != DEFAULT_PAIMON_MERGE_ENGINE -> RowHit(
+            !rule.applied -> RowHit(
                 file.fileName, position, cells, RowFate.UNKNOWN,
-                note = "merge-engine = ${input.mergeEngine} combines the key's ${state.records} records; not applied here",
+                note = "merge-engine = ${rule.engine} with sequence groups; not applied here",
             )
-            state.latest > sequence -> RowHit(
+            state.anyRetraction && rule.retractionsRejected -> RowHit(
+                file.fileName, position, cells, RowFate.UNKNOWN, note = "the key has a retraction, which a read of this table fails on",
+            )
+            state.records <= 1 -> RowHit(file.fileName, position, cells, RowFate.LIVE, note = note)
+            removal != null -> RowHit(
+                file.fileName, position, cells, RowFate.SUPERSEDED, state.removalHolder,
+                note = "sequence $sequence, then $removal: ${PaimonRowKind.describe(state.removalKind ?: -1)}",
+            )
+            rule.keeps == PaimonMergeKeeps.LATEST -> if (state.latest > sequence) RowHit(
                 file.fileName, position, cells, RowFate.SUPERSEDED, state.holder,
-                note = "sequence $sequence, then ${state.latest}" +
-                    (state.latestKind?.takeIf { PaimonRowKind.isRetraction(it) }?.let { ": ${PaimonRowKind.describe(it)}" } ?: ""),
+                note = "sequence $sequence, then ${state.latest}",
+            ) else RowHit(file.fileName, position, cells, RowFate.LIVE, note = note)
+            rule.keeps == PaimonMergeKeeps.FIRST -> if (state.first < sequence) RowHit(
+                file.fileName, position, cells, RowFate.SUPERSEDED, state.firstHolder,
+                note = "sequence $sequence; first-row keeps the record at ${state.first}",
+            ) else RowHit(file.fileName, position, cells, RowFate.LIVE, note = note)
+            state.folded <= 1 -> RowHit(file.fileName, position, cells, RowFate.LIVE, note = note)
+            else -> RowHit(
+                file.fileName, position, cells, RowFate.MERGED,
+                note = "folded with ${state.folded - 1} other ${if (state.folded == 2L) "record" else "records"} into the key's row" + (note?.let { "; $it" } ?: ""),
             )
-            else -> RowHit(file.fileName, position, cells, RowFate.LIVE, note = note)
         }
     }
 }

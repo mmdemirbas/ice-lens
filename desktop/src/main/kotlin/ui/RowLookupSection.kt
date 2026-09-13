@@ -91,9 +91,10 @@ internal fun RowLookupSection(
             if (paimon) {
                 "The rows the filter matches, read from the latest snapshot's live data files it did not " +
                     "rule out, each with its fate: marked by the vector its index file holds, a -D or -U " +
-                    "retraction rather than a row, or shadowed by a later write for its key in the same " +
-                    "bucket — the merge a read runs under merge-engine = deduplicate, applied to one row. " +
-                    "The bucket's other files are read for the key whether or not the filter left them."
+                    "retraction rather than a row, shadowed by a later write for its key, or folded with " +
+                    "the key's other records — the merge a read runs under the table's merge engine, " +
+                    "applied to one row. The bucket's other files are read for the key whether or not the " +
+                    "filter left them."
             } else {
                 "The rows the filter matches, read from the live data files it did not rule out, each with " +
                     "its fate under the delete files a scan pairs with its file — a vector by the row's " +
@@ -142,6 +143,16 @@ private fun ResultBody(result: RowLookupResult, paimon: Boolean) {
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(bottom = 4.dp),
     )
+    result.rule?.let { Text(it + ".", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp)) }
+    if (result.skippedFiles > 0) {
+        Text(
+            "${formatCounted(result.skippedFiles, "live file")} at level 0, holding ${formatCounted(result.skippedRows.toInt(), "row")}, " +
+                "${if (result.skippedFiles == 1) "is" else "are"} not read by a batch read of this table; a record found there is marked not read.",
+            fontSize = TypeScale.small,
+            color = verdictUnevaluatedColor(),
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+    }
     result.filesRead.filter { it.error != null }.forEach { Text("Could not read ${fileNameFromPath(it.filePath)}: ${it.error}", fontSize = TypeScale.small, color = colors.error) }
     if (result.hits.isNotEmpty()) {
         WideTable(
@@ -164,8 +175,8 @@ private fun ResultBody(result: RowLookupResult, paimon: Boolean) {
             },
             leadCellColors = result.hits.map {
                 when (it.fate) {
-                    RowFate.LIVE -> null
-                    RowFate.UNKNOWN -> verdictUnevaluatedColor()
+                    RowFate.LIVE, RowFate.MERGED -> null
+                    RowFate.UNKNOWN, RowFate.SKIPPED -> verdictUnevaluatedColor()
                     else -> verdictSkippedColor()
                 }
             },

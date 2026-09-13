@@ -51,10 +51,15 @@ enum class RowFate(val label: String) {
     RETRACTION("a retraction"),
     /** A Paimon record a later write for the same key shadows under the merge engine. */
     SUPERSEDED("superseded"),
+    /** A Paimon record folded with the key's others into one row — partial-update, aggregation. */
+    MERGED("merged"),
+    /** A Paimon record in a level-0 file a batch read of its table skips. */
+    SKIPPED("not read"),
     UNKNOWN("not decided"),
     ;
 
-    val deleted: Boolean get() = this != LIVE && this != UNKNOWN
+    /** Not a row a read returns as it stands — every fate but a live or a merged one, decided. */
+    val deleted: Boolean get() = this != LIVE && this != MERGED && this != UNKNOWN
 }
 
 data class RowHit(
@@ -78,8 +83,13 @@ data class RowLookupResult(
     /** Live data files left unread by the cap. */
     val filesLeft: Int,
     val hits: List<RowHit>,
+    /** The merge rule the fates were decided under, in a sentence — Paimon only. */
+    val rule: String? = null,
+    /** Live files a batch read of the table skips — Paimon's level 0 under some rules — and their rows. */
+    val skippedFiles: Int = 0,
+    val skippedRows: Long = 0,
 ) {
-    val live: Int get() = hits.count { it.fate == RowFate.LIVE }
+    val live: Int get() = hits.count { it.fate == RowFate.LIVE || it.fate == RowFate.MERGED }
     val deleted: Int get() = hits.count { it.fate.deleted }
     val undecided: Int get() = hits.count { it.fate == RowFate.UNKNOWN }
 }

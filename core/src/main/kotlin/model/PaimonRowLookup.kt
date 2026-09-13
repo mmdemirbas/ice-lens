@@ -51,18 +51,25 @@ data class PaimonReadInput(
     val schema: PaimonSchema,
     /** The primary keys that are not partition keys, in primary-key order — the file's `_KEY_` columns. */
     val trimmedPrimaryKeys: List<String>,
-    /** `merge-engine`, `deduplicate` where unset. */
-    val mergeEngine: String,
+    /** What a read does with a key's records — see [PaimonMergeRule]. */
+    val rule: PaimonMergeRule,
     val files: List<PaimonLookupFile>,
     val vectors: List<PaimonVectorRange>,
 ) {
     val hasPrimaryKey: Boolean get() = schema.primaryKeys.isNotEmpty()
+    val mergeEngine: String get() = rule.engine
+
+    /** The live files a batch read of this table reads — every one, or the ones above level 0 where the rule skips it. */
+    val readFiles: List<PaimonLookupFile> get() = if (rule.skipsLevel0) files.filter { (it.level ?: 0) > 0 } else files
+
+    /** The live files a batch read of this table leaves unread — level 0 under [PaimonMergeRule.skipsLevel0]. */
+    val skippedFiles: List<PaimonLookupFile> get() = if (rule.skipsLevel0) files.filter { (it.level ?: 0) == 0 } else emptyList()
 
     fun vectorFor(fileName: String): PaimonVectorRange? = vectors.firstOrNull { it.dataFileName == fileName }
 
-    /** The live files sharing a file's partition and bucket — every file the key's later write could be in. */
+    /** The read files sharing a file's partition and bucket — every file another record of the key could be in. */
     fun bucketOf(file: PaimonLookupFile): List<PaimonLookupFile> =
-        files.filter { it.partition == file.partition && it.bucket == file.bucket }
+        readFiles.filter { it.partition == file.partition && it.bucket == file.bucket }
 }
 
 const val DEFAULT_PAIMON_MERGE_ENGINE = "deduplicate"
@@ -91,7 +98,7 @@ fun PaimonUnifiedTableModel.paimonReadInputOf(snapshot: PaimonUnifiedSnapshot, r
         snapshotId = id,
         schema = schema,
         trimmedPrimaryKeys = schema.primaryKeys.filterNot { it in schema.partitionKeys },
-        mergeEngine = schema.options["merge-engine"] ?: DEFAULT_PAIMON_MERGE_ENGINE,
+        rule = paimonMergeRuleOf(schema.options, schema.primaryKeys.isNotEmpty()),
         files = files,
         vectors = vectorRangesOf(path, listOf(snapshot)).values.toList(),
     )

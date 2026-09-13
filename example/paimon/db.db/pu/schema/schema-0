@@ -1,0 +1,27 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT NOT NULL"
+  }, {
+    "id" : 1,
+    "name" : "a",
+    "type" : "STRING"
+  }, {
+    "id" : 2,
+    "name" : "b",
+    "type" : "STRING"
+  } ],
+  "highestFieldId" : 2,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ "k" ],
+  "options" : {
+    "bucket" : "1",
+    "owner" : "root",
+    "merge-engine" : "partial-update",
+    "partial-update.remove-record-on-delete" : "true"
+  },
+  "timeMillis" : 1789326210081
+}

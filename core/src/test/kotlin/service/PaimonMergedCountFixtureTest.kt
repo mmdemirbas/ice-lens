@@ -33,6 +33,9 @@ class PaimonMergedCountFixtureTest {
         // primary-key tables, merged
         "lk" to 3, "dv" to 1497, "pc" to 7, "px" to 6, "pxa" to 6, "cs" to 4, "se" to 3, "cl" to 2, "tg" to 2,
         "pt" to 10, "br" to 5, "fi" to 5, "ep" to 3, "sm" to 3, "pea" to 7,
+        // the other merge engines: partial-update, aggregation, and first-row — whose one row is
+        // what Paimon's own read printed, the DELETE's rewritten file sitting at level 0 unread
+        "pu" to 4, "ag" to 2, "fr" to 1,
         // append tables, from the metadata
         "ad" to 5, "ao" to 6, "rt" to 5, "de" to 3,
     )
@@ -89,10 +92,11 @@ class PaimonMergedCountFixtureTest {
     }
 
     @Test
-    fun `a merge engine that combines versions is reported, not applied`() {
+    fun `partial-update with sequence groups is reported, not applied`() {
         val pc = model("pc")
         val input = assertNotNull(pc.paimonReadInputOf(pc.snapshots.last(), replayPaimonSnapshot(pc.snapshots.last())))
-        val result = PaimonMergedCount.count(input.copy(mergeEngine = "partial-update"))
+        val options = input.schema.options + mapOf("merge-engine" to "partial-update", "fields.v.sequence-group" to "k")
+        val result = PaimonMergedCount.count(input.copy(rule = model.paimonMergeRuleOf(options, hasPrimaryKey = true)))
         assertTrue(!result.applied)
         assertNull(result.merged)
         assertEquals("partial-update", result.mergeEngine)

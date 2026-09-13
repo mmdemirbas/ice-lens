@@ -72,7 +72,8 @@ core/src/main/kotlin/
 │   ├── Integrity.kt           # Every recorded figure against the same figure counted, over the whole table at once — the panels' checks, run everywhere
 │   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
 │   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing — and the fates a hit can have, both formats
-│   ├── PaimonRowLookup.kt     # What reading a Paimon snapshot takes: the live files by bucket, the index manifest's vectors, the merge engine — for the row lookup and the merged count
+│   ├── PaimonRowLookup.kt     # What reading a Paimon snapshot takes: the live files by bucket, the index manifest's vectors, the merge rule — for the row lookup and the merged count
+│   ├── PaimonMergeRule.kt     # What a read does with a key's records under each merge engine, and which level-0 files it never reads
 │   ├── ScanFilterSql.kt       # A ScanFilter as DuckDB's WHERE clause, every literal bound and cast to its column's type
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
@@ -1697,7 +1698,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,130 tests across 143 files (861 in :core, 260 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,130 tests across 144 files (865 in :core, 260 in :desktop, 7 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1815,6 +1816,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pc` | `PaimonCompactionFixtureTest` | a primary-key table on every default, seven one-row inserts — the fifth flush is the one the writer compacted, by size amplification into level 5, and the COMPACT after it is the oracle |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
+| `paimon/db.db/pu`, `ag`, `fr` | `PaimonMergeEngineFixtureTest` | one primary-key table per merge engine other than the default — `partial-update` folding two writes and removing a key on `-D` until its re-insert, `aggregation` summing, and `first-row`, whose DELETE Spark ran as a file rewrite to level 0 that a batch read of a first-row table never reads: Paimon's own reads printed one row where the statements describe two |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
 starts a loopback-only MinIO and uploads `example/iceberg/default/mor` to `s3://warehouse/db/mor`;
@@ -2085,6 +2087,26 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   the `mergedRecordCount` Paimon wrote, which is the one engine-written figure of its kind. The
   snapshot panel's `Merged Rows` section sits under the recorded counts, behind a click on a
   primary-key table, capped at `MAX_BUCKETS` and said so
+- **The merge engines are one rule each, and a batch read of two kinds of table never reads
+  level 0.** `model/PaimonMergeRule.kt` reads the four merge functions at release-1.3.1 into
+  `PaimonMergeRule` — what is kept (the latest record, the first, or all folded into one), which
+  `_VALUE_KIND`s as a key's latest record remove it (`-D` and `-U` under `deduplicate`; `-D`
+  under `partial-update` only with `remove-record-on-delete`, and under `aggregation` only with
+  its own; none under `first-row`), whether retractions are ignored (`ignore-delete` and its
+  per-engine spellings) or make the read fail (`first-row`, and `partial-update` with neither
+  option), and that sequence groups are not applied. `latestPerKeySql` carries the rule's
+  removing kinds as a window, so the count and the lookup see a key's last removing record and
+  the records after it — a partial-update key removed by a `-D` and re-inserted is one row
+  again. **And `DataTableBatchScan` filters `level > 0` for a first-row table or a primary-key
+  table with deletion vectors** (`batchScanSkipLevel0`): the writer's forced compaction is
+  supposed to have moved every level-0 record up, so a batch read trusts that and never opens
+  level 0. `fr` is where trusting it fails — Spark refuses an upsert delete on a first-row table
+  and rewrites the file instead, with `writeOnly()`, to level 0, and Paimon's own read of the
+  result returned one row where the files hold two; its first snapshot, one append at level 0,
+  read as **no rows at all**. `PaimonReadInput.readFiles` applies the same filter, the count
+  reports the skipped files and rows, and a looked-up record in one of them is `not read`.
+  `PaimonMergeEngineFixtureTest` holds `pu`, `ag` and `fr` to what Paimon printed, snapshot by
+  snapshot on `fr`
 - **And the Iceberg twin is per data file, over the delete files the scan pairs with it.**
   `total-records` and every `record_count` count rows as written, and a merge-on-read delete
   touches neither; subtracting the delete files' own `record_count` is wrong the moment one is

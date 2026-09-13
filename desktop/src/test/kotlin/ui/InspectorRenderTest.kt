@@ -1937,7 +1937,8 @@ class InspectorRenderTest {
             )
             return graph to graph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().filter { it.branch == null }.maxBy { it.data.id ?: 0L }
         }
-        listOf("dv" to 420, "pt" to 900).forEach { (name, height) ->
+        // `fr` is the first-row table whose DELETE left a level-0 file a batch read skips: the count says so.
+        listOf("dv" to 420, "pt" to 900, "fr" to 520).forEach { (name, height) ->
             val (_, node) = latest(name)
             val settled = java.util.concurrent.atomic.AtomicBoolean(false)
             renderUntil("paimon-merged-rows-$name", width = 1400, height = height, ready = settled::get) {
@@ -1972,6 +1973,19 @@ class InspectorRenderTest {
         renderUntil("paimon-row-lookup", width = 1400, height = 900, ready = settled::get) {
             Column(Modifier.padding(16.dp)) {
                 RowLookupSection(table, lk, filter, startRequested = true) { settled.set(true) }
+            }
+        }
+        // And on `pu`, partial-update: records folded into one row, a key removed by a -D and
+        // re-inserted, the rule stated under the headline.
+        val pu = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pu").absolutePath)),
+            showRows = false,
+        )
+        val puTable = pu.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val puSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-row-lookup-pu", width = 1400, height = 1100, ready = puSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                RowLookupSection(puTable, pu, ScanFilter.Term(model.ScanPredicate("k", model.PredicateOp.LTE, "3")), startRequested = true) { puSettled.set(true) }
             }
         }
     }

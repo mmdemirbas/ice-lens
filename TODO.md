@@ -77,13 +77,14 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   selection — cheap on a developer's table, a stall on the EDT for a large one, so it would need
   the plugin's background task to warm it first.
 
-- **The Paimon row lookup applies `deduplicate` and reports the other merge engines.** A key
-  with several records under `partial-update`, `aggregation` or `first-row` is `not decided`
-  (`service/PaimonRowLookup.kt`): the first two fold the records and the last keeps the lowest
-  sequence, each a rule of its own. Two more edges: the bucket's other files are read for a hit's
-  key without pruning on their `_MIN_KEY`/`_MAX_KEY`, which a large bucket would want; and a
-  data-evolution patch file is read as a file of its own, not stitched with the file it patches,
-  so a filter on a column the patch lacks reports the file as unreadable.
+- **The Paimon merge rules stop at sequence groups.** `deduplicate`, `first-row`,
+  `partial-update` and `aggregation` are applied by the merged count and the row lookup
+  (`model/PaimonMergeRule.kt`), each on a table written under it; `partial-update` with
+  `fields.*.sequence-group` retracts by column group and is reported as not applied. Two more
+  edges: the bucket's other files are read for a hit's key without pruning on their
+  `_MIN_KEY`/`_MAX_KEY`, which a large bucket would want; and a data-evolution patch file is read
+  as a file of its own, not stitched with the file it patches, so a filter on a column the patch
+  lacks reports the file as unreadable.
 
 - **The whole-table integrity check leaves the file reads out.** `model/Integrity.kt` runs the
   metadata-only comparisons everywhere; the statistics and partition-statistics files stay on the

@@ -52,8 +52,8 @@ internal fun PaimonMergedCountSection(
         Text(
             if (needsRead) {
                 "What SELECT count(*) returns as of this snapshot: the merge a read runs over each " +
-                    "bucket's files — one record per key, the latest by sequence number — less the keys " +
-                    "whose latest record is a -D or -U, less the keys whose latest record a deletion vector " +
+                    "bucket's files — one row per key under the table's merge engine — less the keys a " +
+                    "retraction removes under it, less the keys whose latest record a deletion vector " +
                     "marks. The snapshot's totalRecordCount sums file rows and counts every one of those."
             } else {
                 "What SELECT count(*) returns as of this snapshot: the files' rows less the rows their " +
@@ -84,12 +84,24 @@ private fun ResultBody(result: PaimonMergedCount.Result) {
     val colors = MaterialTheme.colorScheme
     if (!result.applied) {
         Text(
-            "merge-engine = ${result.mergeEngine} combines a key's records rather than keeping one, and " +
-                "that merge is not applied here; ${formatCount(result.fileRows)} rows are in the files.",
+            "${result.rule}; ${formatCount(result.fileRows)} rows are in the files.",
             fontSize = TypeScale.small,
             color = verdictUnevaluatedColor(),
         )
         return
+    }
+    if (result.rule.isNotEmpty()) {
+        Text(result.rule + ".", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+    }
+    if (result.skippedFiles > 0) {
+        Text(
+            "${formatCounted(result.skippedFiles, "live file")} at level 0, holding ${formatCounted(result.skippedRows.toInt(), "row")}, " +
+                "${if (result.skippedFiles == 1) "is" else "are"} not read: the writer's forced compaction is supposed to have moved " +
+                "every level-0 record up, and these are still there.",
+            fontSize = TypeScale.small,
+            color = verdictUnevaluatedColor(),
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
     }
     val merged = result.merged
     Text(

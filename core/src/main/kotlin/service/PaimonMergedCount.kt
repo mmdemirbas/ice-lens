@@ -1,9 +1,7 @@
 package service
 
-import model.DEFAULT_PAIMON_MERGE_ENGINE
 import model.PaimonLookupFile
 import model.PaimonReadInput
-import model.PaimonRowKind
 import org.slf4j.LoggerFactory
 import java.util.BitSet
 
@@ -64,6 +62,11 @@ object PaimonMergedCount {
         /** Buckets left unread by [MAX_BUCKETS]. */
         val bucketsLeft: Int,
         val fileRows: Long,
+        /** Live level-0 files a batch read of this table skips, and the rows in them — see [PaimonMergeRule.skipsLevel0]. */
+        val skippedFiles: Int = 0,
+        val skippedRows: Long = 0,
+        /** The rule, for the panel to state. */
+        val rule: String = "",
     ) {
         val merged: Long? get() = if (applied && buckets.none { it.error != null } && bucketsLeft == 0) buckets.sumOf { it.merged } else null
         val retracted: Long get() = buckets.sumOf { it.retracted }
@@ -73,7 +76,9 @@ object PaimonMergedCount {
 
     fun count(input: PaimonReadInput): Result {
         val fileRows = input.files.sumOf { it.recordCount ?: 0L }
-        val buckets = input.files.groupBy { it.partition to it.bucket }.entries.sortedWith(compareBy({ it.key.first }, { it.key.second }))
+        val rule = input.rule
+        val skipped = input.skippedFiles
+        val buckets = input.readFiles.groupBy { it.partition to it.bucket }.entries.sortedWith(compareBy({ it.key.first }, { it.key.second }))
         if (!input.hasPrimaryKey) {
             // No merge: every file row is a row, less the vectors and the patch files.
             val counted = buckets.map { (scope, files) ->
@@ -84,8 +89,11 @@ object PaimonMergedCount {
             }
             return Result(input.snapshotId, input.mergeEngine, applied = true, fromMetadata = true, buckets = counted, bucketsLeft = 0, fileRows = fileRows)
         }
-        if (input.mergeEngine != DEFAULT_PAIMON_MERGE_ENGINE) {
-            return Result(input.snapshotId, input.mergeEngine, applied = false, fromMetadata = false, buckets = emptyList(), bucketsLeft = buckets.size, fileRows = fileRows)
+        if (!rule.applied) {
+            return Result(
+                input.snapshotId, input.mergeEngine, applied = false, fromMetadata = false, buckets = emptyList(), bucketsLeft = buckets.size,
+                fileRows = fileRows, skippedFiles = skipped.size, skippedRows = skipped.sumOf { it.recordCount ?: 0L }, rule = rule.describe(),
+            )
         }
         val keyColumns = input.trimmedPrimaryKeys.map { PaimonRowLookup.KEY_PREFIX + it }
         val toRead = buckets.take(MAX_BUCKETS)
@@ -95,7 +103,10 @@ object PaimonMergedCount {
                 .onFailure { logger.warn("Could not merge bucket {}: {}", scope, it.message) }
                 .getOrElse { BucketCount(scope.first, scope.second, files.size, files.sumOf { f -> f.recordCount ?: 0L }, 0, 0, 0, it.message ?: it.toString()) }
         }
-        return Result(input.snapshotId, input.mergeEngine, applied = true, fromMetadata = false, buckets = counted, bucketsLeft = buckets.size - toRead.size, fileRows = fileRows)
+        return Result(
+            input.snapshotId, input.mergeEngine, applied = true, fromMetadata = false, buckets = counted, bucketsLeft = buckets.size - toRead.size,
+            fileRows = fileRows, skippedFiles = skipped.size, skippedRows = skipped.sumOf { it.recordCount ?: 0L }, rule = rule.describe(),
+        )
     }
 
     private fun countBucket(
@@ -108,13 +119,22 @@ object PaimonMergedCount {
     ): BucketCount {
         require(keyColumns.isNotEmpty()) { "a primary-key table with no key column outside the partition" }
         val paths = files.map { SampleRowReader.resolveForQuery(it.localPath).first }
-        val latest = PaimonRowLookup.latestPerKeySql(files, keyColumns)
-        val retractedKinds = "(${PaimonRowKind.UPDATE_BEFORE}, ${PaimonRowKind.DELETE})"
-        val (keys, retracted) = DuckDb.withConnection { conn ->
-            conn.prepareStatement("SELECT count(*), count(*) FILTER (WHERE kind IN $retractedKinds) FROM ($latest)").use { pstmt ->
+        val latest = PaimonRowLookup.latestPerKeySql(files, keyColumns, input.rule.removingKinds)
+        val rule = input.rule
+        // The kinds that, as a key's latest record, remove it under this merge engine — none under
+        // first-row, or under ignore-delete; and the keys a read would fail on, where a retraction
+        // is rejected, are counted rather than folded.
+        val removing = rule.removingKinds.takeIf { it.isNotEmpty() }?.joinToString(", ", "(", ")") ?: "(-1)"
+        val (keys, retracted, rejected) = DuckDb.withConnection { conn ->
+            conn.prepareStatement(
+                "SELECT count(*), count(*) FILTER (WHERE kind IN $removing), count(*) FILTER (WHERE retracted) FROM ($latest)",
+            ).use { pstmt ->
                 paths.forEachIndexed { i, p -> pstmt.setString(i + 1, p) }
-                pstmt.executeQuery().use { rs -> rs.next(); rs.getLong(1) to rs.getLong(2) }
+                pstmt.executeQuery().use { rs -> rs.next(); Triple(rs.getLong(1), rs.getLong(2), rs.getLong(3)) }
             }
+        }
+        if (rule.retractionsRejected && rejected > 0) {
+            throw IllegalStateException("$rejected keys carry a retraction, which a read of a ${rule.engine} table fails on")
         }
         // Keys whose latest record a vector marks: only the files with a vector are asked, and
         // only for the records that are not already retractions, streamed rather than listed.
@@ -133,7 +153,7 @@ object PaimonMergedCount {
             val holders = vectored.joinToString(", ") { "?" }
             DuckDb.withConnection { conn ->
                 conn.prepareStatement(
-                    "SELECT holder, pos FROM ($latest) WHERE kind NOT IN $retractedKinds AND holder IN ($holders)",
+                    "SELECT holder, pos FROM ($latest) WHERE kind NOT IN $removing AND holder IN ($holders)",
                 ).use { pstmt ->
                     var i = 1
                     paths.forEach { pstmt.setString(i++, it) }

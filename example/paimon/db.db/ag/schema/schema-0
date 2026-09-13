@@ -1,0 +1,29 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT NOT NULL"
+  }, {
+    "id" : 1,
+    "name" : "total",
+    "type" : "INT"
+  }, {
+    "id" : 2,
+    "name" : "latest",
+    "type" : "STRING"
+  } ],
+  "highestFieldId" : 2,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ "k" ],
+  "options" : {
+    "bucket" : "1",
+    "owner" : "root",
+    "fields.total.aggregate-function" : "sum",
+    "merge-engine" : "aggregation",
+    "aggregation.remove-record-on-delete" : "true",
+    "fields.latest.aggregate-function" : "last_value"
+  },
+  "timeMillis" : 1789326216538
+}
