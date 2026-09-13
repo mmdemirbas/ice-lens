@@ -2106,7 +2106,11 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   read as **no rows at all**. `PaimonReadInput.readFiles` applies the same filter, the count
   reports the skipped files and rows, and a looked-up record in one of them is `not read`.
   `PaimonMergeEngineFixtureTest` holds `pu`, `ag` and `fr` to what Paimon printed, snapshot by
-  snapshot on `fr`
+  snapshot on `fr`. The file itself says so too: `PaimonDataFileNode.unreadByBatchRead` is set by
+  the builder from the snapshot's own schema options, and the `LSM Level` row on the panel and the
+  `Level` row in the IDE strip carry the note on a level-0 file of such a table — which on `dv` is
+  every append's file *before* the forced compaction moves it up, so a reader looking at the first
+  snapshot sees why a batch read of it returned nothing
 - **And the Iceberg twin is per data file, over the delete files the scan pairs with it.**
   `total-records` and every `record_count` count rows as written, and a merge-on-read delete
   touches neither; subtracting the delete files' own `record_count` is wrong the moment one is

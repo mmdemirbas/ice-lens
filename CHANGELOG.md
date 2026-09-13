@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **A level-0 file a batch read skips says so.** On a `first-row` table or a primary-key table
+  with deletion vectors, the file panel's `LSM Level` row and the IDE strip's `Level` row note
+  that a batch read of the table skips level 0, so a row in the file is not returned until a
+  compaction moves it up — the `dv` append files before their forced compaction, and `fr`'s
+  rewritten file, which nothing ever moves.
+
 ### Changed
 - **The scan-pruning headline carries bytes and rows** — `1.94 KiB of 7.78 KiB, 1 of 4 rows`
   beside the file count, since a scan's cost is what it reads and three files of a thousand may

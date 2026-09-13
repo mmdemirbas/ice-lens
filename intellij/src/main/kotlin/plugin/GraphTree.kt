@@ -183,7 +183,7 @@ object GraphTree {
             "File" to (node.entry.file?.fileName ?: "—"),
             "Partition" to (node.partition?.display?.ifEmpty { "none" } ?: "not decoded"),
             "Key range" to keyRangeText(node.keyMin, node.keyMax),
-            "Level" to (node.entry.file?.level?.toString() ?: "—"),
+            "Level" to ((node.entry.file?.level?.toString() ?: "—") + if (node.unreadByBatchRead) " — not read by a batch read of this table" else ""),
             "Records" to (node.entry.file?.rowCount?.toString() ?: "—"),
             "Kind" to node.entry.kind.toString(),
         ) + listOfNotNull(

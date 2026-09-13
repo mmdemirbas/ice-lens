@@ -102,4 +102,16 @@ class PaimonMergeEngineFixtureTest {
         assertEquals(0L, atOne.merged)
         assertEquals(2L, atOne.skippedRows)
     }
+
+    @Test
+    fun `the file node says when a batch read would skip it`() {
+        val fr = GraphLayoutService.layoutGraph(model("fr"), showRows = false)
+        val files = fr.nodes.filterIsInstance<model.GraphNode.PaimonDataFileNode>()
+        val unread = files.filter { it.unreadByBatchRead }.map { it.entry.file?.fileName }.toSet()
+        assertTrue(unread.isNotEmpty(), "the appends and the rewrite were written to level 0")
+        assertTrue(files.filter { it.unreadByBatchRead }.all { it.level == 0 })
+        assertTrue(files.filter { (it.level ?: 0) > 0 }.none { it.unreadByBatchRead })
+        val lk = GraphLayoutService.layoutGraph(model("lk"), showRows = false)
+        assertTrue(lk.nodes.filterIsInstance<model.GraphNode.PaimonDataFileNode>().none { it.unreadByBatchRead }, "deduplicate under lookup reads level 0")
+    }
 }

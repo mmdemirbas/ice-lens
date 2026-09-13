@@ -873,6 +873,11 @@ sealed class GraphNode(
         val pathResolution: PaimonPathResolution = PaimonPathResolution.LAYOUT,
         /** A data-evolution patch file — see [PaimonUnifiedDataFile.partial]; `_WRITE_COLS` alone does not decide it. */
         val partial: Boolean = false,
+        /**
+         * A level-0 file of a table whose batch reads skip level 0 — see [PaimonMergeRule.skipsLevel0]:
+         * a row here is not returned until a compaction moves it up.
+         */
+        val unreadByBatchRead: Boolean = false,
         /** The file's life across the branch's retained snapshots — see [FileHistory]; deferred as the Iceberg node's is. */
         val history: DeferredRead<FileHistory> = DeferredRead.none(),
         /**

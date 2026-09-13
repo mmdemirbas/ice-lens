@@ -190,7 +190,12 @@ internal fun ColumnScope.PaimonDataFilePanel(
             )
             DetailRow("Bucket", "${node.bucket ?: "N/A"}")
             DetailRow("Total Buckets", "${node.entry.totalBuckets ?: "N/A"}")
-            DetailRow("LSM Level", "${node.level ?: "N/A"}")
+            DetailRow(
+                "LSM Level",
+                "${node.level ?: "N/A"}" + if (node.unreadByBatchRead) {
+                    " — a batch read of this table skips level-0 files, so a row here is not returned until a compaction moves it up"
+                } else "",
+            )
             DetailRow("File Size", "${file?.fileSize ?: "N/A"}")
             DetailRow("Row Count", "${file?.rowCount ?: "N/A"}")
             DetailRow("Schema ID", "${file?.schemaId ?: "N/A"}")

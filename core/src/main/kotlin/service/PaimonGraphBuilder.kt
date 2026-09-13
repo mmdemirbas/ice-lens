@@ -125,6 +125,9 @@ object PaimonGraphBuilder {
         ) {
             val snap = unifiedSnapshot.metadata
             val idPrefix = if (branch == null) "" else "${branch}_"
+            // Whether a batch read of this table skips level-0 files — first-row, or deletion
+            // vectors on a primary-key table — decided by the snapshot's schema options.
+            val skipsLevel0 = unifiedSnapshot.schema?.let { paimonMergeRuleOf(it.options, it.primaryKeys.isNotEmpty()).skipsLevel0 } ?: false
             val snapId = "psnap_$idPrefix${snap.id ?: nextSnapshotSimpleId}"
             val simpleId = nextSnapshotSimpleId++
 
@@ -278,6 +281,7 @@ object PaimonGraphBuilder {
                                     localPath = unifiedDataFile.path.toString(),
                                     pathResolution = unifiedDataFile.pathResolution,
                                     partial = unifiedDataFile.partial,
+                                    unreadByBatchRead = skipsLevel0 && (entry.file?.level ?: 0) == 0,
                                     // A changelog file is the change stream, not the table's contents; no snapshot lists it live.
                                     history = if (kind == "changelog") DeferredRead.none()
                                     else paimonDataFileKey(unifiedDataFile).let { key -> DeferredRead.of { tableModel.fileHistoryOf(key, branch) } },

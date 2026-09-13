@@ -141,6 +141,9 @@ class InspectorRenderTest {
         val marked = dv.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
             .first { n -> n.vectorRange != null && n.entry.file?.rowCount == 1000L }
         renderInspector(dv, marked.id, "paimon-file-node-vector", height = 2600)
+        // And a level-0 file of the same table, which a batch read skips: the LSM Level row says so.
+        val unread = dv.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>().first { it.unreadByBatchRead }
+        renderInspector(dv, unread.id, "paimon-file-node-level0", height = 1800)
     }
 
     private fun graphFor(fixture: String): GraphModel {

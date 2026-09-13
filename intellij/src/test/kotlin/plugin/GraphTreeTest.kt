@@ -171,6 +171,11 @@ class GraphTreeTest {
             dv.filter { it.first == "Deleted rows" }.map { it.second.substringBefore(" index-") }.toSet(),
             "the two files the DELETE touched, with the manifest's cardinalities; no other file lists the row",
         )
+        val levels = dv.filter { it.first == "Level" }.map { it.second }
+        assertTrue(levels.any { it.startsWith("0 — not read by a batch read") }, "a deletion-vector table's level-0 files are skipped by a batch read: $levels")
+        assertTrue(levels.filter { !it.startsWith("0") }.none { "not read" in it }, levels.toString())
+        val pc = flatten(GraphTree.build(paimonGraphOf("pc"))).flatMap { GraphTree.details(it) }
+        assertTrue(pc.filter { it.first == "Level" }.none { "not read" in it.second }, "a deduplicate table on the defaults reads level 0")
     }
 
     private fun paimonGraphOf(name: String): GraphModel {
