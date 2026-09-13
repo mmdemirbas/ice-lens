@@ -67,6 +67,23 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   the table's current snapshot and the `AS OF VERSION` form needs a snapshot id that is not known
   until the script has run, so it needs a second pass over the fixture.
 
+- **A file's history is answered on both formats, and the IDE strip does not list it.** Which
+  commit added a file, which removed it, which retained snapshots still list it live and whether
+  the expiry the table panel plans would free it (`model/FileHistory.kt`). Two edges stay open.
+  Paimon records no writer on a manifest entry, so a file older than the earliest retained
+  snapshot is `carried in` with no commit to credit, where Iceberg's `added_snapshot_id` still
+  names an expired one. And the IntelliJ tool window lists none of it: `GraphTree.details` reads
+  only what the node carries eagerly, and the history is a scan of every manifest's entries on
+  selection — cheap on a developer's table, a stall on the EDT for a large one, so it would need
+  the plugin's background task to warm it first.
+
+- **The whole-table integrity check leaves the file reads out.** `model/Integrity.kt` runs the
+  metadata-only comparisons everywhere; the statistics and partition-statistics files stay on the
+  metadata panel because each is a file open (Puffin footer, DuckDB), and the two closure-walking
+  checks stop at fifty snapshots. What is not compared anywhere yet: a manifest list's
+  `partitions` summaries against the entries under them, which `ScanPruning` trusts the same way
+  a planner does.
+
 - **A statistics blob's sketch is never decoded.** The `.stats` container is opened now and its
   footer shown against what `metadata.json` records (`model/TableStatistics.kt`), so a stale record
   or a cleaned-up file is visible. What is not done is reading the theta sketch itself — it needs
