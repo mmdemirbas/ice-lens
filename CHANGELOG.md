@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **A file draws as many row cards as it has rows.** Every data file got five row nodes whatever
+  its record count, so a one-row file sat beside four empty `ROW` cards — on every table, since
+  Spark writes small inserts as one file per row. The count is `min(5, record_count)` now, decided
+  from the manifest before the file is opened.
 - **A Paimon partial-column file has its bounds.** Its `_VALUE_STATS` is a row over `_WRITE_COLS`
   with `_VALUE_STATS_COLS` null, and decoding it against the schema failed the arity check — one
   field read as three — so the file showed no column bounds at all. The stats fields are now

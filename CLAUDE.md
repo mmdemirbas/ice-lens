@@ -156,7 +156,9 @@ intellij/src/main/kotlin/plugin/
   by → `layoutNodes()` → `GraphModel` → `GraphCanvas`. **The order is
   load-bearing**: the builder emits a node for every artifact the metadata describes, aggregation
   decides which are drawn, and only then are rows read — building them first costs a filesystem
-  stat and five nodes per data file in the table
+  stat and up to five nodes per data file in the table. A file gets `RowNode.countFor(recordCount)`
+  nodes — its recorded row count, capped at five — because the count is metadata and a one-row file
+  drew four empty cards beside its one
 - `GraphModel.nodeById` provides a lazy `Map<String, GraphNode>` — use it instead of `nodes.find`/`nodes.associateBy`
 - Manifest lists and manifests resolve via `resolveRecordedOrRelative()`: the recorded path when
   it is absolute and the file exists, else `resolveForceRelative()` (file name against the local
@@ -1289,7 +1291,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~966 tests across 114 files (728 in :core, 232 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~967 tests across 114 files (729 in :core, 232 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

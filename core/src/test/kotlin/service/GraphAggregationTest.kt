@@ -300,15 +300,44 @@ class GraphAggregationTest {
      */
     @Test
     fun `sample rows go through the pass rather than around it`() {
-        val dir = File(repoRoot, "example/iceberg/default/test")
-        val model = UnifiedTableModel(Paths.get(dir.absolutePath))
+        // rt's compaction wrote a five-row file, which is what reaches the five-row cap; its
+        // other files hold three and two, and a file gets no more row nodes than it has rows.
+        val dir = File(repoRoot, "example/paimon/db.db/rt")
+        val model = model.PaimonUnifiedTableModel(Paths.get(dir.absolutePath))
 
         val graph = GraphLayoutService.layoutGraph(model, showRows = true, policy = policy(3))
 
         val rowGroup = graph.groups.singleOrNull { it.kind == AggregationKind.ROW }
         assertNotNull(rowGroup, "five sample rows against a page size of three should leave a group")
         assertEquals(2, rowGroup.memberCount)
-        assertEquals(3, graph.nodes.filterIsInstance<GraphNode.RowNode>().size)
+        assertEquals(3, graph.nodes.filterIsInstance<GraphNode.RowNode>().count { it.id.startsWith("row_${rowGroup.parentId}_") })
+    }
+
+    /**
+     * A file gets as many row nodes as it has rows, up to the cap — the recorded count is known
+     * before the file is opened, and a one-row file used to draw four empty cards beside its one.
+     */
+    @Test
+    fun `a file gets no more row nodes than it has rows`() {
+        assertEquals(5, GraphNode.RowNode.countFor(null))
+        assertEquals(5, GraphNode.RowNode.countFor(9L))
+        assertEquals(1, GraphNode.RowNode.countFor(1L))
+        assertEquals(0, GraphNode.RowNode.countFor(0L))
+        listOf(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/sorted").absolutePath)),
+            model.PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/de").absolutePath)),
+        ).forEach { tableModel ->
+            val graph = GraphLayoutService.layoutGraph(tableModel, showRows = true)
+            val rowsByFile = graph.nodes.filterIsInstance<GraphNode.RowNode>().groupBy { it.id.substringBeforeLast('_').removePrefix("row_") }
+            assertTrue(rowsByFile.isNotEmpty())
+            rowsByFile.forEach { (fileId, rows) ->
+                val fileNode = graph.nodeById.getValue(fileId)
+                val recorded: Long? = (fileNode as? GraphNode.FileNode)?.data?.recordCount
+                    ?: (fileNode as? GraphNode.PaimonDataFileNode)?.entry?.file?.rowCount
+                assertEquals(GraphNode.RowNode.countFor(recorded), rows.size, fileId)
+                assertTrue(rows.all { "id" in it.resolvedData || "b" in it.resolvedData }, "every node drawn for $fileId is a row")
+            }
+        }
     }
 
     @Test

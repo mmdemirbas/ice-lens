@@ -20,7 +20,6 @@ private val logger = LoggerFactory.getLogger(PaimonGraphBuilder::class.java)
 object PaimonGraphBuilder {
 
     /** Max sample rows created per data file. */
-    private const val MAX_ROWS_PER_FILE = 5
 
     /** The column a row-tracked compaction writes each row's id under, and the key a derived id is put under. */
     const val ROW_ID_COLUMN = "_ROW_ID"
@@ -314,7 +313,9 @@ object PaimonGraphBuilder {
         if (!Files.exists(dataFile.path)) {
             emptyList()
         } else {
-            (0 until MAX_ROWS_PER_FILE).map { rowIndex ->
+            // As many nodes as the file has rows, up to the cap: the entry's _ROW_COUNT is known
+            // before the file is opened, and a one-row file drew four empty cards.
+            (0 until GraphNode.RowNode.countFor(dataFile.metadata.file?.rowCount)).map { rowIndex ->
                 GraphNode.RowNode(
                     id = "row_${fileNodeId}_$rowIndex",
                     data = mapOf("file_no" to simpleId, "row_idx" to rowIndex),

@@ -17,7 +17,6 @@ private val logger = LoggerFactory.getLogger(IcebergGraphBuilder::class.java)
 object IcebergGraphBuilder {
 
     /** Max sample rows created per data file. */
-    private const val MAX_ROWS_PER_FILE = 5
 
     /** The two v3 row-lineage columns, by the reserved names the spec gives them (field ids 2147483540 and 2147483539). */
     const val ROW_ID_COLUMN = "_row_id"
@@ -464,7 +463,9 @@ object IcebergGraphBuilder {
             } else {
                 emptySet()
             }
-            (0 until MAX_ROWS_PER_FILE).map { rowIndex ->
+            // As many nodes as the file has rows, up to the cap: record_count is known before
+            // the file is opened, and a one-row file drew four empty cards.
+            (0 until GraphNode.RowNode.countFor(dataFile.metadata.dataFile?.recordCount)).map { rowIndex ->
                 GraphNode.RowNode(
                     id = "row_${fileNodeId}_$rowIndex",
                     data = mapOf("file_no" to simpleId, "row_idx" to rowIndex),

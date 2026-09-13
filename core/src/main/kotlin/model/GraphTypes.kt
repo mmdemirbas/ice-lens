@@ -646,6 +646,13 @@ sealed class GraphNode(
         val isRetraction: Boolean get() = paimonRowKind?.let { PaimonRowKind.isRetraction(it) } == true
 
         companion object {
+            /** The most row nodes one data file gets. */
+            const val MAX_PER_FILE = 5
+
+            /** How many row nodes a file gets: its recorded row count, capped — or the cap where none is recorded. */
+            fun countFor(recordedRows: Long?): Int =
+                minOf(MAX_PER_FILE.toLong(), recordedRows ?: MAX_PER_FILE.toLong()).toInt()
+
             /** Where [filePosition] is carried in [resolvedData]. Filtered out of the card. */
             const val ROW_POSITION_KEY = "row_pos"
         }
