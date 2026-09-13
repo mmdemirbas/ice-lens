@@ -140,4 +140,26 @@ class GraphTreeTest {
             .forEach { assertTrue(it in seen, "$it never appeared, so its branch was never exercised") }
         assertTrue(kinds.size >= seen.size)
     }
+
+    /**
+     * Rows a table may not have appear only when it has them: a v2 table's strip is unchanged,
+     * and a v3 table with row lineage, a table with a sort order, and a write-audit-publish table
+     * each add the one line that names what they carry.
+     */
+    @Test
+    fun `optional facts are listed only where the table has them`() {
+        val plain = flatten(GraphTree.build(graphOf("test"))).flatMap { GraphTree.details(it) }.map { it.first }.toSet()
+        listOf("Next row id", "First row id", "Row ids", "WAP id", "Published from", "Sort order").forEach {
+            assertTrue(it !in plain, "$it listed on a table that has none")
+        }
+        val lineage = flatten(GraphTree.build(graphOf("lineage"))).flatMap { GraphTree.details(it) }
+        assertTrue(lineage.any { it.first == "Next row id" && it.second == "14" })
+        assertTrue(lineage.any { it.first == "First row id" })
+        assertTrue(lineage.any { it.first == "Row ids" && it.second == "0..1" }, "the first file holds ids 0 and 1")
+        val wap = flatten(GraphTree.build(graphOf("wap"))).flatMap { GraphTree.details(it) }
+        assertTrue(wap.any { it.first == "WAP id" && it.second.startsWith("audit-1") })
+        assertTrue(wap.any { it.first == "Published from" && "wap.id audit-1" in it.second })
+        val sorted = flatten(GraphTree.build(graphOf("sorted"))).flatMap { GraphTree.details(it) }
+        assertTrue(sorted.none { it.first == "Sort order" }, "every file of the sorted table claims order 0, the unsorted one, and that is not listed")
+    }
 }

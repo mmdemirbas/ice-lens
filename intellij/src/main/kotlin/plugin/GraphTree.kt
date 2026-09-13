@@ -6,6 +6,10 @@ import model.GraphModel
 import model.GraphNode
 import model.PaimonRowValue
 import model.displayLabel
+import model.sourceSnapshotId
+import model.publishedWapId
+import model.wapId
+import model.describe
 
 /**
  * The graph as a tree, and what each node has to say about itself.
@@ -87,7 +91,11 @@ object GraphTree {
             "Format version" to (node.data.formatVersion?.toString() ?: "—"),
             "Current snapshot" to (node.data.currentSnapshotId?.toString() ?: "—"),
             "Snapshots listed" to (node.data.snapshots?.size ?: 0).toString(),
+        ) + listOfNotNull(
+            node.data.nextRowId?.let { "Next row id" to it.toString() },
         )
+        // Rows a table may not have are listed only when it has them, so a v2 table's strip
+        // stays the strip it was.
         is GraphNode.SnapshotNode -> listOf(
             "Snapshot id" to node.data.snapshotId.toString(),
             "Expired" to if (node.expired) "yes — gone from the current metadata" else "no",
@@ -95,6 +103,10 @@ object GraphTree {
             "Sequence number" to (node.data.sequenceNumber?.toString() ?: "0 (v1 — none recorded)"),
             "Operation" to (node.data.summary?.get("operation") ?: "—"),
             "Manifest list" to (node.data.manifestList ?: "—"),
+        ) + listOfNotNull(
+            node.data.firstRowId?.let { "First row id" to it.toString() },
+            node.data.wapId?.let { "WAP id" to "$it — staged, on no branch until published" },
+            node.data.sourceSnapshotId?.let { "Published from" to "snapshot $it" + (node.data.publishedWapId?.let { id -> " (wap.id $id)" } ?: "") },
         )
         is GraphNode.ManifestNode -> listOf(
             "Path" to (node.data.manifestPath ?: "—"),
@@ -110,6 +122,12 @@ object GraphTree {
             "Records" to (node.data.recordCount?.toString() ?: "—"),
             "Size" to (node.data.fileSizeInBytes?.let { "%,d bytes".format(it) } ?: "—"),
             "Partition" to (node.partition?.values?.joinToString(", ") { "${it.field.name}=${it.human}" } ?: "—"),
+        ) + listOfNotNull(
+            node.sortOrder?.takeIf { it.fields.isNotEmpty() }?.let { "Sort order" to "${it.orderId} — ${it.describe { id -> node.schema?.nameOf(id) }}" },
+            node.firstRowId?.let { first ->
+                val records = node.data.recordCount ?: 0L
+                "Row ids" to if (records > 0) "$first..${first + records - 1}" else first.toString()
+            },
         )
         is GraphNode.RowNode -> node.resolvedData.entries.map { it.key to it.value.toString() }
         is GraphNode.ErrorNode -> listOf("Error" to node.title, "Detail" to node.message)

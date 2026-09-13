@@ -834,8 +834,10 @@ intellij/src/main/kotlin/plugin/
   on `:desktop` — see the architecture note for the Skiko clash that decides it. The one piece of
   *drawing* knowledge that is shared is `GraphNode.displayLabel()`, which lives in core because
   what an artifact is **called** is a fact about the artifact: two shells with their own vocabulary
-  for one set of things drift the first time a node type is added. It is deliberately not what
-  `GraphSearch.searchableText` answers — a label is one line chosen to fit a row, so a manifest
+  for one set of things drift the first time a node type is added. `GraphTree.details` lists a
+  fact a table *may* carry — a row id, a WAP id, a sort order — only on the tables that carry it,
+  so a v2 table's strip is the strip it was; `GraphTreeTest` pins both directions. It is
+  deliberately not what `GraphSearch.searchableText` answers — a label is one line chosen to fit a row, so a manifest
   reads by its add count and cannot be found by its path, which is right for a label and wrong for
   a search. `GraphTree.details` is *not* shared: the desktop inspector is a panel per node kind
   with tallies and drill-downs, and the tool window is a docked strip answering "what am I looking
@@ -1281,7 +1283,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~957 tests across 112 files (722 in :core, 230 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~958 tests across 112 files (722 in :core, 230 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

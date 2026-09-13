@@ -73,6 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **The IDE tool window lists the newer facts where a table has them.** `Next row id`, a
+  snapshot's `First row id`, `WAP id` and `Published from`, a file's `Row ids` and `Sort order` —
+  each only on a table that carries it.
 - **A write-audit-publish flow is drawn as what it is.** A snapshot staged under `spark.wap.id`
   sits on no branch, and its panel says so with the audit id instead of "kept only by a metadata
   version"; the commit `publish_changes` writes on main names the staged snapshot in a
