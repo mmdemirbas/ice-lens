@@ -84,7 +84,7 @@ class PaimonRowTrackingFixtureTest {
     @Test
     fun `no file claims an id past the next one, on any table`() {
         var checked = 0
-        listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi", "ep", "rt", "sm", "se", "de", "lk").forEach { name ->
+        listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi", "ep", "rt", "sm", "se", "de", "lk", "ad").forEach { name ->
             val m = model(name)
             var previousNext = Long.MIN_VALUE
             m.snapshots.forEach { snapshot ->

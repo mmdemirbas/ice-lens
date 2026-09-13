@@ -88,6 +88,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **An append table's deletion vector has a fixture.** `ad` is written with
+  `deletion-vectors.enabled` on a `bucket = -1` table: its DELETE commits as a `COMPACT` whose only
+  change is an index manifest — one vector per touched file, both files untouched — where `ao`
+  rewrote the file. The index reader already handled it; now something says so.
 - **A comparison can be stepped.** Each side of the two-snapshot comparison has older / newer
   controls that move that snapshot to its neighbour in commit order while the other stays pinned —
   a branch against successive points on `main` is a click per point. Each button names the commit

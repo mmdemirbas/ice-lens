@@ -1324,7 +1324,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~977 tests across 117 files (737 in :core, 234 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~979 tests across 118 files (739 in :core, 234 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1433,6 +1433,7 @@ container invocation and the traps in it:
 | `paimon/db.db/se` | `PaimonSchemaEvolutionFixtureTest` | `ADD COLUMN` between two writes, then a compaction — a schema-1 manifest listing a schema-0 file, whose stats decode only against its own schema |
 | `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted |
 | `paimon/db.db/lk` | `PaimonRowKindTest` | `changelog-producer = lookup` — the `-U` / `+U` pair a re-inserted key produces, carried by the COMPACT snapshot the lookup ran in, and a `-D` with the value it removed |
+| `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1590,7 +1591,11 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   three runs of one size, universal compaction's size-ratio rule merged all of them, and the result
   was a new file and no vector — a correct table that exercised nothing. A thousand rows and five
   hundred against three is what makes the compaction stop at L0. The snapshot's `totalRecordCount`
-  still counts the marked rows, which is why the panel prints the live figure beside it
+  still counts the marked rows, which is why the panel prints the live figure beside it. **An
+  append table needs none of that**: with no merge engine, `ad`'s DELETE of one row in each of two
+  files commits as a `COMPACT` whose delta list is empty and whose only change is the index
+  manifest — a vector of cardinality 1 per file, both files still listed as written,
+  `deltaRecordCount` 0 — where `ao`, without vectors, rewrote the file
 - **An `ANALYZE` commit names a statistics file, and it is the only place the merged row count
   exists.** `PaimonSnapshot.statistics` was parsed and dropped like `indexManifest` before it;
   `model/PaimonSchema.kt` now reads the JSON under `statistics/` as `PaimonStatistics`, eagerly, one
