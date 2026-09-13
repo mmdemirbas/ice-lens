@@ -701,6 +701,26 @@ intellij/src/main/kotlin/plugin/
   defaults and `older_than = now`, because the reader's question is "what protects this snapshot"
   and only the age rule moves between them; ages are measured from `LocalExpiryClock`, which the
   render tests pin to the table's last write so a capture does not change with the calendar
+- **Paimon's expiry is planned the same way, from `ExpireSnapshotsImpl.expire()`, and checked
+  against the one oracle a planner can have.** `model/PaimonExpiryPlan.kt` applies the six things
+  that method reads: the newest `snapshot.num-retained.min` stay; everything below
+  `latest - num-retained.max + 1` goes **whatever its age**; a consumer's `nextSnapshot` and all
+  after it stay; at most `snapshot.expire.limit` go in one run; and between those bounds the walk
+  stops at the **first** snapshot younger than the cutoff — age is consulted only there, which is
+  why a bare call on a fresh table removes nothing and `retain_max` on the same table removes
+  seconds-old commits. A removed snapshot a tag names lives on as the tag. The oracle is
+  `docs/fixtures/paimon-px.sql`: one table written twice with identical statements, `px` left
+  unexpired and `pxa` expired, so `PaimonExpiryFixtureTest` plans from `px` and requires the
+  retained set to equal `pxa/snapshot` — and `px` carries the age rule's own oracle, an
+  `expire_snapshots(retain_min = 1)` that removed nothing. The trap in that script: `pxa/bucket-0`
+  still holds all six data files, because an expiry removes a file only once a later snapshot has
+  stopped listing it, and a write-only table never stops. The inputs travel on
+  `TableSummary.paimonExpiry` (`PaimonExpiryInput`: snapshot times, consumer bookmarks, tags, the
+  latest schema's options) so the table panel plans without the model; its `Expiry` section is the
+  Iceberg shape's twin — a bare call under the table's options beside `retain_min = 1, older_than
+  = now`, which is as far as a call goes without `retain_max`, so what the second column still
+  keeps is what no call can remove. `InspectorUnderTest` pins the clock to the last Paimon commit
+  plus a second for the same reason it pins Iceberg's to the last metadata write
 - **A rollback is read from the snapshot log, because it is written nowhere else.**
   `set_current_snapshot`, `rollback_to_snapshot` and `rollback_to_timestamp` write no snapshot:
   they move `main` and append a `snapshot-log` entry naming a snapshot the log already holds, and
@@ -1378,7 +1398,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,000 tests across 122 files (748 in :core, 246 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,013 tests across 124 files (761 in :core, 246 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1489,6 +1509,7 @@ container invocation and the traps in it:
 | `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted |
 | `paimon/db.db/lk` | `PaimonRowKindTest` | `changelog-producer = lookup` — the `-U` / `+U` pair a re-inserted key produces, carried by the COMPACT snapshot the lookup ran in, and a `-D` with the value it removed |
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |
+| `paimon/db.db/px`, `pxa` | `PaimonExpiryFixtureTest` | one table written twice — six commits, a tag on 2, a consumer at 4; `px` as it is, `pxa` after `expire_snapshots(retain_max = 2, retain_min = 1)` — the survivors the plan for `px` is checked against |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 

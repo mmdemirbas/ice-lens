@@ -98,6 +98,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **What `expire_snapshots` would remove from a Paimon table, and why.** `Expiry` on the table
+  panel, beside the consumers, plans the run the way `ExpireSnapshotsImpl.expire()` decides it —
+  `snapshot.num-retained.min`/`.max`, `snapshot.time-retained`, `snapshot.expire.limit`, every
+  consumer's bookmark — under the table's own options and under `retain_min = 1, older_than =
+  now`, and names the rule keeping each snapshot. A removed snapshot a tag names says so. Checked
+  against a table Paimon expired: `px`/`pxa`, one table written twice.
 - **A partition statistics file is checked against the live files it describes.** Each row
   leads with `yes` or `NO — data files: 9 recorded, 2 counted`, a live partition the file omits
   and a listed partition with no live file are both disagreements, and the section's note says how

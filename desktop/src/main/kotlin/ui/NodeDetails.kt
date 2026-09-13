@@ -95,6 +95,8 @@ import model.planExpiry
 import model.checkPartitionStatistics
 import model.PartitionStatsVerdict
 import model.ExpiryOptions
+import model.PaimonExpiryInput
+import model.PaimonExpiryOptions
 import model.TableMetadata
 import model.stepComparableSnapshot
 import model.UNDECODED_PARTITION
@@ -1106,6 +1108,11 @@ fun NodeDetailsContent(
                                 )
                             }
                         }
+
+                        // Beside the consumers, because a consumer is the usual answer to the
+                        // question this section asks. Iceberg's plan sits on the metadata node,
+                        // which is where Iceberg keeps the refs and the retention properties.
+                        summary.paimonExpiry?.let { PaimonExpirySection(it, nowMs = expiryClock()) }
 
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 
@@ -4202,6 +4209,68 @@ private fun ExpirySection(metadata: TableMetadata, nowMs: Long) {
             leadCellColors = ordered.map { id ->
                 if (byDefaults.snapshots.first { it.snapshotId == id }.retained) null else colors.error
             },
+        )
+    }
+}
+
+/**
+ * What `expire_snapshots` would remove from this Paimon table, decided by
+ * [PaimonExpiryInput.planExpiry] — the rules of `ExpireSnapshotsImpl.expire()` — under two calls
+ * side by side: a bare call, which runs under the table's own `snapshot.*` options, and
+ * `retain_min = 1, older_than = now`, which is as far as a call can go without `retain_max` — so
+ * what the second column still keeps is what no call can remove: a consumer's bookmark, or the
+ * run's limit. The same two-column shape as the Iceberg section, because the reader's question
+ * is the same — "what is protecting this snapshot".
+ */
+@Composable
+private fun PaimonExpirySection(input: PaimonExpiryInput, nowMs: Long) {
+    val colors = MaterialTheme.colorScheme
+    val plans = runCatching {
+        input.planExpiry(PaimonExpiryOptions(nowMs = nowMs)) to
+            input.planExpiry(PaimonExpiryOptions(nowMs = nowMs, retainMin = 1, olderThanMs = nowMs))
+    }
+    val byAge = plans.getOrNull()?.second
+    val title = "Expiry" + if (byAge != null && byAge.removed.isNotEmpty()) " — ${byAge.removed.size} would go" else ""
+    Section(title) {
+        val (byDefaults, byAgePlan) = plans.getOrElse { failure ->
+            // Paimon rejects the same options before running: the panel says so rather than guessing.
+            Text(
+                "expire_snapshots would refuse this table's options: ${failure.message}",
+                fontSize = TypeScale.small,
+                fontWeight = FontWeight.Bold,
+                color = colors.error,
+            )
+            return@Section
+        }
+        val retainMaxLabel = if (byDefaults.retainMax == Int.MAX_VALUE) "unbounded" else "${byDefaults.retainMax}"
+        Text(
+            "What expire_snapshots would keep, and why, the way ExpireSnapshotsImpl decides it: the " +
+                "newest snapshot.num-retained.min stay (${byDefaults.retainMin} here), anything beyond " +
+                "snapshot.num-retained.max goes whatever its age ($retainMaxLabel here), a consumer's " +
+                "next snapshot and everything after it stay, at most snapshot.expire.limit " +
+                "(${byDefaults.maxDeletes}) go in one run, and between those bounds the run stops at " +
+                "the first snapshot younger than the cutoff. The first column is a bare call, under the " +
+                "table's snapshot.time-retained " +
+                "(${formatRetentionMs(nowMs - byDefaults.cutoffMs).substringBefore(" (")}); the second " +
+                "is retain_min = 1 with older_than = now, as far as a call goes without retain_max. " +
+                "A removed snapshot a tag names lives on as the tag.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        val byAgeById = byAgePlan.snapshots.associateBy { it.snapshotId }
+        fun verdict(v: model.PaimonSnapshotExpiryVerdict): String = when {
+            v.retained -> "kept — " + v.describeKeptBy()
+            v.tags.isNotEmpty() -> "REMOVED — lives on as tag " + v.tags.joinToString(", ")
+            else -> "REMOVED"
+        }
+        WideTable(
+            headers = listOf("Under the table's options", "Snapshot ID", "With retain_min = 1, older_than = now"),
+            columnWidths = listOf(190.dp, 120.dp, 300.dp),
+            rows = byDefaults.snapshots.map { v ->
+                listOf(verdict(v), v.snapshotId.toString(), verdict(byAgeById.getValue(v.snapshotId)))
+            },
+            leadCellColors = byDefaults.snapshots.map { if (it.retained) null else colors.error },
         )
     }
 }

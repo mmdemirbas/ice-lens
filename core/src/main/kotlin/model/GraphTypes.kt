@@ -283,6 +283,11 @@ data class TableSummary(
     val branches: List<BranchSummary>? = null,
     /** What `consumer/` holds on a Paimon table; null on Iceberg, which has no such thing. */
     val consumers: List<ConsumerSummary>? = null,
+    /**
+     * What a Paimon expiry is decided from — see [PaimonExpiryInput] — so the panel can plan one
+     * without the model. Null on Iceberg, whose plan is read off the metadata node instead.
+     */
+    val paimonExpiry: PaimonExpiryInput? = null,
 ) {
     /**
      * The table as it is now: the manifest closure of `current-snapshot-id`, live entries

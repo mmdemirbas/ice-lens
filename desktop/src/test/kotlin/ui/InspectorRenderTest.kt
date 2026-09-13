@@ -1094,6 +1094,17 @@ class InspectorRenderTest {
         )
         val csTable = csGraph.nodes.filterIsInstance<GraphNode.TableNode>().single()
         renderInspector(csGraph, csTable.id, "paimon-table-node-consumer", height = 2200)
+        // And the expiry plan, on the table whose survivors are known: `px` has six snapshots, a
+        // tag on 2 and a consumer at 4, and `pxa` is what the same call left of it. The clock is
+        // pinned within the hour of the last commit, so the bare call's column keeps everything
+        // and the older_than column removes 1..3 — the two verdicts a reader has to be able to
+        // tell apart at a glance.
+        val pxGraph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/px").absolutePath)),
+            showRows = false,
+        )
+        val pxTable = pxGraph.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        renderInspector(pxGraph, pxTable.id, "paimon-table-node-expiry", height = 2600)
         assertTrue(
             brGraph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().map { it.x }.distinct().size == 2,
             "main and dev should occupy two columns",
@@ -2266,7 +2277,10 @@ class InspectorRenderTest {
     private fun InspectorUnderTest(graph: GraphModel, nodeId: String) {
         // The expiry plan measures ages from a clock; pinned to the table's own last write so the
         // capture is the same whichever day it is taken.
+        // A Paimon table has no metadata node; its last commit's time is the same clock, plus a
+        // second so the newest snapshot is already in the past.
         val lastWrite = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().mapNotNull { it.data.lastUpdatedMs }.maxOrNull()
+            ?: graph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().mapNotNull { it.data.timeMillis }.maxOrNull()?.plus(1_000)
             ?: System.currentTimeMillis()
         CompositionLocalProvider(LocalExpiryClock provides { lastWrite }) {
             NodeDetailsContent(graph, setOf(nodeId))

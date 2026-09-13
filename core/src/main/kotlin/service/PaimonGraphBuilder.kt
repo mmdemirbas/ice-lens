@@ -501,6 +501,7 @@ object PaimonGraphBuilder {
                     nextSnapshotPresent = consumer.metadata.nextSnapshot?.let { next -> tableModel.snapshots.any { it.metadata.id == next } } ?: false,
                 )
             },
+            paimonExpiry = tableModel.expiryInput(),
         )
     }
 }
