@@ -70,6 +70,7 @@ core/src/main/kotlin/
 │   ├── MaintenanceInput.kt    # The newest metadata and the current snapshot's node, carried on the table node for the planners — never read off the drawn graph
 │   ├── FileHistory.kt         # One file across the retained snapshots — added by, removed by, still listed live by — on either format
 │   ├── Integrity.kt           # Every recorded figure against the same figure counted, over the whole table at once — the panels' checks, run everywhere
+│   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
@@ -123,6 +124,7 @@ desktop/src/main/kotlin/
     ├── MaintenanceSections.kt # The planners' sections — rewrite, manifest merge, expiry and its files, compaction, the table's summary line per procedure
     ├── FileHistorySection.kt  # A file's life on both file panels: which commit removed it, and what still keeps it on disk
     ├── IntegritySection.kt    # The whole-table check behind a click on the table panel, and its findings
+    ├── TimeTravelSection.kt   # A typed time and the snapshot it resolves to, on the metadata panel and the Paimon table panel
     ├── NodePanels.kt          # Table, row, error and group panels
     ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
     ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
@@ -926,6 +928,23 @@ intellij/src/main/kotlin/plugin/
   snapshot panel's `Compaction` section leads each bucket with the verdict and marks a bucket
   past `num-sorted-run.stop-trigger` in the error colour, because that is the one where the
   writer blocks
+- **A read as of a time is resolved the way the engine resolves it, and the rolled-back table
+  is where that differs from "the newest snapshot before T".** `model/TimeTravel.kt`: Iceberg's
+  `SnapshotUtil.nullableSnapshotIdAsOfTime` (1.8.1) takes the **last `snapshot-log` entry at or
+  before** the time, and a log entry is a moment `main` was pointed at a snapshot — so on
+  `rolled` a time between the abandoned commit and the reset lands on the abandoned commit
+  (`currentAncestor = false`, `leftBehindAt` the reset), and the reset's own moment lands on its
+  target through the reset's entry (`viaReset`). An expiry drops the removed snapshots' log
+  entries, so the earliest resolvable time moves forward (`expired`: the log's ids are exactly
+  the retained ones) and Iceberg raises `Cannot find a snapshot older than …` before it. Paimon's
+  `SnapshotManager.earlierOrEqualTimeMills` (1.3.1) binary-searches ids by `timeMillis` for the
+  latest at or before, nothing when the earliest is later — read here as the latest id at or
+  before over `PaimonExpiryInput.snapshotTimes`, the same answer while commit times rise with
+  ids. `TimeTravelSection` sits beside the Iceberg log and on the Paimon table panel; its field
+  is seeded with the expiry clock **exactly** (`formatAppTimestampExact`, milliseconds kept),
+  because two commits a hundred milliseconds apart are one second on screen and the first
+  capture resolved both seeds to the same wrong entry; `parseAppTimestamp` is the inverse and
+  `FormatUtilsTest` round-trips it. `TimeTravelTest` pins all of the above
 - **A rollback is read from the snapshot log, because it is written nowhere else.**
   `set_current_snapshot`, `rollback_to_snapshot` and `rollback_to_timestamp` write no snapshot:
   they move `main` and append a `snapshot-log` entry naming a snapshot the log already holds, and
@@ -1606,7 +1625,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,080 tests across 136 files (821 in :core, 255 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,090 tests across 137 files (826 in :core, 256 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import model.ScanFilter
 import model.GraphModel
 import model.GraphNode
+import model.snapshotAsOf
 import model.MAIN_BRANCH
 import model.PaimonRowKind
 import model.describe
@@ -153,6 +154,17 @@ internal fun ColumnScope.TablePanel(
         MaintenanceSection(node)
         summary.paimonExpiry?.let { PaimonExpirySection(it, nowMs = expiryClock()) }
         summary.paimonExpiry?.let { PaimonExpiryFilesSection(node, it, nowMs = expiryClock()) }
+        summary.paimonExpiry?.let { input ->
+            TimeTravelSection(
+                intro = "Which snapshot scan.timestamp-millis lands on: the latest snapshot whose commit time " +
+                    "is at or before it, the way SnapshotManager.earlierOrEqualTimeMills searches — nothing " +
+                    "when the earliest retained snapshot is already later, and never a tag.",
+                initialMs = expiryClock(),
+                resolve = { input.snapshotAsOf(it) },
+                operationOf = { id -> (currentGraph.nodeById["psnap_$id"] as? GraphNode.PaimonSnapshotNode)?.let { it.commitKind ?: it.data.commitKind } },
+                currentSnapshotId = summary.currentSnapshotId,
+            )
+        }
 
         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 

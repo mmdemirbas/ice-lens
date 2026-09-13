@@ -92,3 +92,28 @@ fun formatRetentionMs(ms: Long?): String {
     }
     return "$human (${formatCount(ms)} ms)"
 }
+
+/** [formatAppTimestamp] with the milliseconds kept where there are any — a time that round-trips through [parseAppTimestamp]. */
+fun formatAppTimestampExact(ms: Long): String =
+    if (ms % 1000 == 0L) formatAppTimestamp(ms)
+    else DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(ms))
+
+/**
+ * The inverse of [formatAppTimestamp], for a time a reader types: `yyyy-MM-dd HH:mm:ss[.SSS]` or
+ * `yyyy-MM-dd HH:mm` or `yyyy-MM-dd` in the local zone the panels print in, an ISO-8601 instant
+ * (`2026-08-14T06:34:41Z`), or epoch milliseconds. Null when none of those reads it.
+ */
+fun parseAppTimestamp(text: String): Long? {
+    val t = text.trim()
+    if (t.isEmpty()) return null
+    t.toLongOrNull()?.let { return it }
+    runCatching { return Instant.parse(t).toEpochMilli() }
+    val zone = ZoneId.systemDefault()
+    for (pattern in listOf("yyyy-MM-dd HH:mm:ss.SSS", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm")) {
+        runCatching {
+            return java.time.LocalDateTime.parse(t, DateTimeFormatter.ofPattern(pattern)).atZone(zone).toInstant().toEpochMilli()
+        }
+    }
+    runCatching { return java.time.LocalDate.parse(t).atStartOfDay(zone).toInstant().toEpochMilli() }
+    return null
+}

@@ -112,6 +112,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Time travel resolved.** A typed time and the snapshot `TIMESTAMP AS OF` (Iceberg) or
+  `scan.timestamp-millis` (Paimon) would land on, the way each engine resolves it — on a
+  rolled-back table a time between the abandoned commit and the reset lands on the abandoned
+  commit, and the panel says so.
 - **A manifest's partition summaries are checked against its entries.** The bounds a scan prunes
   on, folded from every entry's decoded partition and put beside the recorded ones on the
   manifest panel's `Partition Ranges`, each row leading with a verdict; the whole-table check

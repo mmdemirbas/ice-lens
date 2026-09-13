@@ -65,4 +65,19 @@ class FormatUtilsTest {
         val original = setOf(100L, 200L, 300L)
         assertEquals(original, parseLongSet(encodeLongSet(original)))
     }
+
+    @Test
+    fun `parseAppTimestamp reads what formatAppTimestamp prints, an instant, a date and epoch millis`() {
+        val ms = 1_789_264_709_000L
+        assertEquals(ms, parseAppTimestamp(formatAppTimestamp(ms)))
+        assertEquals(ms + 91, parseAppTimestamp(formatAppTimestampExact(ms + 91)), "milliseconds survive the exact form")
+        assertEquals(formatAppTimestamp(ms), formatAppTimestampExact(ms), "a whole second prints without them")
+        assertEquals(ms, parseAppTimestamp("$ms"))
+        assertEquals(ms, parseAppTimestamp(java.time.Instant.ofEpochMilli(ms).toString()))
+        val midnight = java.time.LocalDate.of(2026, 8, 14).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        assertEquals(midnight, parseAppTimestamp("2026-08-14"))
+        assertEquals(midnight + 6 * 3_600_000 + 34 * 60_000, parseAppTimestamp("2026-08-14 06:34"))
+        assertEquals(null, parseAppTimestamp("yesterday"))
+        assertEquals(null, parseAppTimestamp(""))
+    }
 }

@@ -50,6 +50,7 @@ import model.wapId
 import model.describe
 import model.metadataVersionFromFileName
 import model.ManifestEntryStatus
+import model.snapshotAsOf
 import model.PaimonUnifiedTableModel
 import model.PredicateOp
 import model.ScanPredicate
@@ -587,6 +588,26 @@ class InspectorRenderTest {
         renderCanvas("graph-canvas-rolled", graph, pageSize = AggregationPolicy.DEFAULT_PAGE_SIZE)
         renderInspector(graph, abandoned.id, "snapshot-node-rolled-back", height = 1400)
         renderInspector(graph, newest.id, "metadata-node-rolled", height = 4400)
+
+        // The time-travel section at the two moments a rolled-back table answers unexpectedly:
+        // one tick before the reset, which lands on the abandoned commit, and at the reset, which
+        // lands on its target through the reset's own entry. A typed time is a state a capture
+        // never reaches, so the section is seeded with each.
+        val meta = newest.data
+        val reset = meta.snapshotLog[3]
+        for ((suffix, at) in listOf("abandoned" to reset.timestampMs!! - 1, "reset" to reset.timestampMs!!)) {
+            renderScene("time-travel-$suffix", width = 1400, height = 520) {
+                Column(Modifier.padding(16.dp)) {
+                    TimeTravelSection(
+                        intro = "Which snapshot TIMESTAMP AS OF lands on.",
+                        initialMs = at,
+                        resolve = { meta.snapshotAsOf(it) },
+                        operationOf = { id -> meta.snapshots.firstOrNull { it.snapshotId == id }?.summary?.get("operation") },
+                        currentSnapshotId = meta.currentSnapshotId,
+                    )
+                }
+            }
+        }
     }
 
     /**

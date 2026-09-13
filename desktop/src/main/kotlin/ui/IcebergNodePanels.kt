@@ -25,6 +25,7 @@ import model.ManifestEntryStatus
 import model.TermEffect
 import model.evaluatePruning
 import model.manifestTallies
+import model.snapshotAsOf
 import model.partitionSummaryTallies
 import model.sourceSnapshotId
 import model.publishedWapId
@@ -248,6 +249,17 @@ internal fun ColumnScope.MetadataPanel(
             )
         }
 
+        // Beside the log it reads, because a rolled-back table is where the answer surprises.
+        TimeTravelSection(
+            intro = "Which snapshot TIMESTAMP AS OF lands on: the last snapshot-log entry at or before the " +
+                "time, the way SnapshotUtil resolves it. A log entry is a moment main was pointed at a " +
+                "snapshot, so on a rolled-back table a time between the abandoned commit and the reset " +
+                "lands on the abandoned commit, and a time after the reset lands on its target.",
+            initialMs = expiryClock(),
+            resolve = { node.data.snapshotAsOf(it) },
+            operationOf = { id -> node.data.snapshots.firstOrNull { it.snapshotId == id }?.summary?.get("operation") },
+            currentSnapshotId = node.data.currentSnapshotId,
+        )
         // Every entry is a moment main was pointed somewhere. An id appearing a
         // second time is a rollback, which writes no snapshot and is recorded
         // nowhere else; the ancestor column is what Iceberg's own .history table
