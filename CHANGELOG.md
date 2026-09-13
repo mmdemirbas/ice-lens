@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **The README describes the app that ships.** Its limitations still said local filesystem
+  only, Iceberg v1 and v2, partition values not decoded and manifest summaries not read — four
+  claims each false for some time. Features, format coverage, toolbar and shortcuts are current.
 - **Paimon cards are the height of what they draw.** Manifest list 80→42dp, schema 80→54,
   manifest 80→64, snapshot 84→66 — measured worst plus four, the same rule as the Iceberg cards,
   which `CardHeightTest` can now assert over two Paimon fixtures rather than one. A manifest list's
