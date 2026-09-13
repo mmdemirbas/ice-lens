@@ -1188,7 +1188,12 @@ fun NodeDetailsContent(
                                 DetailTable {
                                     DetailRow("Metric", "Value", isHeader = true)
                                     DetailRow("Snapshot ID", currentSnapshotLabel(summary.currentSnapshotId))
-                                    DetailRow("Records", formatCount(current.recordCount))
+                                    DetailRow(
+                                        "Records",
+                                        formatCount(current.recordCount) + if (current.partialRecordCount > 0) {
+                                            " — ${formatCount(current.partialRecordCount)} of them in partial-column files, columns of rows other files hold; ${formatCount(current.readRecordCount)} rows read"
+                                        } else "",
+                                    )
                                     DetailRow("Data Files", "${formatCount(current.dataFileCount)}  (${formatBytes(current.dataSizeBytes)})")
                                     DetailRow(
                                         "Delete Files",

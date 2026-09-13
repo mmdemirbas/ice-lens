@@ -85,7 +85,8 @@ object GraphTree {
             "Snapshots" to node.summary.snapshotCount.toString(),
             "Current snapshot" to (node.summary.currentSnapshotId?.toString() ?: "—"),
             "Data files (current)" to node.summary.current.dataFileCount.toString(),
-            "Records (current)" to "%,d".format(node.summary.current.recordCount),
+            "Records (current)" to "%,d".format(node.summary.current.recordCount) +
+                (node.summary.current.partialRecordCount.takeIf { it > 0 }?.let { " (%,d in partial-column files; %,d read)".format(it, node.summary.current.readRecordCount) } ?: ""),
             "Size (current)" to "%,d bytes".format(node.summary.current.dataSizeBytes),
         )
         is GraphNode.MetadataNode -> listOf(

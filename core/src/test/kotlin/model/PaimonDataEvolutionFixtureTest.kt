@@ -50,6 +50,11 @@ class PaimonDataEvolutionFixtureTest {
         assertEquals(3, live.size)
         assertEquals(2L, live.partialRows(), "the rows a scan does not return twice")
         assertEquals(3L, live.sumOf { it.recordCount } - live.partialRows(), "what the script's SELECT printed")
+        // The table's own figure is folded from the same replay and says the same two things.
+        val current = service.PaimonGraphBuilder.buildTableSummary(model).current
+        assertEquals(5L, current.recordCount)
+        assertEquals(2L, current.partialRecordCount)
+        assertEquals(3L, current.readRecordCount)
         assertTrue(model.readErrors.isEmpty() && merge.deltaManifests.single().readErrors.isEmpty())
     }
 

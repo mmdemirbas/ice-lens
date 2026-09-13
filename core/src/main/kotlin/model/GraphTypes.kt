@@ -171,11 +171,19 @@ data class ContentStats(
     val deleteRecordCount: Long = 0L,
     val dataSizeBytes: Long = 0L,
     val deleteSizeBytes: Long = 0L,
+    /**
+     * Of [recordCount], the rows in Paimon data-evolution patch files — columns of rows another
+     * live file holds, counted by the writer's own totals and returned by no scan. Zero for
+     * Iceberg. See [LiveFile.partial].
+     */
+    val partialRecordCount: Long = 0L,
 ) {
     val manifestCount: Int get() = dataManifestCount + deleteManifestCount
     val deleteFileCount: Int get() = posDeleteFileCount + eqDeleteFileCount
     val fileCount: Int get() = dataFileCount + deleteFileCount
     val totalSizeBytes: Long get() = dataSizeBytes + deleteSizeBytes
+    /** [recordCount] less the patch rows: the rows a scan returns. */
+    val readRecordCount: Long get() = recordCount - partialRecordCount
 
     operator fun plus(other: ContentStats): ContentStats = ContentStats(
         dataManifestCount = dataManifestCount + other.dataManifestCount,
@@ -189,6 +197,7 @@ data class ContentStats(
         deleteRecordCount = deleteRecordCount + other.deleteRecordCount,
         dataSizeBytes = dataSizeBytes + other.dataSizeBytes,
         deleteSizeBytes = deleteSizeBytes + other.deleteSizeBytes,
+        partialRecordCount = partialRecordCount + other.partialRecordCount,
     )
 }
 

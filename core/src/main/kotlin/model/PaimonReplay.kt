@@ -113,6 +113,7 @@ fun replayPaimonSnapshot(
     val trace = mutableListOf<PaimonEntryTrace>()
     var liveRecords = 0L
     var liveBytes = 0L
+    var livePartialRecords = 0L
 
     fun consume(manifests: List<PaimonUnifiedManifest>, listLabel: String) {
         manifests.forEach { manifest ->
@@ -130,6 +131,7 @@ fun replayPaimonSnapshot(
             val filesBefore = liveFiles.size
             val recordsBefore = liveRecords
             val bytesBefore = liveBytes
+            val partialBefore = livePartialRecords
             var entries = 0
             var deletedEntries = 0
             var suppressed = 0
@@ -150,6 +152,7 @@ fun replayPaimonSnapshot(
                 if (wasLive) {
                     liveRecords -= previous?.rowCount ?: 0L
                     liveBytes -= previous?.fileSize ?: 0L
+                    if (previous?.writeCols != null) livePartialRecords -= previous.rowCount ?: 0L
                 }
                 val kind = entry.metadata.kind ?: PaimonEntryKind.ADD
                 if (kind == PaimonEntryKind.DELETE) {
@@ -160,6 +163,7 @@ fun replayPaimonSnapshot(
                     liveFiles[fileKey] = entry
                     liveRecords += entry.metadata.file?.rowCount ?: 0L
                     liveBytes += entry.metadata.file?.fileSize ?: 0L
+                    if (entry.metadata.file?.writeCols != null) livePartialRecords += entry.metadata.file?.rowCount ?: 0L
                 }
 
                 if (tracing) {
@@ -198,6 +202,7 @@ fun replayPaimonSnapshot(
                     dataFileCount = liveFiles.size - filesBefore,
                     recordCount = liveRecords - recordsBefore,
                     dataSizeBytes = liveBytes - bytesBefore,
+                    partialRecordCount = livePartialRecords - partialBefore,
                 ),
                 entriesSuppressedAsDuplicate = suppressed,
             )
