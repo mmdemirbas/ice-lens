@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **An unpartitioned spec and an unsorted order say so.** Each drew a table with one row of
+  `N/A` in every cell, which read as a decode that failed; they are one line of text now, and the
+  spec heading marks `(default)` the way the order heading already did.
 - **A file draws as many row cards as it has rows.** Every data file got five row nodes whatever
   its record count, so a one-row file sat beside four empty `ROW` cards — on every table, since
   Spark writes small inserts as one file per row. The count is `min(5, record_count)` now, decided

@@ -1320,23 +1320,37 @@ fun NodeDetailsContent(
                             node.data.partitionSpecs
                                 .sortedBy { it.specId ?: Int.MAX_VALUE }
                                 .forEach { spec ->
+                                    // Which spec new writes take is a fact about the metadata,
+                                    // said on the heading of the one it names — the same rule as
+                                    // the sort orders below.
                                     Text(
-                                        "Spec ${spec.specId ?: "Unknown"}",
+                                        "Spec ${spec.specId ?: "Unknown"}" +
+                                            if (spec.specId != null && spec.specId == node.data.defaultSpecId) " (default)" else "",
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = TypeScale.body
                                     )
                                     Spacer(Modifier.height(4.dp))
-                                    WideTable(
-                                        headers = listOf("Source ID", "Field ID", "Name", "Transform"),
-                                        rows = if (spec.fields.isEmpty()) listOf(listOf("N/A", "N/A", "N/A", "N/A")) else spec.fields.map { field ->
-                                            listOf(
-                                                "${field.sourceId ?: "N/A"}",
-                                                "${field.fieldId ?: "N/A"}",
-                                                field.name ?: "N/A",
-                                                normalizeText(field.transform?.toString())
-                                            )
-                                        }
-                                    )
+                                    // A spec with no fields is the unpartitioned one, which is an
+                                    // answer; a table of N/A read as a decode that failed.
+                                    if (spec.fields.isEmpty()) {
+                                        Text(
+                                            "Unpartitioned — no fields, so every file is in the one partition.",
+                                            fontSize = TypeScale.small,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    } else {
+                                        WideTable(
+                                            headers = listOf("Source ID", "Field ID", "Name", "Transform"),
+                                            rows = spec.fields.map { field ->
+                                                listOf(
+                                                    "${field.sourceId ?: "N/A"}",
+                                                    "${field.fieldId ?: "N/A"}",
+                                                    field.name ?: "N/A",
+                                                    normalizeText(field.transform?.toString())
+                                                )
+                                            }
+                                        )
+                                    }
                                     Spacer(Modifier.height(12.dp))
                                 }
                         }
@@ -1358,19 +1372,27 @@ fun NodeDetailsContent(
                                     // schema, beside the id the order records; order 0 has no fields
                                     // and is the unsorted order, which the one row says.
                                     val currentSchema = node.data.schemas.firstOrNull { it.schemaId == node.data.currentSchemaId }
-                                    WideTable(
-                                        headers = listOf("Column", "Source ID", "Transform", "Direction", "Null Order"),
-                                        rows = if (order.fields.isEmpty()) listOf(listOf("unsorted", "N/A", "N/A", "N/A", "N/A")) else order.fields.map { field ->
-                                            listOf(
-                                                currentSchema?.fields?.firstOrNull { it.id == field.sourceId }?.name ?: "field ${field.sourceId ?: "?"}",
-                                                "${field.sourceId ?: "N/A"}",
-                                                field.transformName.ifEmpty { "N/A" },
-                                                field.direction ?: "N/A",
-                                                field.nullOrder ?: "N/A"
-                                            )
-                                        },
-                                        columnWidths = listOf(140.dp, 90.dp, 110.dp, 90.dp, 110.dp),
-                                    )
+                                    if (order.fields.isEmpty()) {
+                                        Text(
+                                            "Unsorted — no fields; a file written under it holds its rows in write order.",
+                                            fontSize = TypeScale.small,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    } else {
+                                        WideTable(
+                                            headers = listOf("Column", "Source ID", "Transform", "Direction", "Null Order"),
+                                            rows = order.fields.map { field ->
+                                                listOf(
+                                                    currentSchema?.fields?.firstOrNull { it.id == field.sourceId }?.name ?: "field ${field.sourceId ?: "?"}",
+                                                    "${field.sourceId ?: "N/A"}",
+                                                    field.transformName.ifEmpty { "N/A" },
+                                                    field.direction ?: "N/A",
+                                                    field.nullOrder ?: "N/A"
+                                                )
+                                            },
+                                            columnWidths = listOf(140.dp, 90.dp, 110.dp, 90.dp, 110.dp),
+                                        )
+                                    }
                                     Spacer(Modifier.height(12.dp))
                                 }
                         }
