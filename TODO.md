@@ -77,6 +77,15 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   selection — cheap on a developer's table, a stall on the EDT for a large one, so it would need
   the plugin's background task to warm it first.
 
+- **Row lookup is Iceberg-only, and Paimon's version is a merge, not a filter.** On Iceberg a
+  looked-up row's fate is decided by the delete files paired with its file (`service/RowLookup.kt`),
+  equality deletes included. The Paimon question is different: a primary-key table holds every
+  write of a key as a row, so "is key K live" means reading every live file of its bucket, taking
+  the highest `_SEQUENCE_NUMBER` under the table's merge engine — straightforward for
+  `deduplicate`, a fold for `partial-update` and `aggregation` — and honouring a `-D` kind and the
+  deletion vector the index manifest names, whose bitmap this does not decode yet. The file-side
+  read (`_KEY_*` filter through DuckDB) is the same shape as Iceberg's; the merge is the new part.
+
 - **The whole-table integrity check leaves the file reads out.** `model/Integrity.kt` runs the
   metadata-only comparisons everywhere; the statistics and partition-statistics files stay on the
   metadata panel because each is a file open (Puffin footer, DuckDB), and the two closure-walking
