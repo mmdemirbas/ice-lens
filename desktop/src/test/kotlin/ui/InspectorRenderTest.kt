@@ -392,6 +392,23 @@ class InspectorRenderTest {
     }
 
     /**
+     * A data-evolution patch file and the file it patches: the canvas has to draw the `e_patch_*`
+     * edge dashed between two files of one layer, and each file's panel has to name the other —
+     * "holds b only, stitched with …" on one side and "patched by … (b)" on the other.
+     */
+    @Test
+    fun `a Paimon patch file is drawn against the file it patches`() {
+        val graph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/de").absolutePath)),
+            showRows = true,
+        )
+        val edge = graph.edges.single { it.id.startsWith("e_patch_") }
+        renderCanvas("graph-canvas-data-evolution", graph, pageSize = AggregationPolicy.DEFAULT_PAGE_SIZE)
+        renderInspector(graph, edge.fromId, "paimon-file-node-patch", height = 2200)
+        renderInspector(graph, edge.toId, "paimon-file-node-patched", height = 2200)
+    }
+
+    /**
      * A Paimon `-D` row beside a `+I` one: the card has to fade and strike the retraction the
      * way an Iceberg row under a deletion vector is drawn, with `-D` in its title line, and the
      * panel's `Row Kind` row has to say the word rather than the byte.

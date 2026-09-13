@@ -175,6 +175,8 @@ object GraphTree {
             "Level" to (node.entry.file?.level?.toString() ?: "—"),
             "Records" to (node.entry.file?.rowCount?.toString() ?: "—"),
             "Kind" to node.entry.kind.toString(),
+        ) + listOfNotNull(
+            node.entry.file?.writeCols?.let { "Columns" to it.joinToString(", ") + " only — a partial-column file, stitched by row id on read" },
         )
         // A group is the one node that is not an artifact — it stands for the ones this drawing
         // left out, and saying how many is the whole of what it has to say.

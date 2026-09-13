@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **A Paimon partial-column file has its bounds.** Its `_VALUE_STATS` is a row over `_WRITE_COLS`
+  with `_VALUE_STATS_COLS` null, and decoding it against the schema failed the arity check — one
+  field read as three — so the file showed no column bounds at all. The stats fields are now
+  `_VALUE_STATS_COLS`, else `_WRITE_COLS`, else the file's schema.
 - **A Paimon row card leads with the row's own columns.** It listed `_KEY_k`, `_SEQUENCE_NUMBER`
   and `_VALUE_KIND` before `k` and `v` — the file's physical order, where the system columns come
   first — and `file_row_number` as a fifth cell. Keys starting with `_` are drawn last now, and the
@@ -77,6 +81,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A Paimon data-evolution patch file is drawn against the file it patches.** A `MERGE INTO`
+  on a table with `data-evolution.enabled` writes the columns it set to a file of their own, with
+  `_WRITE_COLS` and the same first row id as the file holding the rest; the graph draws the pair as
+  a dashed `e_patch_*` edge, the patch's panel says `b only — a partial-column file: a read
+  stitches it with <file> by row id`, the patched file's says `Patched By`, and the IDE tree lists
+  `Columns`. `de` is the fixture, and its script's final SELECT is the oracle for the stitched rows.
 - **A v3 snapshot's panel says which row ids it took.** `added-rows` is read, and `Row IDs` prints
   the range with the summary's `added-records` beside it where they differ — `6..8 (3 ids for 1
   added record — the other 2 went to existing rows in a data manifest this commit wrote)` on

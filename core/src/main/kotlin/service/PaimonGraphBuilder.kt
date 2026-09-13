@@ -295,6 +295,8 @@ object PaimonGraphBuilder {
                 }
         }
 
+        addPatchEdges(logicalNodes, edges, edgeIds)
+
         return GraphBuildResult(
             nodes = logicalNodes.values.toList(),
             edges = edges,
@@ -366,6 +368,32 @@ object PaimonGraphBuilder {
      */
     private fun currentStatsFor(snapshot: PaimonUnifiedSnapshot?): StatsDerivation =
         StatsDerivation(replayPaimonSnapshot(snapshot).contributions)
+
+    /**
+     * A data-evolution patch file points at the file it patches: same partition, bucket and
+     * `_FIRST_ROW_ID`, the target holding every column and the source only `_WRITE_COLS`. That is
+     * the pairing `DataEvolutionSplitGenerator.split` reads by, and it is drawn the way a v3
+     * deletion vector's `e_dv_*` edge is — an annotation withheld from the layout, since both ends
+     * sit in one layer. Only `ADD` entries pair: a `DELETE` entry records a removal, not a file.
+     */
+    private fun addPatchEdges(
+        logicalNodes: Map<String, GraphNode>,
+        edges: MutableList<GraphEdge>,
+        edgeIds: MutableSet<String>,
+    ) {
+        val added = logicalNodes.values.filterIsInstance<GraphNode.PaimonDataFileNode>()
+            .filter { it.operationKind == PaimonEntryKind.ADD && it.entry.file?.firstRowId != null }
+        val patches = added.filter { it.entry.file?.writeCols != null }
+        if (patches.isEmpty()) return
+        val wholeByRowId = added.filter { it.entry.file?.writeCols == null }
+            .groupBy { Triple(it.partition?.path, it.bucket, it.entry.file?.firstRowId) }
+        patches.forEach { patch ->
+            wholeByRowId[Triple(patch.partition?.path, patch.bucket, patch.entry.file?.firstRowId)].orEmpty().forEach { target ->
+                val edgeId = "e_patch_${patch.id}_to_${target.id}"
+                if (edgeIds.add(edgeId)) edges.add(GraphEdge(edgeId, patch.id, target.id, affectsLayout = false))
+            }
+        }
+    }
 
     internal fun buildTableSummary(tableModel: PaimonUnifiedTableModel): TableSummary {
         val seenManifests = mutableMapOf<String, String>()

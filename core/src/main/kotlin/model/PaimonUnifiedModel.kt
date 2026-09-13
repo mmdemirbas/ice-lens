@@ -165,7 +165,7 @@ data class PaimonUnifiedDataFile(
     val keyMin: List<PaimonRowValue>? = null,
     /** `_MAX_KEY`, likewise. */
     val keyMax: List<PaimonRowValue>? = null,
-    /** `_VALUE_STATS` per column, over every field of the schema or the ones `_VALUE_STATS_COLS` names. */
+    /** `_VALUE_STATS` per column, over every field of the schema, or `_WRITE_COLS`, or the ones `_VALUE_STATS_COLS` names. */
     val columnBounds: List<PaimonColumnBounds>? = null,
     private val rowsLoader: () -> List<UnifiedRow> = {
         SampleRowReader.querySampleRows(path.toString()).map(::unifiedRowOf)
@@ -550,9 +550,11 @@ private fun readPaimonManifest(
             val keysResolved = keyFields.size == keyNames.size && keyFields.isNotEmpty()
             val keyMin = file?.minKey?.takeIf { keysResolved }?.let { decodePaimonRow(it, keyFields) }
             val keyMax = file?.maxKey?.takeIf { keysResolved }?.let { decodePaimonRow(it, keyFields) }
-            // The value statistics cover the schema's fields in order, or the subset
-            // _VALUE_STATS_COLS names — every name has to resolve, or a bound lands on the wrong column.
-            val statsNames = file?.valueStatsCols ?: fileSchema?.fields?.mapNotNull { it.name }.orEmpty()
+            // The value statistics cover the schema's fields in order — or _WRITE_COLS, for a file
+            // that holds only the columns a MERGE INTO set — or the subset _VALUE_STATS_COLS
+            // names; every name has to resolve, or a bound lands on the wrong column. The `de`
+            // fixture's patch file has a one-field stats row and a three-field schema.
+            val statsNames = file?.valueStatsCols ?: file?.writeCols ?: fileSchema?.fields?.mapNotNull { it.name }.orEmpty()
             val statsFields = statsNames.mapNotNull { name -> fileSchema?.fields?.firstOrNull { it.name == name } }
             val columnBounds = file?.valueStats
                 ?.takeIf { statsFields.size == statsNames.size && statsFields.isNotEmpty() }

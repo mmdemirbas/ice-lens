@@ -2632,6 +2632,35 @@ fun NodeDetailsContent(
                                     else -> "none — row tracking is not enabled"
                                 },
                             )
+                            // Data evolution: a MERGE INTO writes the columns it set to a file of
+                            // their own, and the pairing is the e_patch_* edge the builder drew —
+                            // same partition, bucket and first row id. Named from both ends,
+                            // because "this file holds only b" and "this file's b is elsewhere"
+                            // are each half of one read.
+                            val writeCols = file?.writeCols
+                            val patchTargets = currentGraph.edges
+                                .filter { it.id.startsWith("e_patch_") && it.fromId == node.id }
+                                .mapNotNull { currentGraph.nodeById[it.toId] as? GraphNode.PaimonDataFileNode }
+                            val patchedBy = currentGraph.edges
+                                .filter { it.id.startsWith("e_patch_") && it.toId == node.id }
+                                .mapNotNull { currentGraph.nodeById[it.fromId] as? GraphNode.PaimonDataFileNode }
+                            if (writeCols != null) {
+                                DetailRow(
+                                    "Columns",
+                                    writeCols.joinToString(", ") + " only — a partial-column file: a read stitches it with " +
+                                        (patchTargets.takeIf { it.isNotEmpty() }
+                                            ?.joinToString(", ") { it.entry.file?.fileName ?: it.id }
+                                            ?: "the file holding the same row ids") +
+                                        " by row id, the higher sequence number winning a column",
+                                )
+                            } else if (patchedBy.isNotEmpty()) {
+                                DetailRow(
+                                    "Patched By",
+                                    patchedBy.joinToString("; ") { p ->
+                                        "${p.entry.file?.fileName ?: p.id} (${p.entry.file?.writeCols.orEmpty().joinToString(", ")})"
+                                    } + " — a later MERGE INTO rewrote those columns for these rows without rewriting this file",
+                                )
+                            }
                             // Where the file index lives is decided by its size against
                             // file-index.in-manifest-threshold: beside the data file and named in
                             // _EXTRA_FILES, or carried in the entry. Both are stated, and "none" is

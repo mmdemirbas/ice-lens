@@ -1289,7 +1289,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~962 tests across 113 files (725 in :core, 231 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~966 tests across 114 files (728 in :core, 232 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1395,6 +1395,7 @@ container invocation and the traps in it:
 | `paimon/db.db/rt` | `PaimonRowTrackingFixtureTest` | `row-tracking.enabled` — two appends recording first ids 0 and 3, then a full compaction whose output records none and carries `_ROW_ID` per row |
 | `paimon/db.db/sm` | `PaimonStatsModeFixtureTest` | `fields.v.stats-mode = none` — `_VALUE_STATS` over two of three columns, named in `_VALUE_STATS_COLS`; the oracle for the subset decoding |
 | `paimon/db.db/se` | `PaimonSchemaEvolutionFixtureTest` | `ADD COLUMN` between two writes, then a compaction — a schema-1 manifest listing a schema-0 file, whose stats decode only against its own schema |
+| `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |
 
@@ -1601,6 +1602,21 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   `nextRowId` is not checked as a tally: once a compaction's inputs leave the base, nothing listed
   accounts for the ids that were handed out, so the invariant `PaimonRowTrackingFixtureTest`
   sweeps is one-sided — no file claims an id at or past the next one, and the next never goes back
+- **A data-evolution file holds only the columns a `MERGE INTO` set, and its statistics are over
+  those.** With `data-evolution.enabled` on a row-tracked append table, `UPDATE SET t.b = s.b`
+  writes the new `b` values to a file of their own with `_WRITE_COLS = [b]` and the **same
+  `_FIRST_ROW_ID`** as the file holding the rows' other columns; a read stitches files sharing a
+  first row id (`DataEvolutionSplitGenerator.split`), the higher `_MAX_SEQUENCE_NUMBER` winning a
+  column. Two things follow that the `de` fixture pins. The patch file's `_VALUE_STATS` is a
+  one-field row with `_VALUE_STATS_COLS` **null** — the writer's null means "every column the file
+  writes", not "every column of the schema" — so the stats fields are `_VALUE_STATS_COLS`, else
+  `_WRITE_COLS`, else the file's schema, in that order, and decoding against the schema had the
+  file at no bounds. And the pairing is drawn: `PaimonGraphBuilder.addPatchEdges` emits
+  `e_patch_<patch>_to_<whole>` between `ADD` entries of one partition, bucket and first row id,
+  withheld from ELK like `e_dv_*` since both ends sit in one layer, and each file's panel names the
+  other end — `Columns: b only — … stitched with <file>` and `Patched By: <file> (b)`. The
+  snapshot's `totalRecordCount` still sums file rows, so `de` reads 5 for a table of 3 rows, and
+  `nextRowId` moves only by the not-matched row the merge inserted
 - **A file index lives in one of two places, and the one beside the data file is the table's.**
   Where a Paimon file index goes is its size against `file-index.in-manifest-threshold` (500
   bytes): larger is `<file>.index` beside the data file, named in the entry's `_EXTRA_FILES`;

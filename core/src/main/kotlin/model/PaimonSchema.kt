@@ -270,7 +270,8 @@ object PaimonFileSource {
  *
  * [minKey] and [maxKey] are `BinaryRow`s over the *trimmed* primary key — the primary keys that
  * are not partition keys — and [keyStats] covers the same fields; [valueStats] covers every field
- * of the schema in schema order, or the columns [valueStatsCols] names when it is set. All decode
+ * of the schema in schema order — or of [writeCols], for a partial-column file — or the columns
+ * [valueStatsCols] names when it is set. All decode
  * with [decodePaimonRow]. [deleteRowCount] counts the rows of kind `-D`/`-U` *inside* the file,
  * not rows a deletion vector marks — on `dv` it is 3 on the level-0 file holding the three delete
  * rows and 0 on the two files the vector covers.
@@ -294,6 +295,15 @@ data class PaimonDataFileMeta(
     @SerialName("_VALUE_STATS_COLS") val valueStatsCols: List<String>? = null,
     @SerialName("_EXTERNAL_PATH") val externalPath: String? = null,
     @SerialName("_FIRST_ROW_ID") val firstRowId: Long? = null,
+    /**
+     * Data evolution: the columns this file holds, when it holds only some. A `MERGE INTO` on a
+     * table with `row-tracking.enabled` and `data-evolution.enabled` writes the columns it sets to
+     * a file of their own with the same [firstRowId] as the file holding the rest, and a read
+     * stitches files sharing a first row id, the higher `_MAX_SEQUENCE_NUMBER` winning a column.
+     * [valueStats] then covers these columns, not the schema's; the writer stores null here for a
+     * file carrying every column, so null means "the schema's".
+     */
+    @SerialName("_WRITE_COLS") val writeCols: List<String>? = null,
     /**
      * The file's index files — `<file name>.index` beside the data file, for a file index over
      * `file-index.in-manifest-threshold` — and nothing else in the fixtures seen. Named by file
