@@ -433,6 +433,26 @@ class InspectorRenderTest {
     }
 
     /**
+     * The table panel's maintenance lines, on the two tables where the most would act: `mor`
+     * before nothing — its current snapshot's rewrite plan is left alone under the defaults, the
+     * next append merges nothing, and the expiry would remove five of six — and `pc`, whose
+     * latest snapshot sits at three level-0 files under the trigger with a bare expiry keeping
+     * everything. Two captures so a coloured verdict and a plain one are both seen in the column.
+     */
+    @Test
+    fun `the table panel sums the maintenance procedures to a line each`() {
+        val mor = graphFor("mor")
+        val table = mor.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        renderInspector(mor, table.id, "table-node-maintenance", height = 1800)
+        val pc = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pc").absolutePath)),
+            showRows = false,
+        )
+        val pcTable = pc.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        renderInspector(pc, pcTable.id, "paimon-table-node-maintenance", height = 1800)
+    }
+
+    /**
      * `sweep` is `swept` before its expiry, complete: under `older_than = now` the plan removes the
      * four older snapshots and frees the two data files the incremental cleanup frees — one
      * removed on the live line, one added off it — beside the manifests and lists, so the

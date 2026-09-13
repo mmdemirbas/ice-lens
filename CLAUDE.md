@@ -729,6 +729,16 @@ intellij/src/main/kotlin/plugin/
   the two tables with a `rewrite_manifests`. The metadata panel's `Expiry Files` section plans
   the `older_than = now` column's removals from `SnapshotNode.manifestList` and the manifest
   nodes' entries, data files first and in the error colour, `MAX_EXPIRY_FILE_ROWS` (200) listed
+- **The table panel sums the maintenance procedures to a line each, and computes none of them.**
+  `MaintenanceSection` in `ui/NodeDetails.kt` asks the four planners at the table's current
+  snapshot — `planRewrite`, `planManifestMerge`, `planExpiry` with `planExpiryFiles` on Iceberg;
+  `planCompaction` / `paimonAppendVerdict` and the two `PaimonExpiryOptions` calls on Paimon —
+  and prints a verdict, a detail and the panel that holds the reasoning, coloured only where a
+  procedure would act and in the error colour where a writer would block. It is on the table
+  panel because that is where a reader starts and the verdicts otherwise sit three panels deep;
+  it calls the same functions the detail sections call, so it cannot drift from them, and it
+  costs the current snapshot's deferred walk once. `countNoun` in `ui/FormatUtils.kt` agrees a
+  count with its noun, because `1 candidates in 1 groups` was the first render
 - **What `rewrite_data_files` would rewrite is planned the way `SizeBasedDataRewriter` plans it,
   and checked against the three rewrites the fixtures ran.** `model/RewritePlan.kt` reads the
   rules at Iceberg 1.8.1: one task per live data file carrying the delete files the scan pairs with
@@ -1491,7 +1501,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,050 tests across 131 files (795 in :core, 250 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,050 tests across 131 files (795 in :core, 251 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -2443,6 +2443,110 @@ internal fun ExpirySection(metadata: TableMetadata, nowMs: Long) {
     }
 }
 
+/**
+ * One row per maintenance procedure, with what running it now would do — the four planners
+ * asked at the table's current snapshot and summed to a verdict each, with the panel that holds
+ * the detail named beside it. It is on the table panel because that is where a reader starts,
+ * and the verdicts otherwise live three panels deep; the figures are the same functions the
+ * detail sections call, so nothing here can drift from them. The leading cell is coloured only
+ * where a procedure would act, and in the error colour where a writer would block.
+ */
+@Composable
+internal fun MaintenanceSection(node: GraphNode.TableNode, graph: GraphModel) {
+    val colors = MaterialTheme.colorScheme
+    val summary = node.summary
+    val nowMs = expiryClock()
+    data class Row(val verdict: String, val procedure: String, val detail: String, val where: String, val color: androidx.compose.ui.graphics.Color?)
+    val rows = mutableListOf<Row>()
+    val paimonExpiry = summary.paimonExpiry
+    if (paimonExpiry == null) {
+        val latest = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().maxByOrNull { metadataVersionFromFileName(it.fileName) ?: -1 }
+        val current = summary.currentSnapshotId?.let { graph.nodeById["snap_$it"] as? GraphNode.SnapshotNode }
+        if (latest != null && current != null && !current.expired) {
+            val meta = latest.data
+            val snapshotPanel = "snapshot ${current.simpleId}"
+            val rewrite = current.liveFiles?.let { planRewrite(it, current.deleteReach.orEmpty(), RewriteOptions.forTable(meta.properties, meta.defaultSpecId)) }
+            val rewritten = rewrite?.rewrittenGroups.orEmpty()
+            rows += when {
+                rewrite == null -> Row("not readable", "rewrite_data_files", "the current snapshot's manifests are not retained", "$snapshotPanel → Rewrite", null)
+                rewritten.isNotEmpty() -> Row("would rewrite ${countNoun(rewritten.sumOf { it.files.size }, "file")}", "rewrite_data_files", "${rewritten.size} of ${countNoun(rewrite.groups.size, "group")}, ${formatBytes(rewritten.sumOf { it.inputBytes })}", "$snapshotPanel → Rewrite", verdictSkippedColor())
+                rewrite.candidateCount > 0 -> Row("left alone", "rewrite_data_files", "${countNoun(rewrite.candidateCount, "candidate")} in ${countNoun(rewrite.groups.size, "group")}, none reaching min-input-files (${rewrite.options.minInputFiles})", "$snapshotPanel → Rewrite", null)
+                else -> Row("nothing to do", "rewrite_data_files", "every live file is within the size range and under the delete ratio", "$snapshotPanel → Rewrite", null)
+            }
+            val mergeOptions = ManifestMergeOptions.forTable(meta.properties)
+            val listed = current.manifestList
+            val merge = planManifestMerge(listed, ManifestContent.DATA, assumedManifestBytes(listed, ManifestContent.DATA), meta.defaultSpecId, mergeOptions)
+            rows += Row(
+                if (merge.mergedBins.isNotEmpty()) "would merge ${countNoun(merge.mergedBins.sumOf { it.manifests.size }, "manifest")}" else "nothing merges",
+                "next append's manifest merge",
+                "${countNoun(listed.count { (it.content ?: ManifestContent.DATA) == ManifestContent.DATA }, "data manifest")} listed; ${merge.describe}" + if (mergeOptions.enabled) " under min-count-to-merge ${mergeOptions.minCountToMerge}" else "",
+                "$snapshotPanel → Manifest Merge",
+                if (merge.mergedBins.isNotEmpty()) verdictSkippedColor() else null,
+            )
+            val expiry = meta.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs))
+            val freed = graph.expiryFileInput(meta).planExpiryFiles(expiry.removed.toSet())
+            rows += Row(
+                if (expiry.removed.isEmpty()) "nothing expires" else "would remove ${countNoun(expiry.removed.size, "snapshot")}",
+                "expire_snapshots (older_than = now)",
+                if (expiry.removed.isEmpty()) "every snapshot is kept by a ref" else "frees ${freed.describe} — ${formatBytes(freed.knownBytes)} the metadata accounts for, ${freed.cleanup.label}",
+                "${latest.fileName} → Expiry, Expiry Files",
+                if (expiry.removed.isEmpty()) null else verdictSkippedColor(),
+            )
+        }
+    } else {
+        val current = summary.currentSnapshotId?.let { graph.nodeById["psnap_$it"] as? GraphNode.PaimonSnapshotNode }
+        if (current != null) {
+            val snapshotPanel = "snapshot ${current.simpleId}"
+            val lsms = current.bucketLsms
+            if (current.hasPrimaryKey) {
+                val options = PaimonCompactionOptions.from(current.tableOptions)
+                val verdicts = lsms?.map { it.planCompaction(options) }.orEmpty()
+                val due = verdicts.count { it.compacts }
+                val stalled = verdicts.count { it.stalls }
+                rows += when {
+                    lsms == null -> Row("not readable", "compaction", "the latest snapshot's manifests could not be replayed", "$snapshotPanel → Compaction", null)
+                    options.writeOnly -> Row("never — write-only", "compaction", "${countNoun(lsms.size, "bucket")}, ${countNoun(lsms.sumOf { it.level0FileCount }, "level-0 file")} piling up", "$snapshotPanel → Compaction", null)
+                    stalled > 0 -> Row("a writer would wait on $stalled", "compaction", "$due of ${lsms.size} buckets due, $stalled past num-sorted-run.stop-trigger (${options.stopTrigger})", "$snapshotPanel → Compaction", colors.error)
+                    due > 0 -> Row("${countNoun(due, "bucket")} due", "compaction", "$due of ${countNoun(lsms.size, "bucket")} would compact on the next flush", "$snapshotPanel → Compaction", verdictSkippedColor())
+                    else -> Row("not yet", "compaction", "${countNoun(lsms.size, "bucket")}, every one under num-sorted-run.compaction-trigger (${options.trigger})", "$snapshotPanel → Compaction", null)
+                }
+            } else {
+                val verdicts = lsms?.groupBy { it.partition }?.entries?.map { (partition, trees) ->
+                    paimonAppendVerdict(partition, trees.flatMap { t -> t.runs.flatMap { it.files } }, current.tableOptions)
+                }.orEmpty()
+                val packing = verdicts.count { it.wouldPack }
+                rows += if (packing > 0) Row("sys.compact would run on $packing", "compaction", "$packing of ${countNoun(verdicts.size, "partition")} have enough small files; a write never compacts an append table", "$snapshotPanel → Compaction", verdictSkippedColor())
+                else Row("nothing to pack", "compaction", "${countNoun(verdicts.size, "partition")}, none at compaction.min.file-num small files", "$snapshotPanel → Compaction", null)
+            }
+        }
+        val bare = runCatching { paimonExpiry.planExpiry(PaimonExpiryOptions(nowMs = nowMs)) }.getOrNull()
+        val byAge = runCatching { paimonExpiry.planExpiry(PaimonExpiryOptions(nowMs = nowMs, retainMin = 1, olderThanMs = nowMs)) }.getOrNull()
+        rows += when {
+            bare == null || byAge == null -> Row("rejected", "expire_snapshots", "the table's snapshot.* options are ones the procedure refuses", "table → Expiry", colors.error)
+            bare.removed.isNotEmpty() -> Row("would remove ${countNoun(bare.removed.size, "snapshot")}", "expire_snapshots", "a bare call removes ${bare.removed.size}; retain_min = 1 with older_than = now removes ${byAge.removed.size}", "table → Expiry", verdictSkippedColor())
+            byAge.removed.isNotEmpty() -> Row("nothing on a bare call", "expire_snapshots", "retain_min = 1 with older_than = now would remove ${byAge.removed.size}", "table → Expiry", null)
+            else -> Row("nothing expires", "expire_snapshots", "no call removes anything: the bounds, a consumer or a tag keep every snapshot", "table → Expiry", null)
+        }
+    }
+    if (rows.isEmpty()) return
+    val acting = rows.count { it.color != null }
+    Section("Maintenance" + if (acting > 0) " — $acting would act" else " — nothing to do") {
+        Text(
+            "What each maintenance procedure would do if run now, planned the way the engine plans it " +
+                "and summed to a line; the panel named in the last column holds the reasoning.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            headers = listOf("Verdict", "Procedure", "Detail", "Where"),
+            columnWidths = listOf(190.dp, 190.dp, 420.dp, 220.dp),
+            rows = rows.map { listOf(it.verdict, it.procedure, it.detail, it.where) },
+            leadCellColors = rows.map { it.color },
+        )
+    }
+}
+
 /** The file list a plan prints before it says how many more there are. */
 internal const val MAX_EXPIRY_FILE_ROWS = 200
 

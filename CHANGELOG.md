@@ -104,6 +104,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **The table panel opens with a maintenance summary.** One line per procedure — rewrite,
+  the next commit's manifest merge and expiry on Iceberg; compaction and expiry on Paimon —
+  with what running it now would do, from the same planners the detail sections use, and the
+  panel that holds the reasoning named beside each.
 - **The metadata panel says which files an expiry would free.** An `Expiry Files` section under
   `Expiry` plans the `older_than = now` column's removals the way `RemoveSnapshots` cleans up —
   the incremental cleanup with one ref, the reachable one with more — and lists every manifest
