@@ -415,6 +415,23 @@ class InspectorRenderTest {
     }
 
     /**
+     * `mor` before its compaction: five small files, two with a delete over half their rows, so
+     * the group is rewritten by both rules and the section has a verdict to colour. The `sorted`
+     * table before its rewrite is the other case — three candidates, left alone under the
+     * defaults — so the two verdicts are seen side by side across two captures.
+     */
+    @Test
+    fun `a snapshot says what rewrite_data_files would rewrite`() {
+        val mor = graphFor("mor")
+        val overwrite = mor.nodes.filterIsInstance<GraphNode.SnapshotNode>().first { it.data.summary["operation"] == "overwrite" }
+        renderInspector(mor, overwrite.id, "snapshot-node-rewrite", height = 4200)
+        val sorted = graphFor("sorted")
+        val third = sorted.nodes.filterIsInstance<GraphNode.SnapshotNode>()
+            .filter { it.data.summary["operation"] == "append" }.maxBy { it.data.sequenceNumber ?: 0L }
+        renderInspector(sorted, third.id, "snapshot-node-rewrite-left-alone", height = 3400)
+    }
+
+    /**
      * `pc` at snapshot 5 is the one tree in the fixtures a batch writer compacts: five level-0
      * files, size amplification, into level 5 — and the snapshot after it is the COMPACT that
      * proves it. Rendered beside the append table `ao`, whose verdict is about `sys.compact`.

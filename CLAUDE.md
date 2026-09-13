@@ -701,6 +701,26 @@ intellij/src/main/kotlin/plugin/
   defaults and `older_than = now`, because the reader's question is "what protects this snapshot"
   and only the age rule moves between them; ages are measured from `LocalExpiryClock`, which the
   render tests pin to the table's last write so a capture does not change with the calendar
+- **What `rewrite_data_files` would rewrite is planned the way `SizeBasedDataRewriter` plans it,
+  and checked against the three rewrites the fixtures ran.** `model/RewritePlan.kt` reads the
+  rules at Iceberg 1.8.1: one task per live data file carrying the delete files the scan pairs with
+  it (the same `deleteReach`, `mayReach` included, since the scan pairs an equality delete by
+  sequence alone); grouped by partition, a file under a spec that is not current going into the
+  empty partition with every other such file; a **candidate** when outside 75%–180% of
+  `write.target-file-size-bytes`, or with `delete-file-threshold` deletes, or with *file-scoped*
+  deletes — a vector, or a positional delete whose path bounds meet, which is exactly
+  `DeleteTargets.namesOneFile` and exactly Iceberg's `ContentFileUtil.referencedDataFile` — marking
+  `delete-ratio-threshold` (30%) of its rows; bin-packed in scan order with one open bin; a group
+  **rewritten** with `min-input-files` (5) or more, more than the target in bytes, or any file past
+  a delete threshold. So every small file is a candidate and it still takes five of them, which is
+  what a reader asking "why did rewrite_data_files do nothing" needs to hear. `mor`, `maint` and
+  `sorted` each ran it with `min-input-files = 2` and left a `replace` snapshot;
+  `RewritePlanFixtureTest` plans from the snapshot before under that option and requires the
+  rewritten set to equal what the replace took out — `sorted` counts because the sort strategy
+  shares the planner. What the defaults would have done is read, not run, and said so: `maint` and
+  `sorted` left alone, `mor` still rewritten by both rules. `LiveFile.specId` exists for the
+  spec rule; the snapshot panel's `Rewrite` section takes the target size and the current spec
+  off the latest metadata node
 - **Paimon's expiry is planned the same way, from `ExpireSnapshotsImpl.expire()`, and checked
   against the one oracle a planner can have.** `model/PaimonExpiryPlan.kt` applies the six things
   that method reads: the newest `snapshot.num-retained.min` stay; everything below
@@ -1421,7 +1441,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,025 tests across 126 files (772 in :core, 247 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,030 tests across 127 files (776 in :core, 248 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

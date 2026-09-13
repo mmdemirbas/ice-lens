@@ -96,6 +96,8 @@ import model.checkPartitionStatistics
 import model.PartitionStatsVerdict
 import model.ExpiryOptions
 import model.PaimonCompactionOptions
+import model.RewriteOptions
+import model.planRewrite
 import model.PaimonExpiryInput
 import model.paimonAppendVerdict
 import model.planCompaction
@@ -1815,6 +1817,8 @@ fun NodeDetailsContent(
                         TotalsSection(node)
 
                         PartitionsSection(node)
+
+                        RewriteSection(node, currentGraph)
 
                         DeleteReachSection(node, children)
 
@@ -4390,6 +4394,63 @@ private fun PaimonExpirySection(input: PaimonExpiryInput, nowMs: Long) {
             },
             leadCellColors = byDefaults.snapshots.map { if (it.retained) null else colors.error },
         )
+    }
+}
+
+/**
+ * What `rewrite_data_files` would rewrite at this snapshot under a bare call — [planRewrite], the
+ * rules of Iceberg's `SizeBasedDataRewriter`, over the same live set and delete pairing the
+ * sections above already read. The options come from the table: `write.target-file-size-bytes`
+ * off the latest metadata, and the current spec, since a file under an older spec is planned as
+ * unpartitioned.
+ *
+ * One column, unlike the expiry sections: the only option a reader reaches for is
+ * `min-input-files`, and the row already says how many files the group has against it.
+ */
+@Composable
+private fun RewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel) {
+    val colors = MaterialTheme.colorScheme
+    val latest = graph.nodes.filterIsInstance<GraphNode.MetadataNode>()
+        .maxByOrNull { metadataVersionFromFileName(it.fileName) ?: -1 }?.data
+    val options = RewriteOptions.forTable(latest?.properties.orEmpty(), latest?.defaultSpecId)
+    val live = node.liveFiles
+    val plan = live?.let { planRewrite(it, node.deleteReach.orEmpty(), options) }
+    val rewritten = plan?.rewrittenGroups.orEmpty()
+    val title = "Rewrite" + if (rewritten.isNotEmpty()) " — ${rewritten.sumOf { it.files.size }} files would go" else ""
+    CountedSection(title, plan?.groups?.size ?: 0, "groups") {
+        Text(
+            "What rewrite_data_files would rewrite, the way SizeBasedDataRewriter plans it: a file is " +
+                "a candidate when it is outside ${formatBytes(options.minFileSizeBytes)}–" +
+                "${formatBytes(options.maxFileSizeBytes)} (75% and 180% of write.target-file-size-bytes, " +
+                "${formatBytes(options.targetFileSizeBytes)}) or when file-scoped deletes mark " +
+                "${(options.deleteRatioThreshold * 100).toInt()}% of its rows; candidates are packed per " +
+                "partition, and a group is rewritten with at least ${options.minInputFiles} files " +
+                "(min-input-files), more than the target in bytes, or a file past the delete ratio. " +
+                "Every small file is a candidate; it takes ${options.minInputFiles} of them.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        when {
+            plan == null -> Text("Not readable here — this snapshot's manifests are not retained.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            plan.groups.isEmpty() -> Text("No candidates: every live data file is within the size range and under the delete ratio.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            else -> WideTable(
+                headers = listOf("Verdict", "Partition", "Files", "Bytes", "Output Files", "Highest Delete Ratio"),
+                columnWidths = listOf(190.dp, 190.dp, 70.dp, 110.dp, 100.dp, 150.dp),
+                rows = plan.groups.map { g ->
+                    listOf(
+                        if (g.rewritten) "REWRITTEN — " + g.reasons.joinToString("; ") { it.label }
+                        else "left alone — ${g.files.size} of ${options.minInputFiles} files",
+                        g.partition.ifEmpty { "(unpartitioned)" },
+                        "${g.files.size}",
+                        formatBytes(g.inputBytes),
+                        if (g.rewritten) "${g.outputFiles}" else "—",
+                        g.files.maxOfOrNull { it.deleteRatio }?.let { "${(it * 100).toInt()}%" } ?: "0%",
+                    )
+                },
+                leadCellColors = plan.groups.map { if (it.rewritten) verdictSkippedColor() else null },
+            )
+        }
     }
 }
 

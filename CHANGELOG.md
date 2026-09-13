@@ -98,6 +98,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **An Iceberg snapshot says what `rewrite_data_files` would rewrite.** `Rewrite` on the
+  snapshot panel plans a bare call the way `SizeBasedDataRewriter` does — every file outside
+  75%–180% of the target size or with file-scoped deletes over 30% of its rows is a candidate,
+  packed per partition, rewritten at `min-input-files` or a delete past the ratio — and leads each
+  group with the verdict, the files, bytes and output count. Checked against the rewrites `mor`,
+  `maint` and `sorted` ran: the plan names exactly the files each took out.
 - **A Paimon snapshot shows each bucket's LSM tree and what the next flush would compact.**
   `Compaction` on the snapshot panel lists every bucket's sorted runs and levels (`L0×5`,
   `L0×2, L5×1`) and the verdict `UniversalCompaction.pick()` would reach — size amplification,

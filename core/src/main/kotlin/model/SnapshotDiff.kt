@@ -26,6 +26,8 @@ data class LiveFile(
      * table, null where the tuple could not be decoded.
      */
     val partition: String? = null,
+    /** The partition spec the file's manifest was written under; null for Paimon and where unrecorded. */
+    val specId: Int? = null,
 )
 
 /** One partition's share of a snapshot, folded from its live files — see [partitionBreakdown]. */
@@ -186,6 +188,7 @@ fun liveFilesOf(snapshot: UnifiedSnapshot): List<LiveFile> {
                     sizeBytes = entry.sizeBytes,
                     chargedSizeBytes = entry.chargedSizeBytes,
                     partition = unified.partition?.path,
+                    specId = manifest.metadata.partitionSpecId,
                 )
             }
     }
