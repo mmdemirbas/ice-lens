@@ -43,7 +43,7 @@ class GraphExportTest {
 
     @Test
     fun `the svg is well-formed xml on every fixture`() {
-        listOf("test", "parted", "mor", "v3", "branched", "respec", "evolved", "eqdel").forEach { name ->
+        model.FixtureCatalog.iceberg.forEach { name ->
             val svg = GraphExport.toSvg(icebergGraph(name))
             val document = parseXml(svg)
             assertEquals("svg", document.documentElement.tagName, "$name should produce an <svg> root")

@@ -1704,7 +1704,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,140 tests across 144 files (871 in :core, 260 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,140 tests across 145 files (872 in :core, 260 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1770,6 +1770,16 @@ catches nothing, while a superlinear ratio is exactly the regression that would 
 row costs 3x more per node than the 4,000-node row because the scene's fixed furniture (mini-map,
 badge, background) is amortised across fewer cards; that is the confounder, and it is visible in the
 table rather than hidden in the average.
+
+**A sweep lists the fixtures from disk, never from a list it keeps.** `FixtureCatalog` (core's
+tests) and `CardHeightTest`'s twin read `example/iceberg/default/*` and `example/paimon/db.db/*`,
+because twenty tests carried their own copy of the fixture names and each had stopped at the
+fixture that existed when it was written — the suite's strongest oracles were not running on the
+six newest tables, and nothing failed. A test that means a *subset* keeps its own list and says
+why (`PaimonCompactionFixtureTest` leaves `se` out, whose `COMPACT` is a `sys.compact` call;
+`UnreferencedFilesTest` leaves `cl` and `tg` out, the two written with an orphan on purpose). The
+sweeps decode every table, so `:core:test` runs on a 2 GB heap: the worker's 512 MB default died
+the first time they did.
 
 **The runtime-written Avro fixtures are not an oracle.** They are written with
 `Avro.schema<T>()` — the schema derived from the very class under test — so writer and reader

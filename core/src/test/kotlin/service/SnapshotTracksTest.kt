@@ -109,7 +109,7 @@ class SnapshotTracksTest {
      */
     @Test
     fun `a commit keeps its parent's column only when it is the first child drawn`() {
-        val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched")
+        val fixtures = model.FixtureCatalog.iceberg
         var forks = 0
         fixtures.forEach { name ->
             val snapshots = graphOf(name).snapshots()

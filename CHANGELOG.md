@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rewritten file, which nothing ever moves.
 
 ### Changed
+- **Every fixture sweep runs on every checked-in table.** The tests that sweep the fixtures list
+  them from `example/` (`FixtureCatalog`) instead of from twenty hand-kept copies that had each
+  stopped at the fixture current when they were written; the core test worker gets a 2 GB heap
+  for it.
 - **The scan-pruning headline carries bytes and rows** — `1.94 KiB of 7.78 KiB, 1 of 4 rows`
   beside the file count, since a scan's cost is what it reads and three files of a thousand may
   be the three large ones.

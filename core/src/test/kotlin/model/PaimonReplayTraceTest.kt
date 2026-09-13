@@ -44,7 +44,7 @@ class PaimonReplayTraceTest {
      * adds an overwrite, which removes everything the base lists in one delta.
      */
     private fun snapshots(): List<PaimonUnifiedSnapshot> =
-        listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi", "ep", "rt", "sm", "se", "de", "lk", "ad", "px", "pxa", "pc").flatMap { name ->
+        FixtureCatalog.paimon.flatMap { name ->
             model(name).let { m -> m.snapshots + m.branches.flatMap { it.snapshots } }
         }
 

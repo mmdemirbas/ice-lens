@@ -65,7 +65,7 @@ class CardHeightTest {
      * tables all called `paimon` shared one key per node id — so the last `psnap_1` measured
      * (the tagged one, a line taller) was compared against the other three's declared height.
      */
-    private fun paimonGraphs(): List<Pair<String, GraphModel>> = listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi", "ep", "rt", "sm", "se", "de", "lk", "ad", "px", "pxa", "pc").map { name ->
+    private fun paimonGraphs(): List<Pair<String, GraphModel>> = paimonFixtureNames().map { name ->
         val tableDir = File(repoRoot, "example/paimon/db.db/$name")
         assertTrue(tableDir.isDirectory, "the Paimon fixture should be checked in: $tableDir")
         "paimon/$name" to GraphLayoutService.layoutGraph(
@@ -228,10 +228,17 @@ class CardHeightTest {
     private class Card(val node: GraphNode, val draw: @Composable () -> Unit)
 
     private companion object {
+        private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }
+            .first { File(it, "settings.gradle.kts").isFile }
+
+        /** Every table under [dir] with a [marker] directory, by name — listed, not kept by hand, so a new fixture is swept from the day it lands. */
+        private fun fixtureNames(dir: String, marker: String): List<String> =
+            File(repoRoot, dir).listFiles().orEmpty().filter { it.isDirectory && File(it, marker).isDirectory }.map { it.name }.sorted()
+
         /** Every checked-in Iceberg table. A kind's worst case is not in any one of them. */
-        val ICEBERG_FIXTURES = listOf(
-            "test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "stats", "branched3", "expired", "maint", "v1", "extdata", "sorted", "promoted", "lineage", "pstats", "wap", "rolled", "retained",
-        )
+        val ICEBERG_FIXTURES = fixtureNames("example/iceberg/default", "metadata")
+
+        fun paimonFixtureNames(): List<String> = fixtureNames("example/paimon/db.db", "snapshot")
 
         /**
          * Room beyond the declared height, so the content is measured rather than clamped.

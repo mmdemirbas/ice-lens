@@ -42,6 +42,10 @@ kotlin {
 tasks.test {
     // The print-only benchmarks exhaust the worker's heap on purpose; see `bench`.
     useJUnitPlatform { excludeTags("bench") }
+    // The fixture sweeps decode every checked-in table — 54 of them — and several lay each one
+    // out under two page sizes; the worker's 512 MB default died of it once the sweeps stopped
+    // keeping their own shorter lists (`FixtureCatalog`).
+    maxHeapSize = "2g"
 }
 
 /**

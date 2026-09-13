@@ -22,16 +22,18 @@ class UnreferencedFilesTest {
     private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }
         .first { File(it, "settings.gradle.kts").isFile }
 
-    private val icebergFixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "stats", "branched3", "expired", "maint", "v1", "extdata", "sorted", "promoted", "lineage", "pstats", "wap", "rolled", "retained")
+    private val icebergFixtures = FixtureCatalog.iceberg
 
     private fun iceberg(name: String) = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/$name").absolutePath))
     private fun paimon(name: String) = PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/$name").absolutePath))
 
     @Test
     fun `every engine-written table with no orphan reports none`() {
-        val models: List<FormatTableModel> = icebergFixtures.map(::iceberg) + listOf("test", "dv", "pt", "ao", "br", "cs", "fi", "ep", "rt", "sm", "se", "de", "lk", "ad", "px", "pxa", "pc").map(::paimon)
-        assertEquals(38, models.size)
-        models.forEach { model ->
+        // `cl` and `tg` are the two tables written with an orphan on purpose, and have tests of their own below.
+        val models: List<() -> FormatTableModel> = icebergFixtures.map { name -> { iceberg(name) } } + (FixtureCatalog.paimon - setOf("cl", "tg")).map { name -> { paimon(name) } }
+        assertTrue(models.size >= 50, models.size.toString())
+        models.forEach { open ->
+            val model = open()
             val report = findUnreferencedFiles(model)
             assertTrue(report.problems.isEmpty(), "${model.name}: ${report.problems}")
             assertTrue(report.filesOnDisk > 0, "${model.name}: the walk saw nothing")

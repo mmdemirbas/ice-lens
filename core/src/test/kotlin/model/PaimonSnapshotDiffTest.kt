@@ -40,7 +40,8 @@ class PaimonSnapshotDiffTest {
      * all — the cases where "replay" and "sum the ADDs" give different answers, so the oracles
      * below mean something only on those two.
      */
-    private fun models(): List<PaimonUnifiedTableModel> = listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi", "ep", "rt", "sm", "se", "de", "lk", "ad", "px", "pxa", "pc").map { model(it) }
+    /** One model at a time: every table decoded at once is what the worker's heap is sized against. */
+    private fun models(): Sequence<PaimonUnifiedTableModel> = FixtureCatalog.paimon.asSequence().map { model(it) }
 
     private fun snapshotNodes(model: PaimonUnifiedTableModel): List<GraphNode.PaimonSnapshotNode> =
         GraphLayoutService.layoutGraph(model, showRows = false)
