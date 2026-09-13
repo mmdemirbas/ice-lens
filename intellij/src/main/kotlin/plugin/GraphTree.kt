@@ -10,6 +10,7 @@ import model.displayLabel
 import model.sourceSnapshotId
 import model.publishedWapId
 import model.wapId
+import model.describeRowIds
 import model.describe
 
 /**
@@ -105,7 +106,7 @@ object GraphTree {
             "Operation" to (node.data.summary?.get("operation") ?: "—"),
             "Manifest list" to (node.data.manifestList ?: "—"),
         ) + listOfNotNull(
-            node.data.firstRowId?.let { "First row id" to it.toString() },
+            node.data.describeRowIds()?.let { "Row ids" to it },
             node.data.wapId?.let { "WAP id" to "$it — staged, on no branch until published" },
             node.data.sourceSnapshotId?.let { "Published from" to "snapshot $it" + (node.data.publishedWapId?.let { id -> " (wap.id $id)" } ?: "") },
         )

@@ -349,6 +349,9 @@ class InspectorRenderTest {
         val metadata = graph.nodes.filterIsInstance<GraphNode.MetadataNode>().first { it.fileName == "v6.metadata.json" }
         assertEquals(9L, metadata.data.nextRowId)
         renderInspector(graph, metadata.id, "metadata-node-row-lineage", height = 1400)
+        val update = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().first { it.data.summary["operation"] == "overwrite" }
+        assertEquals(3L, update.data.addedRows)
+        renderInspector(graph, update.id, "snapshot-node-row-lineage", height = 1400)
         val rewritten = graph.nodes.filterIsInstance<GraphNode.FileNode>()
             .first { it.firstRowId == 6L && it.entry.status == model.ManifestEntryStatus.ADDED }
         renderInspector(graph, rewritten.id, "file-node-row-lineage", height = 1400)

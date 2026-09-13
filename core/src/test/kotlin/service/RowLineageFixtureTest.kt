@@ -2,6 +2,7 @@ package service
 
 import model.DataFileContent
 import model.GraphNode
+import model.describeRowIds
 import model.ManifestContent
 import model.ManifestEntryStatus
 import model.UnifiedTableModel
@@ -45,6 +46,24 @@ class RowLineageFixtureTest {
         assertEquals(3, model.metadatas.last().metadata.formatVersion)
         assertEquals(listOf(0L, 3L, 6L, 9L, 9L, 9L, 14L), model.metadatas.map { it.metadata.nextRowId })
         assertEquals(listOf(0L, 3L, 6L, 9L, 9L), snapshots.map { it.metadata.firstRowId })
+        // added-rows is the id space taken, not the summary's added-records: the UPDATE took 3
+        // for its 1 added record, and the compaction 5 for rows that keep the ids they had.
+        assertEquals(listOf(3L, 3L, 3L, 0L, 5L), snapshots.map { it.metadata.addedRows })
+        assertEquals(listOf("3", "3", "1", null, "5"), snapshots.map { it.metadata.summary["added-records"] })
+        snapshots.forEach { s ->
+            val introduced = model.metadatas.first { m -> m.metadata.snapshots.any { it.snapshotId == s.metadata.snapshotId } }
+            assertEquals(introduced.metadata.nextRowId, s.metadata.firstRowId!! + s.metadata.addedRows!!, "next-row-id = first-row-id + added-rows, at ${introduced.path.fileName}")
+        }
+        assertEquals(
+            listOf(
+                "0..2 (3 ids, one per added record)",
+                "3..5 (3 ids, one per added record)",
+                "6..8 (3 ids for 1 added record — the other 2 went to existing rows in a data manifest this commit wrote)",
+                "none — next id stays 9",
+                "9..13 (5 ids, one per added record)",
+            ),
+            snapshots.map { it.metadata.describeRowIds() },
+        )
         assertEquals(listOf("append", "append", "overwrite", "delete", "replace"), snapshots.map { it.metadata.summary["operation"] })
         assertTrue(model.readErrors.isEmpty(), "${model.readErrors}")
     }

@@ -149,12 +149,12 @@ class GraphTreeTest {
     @Test
     fun `optional facts are listed only where the table has them`() {
         val plain = flatten(GraphTree.build(graphOf("test"))).flatMap { GraphTree.details(it) }.map { it.first }.toSet()
-        listOf("Next row id", "First row id", "Row ids", "WAP id", "Published from", "Sort order").forEach {
+        listOf("Next row id", "Row ids", "WAP id", "Published from", "Sort order").forEach {
             assertTrue(it !in plain, "$it listed on a table that has none")
         }
         val lineage = flatten(GraphTree.build(graphOf("lineage"))).flatMap { GraphTree.details(it) }
         assertTrue(lineage.any { it.first == "Next row id" && it.second == "14" })
-        assertTrue(lineage.any { it.first == "First row id" })
+        assertTrue(lineage.any { it.first == "Row ids" && it.second.startsWith("6..8 (3 ids for 1 added record —") }, "the UPDATE's snapshot took three ids for one record")
         assertTrue(lineage.any { it.first == "Row ids" && it.second == "0..1" }, "the first file holds ids 0 and 1")
         val wap = flatten(GraphTree.build(graphOf("wap"))).flatMap { GraphTree.details(it) }
         assertTrue(wap.any { it.first == "WAP id" && it.second.startsWith("audit-1") })

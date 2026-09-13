@@ -634,7 +634,13 @@ intellij/src/main/kotlin/plugin/
   of row lineage, and the reason the writer's own per-row printout is identical before and after
   it — while its files still inherit 9 and 12 and `next-row-id` moves to 14. `lineage` is
   partitioned so one INSERT writes two files into one manifest, which is the only shape that
-  exercises the sum
+  exercises the sum. **The burn is recorded, as `added-rows`.** The spec's worked example calls it
+  the sum of added rows, but `SnapshotProducer` writes `writer.nextRowId() - base.nextRowId()` —
+  the id space the commit took, existing rows included — so it is 3 on the update whose
+  `added-records` is 1, `first-row-id + added-rows` is the `next-row-id` of the metadata that
+  introduced the snapshot on every commit of `lineage`, and `Snapshot.describeRowIds()` prints the
+  range with the summary's figure beside it where the two differ. It is one function in core
+  because both shells list it and two spellings of "the other 2 went to existing rows" drift
 - **A null sequence number on an entry means "the manifest's", never "unknown".** Iceberg inherits
   it: an entry written by the commit that wrote its manifest stores nothing, because every entry
   that commit adds shares one number, and only an entry *carried forward* records one of its own.

@@ -84,6 +84,7 @@ import model.PaimonRowKind
 import model.sourceSnapshotId
 import model.publishedWapId
 import model.wapId
+import model.describeRowIds
 import model.describe
 import model.PaimonFileSource
 import model.paimonManifestTallies
@@ -1691,9 +1692,9 @@ fun NodeDetailsContent(
                                     ?: "0 — a v1 snapshot records none, and the format reads it as 0",
                             )
                             DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
-                            // Where this commit's row ids started — next-row-id as it stood. A
-                            // commit adding no data files records it and moves it by nothing.
-                            if (node.data.firstRowId != null) DetailRow("First Row ID", "${node.data.firstRowId}")
+                            // The ids this commit took, from next-row-id as it stood. A commit
+                            // adding no data files records where it started and takes none.
+                            node.data.describeRowIds()?.let { DetailRow("Row IDs", it) }
                             DetailRow("Timestamp", formatTimestamp(node.data.timestampMs))
                             val manifestList = node.data.manifestList
                             val manifestListLabel = if (manifestList == null) "N/A" else "${manifestList.substringAfterLast("/")} ($manifestList)"

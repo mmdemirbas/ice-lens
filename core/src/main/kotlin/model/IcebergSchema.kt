@@ -191,6 +191,13 @@ data class Snapshot(
     @SerialName("manifest-list") val manifestList: String? = null, // Path to Avro file
     /** v3 row lineage: where this commit's id allocation started — `next-row-id` as it stood. */
     @SerialName("first-row-id") val firstRowId: Long? = null,
+    /**
+     * v3: the id space this commit consumed — `next-row-id` after it minus [firstRowId]. The
+     * writer moves the next id past every row of a data manifest it assigns a first id to,
+     * existing rows included, so this can exceed the summary's `added-records`
+     * (`SnapshotProducer`: `assignedRows = writer.nextRowId() - base.nextRowId()`).
+     */
+    @SerialName("added-rows") val addedRows: Long? = null,
     val summary: Map<String, String> = emptyMap(),
 )
 
@@ -329,6 +336,24 @@ val Snapshot.effectiveSequenceNumber: Long get() = sequenceNumber ?: 0L
  * say where its files came from.
  */
 val Snapshot.wapId: String? get() = summary["wap.id"]
+
+/**
+ * The row ids a v3 commit took, as a range, with the summary's `added-records` beside the count
+ * where the two differ — the difference is existing rows re-listed by a data manifest this commit
+ * wrote, which take id space whether or not they already had ids. Null below v3.
+ */
+fun Snapshot.describeRowIds(): String? {
+    val first = firstRowId ?: return null
+    val assigned = addedRows ?: return "$first — first id; added-rows not recorded"
+    if (assigned == 0L) return "none — next id stays $first"
+    val range = "$first..${first + assigned - 1}"
+    val addedRecords = summary["added-records"]?.toLongOrNull()
+    return when {
+        addedRecords == null -> "$range ($assigned ids)"
+        addedRecords == assigned -> "$range ($assigned ids, one per added record)"
+        else -> "$range ($assigned ids for $addedRecords added ${if (addedRecords == 1L) "record" else "records"} — the other ${assigned - addedRecords} went to existing rows in a data manifest this commit wrote)"
+    }
+}
 val Snapshot.publishedWapId: String? get() = summary["published-wap-id"]
 val Snapshot.sourceSnapshotId: Long? get() = summary["source-snapshot-id"]?.toLongOrNull()
 

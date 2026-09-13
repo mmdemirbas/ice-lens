@@ -77,6 +77,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A v3 snapshot's panel says which row ids it took.** `added-rows` is read, and `Row IDs` prints
+  the range with the summary's `added-records` beside it where they differ — `6..8 (3 ids for 1
+  added record — the other 2 went to existing rows in a data manifest this commit wrote)` on
+  `lineage`'s update, `none — next id stays 9` on its delete. The IDE tree lists the same line.
+  `RowLineageFixtureTest` holds `first-row-id + added-rows` to the `next-row-id` of the metadata
+  that introduced each snapshot.
 - **A Paimon primary-key row says what kind of row it is.** A KV file carries every write as a row
   with a `_VALUE_KIND` — `+I`, `-U`, `+U`, `-D` — and a `-D` is a retraction, not a value: merged
   with the levels below it removes the key. The card draws such a row faded and struck with the
