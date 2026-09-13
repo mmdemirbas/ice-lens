@@ -68,6 +68,7 @@ core/src/main/kotlin/
 │   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
 │   ├── ManifestMergePlan.kt   # What the next commit does to the manifest list — ManifestMergeManager's bins and verdicts
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
+│   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
@@ -805,6 +806,26 @@ intellij/src/main/kotlin/plugin/
   = now`, which is as far as a call goes without `retain_max`, so what the second column still
   keeps is what no call can remove. `InspectorUnderTest` pins the clock to the last Paimon commit
   plus a second for the same reason it pins Iceberg's to the last metadata write
+- **Which files a Paimon expiry frees is planned from `ExpireSnapshotsImpl.expireUntil`, and a
+  tag is the reason a bucket stays full.** `model/PaimonExpiryFilePlan.kt` walks the removed
+  range `[begin, end)` the way release-1.3.1 does, in four passes: data files from the **delta
+  lists of `(begin, end]`** — `end`, the first retained snapshot, included, because a file its
+  delta records as `DELETE` was live only in the one before, which expires; an `ADD` of the same
+  file after the `DELETE` unmarks it, which is what keeps a compaction's upgraded file — unless
+  the **nearest earlier tag** still holds the file in its own merged manifests; changelog files
+  added by `[begin, end)`, which no tag reaches; manifest lists, manifests, index manifests, index
+  files and statistics of `[begin, end)` that neither the tags in the range nor snapshot `end`
+  name — a tag's changelog list is not in that set, which is the `tg` finding again; then the
+  snapshot files. The oracle is `docs/fixtures/paimon-pe.sql`, the `sweep`/`swept` shape on
+  Paimon: `pe` is the table before, `pea` the same table expired in place, and
+  `PaimonExpiryFilePlanFixtureTest` requires the plan from `pe` to name exactly the files missing
+  from `pea` — two data files (the compaction's five removals minus the three the tag on 3
+  holds), five changelog files, five manifests, fifteen lists, six snapshot files. The
+  `retain_max => 2` call was refused until `retain_min => 1` came down with it, which the script
+  header records. `PaimonExpiryProtected` carries the files a tag kept, because "I expired
+  everything and the bucket is still full" is the question; the table panel's `Expiry Files`
+  section leads with that line, and `TableNode.paimonExpiryFiles` carries the model-built input
+  for the reason `expiryFiles` does
 - **A Paimon bucket is drawn as the LSM tree its writer restores, and the next flush's compaction
   is planned the way `UniversalCompaction.pick()` plans it.** `model/PaimonCompaction.kt`:
   `paimonBucketLsms` groups a snapshot's live files by partition and bucket into sorted runs —
@@ -1505,7 +1526,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,050 tests across 131 files (795 in :core, 251 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,060 tests across 132 files (802 in :core, 252 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1619,6 +1640,7 @@ container invocation and the traps in it:
 | `paimon/db.db/lk` | `PaimonRowKindTest` | `changelog-producer = lookup` — the `-U` / `+U` pair a re-inserted key produces, carried by the COMPACT snapshot the lookup ran in, and a `-D` with the value it removed |
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |
 | `paimon/db.db/px`, `pxa` | `PaimonExpiryFixtureTest` | one table written twice — six commits, a tag on 2, a consumer at 4; `px` as it is, `pxa` after `expire_snapshots(retain_max = 2, retain_min = 1)` — the survivors the plan for `px` is checked against |
+| `paimon/db.db/pe`, `pea` | `PaimonExpiryFilePlanFixtureTest` | one table copied on disk before `expire_snapshots(retain_max => 2, retain_min => 1)` ran on the original — a changelog, a compaction, a tag on 3; the files the expiry freed, and the three the tag held |
 | `paimon/db.db/pc` | `PaimonCompactionFixtureTest` | a primary-key table on every default, seven one-row inserts — the fifth flush is the one the writer compacted, by size amplification into level 5, and the COMPACT after it is the oracle |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |

@@ -433,6 +433,22 @@ class InspectorRenderTest {
     }
 
     /**
+     * `pe` is `pea` before its expiry, complete: the `retain_min = 1, older_than = now` column
+     * removes snapshots 1..6, and the file plan frees the compaction's two unprotected removals,
+     * five changelog files and the manifests — while the tag on 3 holds three removed files on
+     * disk, which is the line the section exists to print.
+     */
+    @Test
+    fun `a paimon table says what its expiry would free and what a tag holds`() {
+        val pe = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pe").absolutePath)),
+            showRows = false,
+        )
+        val table = pe.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        renderInspector(pe, table.id, "paimon-table-node-expiry-files", height = 5200)
+    }
+
+    /**
      * The table panel's maintenance lines, on the two tables where the most would act: `mor`
      * before nothing — its current snapshot's rewrite plan is left alone under the defaults, the
      * next append merges nothing, and the expiry would remove five of six — and `pc`, whose

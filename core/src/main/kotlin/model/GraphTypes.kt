@@ -358,6 +358,8 @@ sealed class GraphNode(
          * lists an expiry removes. Nothing on Paimon.
          */
         val expiryFiles: DeferredRead<ExpiryFileInput> = DeferredRead.none(),
+        /** The Paimon twin — see [PaimonExpiryFileInput]; nothing on Iceberg. */
+        val paimonExpiryFiles: DeferredRead<PaimonExpiryFileInput> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 240.0, 96.0)

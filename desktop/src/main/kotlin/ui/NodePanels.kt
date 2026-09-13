@@ -152,6 +152,7 @@ internal fun ColumnScope.TablePanel(
         // which is where Iceberg keeps the refs and the retention properties.
         MaintenanceSection(node, currentGraph)
         summary.paimonExpiry?.let { PaimonExpirySection(it, nowMs = expiryClock()) }
+        summary.paimonExpiry?.let { PaimonExpiryFilesSection(node, it, nowMs = expiryClock()) }
 
         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 

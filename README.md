@@ -49,7 +49,7 @@ so and the inspector lists all of them.
 - **What a commit did** — folded from the manifests it wrote, checked against its own summary — and **what is different between any two snapshots**, on either format, with one side pinned and the other stepped through history
 - Delete files paired with the data files they reach, dangling deletes named, deletion vectors decoded to the rows they mark, and the live row count behind a click
 - Per-snapshot partition breakdown, largest first; per-partition and table statistics files opened and shown against their records
-- What `expire_snapshots` would remove and what keeps the rest — a ref on Iceberg, a consumer or the retention bounds on Paimon — and, on Iceberg, which files that frees and by which cleanup; rollbacks read off the snapshot log
+- What `expire_snapshots` would remove and what keeps the rest — a ref on Iceberg, a consumer or the retention bounds on Paimon — and which files that frees: by which cleanup on Iceberg, and past which tag on Paimon; rollbacks read off the snapshot log
 - A Paimon bucket as its LSM tree — sorted runs against the compaction trigger — and what the next flush would compact, the way `UniversalCompaction` picks it
 - What `rewrite_data_files` would rewrite at a snapshot, and what the next commit would do to its manifest list — both planned the way Iceberg's own planners decide it, and checked against rewrites and merges the fixtures ran
 - A maintenance summary on the table panel: what each procedure would do if run now, one line each, with the panel that explains it

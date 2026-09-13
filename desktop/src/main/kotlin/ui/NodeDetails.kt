@@ -74,6 +74,8 @@ import model.ExpiryFileKind
 import model.ExpiryOptions
 import model.expiryFileInput
 import model.planExpiryFiles
+import model.PaimonExpiryFileKind
+import model.PaimonExpiryFilePlan
 import model.PaimonCompactionOptions
 import model.ManifestMergeOptions
 import model.ManifestMergePlan
@@ -2525,10 +2527,12 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, graph: GraphModel) {
         }
         val bare = runCatching { paimonExpiry.planExpiry(PaimonExpiryOptions(nowMs = nowMs)) }.getOrNull()
         val byAge = runCatching { paimonExpiry.planExpiry(PaimonExpiryOptions(nowMs = nowMs, retainMin = 1, olderThanMs = nowMs)) }.getOrNull()
+        val freed = byAge?.let { p -> node.paimonExpiryFiles.value?.planExpiryFiles(p.removed.map { it.snapshotId }.toSet()) }
+        val freeing = freed?.let { ", freeing ${it.describe}" + if (it.protectedByTag.isNotEmpty()) " (${it.protectedByTag.size} kept by a tag)" else "" } ?: ""
         rows += when {
             bare == null || byAge == null -> Row("rejected", "expire_snapshots", "the table's snapshot.* options are ones the procedure refuses", "table → Expiry", colors.error)
-            bare.removed.isNotEmpty() -> Row("would remove ${countNoun(bare.removed.size, "snapshot")}", "expire_snapshots", "a bare call removes ${bare.removed.size}; retain_min = 1 with older_than = now removes ${byAge.removed.size}", "table → Expiry", verdictSkippedColor())
-            byAge.removed.isNotEmpty() -> Row("nothing on a bare call", "expire_snapshots", "retain_min = 1 with older_than = now would remove ${byAge.removed.size}", "table → Expiry", null)
+            bare.removed.isNotEmpty() -> Row("would remove ${countNoun(bare.removed.size, "snapshot")}", "expire_snapshots", "a bare call removes ${bare.removed.size}; retain_min = 1 with older_than = now removes ${byAge.removed.size}$freeing", "table → Expiry, Expiry Files", verdictSkippedColor())
+            byAge.removed.isNotEmpty() -> Row("nothing on a bare call", "expire_snapshots", "retain_min = 1 with older_than = now would remove ${byAge.removed.size}$freeing", "table → Expiry, Expiry Files", null)
             else -> Row("nothing expires", "expire_snapshots", "no call removes anything: the bounds, a consumer or a tag keep every snapshot", "table → Expiry", null)
         }
     }
@@ -2622,6 +2626,65 @@ internal fun ExpiryFilesSection(metadata: TableMetadata, graph: GraphModel, nowM
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The files the `retain_min = 1, older_than = now` expiry beside it would delete on a Paimon
+ * table — [PaimonExpiryFilePlan], the four passes of `ExpireSnapshotsImpl.expireUntil`. The
+ * Iceberg section's twin, with one more thing to say: which removed files a tag holds on to, which
+ * is the answer to "I expired everything and the bucket is still full". The input rides the table
+ * node, built from the model, for the reason [ExpiryFilesSection] gives.
+ */
+@Composable
+internal fun PaimonExpiryFilesSection(node: GraphNode.TableNode, input: PaimonExpiryInput, nowMs: Long) {
+    val colors = MaterialTheme.colorScheme
+    val byAge = runCatching { input.planExpiry(PaimonExpiryOptions(nowMs = nowMs, retainMin = 1, olderThanMs = nowMs)) }.getOrNull()
+    val plan = byAge?.let { p -> node.paimonExpiryFiles.value?.planExpiryFiles(p.removed.map { it.snapshotId }.toSet()) }
+    CountedSection("Expiry Files — ${plan?.describe ?: "not readable"}", plan?.files?.size ?: 0, "files") {
+        Text(
+            "What the retain_min = 1, older_than = now expiry above would delete, the way " +
+                "ExpireSnapshotsImpl.expireUntil does it over the removed range: data files that a " +
+                "later commit's delta recorded as removed — the first retained snapshot's included, " +
+                "since the last snapshot that read them expires — unless the nearest earlier tag still " +
+                "holds them; the changelog files the removed snapshots added; their manifest lists, " +
+                "manifests, index manifests, index files and statistics that neither a tag in the range " +
+                "nor the first retained snapshot names — a tag's changelog list among them; then the " +
+                "snapshot files.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        when {
+            plan == null -> Text("Not readable here — the table's options are ones the procedure refuses, or its manifests could not be read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            plan.files.isEmpty() -> Text("Nothing expires under retain_min = 1, older_than = now, so nothing is freed.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            else -> {
+                Text(
+                    "Snapshots ${plan.beginInclusive} to ${plan.endExclusive?.minus(1)} go. ${formatBytes(plan.knownBytes)} the metadata can account for" +
+                        " — a list and a snapshot file record no size." +
+                        (if (plan.decoupled) " changelog.lifecycle-decoupled is set: the changelog and its manifests outlive the snapshot, and this plan is the default's." else ""),
+                    fontSize = TypeScale.small,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                if (plan.protectedByTag.isNotEmpty()) Text(
+                    "${countNoun(plan.protectedByTag.size, "removed file")} stay on disk because a tag still holds them: " +
+                        plan.protectedByTag.groupBy { it.tag }.entries.joinToString("; ") { (tag, files) -> "$tag (snapshot ${files.first().tagSnapshotId}) keeps ${files.size}" } + ".",
+                    fontSize = TypeScale.small,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.onSurface,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                val shown = plan.files.take(MAX_EXPIRY_FILE_ROWS)
+                WideTable(
+                    headers = listOf("Kind", "Reason", "Snapshot", "Size", "File"),
+                    columnWidths = listOf(120.dp, 390.dp, 90.dp, 90.dp, 600.dp),
+                    rows = shown.map { f -> listOf(f.kind.label, f.reason.label, f.snapshotId?.toString() ?: "—", f.sizeBytes?.let { formatBytes(it) } ?: "—", f.name) },
+                    leadCellColors = shown.map { if (it.kind == PaimonExpiryFileKind.DATA_FILE || it.kind == PaimonExpiryFileKind.CHANGELOG_FILE) colors.error else null },
+                )
+                if (plan.files.size > shown.size) Text("${plan.files.size - shown.size} more not listed.", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
             }
         }
     }

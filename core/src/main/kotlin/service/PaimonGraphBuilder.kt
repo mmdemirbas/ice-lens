@@ -46,6 +46,7 @@ object PaimonGraphBuilder {
             tableNodeId,
             tableSummary,
             unreferencedFiles = DeferredRead.of { findUnreferencedFiles(tableModel) },
+            paimonExpiryFiles = DeferredRead.of { tableModel.expiryFileInput() },
         )
 
         var nextManifestSimpleId = 1

@@ -104,6 +104,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **The Paimon table panel says which files an expiry would free, and which a tag holds.** An
+  `Expiry Files` section plans the `retain_min = 1, older_than = now` call's removals the way
+  `ExpireSnapshotsImpl.expireUntil` runs — the data files later commits removed, the changelog,
+  the manifests and lists no tag or retained snapshot names, the snapshot files — and leads with
+  the removed files a tag keeps on disk. `pe`/`pea`, one table copied before its expiry, is the
+  oracle: the plan names exactly the files the expiry took out.
 - **The table panel opens with a maintenance summary.** One line per procedure — rewrite,
   the next commit's manifest merge and expiry on Iceberg; compaction and expiry on Paimon —
   with what running it now would do, from the same planners the detail sections use, and the

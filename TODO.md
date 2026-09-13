@@ -330,6 +330,7 @@ What is left:
   | `paimon/db.db/dv` | a Spark-written primary-key table with a deletion vector |
   | `paimon/db.db/cl` | `changelog-producer = input`: changelog files, an overwrite, an `ANALYZE` with statistics |
   | `paimon/db.db/tg` | a tag, then `expire_snapshots` — a snapshot retained by its tag only |
+  | `paimon/db.db/pe`, `pea` | a primary-key table with `changelog-producer = input`, seven inserts (a COMPACT at 6) and a tag on 3, copied on disk, then `expire_snapshots(retain_max => 2, retain_min => 1)` on the original — the copy is the table before, with the same file names |
   | `paimon/db.db/pt` | partitioned by a date and a string — the `_PARTITION` decoder's oracle is the directory layout; one manifest's `_PARTITION_STATS` minimum is a partition none of its entries has; the script's rows are the pruning oracle |
   | `paimon/db.db/ao` | append-only, no primary key, `bucket = -1` — a DELETE rewrites the file as an `APPEND` with delta −1 |
   | `paimon/db.db/br` | two branches — one created from a tag and committed to, one created empty; main and `dev` share a snapshot id for two different commits |
