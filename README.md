@@ -49,6 +49,7 @@ so and the inspector lists all of them.
 - **What a commit did** — folded from the manifests it wrote, checked against its own summary — and **what is different between any two snapshots**, on either format, with one side pinned and the other stepped through history
 - Delete files paired with the data files they reach, dangling deletes named, deletion vectors decoded to the rows they mark, and the live row count behind a click
 - **Row lookup** on either format: the rows a filter matches, read from the files it leaves, each with its fate — live, or deleted by which vector, positional delete or equality delete on Iceberg; live, vector-marked, a retraction, or superseded by which later write on Paimon
+- **A sampled row's own fate**, on its panel: on Iceberg the delete files paired with its file asked for it; on Paimon the merge engine over its key's records — `deduplicate`, `first-row`, `partial-update` with sequence groups, `aggregation` — or, under data evolution, the row as a read stitches it from the file and its patches
 - One click checks every figure the metadata records against the same figure counted — manifest counts, commit summaries, snapshot totals, Paimon record counts — over the whole table
 - What `SELECT count(*)` returns as of a snapshot, on either format — on Iceberg the delete files applied per data file, on Paimon the merge over each bucket's files under the table's merge engine, less retractions and vector-marked keys, and the level-0 files a batch read never opens — beside the row total the snapshot records
 - A file's history on either format — the commit that added it, the one that removed it, and the retained snapshots that still list it live and so keep it on disk
@@ -168,12 +169,14 @@ Stated plainly, because a tool you inspect internals with has to be honest about
   the `added-rows` allocation are read from real tables; the variant / geometry / geography /
   `timestamp_ns` types and column defaults are parsed without error but have no fixture, because
   no engine in the fixture toolchain writes them yet.
-- **A v2 positional delete file is not mapped to rows.** Its targets are one per row and known
-  only after reading the file, so the rows it removes are counted behind a click rather than
-  marked on the cards; a v3 deletion vector is.
-- **Equality deletes are evaluated only for a looked-up row.** They match by value, so nothing in
+- **A v2 positional delete file is not mapped to row cards.** Its targets are one per row and
+  known only after reading the file, so the rows it removes are counted behind a click and a
+  sampled row's panel asks the file for its own position behind another; a v3 deletion vector
+  marks the cards.
+- **Equality deletes are evaluated only for a row in hand.** They match by value, so nothing in
   the metadata links one to a data file; the delete panel says which data files one *may* reach,
-  and only the row lookup, which reads the row, can say whether one removes it.
+  and only the row lookup or a sampled row's panel, which have the row, can say whether one
+  removes it.
 - Sample rows are best-effort: they depend on the file being present and readable by DuckDB,
   and are capped at 50 rows per file, five drawn per data file.
 - Row loading may be slow for tables with many data files when "Show Rows" is enabled.
