@@ -169,9 +169,8 @@ fun liveFilesOf(snapshot: UnifiedSnapshot): List<LiveFile> {
         // partition is read back beside it by position.
         manifestLedger(
             entries = manifest.dataFiles.map { unified ->
-                val recorded = unified.metadata.dataFile?.filePath?.takeIf { it.isNotBlank() }
                 LedgerEntry(
-                    fileKey = recorded?.let(::normalizeFilePath) ?: "path:${unified.path}",
+                    fileKey = unified.ledgerFileKey(),
                     status = unified.metadata.status,
                     dataFile = unified.metadata.dataFile,
                 )

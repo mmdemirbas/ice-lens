@@ -68,6 +68,7 @@ core/src/main/kotlin/
 │   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
 │   ├── ManifestMergePlan.kt   # What the next commit does to the manifest list — ManifestMergeManager's bins and verdicts
 │   ├── MaintenanceInput.kt    # The newest metadata and the current snapshot's node, carried on the table node for the planners — never read off the drawn graph
+│   ├── FileHistory.kt         # One file across the retained snapshots — added by, removed by, still listed live by — on either format
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
@@ -118,6 +119,7 @@ desktop/src/main/kotlin/
     ├── NodeComponents.kt      # Node card composables (Iceberg + Paimon node types) + tooltip + copy buttons
     ├── NodeDetails.kt         # Inspector panel — header, multi-select, the shared sections and helpers the panels reach for
     ├── MaintenanceSections.kt # The planners' sections — rewrite, manifest merge, expiry and its files, compaction, the table's summary line per procedure
+    ├── FileHistorySection.kt  # A file's life on both file panels: which commit removed it, and what still keeps it on disk
     ├── NodePanels.kt          # Table, row, error and group panels
     ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
     ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
@@ -736,6 +738,28 @@ intellij/src/main/kotlin/plugin/
   lists an expiry removes; the first version read the graph and was complete only on tables
   small enough to draw whole. Data files first and in the error colour, `MAX_EXPIRY_FILE_ROWS`
   (200) listed
+- **A file's history is a third reading of the walks the suite already trusts, and it is asked
+  of one file at a time.** `model/FileHistory.kt` answers the two questions a missing-file error
+  raises — which commit removed it, and what still lists it live, which is what keeps it on disk
+  — for either format, and each format answers its own way. Iceberg *filters*: a retained
+  snapshot lists the file live when any manifest in its list holds a non-`DELETED` entry for the
+  path, and the commit whose manifest (`added_snapshot_id`) holds the `ADDED` or `DELETED` entry
+  is the one that did it, which is `snapshotChangeOf`'s rule. Paimon *replays*: the file is live
+  when the last entry for it across the base manifests then the delta manifests, a manifest
+  once, is an `ADD` — `replayPaimonSnapshot`'s order applied to one file — and the delta's
+  entries are its events; a level upgrade writes `DELETE` then `ADD` of one name in one delta,
+  which is `FileEvent.REWRITTEN` and leaves the file live (`dv`). Neither runs `liveFilesOf` or
+  the replay per snapshot: those walk a closure to answer about one file, so this reads each
+  distinct manifest once for the one path — and it is a `DeferredRead` on both file nodes
+  (`history`), with the key the ledger already uses (`UnifiedDataFile.ledgerFileKey`,
+  `paimonDataFileKey`), none on a changelog entry. `FileHistoryFixtureTest` holds "live" to
+  `liveFilesOf` and the events to `snapshotChangeOf` on every retained snapshot of every Iceberg
+  fixture, and "live" to the replay on every Paimon fixture and branch with an event required at
+  every transition between **adjacent** commits — adjacent, because the earliest retained
+  snapshot's base carries what expired commits added, and a tag-only snapshot stands apart from
+  the next retained one with the expired commits between (`cs`, `pea` each caught a stricter
+  version). A snapshot the table no longer retains can be neither credited nor blamed, and the
+  panel says so under the table
 - **The table panel sums the maintenance procedures to a line each, and computes none of them.**
   `MaintenanceSection` in `ui/MaintenanceSections.kt` asks the four planners at the table's current
   snapshot — `planRewrite`, `planManifestMerge`, `planExpiry` with `planExpiryFiles` on Iceberg;
@@ -1538,7 +1562,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,060 tests across 133 files (805 in :core, 253 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,070 tests across 134 files (812 in :core, 254 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

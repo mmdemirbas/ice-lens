@@ -299,6 +299,7 @@ object IcebergGraphBuilder {
                                         firstRowId = unifiedDataFile.firstRowId,
                                         firstRowIdInherited = unifiedDataFile.firstRowIdInherited,
                                         deletionVectorLoader = deletionVectorLoader(dataFile, unifiedDataFile.path),
+                                        history = unifiedDataFile.ledgerFileKey().let { key -> DeferredRead.of { tableModel.fileHistoryOf(key) } },
                                     )
                                 }
 

@@ -102,6 +102,29 @@ class InspectorRenderTest {
 
     private val outputDir = File(repoRoot, "desktop/build/reports/inspector")
 
+    /**
+     * A file's history, on the two file nodes whose story is the one a reader opens the panel for:
+     * on `mor`, a file the compaction took out — removed by the replace and still listed live by
+     * the snapshots before it, which is why it is still on disk — and on `dv`, the file a
+     * compaction moved to another level, removed and re-added in one commit. Both nodes are the
+     * removed entries themselves, so the panel above the section says `DELETED` and the section
+     * says by whom.
+     */
+    @Test
+    fun `a file panel tells the file's history`() {
+        val mor = graphFor("mor")
+        val removed = mor.nodes.filterIsInstance<GraphNode.FileNode>()
+            .first { it.entry.status == ManifestEntryStatus.DELETED && it.history.value?.removedBy != null }
+        renderInspector(mor, removed.id, "file-node-history", height = 2600)
+        val dv = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/dv").absolutePath)),
+            showRows = false,
+        )
+        val rewritten = dv.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
+            .first { n -> n.history.value?.snapshots?.any { it.event == model.FileEvent.REWRITTEN } == true }
+        renderInspector(dv, rewritten.id, "paimon-file-node-history", height = 2600)
+    }
+
     private fun graphFor(fixture: String): GraphModel {
         val tableDir = File(repoRoot, "example/iceberg/default/$fixture")
         assertTrue(tableDir.isDirectory, "fixture missing at $tableDir")

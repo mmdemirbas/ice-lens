@@ -260,6 +260,9 @@ object PaimonGraphBuilder {
                                     operationKind = entry.kind,
                                     localPath = unifiedDataFile.path.toString(),
                                     pathResolution = unifiedDataFile.pathResolution,
+                                    // A changelog file is the change stream, not the table's contents; no snapshot lists it live.
+                                    history = if (kind == "changelog") DeferredRead.none()
+                                    else paimonDataFileKey(unifiedDataFile).let { key -> DeferredRead.of { tableModel.fileHistoryOf(key, branch) } },
                                 )
                             }
 

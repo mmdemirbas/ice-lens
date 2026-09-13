@@ -1079,6 +1079,8 @@ internal fun ColumnScope.FilePanel(
             }
         }
 
+        FileHistorySection(node.history)
+
         // What this delete file applies to. Asked of every delete file, and the
         // honest answer is different for each of the three kinds — including one
         // where the answer is that the format does not record it. Leaving the

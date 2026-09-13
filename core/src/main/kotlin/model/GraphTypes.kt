@@ -587,6 +587,11 @@ sealed class GraphNode(
          * nodes for the same entry are the same node whether or not one has since read a blob.
          */
         private val deletionVectorLoader: DeferredRead<DeletionVector> = DeferredRead.none(),
+        /**
+         * The file's life across the retained snapshots — see [FileHistory]. Deferred because it
+         * reads every distinct manifest once for this one path, and it is asked of one panel.
+         */
+        val history: DeferredRead<FileHistory> = DeferredRead.none(),
         // 68dp, not 60, because the card's first line is `FILE 5: DELETE VECTOR — NOT READ` at its
         // longest and that wraps at 200dp. The verdict is appended when a scan filter is on, which
         // is *after* the layout that reserved this height, so the reservation has to cover the
@@ -848,6 +853,8 @@ sealed class GraphNode(
         val localPath: String? = null,
         /** How [localPath] was arrived at — see [PaimonUnifiedDataFile.pathResolution]. */
         val pathResolution: PaimonPathResolution = PaimonPathResolution.LAYOUT,
+        /** The file's life across the branch's retained snapshots — see [FileHistory]; deferred as the Iceberg node's is. */
+        val history: DeferredRead<FileHistory> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         // 64, not 60: the stress pass measured this card at exactly its declared height, which
