@@ -43,6 +43,7 @@ import kotlin.test.assertTrue
 import model.GraphModel
 import model.GraphSearch
 import model.GraphNode
+import model.partitionBreakdown
 import model.publishedWapId
 import model.wapId
 import model.describe
@@ -389,6 +390,27 @@ class InspectorRenderTest {
         renderCanvas("graph-canvas-wap", graph, pageSize = AggregationPolicy.DEFAULT_PAGE_SIZE)
         renderInspector(graph, staged.id, "snapshot-node-wap-staged", height = 1400)
         renderInspector(graph, published.id, "snapshot-node-wap-published", height = 1400)
+    }
+
+    /**
+     * The partition breakdown on a snapshot, for a partitioned table of both formats: the table
+     * has to read largest-first with the exception coloured only where a tuple did not decode.
+     */
+    @Test
+    fun `a snapshot lists its live files by partition`() {
+        val iceberg = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/pstats").absolutePath)),
+            showRows = false,
+        )
+        val current = iceberg.nodes.filterIsInstance<GraphNode.SnapshotNode>().first { it.refs.any { r -> r.name == "main" } }
+        assertEquals(3, current.liveFiles!!.partitionBreakdown().size)
+        renderInspector(iceberg, current.id, "snapshot-node-partitions", height = 3800)
+        val paimon = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pt").absolutePath)),
+            showRows = false,
+        )
+        val last = paimon.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().maxBy { it.data.id ?: 0L }
+        renderInspector(paimon, last.id, "paimon-snapshot-node-partitions", height = 2600)
     }
 
     /**

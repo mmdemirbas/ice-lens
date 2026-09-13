@@ -279,6 +279,18 @@ intellij/src/main/kotlin/plugin/
   a timestamp is a clock and two commits from a fast writer can share one. `MAX_DIFF_ROWS` caps the
   file list at 500 and says so on screen when it bites; files on both sides are counted and not
   listed, because on any real table they are almost all of it
+- **A snapshot's partition breakdown is folded from the same live set the comparison uses.**
+  `List<LiveFile>.partitionBreakdown()` in `model/SnapshotDiff.kt` groups a snapshot's live files
+  by their decoded partition — `LiveFile.partition`, carried out of `liveFilesOf` by zipping the
+  ledger's contributions with the entries they came from, and out of the Paimon replay, whose live
+  map now holds the entries rather than their file metadata — into one `PartitionShare` per
+  partition, largest data first. It is the question Iceberg's `.partitions` metadata table answers
+  and the `Partitions` section on both snapshot panels draws it; `PartitionBreakdownTest` holds it
+  to the per-partition rows Iceberg 1.10's `compute_partition_stats` wrote for `pstats` and to the
+  row counts `paimon-pt.sql` put into each partition. A tuple that did not decode is grouped under
+  `UNDECODED_PARTITION` and coloured, never dropped: a partition that silently loses its files is
+  the one wrong this section must not be. The section costs no read of its own — `TotalsSection`
+  already ran the walk — and an unpartitioned table is one line rather than a one-row table
 - **The comparison is format-agnostic; the two ways of answering it are not.** `ComparableSnapshot`
   in `GraphTypes.kt` is the seam — six questions the panel asks and neither node type's own
   vocabulary — so `SnapshotComparison` never asks which format it is drawing. Underneath, Iceberg
@@ -1306,7 +1318,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~971 tests across 115 files (732 in :core, 233 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
+~975 tests across 116 files (735 in :core, 234 in :desktop, 6 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

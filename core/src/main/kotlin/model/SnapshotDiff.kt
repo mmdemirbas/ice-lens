@@ -21,7 +21,53 @@ data class LiveFile(
      * Always false for Iceberg, which has no such file.
      */
     val partial: Boolean = false,
+    /**
+     * The partition the file is in, decoded, as `name=value` pairs — `""` for an unpartitioned
+     * table, null where the tuple could not be decoded.
+     */
+    val partition: String? = null,
 )
+
+/** One partition's share of a snapshot, folded from its live files — see [partitionBreakdown]. */
+data class PartitionShare(
+    val partition: String,
+    val dataFileCount: Int,
+    val dataRecordCount: Long,
+    val dataSizeBytes: Long,
+    val deleteFileCount: Int,
+    val deleteRecordCount: Long,
+) {
+    /** `dataFileCount` including delete files: what a scan of this partition opens. */
+    val fileCount: Int get() = dataFileCount + deleteFileCount
+}
+
+/**
+ * The live files grouped by partition, largest data first — the question Iceberg's `.partitions`
+ * metadata table answers, folded here from the same [LiveFile] set the comparison and the
+ * table's `current` figures come from, so it cannot disagree with them. A Paimon patch file
+ * (see [LiveFile.partial]) is a file in its partition and its rows are excluded, the same
+ * reading as [partialRows]. Files whose partition could not be decoded are grouped under
+ * [UNDECODED_PARTITION] rather than dropped, since a partition that silently loses its files
+ * is the one kind of wrong this section must not be.
+ */
+fun List<LiveFile>.partitionBreakdown(): List<PartitionShare> =
+    groupBy { it.partition ?: UNDECODED_PARTITION }
+        .map { (partition, files) ->
+            val data = files.filter { it.content == DataFileContent.DATA }
+            val deletes = files.filter { it.content != DataFileContent.DATA }
+            PartitionShare(
+                partition = partition,
+                dataFileCount = data.size,
+                dataRecordCount = data.filter { !it.partial }.sumOf { it.recordCount },
+                dataSizeBytes = data.sumOf { it.sizeBytes },
+                deleteFileCount = deletes.size,
+                deleteRecordCount = deletes.sumOf { it.recordCount },
+            )
+        }
+        .sortedWith(compareByDescending<PartitionShare> { it.dataSizeBytes }.thenBy { it.partition })
+
+/** The group [partitionBreakdown] puts a file under when its partition tuple did not decode. */
+const val UNDECODED_PARTITION = "(partition not decoded)"
 
 /**
  * Which side of a comparison a file is on.
@@ -110,6 +156,8 @@ private fun LiveFile.asStats(): ContentStats = when (content) {
 fun liveFilesOf(snapshot: UnifiedSnapshot): List<LiveFile> {
     val seen = mutableSetOf<String>()
     return snapshot.manifests.flatMap { manifest ->
+        // The ledger answers one contribution per entry, in order, so the entry's decoded
+        // partition is read back beside it by position.
         manifestLedger(
             entries = manifest.dataFiles.map { unified ->
                 val recorded = unified.metadata.dataFile?.filePath?.takeIf { it.isNotBlank() }
@@ -121,14 +169,16 @@ fun liveFilesOf(snapshot: UnifiedSnapshot): List<LiveFile> {
             },
             liveEntriesOnly = true,
             seenFileKeys = seen,
-        ).filter { it.fate == EntryFate.COUNTED }
-            .map { entry ->
+        ).zip(manifest.dataFiles)
+            .filter { (entry, _) -> entry.fate == EntryFate.COUNTED }
+            .map { (entry, unified) ->
                 LiveFile(
                     path = entry.filePath,
                     content = entry.content,
                     recordCount = entry.recordCount,
                     sizeBytes = entry.sizeBytes,
                     chargedSizeBytes = entry.chargedSizeBytes,
+                    partition = unified.partition?.path,
                 )
             }
     }

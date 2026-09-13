@@ -88,6 +88,9 @@ import model.describeRowIds
 import model.snapshotHistory
 import model.SnapshotLogKind
 import model.partialRows
+import model.partitionBreakdown
+import model.UNDECODED_PARTITION
+import model.LiveFile
 import model.describe
 import model.PaimonFileSource
 import model.paimonManifestTallies
@@ -1752,6 +1755,8 @@ fun NodeDetailsContent(
 
                         TotalsSection(node)
 
+                        PartitionsSection(node)
+
                         DeleteReachSection(node, children)
 
                         if (node.data.summary.isNotEmpty()) {
@@ -2502,6 +2507,7 @@ fun NodeDetailsContent(
                             DetailRow("Next Row ID", "${node.data.nextRowId ?: "not recorded"}")
                         }
                         PaimonRecordsSection(node)
+                        PartitionsSection(node)
                         PaimonIndexFilesSection(node)
                         PaimonStatisticsSection(node)
                         RecursiveDataTableSection(node = node, graphModel = currentGraph)
@@ -4024,6 +4030,67 @@ private fun DeleteReachSection(node: GraphNode.SnapshotNode, children: List<Grap
  * whole closure, which is the walk the two-snapshot comparison runs and is read off the node's
  * deferred live set so a panel opened twice walks it once.
  */
+/**
+ * The snapshot's live files by partition, largest first — what Iceberg's `.partitions` metadata
+ * table answers, folded from the same [LiveFile] set the totals above and the comparison use.
+ * Format-agnostic through [ComparableSnapshot], because "how is this table skewed" is the same
+ * question of either. The walk is the one [TotalsSection] already ran, so this costs no read.
+ */
+@Composable
+private fun PartitionsSection(snapshot: ComparableSnapshot) {
+    val colors = MaterialTheme.colorScheme
+    val live = snapshot.liveFiles
+    val shares = live?.partitionBreakdown().orEmpty()
+    val unpartitioned = shares.size == 1 && shares.single().partition.isEmpty()
+    CountedSection("Partitions", shares.size, "partitions") {
+        when {
+            live == null -> Text(
+                "Not readable here — this snapshot's manifests are not retained.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+            )
+            shares.isEmpty() -> Text("No live files.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            unpartitioned -> {
+                val only = shares.single()
+                Text(
+                    "Unpartitioned: ${formatCount(only.dataFileCount.toLong())} data files, " +
+                        "${formatCount(only.dataRecordCount)} records, ${formatBytes(only.dataSizeBytes)}" +
+                        (if (only.deleteFileCount > 0) ", ${formatCount(only.deleteFileCount.toLong())} delete files" else "") + ".",
+                    fontSize = TypeScale.small,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+            else -> {
+                val largest = shares.first()
+                val totalBytes = shares.sumOf { it.dataSizeBytes }
+                Text(
+                    "Largest: ${largest.partition} — ${formatBytes(largest.dataSizeBytes)} of ${formatBytes(totalBytes)}" +
+                        (if (totalBytes > 0) " (${largest.dataSizeBytes * 100 / totalBytes}%)" else "") +
+                        " across ${formatCount(shares.size.toLong())} partitions.",
+                    fontSize = TypeScale.small,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                WideTable(
+                    headers = listOf("Partition", "Data Files", "Records", "Bytes", "Delete Files", "Delete Records"),
+                    columnWidths = listOf(300.dp, 90.dp, 110.dp, 110.dp, 100.dp, 120.dp),
+                    rows = shares.map { share ->
+                        listOf(
+                            share.partition,
+                            formatCount(share.dataFileCount.toLong()),
+                            formatCount(share.dataRecordCount),
+                            formatBytes(share.dataSizeBytes),
+                            formatCount(share.deleteFileCount.toLong()),
+                            formatCount(share.deleteRecordCount),
+                        )
+                    },
+                    leadCellColors = shares.map { if (it.partition == UNDECODED_PARTITION) colors.error else null },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun TotalsSection(node: GraphNode.SnapshotNode) {
     val colors = MaterialTheme.colorScheme

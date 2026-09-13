@@ -88,6 +88,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before it.
 
 ### Added
+- **A snapshot lists its live files by partition.** A `Partitions` section on both formats'
+  snapshot panels — data files, records, bytes, delete files and delete records per partition,
+  largest first, with the largest's share of the bytes stated above the table — folded from the
+  same live set the totals and the comparison use, so the three cannot disagree. It is held to the
+  partition statistics file Iceberg 1.10 wrote for `pstats` and to what `paimon-pt.sql` put in
+  each partition of `pt`.
 - **A rollback is shown as one.** A snapshot-log entry naming a snapshot the log already holds is
   `main set back to it — left behind: <ids>` in the metadata panel, leading the row and coloured,
   with an `Ancestor of Current` column that matches Iceberg's `.history`; the commit it stranded

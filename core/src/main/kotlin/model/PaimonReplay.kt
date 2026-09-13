@@ -11,15 +11,18 @@ package model
  */
 data class PaimonReplay(
     val contributions: List<ManifestContribution>,
-    /** File key to its metadata, in the order the replay last wrote each one. */
-    val liveFiles: Map<String, PaimonDataFileMeta?>,
+    /** The entries the replay ends holding, by file key, in the order it last wrote each one. */
+    val liveEntries: Map<String, PaimonUnifiedDataFile>,
     /**
      * Per-entry detail for the one manifest that was asked for, in apply order. Empty otherwise.
      *
      * See [replayPaimonSnapshot]'s `traceFor` for why this is one manifest rather than all of them.
      */
     val trace: List<PaimonEntryTrace> = emptyList(),
-)
+) {
+    /** File key to its metadata — [liveEntries] without the entry around each. */
+    val liveFiles: Map<String, PaimonDataFileMeta?> by lazy { liveEntries.mapValues { it.value.metadata.file } }
+}
 
 /**
  * What one Paimon manifest entry did to the live set when the replay reached it.
@@ -104,7 +107,7 @@ fun replayPaimonSnapshot(
 ): PaimonReplay {
     if (snapshot == null) return PaimonReplay(emptyList(), emptyMap())
 
-    val liveFiles = LinkedHashMap<String, PaimonDataFileMeta?>()
+    val liveFiles = LinkedHashMap<String, PaimonUnifiedDataFile>()
     val countedManifests = mutableMapOf<String, String>()
     val contributions = mutableListOf<ManifestContribution>()
     val trace = mutableListOf<PaimonEntryTrace>()
@@ -139,7 +142,7 @@ fun replayPaimonSnapshot(
                 // containsKey rather than the result of remove/put: the map's value type is itself
                 // nullable, so a null return cannot tell "absent" from "present, no metadata" and
                 // the running totals would drift on files with no meta block.
-                val previous = if (wasLive) liveFiles[fileKey] else null
+                val previous = if (wasLive) liveFiles[fileKey]?.metadata?.file else null
                 val filesAtEntry = liveFiles.size
                 val recordsAtEntry = liveRecords
                 val bytesAtEntry = liveBytes
@@ -154,7 +157,7 @@ fun replayPaimonSnapshot(
                     liveFiles.remove(fileKey)
                 } else {
                     if (wasLive) suppressed++
-                    liveFiles[fileKey] = entry.metadata.file
+                    liveFiles[fileKey] = entry
                     liveRecords += entry.metadata.file?.rowCount ?: 0L
                     liveBytes += entry.metadata.file?.fileSize ?: 0L
                 }
@@ -217,13 +220,16 @@ fun replayPaimonSnapshot(
  * by definition rather than by inspection — a removal is an entry kind, not a file.
  */
 fun paimonLiveFilesOf(snapshot: PaimonUnifiedSnapshot?): List<LiveFile> =
-    replayPaimonSnapshot(snapshot).liveFiles.map { (key, meta) ->
+    replayPaimonSnapshot(snapshot).liveEntries.map { (key, entry) ->
+        val meta = entry.metadata.file
         LiveFile(
             path = meta?.fileName?.takeIf { it.isNotBlank() } ?: key,
             content = DataFileContent.DATA,
             recordCount = meta?.rowCount ?: 0L,
             sizeBytes = meta?.fileSize ?: 0L,
             partial = meta?.writeCols != null,
+            // The decoded form, not the directory's: a DATE partitions as its epoch day on disk.
+            partition = entry.partition?.display,
         )
     }
 
