@@ -506,6 +506,12 @@ sealed class GraphNode(
          */
         val defaultSortOrder: SortOrder? = null,
         /**
+         * Every field any of the table's schemas has defined, newest definition winning — what a
+         * bound keyed by a field the manifest's schema lacks is named and typed by. See
+         * [columnStatsFor].
+         */
+        val tableFieldsById: Map<Int, NestedField> = emptyMap(),
+        /**
          * The sequence number of the manifest this entry came from, so the entry's own can be
          * inherited from it — see [effectiveSequenceNumber] for why a null entry value is not
          * "unknown". Carried on the node because the builder has it and the panel does not: the
@@ -553,7 +559,7 @@ sealed class GraphNode(
         val sequenceDefaulted: Boolean get() = entry.sequenceNumber == null && manifestSequenceNumber == null
 
         /** Per-column statistics with bounds decoded against [schema]. */
-        val columnStats: List<ColumnStats> by lazy { columnStatsFor(data, schema) }
+        val columnStats: List<ColumnStats> by lazy { columnStatsFor(data, schema, tableFieldsById) }
 
         /**
          * True when this delete file is a v3 deletion vector rather than a v2 delete file.

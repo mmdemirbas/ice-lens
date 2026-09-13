@@ -235,6 +235,24 @@ private fun collectFields(type: IcebergType, into: MutableMap<Int, NestedField>)
     }
 }
 
+/**
+ * A metadata.json `schemas` entry as the same model a manifest's schema is parsed into, so the
+ * two can answer the same questions. A field whose id, name or type is missing is left out
+ * rather than failing the schema, the way [parseNestedField] does.
+ */
+fun tableSchemaModel(schema: TableSchema): IcebergSchemaModel = IcebergSchemaModel(
+    schemaId = schema.schemaId,
+    struct = IcebergType.StructType(
+        schema.fields.mapNotNull { field ->
+            val id = field.id ?: return@mapNotNull null
+            val name = field.name ?: return@mapNotNull null
+            val type = field.type?.let { parseIcebergType(it) } ?: return@mapNotNull null
+            NestedField(id = id, name = name, type = type, required = field.required ?: false)
+        },
+    ),
+    identifierFieldIds = schema.identifierFieldIds.toSet(),
+)
+
 /** Parses the `schema` JSON a manifest carries in its Avro file metadata, or a metadata.json schema. */
 fun parseIcebergSchema(json: String): IcebergSchemaModel? = runCatching {
     val obj = Json.parseToJsonElement(json).jsonObject

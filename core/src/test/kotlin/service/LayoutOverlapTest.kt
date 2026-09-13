@@ -78,7 +78,7 @@ class LayoutOverlapTest {
      */
     @Test
     fun `no two nodes in one column overlap, whatever their kinds`() {
-        val icebergFixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "stats", "branched3", "expired", "maint", "v1", "extdata", "sorted")
+        val icebergFixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "stats", "branched3", "expired", "maint", "v1", "extdata", "sorted", "promoted")
         val paimonFixtures = listOf("test", "dv", "cl", "tg", "pt", "ao", "br", "cs", "fi", "ep", "rt", "sm", "se")
         val models = icebergFixtures.map(::iceberg) + paimonFixtures.map(::paimon)
         listOf(3, 24).forEach { pageSize ->

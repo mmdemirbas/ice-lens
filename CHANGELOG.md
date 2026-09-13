@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   node and in the inspector, tooltip and IDE tree too.
 
 ### Fixed
+- **A bound written before its column was widened, listed by a manifest rewritten after, reads as
+  the value it is.** `rewrite_manifests` copies a file's bounds verbatim under the table's current
+  schema, so a four-byte `int` bound sat under a `long` and was reported as `expected 8 bytes for
+  long, got 4`. It is read at the width it was written now — the spec's two promotions, `int → long`
+  and `float → double`, the same tolerance Iceberg's own reader has — and the panel prints
+  `1 (written as int)`. A bound for a column the manifest's schema has dropped is named and typed
+  by the newest table schema that had it, marked `(dropped)`, where the panel printed `field 2`
+  with the bytes undecoded. `promoted` is the fixture.
 - **A Paimon data file written under an older schema than the manifest listing it keeps its
   bounds.** Key and value statistics were decoded against the manifest's `_SCHEMA_ID`; a
   compaction's delta manifest, written under the new schema, records the old-schema files it

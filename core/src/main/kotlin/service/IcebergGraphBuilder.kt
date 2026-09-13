@@ -44,6 +44,12 @@ object IcebergGraphBuilder {
         val sortOrdersById = newestMetadata?.sortOrders.orEmpty()
             .mapNotNull { order -> order.orderId?.let { it to order } }.toMap()
         val defaultSortOrder = newestMetadata?.defaultSortOrderId?.let { sortOrdersById[it] }
+        // Every field the table has ever defined, the newest definition of each id winning — so a
+        // bound for a column dropped before its manifest was rewritten still has a name and a type.
+        val tableFieldsById = newestMetadata?.schemas.orEmpty()
+            .sortedBy { it.schemaId ?: -1 }
+            .flatMap { tableSchema -> tableSchemaModel(tableSchema).fieldsById.values }
+            .associateBy { it.id }
         logicalNodes[tableNodeId] = GraphNode.TableNode(
             tableNodeId,
             tableSummary,
@@ -266,6 +272,7 @@ object IcebergGraphBuilder {
                                         pathResolution = unifiedDataFile.pathResolution,
                                         sortOrder = dataFile.sortOrderId?.let { sortOrdersById[it.toInt()] },
                                         defaultSortOrder = defaultSortOrder,
+                                        tableFieldsById = tableFieldsById,
                                         manifestSequenceNumber = unifiedManifest.metadata.sequenceNumber,
                                         deletionVectorLoader = deletionVectorLoader(dataFile, unifiedDataFile.path),
                                     )

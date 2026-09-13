@@ -314,6 +314,23 @@ class InspectorRenderTest {
     }
 
     /**
+     * A data file listed by a manifest rewritten after its columns were widened and one dropped.
+     * Three things the Column Statistics table has to say at once: `1 (written as int)` for a
+     * four-byte bound under a long, the same for a float under a double, and `label (dropped)`
+     * with `alpha..bravo` decoded for a field the manifest's schema does not have — where the
+     * panel used to print a decode failure and a bare `field 2`.
+     */
+    @Test
+    fun `a file under a rewritten manifest reads its promoted and dropped bounds`() {
+        val graph = graphFor("promoted")
+        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+            .firstOrNull { node -> node.columnStats.any { it.dropped } }
+        assertNotNull(file, "the promoted fixture's rewritten manifest lists a file with a dropped column's bound")
+        assertEquals(model.IcebergType.IntType, file.columnStats.single { it.fieldId == 1 }.lowerBound?.writtenAs)
+        renderInspector(graph, file.id, "file-node-promoted", height = 2400)
+    }
+
+    /**
      * A snapshot expiry dropped, drawn as what it is rather than as a read error.
      *
      * The card says so in its eyebrow and the panel says so in an identity row, above a summary

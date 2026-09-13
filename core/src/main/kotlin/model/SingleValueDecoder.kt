@@ -25,6 +25,12 @@ data class DecodedValue(
     val raw: ByteArray,
     /** Set when the bytes could not be decoded as [type]; [display] then holds the hex. */
     val error: String? = null,
+    /**
+     * The narrower type the bytes were written as, when [type] is its promotion — an `int` bound
+     * under a field since widened to `long`, a `float` under a `double`. The value is the same
+     * number either way; this says which encoding it came from, so the panel can.
+     */
+    val writtenAs: IcebergType? = null,
 ) {
     val isError: Boolean get() = error != null
 
@@ -32,7 +38,7 @@ data class DecodedValue(
         if (this === other) return true
         if (other !is DecodedValue) return false
         return display == other.display && value == other.value && type == other.type &&
-            raw.contentEquals(other.raw) && error == other.error
+            raw.contentEquals(other.raw) && error == other.error && writtenAs == other.writtenAs
     }
 
     override fun hashCode(): Int {
@@ -97,11 +103,23 @@ fun decodeSingleValue(bytes: ByteArray, type: IcebergType): DecodedValue {
 
             is IcebergType.IntType -> requireSize(4)?.let(::bad) ?: le().int.let { ok(it.toString(), it) }
 
-            is IcebergType.LongType -> requireSize(8)?.let(::bad) ?: le().long.let { ok(it.toString(), it) }
+            // Four bytes under a long, or under a double, is a bound written before the column
+            // was promoted (spec: int → long, float → double). A manifest written afterwards —
+            // by `rewrite_manifests`, say — carries the file's bytes as they were under a schema
+            // that says the wider type, and Iceberg's own `Conversions.fromByteBuffer` reads the
+            // narrower encoding and widens. Refusing it would report the writer's correct bound
+            // as a decode failure — the `promoted` fixture.
+            is IcebergType.LongType -> when (bytes.size) {
+                4 -> le().int.toLong().let { DecodedValue(it.toString(), it, type, bytes, writtenAs = IcebergType.IntType) }
+                else -> requireSize(8)?.let(::bad) ?: le().long.let { ok(it.toString(), it) }
+            }
 
             is IcebergType.FloatType -> requireSize(4)?.let(::bad) ?: le().float.let { ok(formatFloat(it.toDouble()), it) }
 
-            is IcebergType.DoubleType -> requireSize(8)?.let(::bad) ?: le().double.let { ok(formatFloat(it), it) }
+            is IcebergType.DoubleType -> when (bytes.size) {
+                4 -> le().float.toDouble().let { DecodedValue(formatFloat(it), it, type, bytes, writtenAs = IcebergType.FloatType) }
+                else -> requireSize(8)?.let(::bad) ?: le().double.let { ok(formatFloat(it), it) }
+            }
 
             is IcebergType.DateType -> requireSize(4)?.let(::bad) ?: le().int.let { days ->
                 val date = LocalDate.ofEpochDay(days.toLong())

@@ -578,6 +578,24 @@ intellij/src/main/kotlin/plugin/
 - **The partition spec comes from the manifest, not from `metadata.json`** — same rule as the
   schema for bounds. A repartitioned table describes each file by the spec in force when it was
   written, and using the current spec mis-decodes silently
+- **The manifest's schema is right for a file written under it, and a rewritten manifest lists
+  files that were not.** `rewrite_manifests` writes every live entry into a manifest under the
+  table's *current* schema and copies each file's bounds verbatim — bytes keyed by field id — so a
+  file written before `int → long` sits under a schema that says `long` with four-byte bounds, and
+  a file written before a `DROP COLUMN` carries a bound for a field id that schema no longer has.
+  Two rules follow, and `promoted` (`evolved` plus a rewrite) is the oracle for both.
+  `decodeSingleValue` reads four bytes under a `long` as an `int` and under a `double` as a
+  `float` and widens, which is what Iceberg's own `Conversions.fromByteBuffer` does ("type was
+  later promoted"); `DecodedValue.writtenAs` says which width it came from and the panel prints
+  `1 (written as int)`. Only those two, because they are the spec's promotions and the value is the
+  same number either way — two bytes is still a failure, and a four-byte timestamp is not read as
+  anything. And a field the manifest's schema lacks is named and typed by **the newest table
+  schema that had it** (`FileNode.tableFieldsById`, every field any `metadata.json` schema
+  defined, newest definition winning — `label`, not `name`, for a column renamed and then
+  dropped), with `ColumnStats.dropped` set so the panel says `label (dropped)`. That type is safe
+  to decode with because a type only ever widens, so the newest definition is the widest. The
+  fallback answers *only* where the manifest's schema does not, so `evolved` decodes exactly as
+  before
 - **A null sequence number on an entry means "the manifest's", never "unknown".** Iceberg inherits
   it: an entry written by the commit that wrote its manifest stores nothing, because every entry
   that commit adds shares one number, and only an entry *carried forward* records one of its own.
@@ -1211,7 +1229,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~934 tests across 108 files (703 in :core, 226 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
+~940 tests across 109 files (708 in :core, 227 in :desktop, 5 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1294,6 +1312,7 @@ container invocation and the traps in it:
 | `default/eqdel` | `EqualityDeleteFixtureTest` | both delete kinds in one table |
 | `default/v3` | `FormatV3FixtureTest` | format-version 3 with deletion vectors |
 | `default/evolved` | `SchemaEvolutionFixtureTest` | three manifest schemas — `int`→`long`, `float`→`double`, a rename and a drop |
+| `default/promoted` | `PromotedBoundsFixtureTest` | `evolved` then `rewrite_manifests` — one manifest under the current schema carrying four-byte bounds under `long`/`double` and a bound for a dropped field |
 | `default/respec` | `PartitionSpecEvolutionTest` | two partition specs — dropped, rebucketed, `days`→`months` |
 | `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |

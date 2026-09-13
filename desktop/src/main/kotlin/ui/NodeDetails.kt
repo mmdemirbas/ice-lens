@@ -157,7 +157,9 @@ private fun kvBytes(values: List<KeyValuePairBytes>?): String =
 private fun boundDisplay(bound: DecodedValue?): String = when {
     bound == null -> "N/A"
     bound.isError -> "${bound.display} — ${bound.error}"
-    else -> bound.display
+    // The bytes are the narrower type's; the value is the same number, and the reader checking
+    // it against the raw column needs to know which width to read the hex as.
+    else -> bound.writtenAs?.let { "${bound.display} (written as ${it.typeName})" } ?: bound.display
 }
 
 /**
@@ -2166,8 +2168,13 @@ fun NodeDetailsContent(
                                             "schema this manifest carries under its own Avro `schema` key — the " +
                                             "manifest's schema, not the table's current one, because a file " +
                                             "written before a column was widened still describes itself by the " +
-                                            "type in force then. The field id and the bytes sit next to each " +
-                                            "decoded value so the reading can be checked rather than trusted."
+                                            "type in force then. A manifest rewritten after the widening carries " +
+                                            "the file's bytes as written, so a four-byte bound under a long or a " +
+                                            "double is read at the width it was written and says so; a field the " +
+                                            "manifest's schema lacks was dropped before the manifest was written, " +
+                                            "and is named by the table schema that last had it. The field id and " +
+                                            "the bytes sit next to each decoded value so the reading can be " +
+                                            "checked rather than trusted."
                                     },
                                     fontSize = TypeScale.small,
                                     color = colors.onSurfaceVariant,
@@ -2189,7 +2196,9 @@ fun NodeDetailsContent(
                                     ),
                                     rows = columnStats.map { stat ->
                                         listOf(
-                                            stat.displayName,
+                                            // A column the manifest's schema lacks is named by the
+                                            // table schema that last had it, and says so.
+                                            stat.displayName + if (stat.dropped) " (dropped)" else "",
                                             "${stat.fieldId}",
                                             stat.type?.typeName ?: "unknown",
                                             boundDisplay(stat.lowerBound),

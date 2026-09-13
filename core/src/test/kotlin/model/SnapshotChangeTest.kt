@@ -42,7 +42,7 @@ class SnapshotChangeTest {
             .filterNot { it.expired }
             .sortedBy { it.metadata.timestampMs }
 
-    private val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "expired", "maint", "v1", "extdata", "sorted")
+    private val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "expired", "maint", "v1", "extdata", "sorted", "promoted")
 
     /**
      * The whole point, across every checked-in table: what the manifests say a commit did has to

@@ -10,7 +10,10 @@ package model
  * turns "what does this file contain" from an exercise in cross-referencing into a table.
  *
  * [type] and [columnName] come from the schema the *manifest* carries, so a file written before a
- * schema change is described by the schema it was actually written against.
+ * schema change is described by the schema it was actually written against. A field that schema
+ * lacks is one the table dropped before the manifest was written — a `rewrite_manifests` after a
+ * `DROP COLUMN` carries the file's bound for it — and is then described by the newest table
+ * schema that still had it, with [dropped] set so the panel can say so.
  */
 data class ColumnStats(
     val fieldId: Int,
@@ -22,8 +25,10 @@ data class ColumnStats(
     val nullValueCount: Long?,
     val nanValueCount: Long?,
     val columnSizeBytes: Long?,
+    /** The manifest's schema lacks this field; name and type came from an older table schema. */
+    val dropped: Boolean = false,
 ) {
-    /** Display name, falling back to the field id when the schema does not describe it. */
+    /** Display name, falling back to the field id when no schema describes it. */
     val displayName: String get() = columnName ?: "field $fieldId"
 
     /**
@@ -39,9 +44,16 @@ data class ColumnStats(
  *
  * [schema] should be the one carried by the manifest holding this entry. Passing null still
  * produces rows — counts and sizes need no type — but bounds are left undecoded, which is
- * honest about what is known rather than guessing a type.
+ * honest about what is known rather than guessing a type. [tableFieldsById] is every field any
+ * of the table's schemas has defined, newest definition winning; it answers only for a field the
+ * manifest's schema lacks, and a type from there is safe to decode with because Iceberg lets a
+ * type change only by widening, so the newest definition is the widest.
  */
-fun columnStatsFor(dataFile: DataFile, schema: IcebergSchemaModel?): List<ColumnStats> {
+fun columnStatsFor(
+    dataFile: DataFile,
+    schema: IcebergSchemaModel?,
+    tableFieldsById: Map<Int, NestedField> = emptyMap(),
+): List<ColumnStats> {
     fun longsById(pairs: List<KeyValuePairLong>?): Map<Int, Long> =
         pairs?.associate { it.key to it.value }.orEmpty()
 
@@ -61,10 +73,13 @@ fun columnStatsFor(dataFile: DataFile, schema: IcebergSchemaModel?): List<Column
         .toSortedSet()
 
     return fieldIds.map { fieldId ->
-        val type = schema?.typeOf(fieldId)
+        val inManifestSchema = schema?.fieldsById?.get(fieldId)
+        val droppedField = if (inManifestSchema == null) tableFieldsById[fieldId] else null
+        val field = inManifestSchema ?: droppedField
+        val type = field?.type
         ColumnStats(
             fieldId = fieldId,
-            columnName = schema?.nameOf(fieldId),
+            columnName = field?.name,
             type = type,
             lowerBound = lowers[fieldId]?.let { bytes -> type?.let { decodeSingleValue(bytes, it) } },
             upperBound = uppers[fieldId]?.let { bytes -> type?.let { decodeSingleValue(bytes, it) } },
@@ -72,6 +87,7 @@ fun columnStatsFor(dataFile: DataFile, schema: IcebergSchemaModel?): List<Column
             nullValueCount = nulls[fieldId],
             nanValueCount = nans[fieldId],
             columnSizeBytes = sizes[fieldId],
+            dropped = droppedField != null,
         )
     }
 }

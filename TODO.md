@@ -308,6 +308,7 @@ What is left:
   | `default/eqdel` | both delete kinds in one table — one positional and one equality delete file, the latter written with Iceberg's own `EqualityDeleteWriter` |
   | `default/v3` | format-version 3 with two deletion vectors (Puffin), the v3 representation of what `mor` carries as parquet |
   | `default/evolved` | three manifest schemas in one table — `int`→`long`, `float`→`double`, a column renamed then dropped, one added |
+  | `default/promoted` | `evolved` then `rewrite_manifests` — every live file under one manifest with the current schema; the schema-0 file's `id` and `amount` bounds are four bytes under `long` and `double`, and its `name` bound is keyed by a field the schema dropped |
   | `default/respec` | two partition specs in one table — a dropped field, a rebucketed one, `days` replaced by `months` |
   | `default/branched` | a fork, four refs across five commits, one snapshot with two, and ten metadata versions |
   | `default/stats` | a Puffin statistics file — four theta sketches, one per column |

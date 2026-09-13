@@ -42,6 +42,28 @@ class SingleValueDecoderTest {
         assertEquals(big.toString(), decodeSingleValue(le({ putLong(big) }, 8), IcebergType.LongType).display)
     }
 
+    /**
+     * Spec promotions: a bound written as `int` under a field since widened to `long` keeps its
+     * four bytes when a manifest is rewritten under the new schema, and Iceberg's own
+     * `Conversions.fromByteBuffer` reads it at four and widens. Same for `float` under `double`.
+     * The decoded value says which width it came from; every other width is still a failure.
+     */
+    @Test
+    fun `a four-byte bound under a promoted long or double is read at the width it was written`() {
+        val asLong = decodeSingleValue(le({ putInt(2) }, 4), IcebergType.LongType)
+        assertEquals("2", asLong.display)
+        assertEquals(2L, asLong.value)
+        assertEquals(IcebergType.IntType, asLong.writtenAs)
+        assertNull(asLong.error)
+        val asDouble = decodeSingleValue(le({ putFloat(2.5f) }, 4), IcebergType.DoubleType)
+        assertEquals("2.5", asDouble.display)
+        assertEquals(2.5, asDouble.value)
+        assertEquals(IcebergType.FloatType, asDouble.writtenAs)
+        assertNull(decodeSingleValue(le({ putLong(2) }, 8), IcebergType.LongType).writtenAs, "eight bytes is the type's own width")
+        assertTrue(decodeSingleValue(le({ putShort(2) }, 2), IcebergType.LongType).isError, "two bytes is neither width")
+        assertTrue(decodeSingleValue(le({ putInt(2) }, 4), IcebergType.TimestampType(false)).isError, "int → timestamp is not a promotion")
+    }
+
     @Test
     fun `negative int round-trips`() {
         assertEquals("-42", decodeSingleValue(le({ putInt(-42) }, 4), IcebergType.IntType).display)

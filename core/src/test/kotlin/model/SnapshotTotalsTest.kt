@@ -17,7 +17,7 @@ class SnapshotTotalsTest {
     private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }
         .first { File(it, "settings.gradle.kts").isFile }
 
-    private val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "stats", "branched3", "expired", "maint", "v1", "extdata", "sorted")
+    private val fixtures = listOf("test", "parted", "mor", "eqdel", "v3", "evolved", "respec", "branched", "stats", "branched3", "expired", "maint", "v1", "extdata", "sorted", "promoted")
 
     private fun table(name: String) =
         UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/$name").absolutePath))
