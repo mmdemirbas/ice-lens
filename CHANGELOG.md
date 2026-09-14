@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The table panel's second click under `Integrity` opens the statistics files too.** Each
+  Iceberg statistics file's Puffin footer is put against the blob records in `metadata.json`,
+  each partition statistics file's size and rows against its record and the live files of its
+  snapshot, and a file that cannot be opened is named with the reason — the case an orphan
+  cleanup produces and nothing on the read path notices.
 - **A Paimon row says what a read returns for it when the schema has moved on since the file.**
   The row panel's `Read As` projects a Paimon file's cells onto the latest schema by the field
   ids the file's own schema gives its columns — a renamed column under its new name, an added

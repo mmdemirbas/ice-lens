@@ -97,11 +97,19 @@ data class PartitionStatsVerdict(
     val recorded: PartitionStatsRow?,
     /** The fold over the live files, or null for a partition the file lists that holds no live file. */
     val counted: PartitionShare?,
-    /** `data files: 3 recorded, 2 counted` — one entry per figure that differs. */
-    val disagreements: List<String>,
+    /** One entry per figure that differs. */
+    val differences: List<FigureDifference>,
 ) {
-    val agrees: Boolean get() = recorded != null && counted != null && disagreements.isEmpty()
+    /** `data files: 3 recorded, 2 counted` — the differences as the panel prints them. */
+    val disagreements: List<String> get() = differences.map { "${it.figure}: ${it.recorded} recorded, ${it.counted} counted" }
+    val agrees: Boolean get() = recorded != null && counted != null && differences.isEmpty()
 }
+
+/** A figure the file and the live set disagree on. */
+data class FigureDifference(val figure: String, val recorded: Long, val counted: Long)
+
+/** The figures [checkPartitionStatistics] compares per partition both sides know. */
+const val PARTITION_STATS_FIGURES = 7
 
 /** Every partition either side knows, in the file's order then the live set's — see [PartitionStatsVerdict]. */
 fun checkPartitionStatistics(rows: List<PartitionStatsRow>, live: List<LiveFile>): List<PartitionStatsVerdict> {
@@ -114,7 +122,7 @@ fun checkPartitionStatistics(rows: List<PartitionStatsRow>, live: List<LiveFile>
         val differences = if (row == null || share == null) emptyList() else buildList {
             fun check(label: String, recordedValue: Number?, countedValue: Number) {
                 if (recordedValue != null && recordedValue.toLong() != countedValue.toLong()) {
-                    add("$label: ${recordedValue.toLong()} recorded, ${countedValue.toLong()} counted")
+                    add(FigureDifference(label, recordedValue.toLong(), countedValue.toLong()))
                 }
             }
             check("data files", row.dataFileCount, share.dataFileCount)

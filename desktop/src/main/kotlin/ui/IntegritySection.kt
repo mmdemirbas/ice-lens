@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import model.FileStatsSweep
+import model.IntegrityFinding
+import model.StatisticsFileCheck
 import model.GraphNode
 import model.IntegrityReport
 import model.MAX_CLOSURE_CHECKS
@@ -62,13 +64,16 @@ internal fun IntegritySection(
         }
     }
     var filesRequested by remember(node.id) { mutableStateOf(readFilesRequested) }
-    val sweep by produceState<Result<FileStatsSweep>?>(null, node.id, filesRequested) {
+    val sweep by produceState<Result<FileReads>?>(null, node.id, filesRequested) {
         value = null
         if (filesRequested) {
             value = withContext(Dispatchers.IO) {
                 runCatching {
                     val targets = requireNotNull(node.fileStats.value) { "no files to read" }
-                    sweepFileStats(targets) { StatsCheckReader.check(it.localPath, it.recorded, it.recordedRows, it.nameMapping) }
+                    FileReads(
+                        sweepFileStats(targets) { StatsCheckReader.check(it.localPath, it.recorded, it.recordedRows, it.nameMapping) },
+                        node.statisticsFiles.value.orEmpty(),
+                    )
                 }
             }
             if (readFilesRequested) onSettled()
@@ -86,7 +91,7 @@ internal fun IntegritySection(
         val scope = "Manifest counts on every manifest and each commit's summary against the manifests it " +
             "wrote fold every entry once; the snapshot totals (Iceberg) and record counts (Paimon) walk a " +
             "closure per snapshot and stop after $MAX_CLOSURE_CHECKS, newest first. The statistics files " +
-            "are checked on their own panels, since each is a file read."
+            "and the data files are file reads, behind the second click below."
         when {
             !requested -> {
                 Text(
@@ -139,17 +144,39 @@ internal fun IntegritySection(
     }
 }
 
-/** The second click: the current snapshot's data files read, their recorded bounds and counts against their rows. */
+/** What the second click reads: the data files' sweep and, on Iceberg, the statistics files against their records. */
+internal data class FileReads(val sweep: FileStatsSweep, val statistics: List<StatisticsFileCheck>) {
+    val findings: List<IntegrityFinding> get() = sweep.findings + statistics.flatMap { it.findings }
+    /** Files that could not be read, the data files first, each with the reason. */
+    val unreadable: List<Pair<String, String>> get() = sweep.unreadable + statistics.filter { !it.read }.map { it.name to (it.problem ?: "not read") }
+
+    /** `2 of 2 statistics files read, every one of their 5 figures agrees` — null where the metadata names none. */
+    val describeStatistics: String? get() {
+        if (statistics.isEmpty()) return null
+        val read = statistics.filter { it.read }
+        val figures = read.sumOf { it.figures }
+        val findings = statistics.sumOf { it.findings.size }
+        val opened = "${read.size} of ${formatCounted(statistics.size, "statistics file")} read"
+        return when {
+            read.isEmpty() -> opened
+            findings == 0 -> "$opened, every one of their ${formatCounted(figures, "figure")} agrees"
+            else -> "$opened, $findings of their ${formatCounted(figures, "figure")} disagree"
+        }
+    }
+}
+
+/** The second click: the current snapshot's data files read, their recorded bounds and counts against their rows — and the statistics files against their records. */
 @Composable
-private fun FileStatsStage(requested: Boolean, outcome: Result<FileStatsSweep>?, onRequest: () -> Unit) {
+private fun FileStatsStage(requested: Boolean, outcome: Result<FileReads>?, onRequest: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    val sweep = outcome?.getOrNull()
+    val reads = outcome?.getOrNull()
     when {
         !requested -> {
             Text(
                 "None of that opens a data file. Reading them puts each file's recorded bounds and counts — " +
                     "what a scan prunes on — against its rows, the file panel's own check run over the current " +
-                    "snapshot's live files, at most $MAX_FILE_STATS_CHECKS of them.",
+                    "snapshot's live files, at most $MAX_FILE_STATS_CHECKS of them; and opens each statistics " +
+                    "file the metadata names against the record it keeps of it.",
                 fontSize = TypeScale.small,
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
@@ -159,13 +186,14 @@ private fun FileStatsStage(requested: Boolean, outcome: Result<FileStatsSweep>?,
             }
         }
         outcome == null -> Text("Reading the files…", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
-        sweep == null -> Text(
+        reads == null -> Text(
             "Could not read the files: ${outcome.exceptionOrNull()?.message ?: "unknown error"}",
             fontSize = TypeScale.small,
             color = colors.error,
             modifier = Modifier.padding(top = 12.dp),
         )
         else -> {
+            val sweep = reads.sweep
             Text(
                 "Data files: " + sweep.describe +
                     (if (sweep.unreadable.isNotEmpty()) "; ${formatCounted(sweep.unreadable.size, "file")} could not be read" else "") + ".",
@@ -174,23 +202,35 @@ private fun FileStatsStage(requested: Boolean, outcome: Result<FileStatsSweep>?,
                 color = if (sweep.findings.isEmpty() && sweep.unreadable.isEmpty()) colors.onSurface else colors.error,
                 modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
             )
-            if (sweep.findings.isNotEmpty()) {
-                val shown = sweep.findings.take(MAX_INTEGRITY_ROWS)
+            reads.describeStatistics?.let { line ->
+                val clean = reads.statistics.all { it.read && it.findings.isEmpty() }
+                Text(
+                    "Statistics files: $line.",
+                    fontSize = TypeScale.small,
+                    fontWeight = FontWeight.Bold,
+                    color = if (clean) colors.onSurface else colors.error,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
+            val findings = reads.findings
+            if (findings.isNotEmpty()) {
+                val shown = findings.take(MAX_INTEGRITY_ROWS)
                 WideTable(
                     headers = listOf("Figure", "Recorded", "Counted", "Where", "Check"),
                     columnWidths = listOf(190.dp, 120.dp, 120.dp, 320.dp, 150.dp),
                     rows = shown.map { listOf(it.figure, it.recorded, it.counted, it.where, it.check.label) },
                     leadCellColors = shown.map { colors.error },
                 )
-                if (sweep.findings.size > shown.size) {
-                    Text("…and ${formatCount(sweep.findings.size - shown.size)} more.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+                if (findings.size > shown.size) {
+                    Text("…and ${formatCount(findings.size - shown.size)} more.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
                 }
             }
-            for ((name, why) in sweep.unreadable.take(MAX_UNREADABLE_ROWS)) {
+            val unreadable = reads.unreadable
+            for ((name, why) in unreadable.take(MAX_UNREADABLE_ROWS)) {
                 Text("Could not read $name: $why", fontSize = TypeScale.small, color = colors.error)
             }
-            if (sweep.unreadable.size > MAX_UNREADABLE_ROWS) {
-                Text("…and ${formatCount(sweep.unreadable.size - MAX_UNREADABLE_ROWS)} more could not be read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            if (unreadable.size > MAX_UNREADABLE_ROWS) {
+                Text("…and ${formatCount(unreadable.size - MAX_UNREADABLE_ROWS)} more could not be read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
             }
         }
     }

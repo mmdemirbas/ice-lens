@@ -66,6 +66,11 @@ object IcebergGraphBuilder {
             expiryFiles = DeferredRead.of { tableModel.expiryFileInput() },
             integrity = DeferredRead.of { tableModel.integrityReport() },
             fileStats = DeferredRead.of { tableModel.fileStatsTargets() },
+            statisticsFiles = newestMetadata?.let { meta ->
+                val path = tableModel.metadatas.last().path
+                if (meta.statistics.isEmpty() && meta.partitionStatistics.isEmpty()) DeferredRead.none()
+                else DeferredRead.of { tableModel.checkStatisticsFiles(readStatisticsFooters(path, meta), readPartitionStatisticsFiles(path, meta)) }
+            } ?: DeferredRead.none(),
             rowLookup = DeferredRead.of { tableModel.rowLookupInput() },
             // Closes over `logicalNodes` like the vector index below: it is read after the
             // traversal has filled it, so the current snapshot's node is there whether or not

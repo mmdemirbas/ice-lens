@@ -26,6 +26,10 @@ enum class IntegrityCheck(val label: String) {
     RECORD_COUNTS("record counts"),
     /** A data file's recorded column bounds and counts against its rows — the file read, see [sweepFileStats]. */
     FILE_STATISTICS("file statistics"),
+    /** A statistics file's Puffin footer against the record `metadata.json` keeps of it — see [checkStatisticsFiles]. */
+    STATISTICS_FILES("statistics files"),
+    /** A partition statistics file's size and rows against the live files of its snapshot — see [checkStatisticsFiles]. */
+    PARTITION_STATISTICS("partition statistics"),
 }
 
 data class IntegrityFinding(

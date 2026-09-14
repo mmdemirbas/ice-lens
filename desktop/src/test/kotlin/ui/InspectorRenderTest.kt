@@ -2318,6 +2318,26 @@ class InspectorRenderTest {
                 IntegritySection(planted, startRequested = true, readFilesRequested = true) { plantedSettled.set(true) }
             }
         }
+
+        // `pstats` names a partition statistics file: the same click opens it against its record
+        // and the live files of its snapshot, and the stage says so on a line of its own; the
+        // disagreeing one hands the node a check whose file is gone.
+        val pstatsTable = graphFor("pstats").nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val statsSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("integrity-files-statistics", width = 1400, height = 600, ready = statsSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                IntegritySection(pstatsTable, startRequested = true, readFilesRequested = true) { statsSettled.set(true) }
+            }
+        }
+        val gone = pstatsTable.copy(statisticsFiles = DeferredRead.of {
+            requireNotNull(pstatsTable.statisticsFiles.value).map { it.copy(figures = 0, findings = emptyList(), problem = "NoSuchFileException: ${it.name}") }
+        })
+        val goneSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("integrity-files-statistics-gone", width = 1400, height = 600, ready = goneSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                IntegritySection(gone, startRequested = true, readFilesRequested = true) { goneSettled.set(true) }
+            }
+        }
     }
 
     /**

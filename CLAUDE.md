@@ -1093,13 +1093,27 @@ intellij/src/main/kotlin/plugin/
   node's panel would not. `checked` counts only pairs with both sides; a figure a writer did not
   record is not a comparison. The two checks that walk a closure per snapshot stop after
   `MAX_CLOSURE_CHECKS` (50), newest first, and the report says how far they got; the statistics
-  files stay on their own panels, being file reads, and the data files are a second click under
-  the report (`FileStatsSweep.kt`, below). It rides `TableNode.integrity` behind a
+  files and the data files are file reads, behind a second click under the report
+  (`FileStatsSweep.kt` and `StatisticsFilesCheck.kt`, below). It rides `TableNode.integrity` behind a
   click, the `UnreferencedFilesSection` shape. `IntegrityFixtureTest` holds every engine-written
   table to no findings but the two the format wrote — `tg` and `pea` each keep a tag on a
   snapshot whose changelog list the expiry deleted, so the tag's `changelogRecordCount` stands
   against nothing — and proves the report reaches the checks the other way, by changing two
-  summary figures in a copy's newest `metadata.json` and requiring exactly those two findings
+  summary figures in a copy's newest `metadata.json` and requiring exactly those two findings.
+  **The second click opens the statistics files too** (`model/StatisticsFilesCheck.kt`,
+  `TableNode.statisticsFiles`, Iceberg only): each `statistics` file's Puffin footer against
+  the blob records `metadata.json` keeps of it — an `ndv` the two disagree on, or a blob the
+  record names and the file lacks (`STATISTICS_FILES`) — and each `partition-statistics` file's
+  size on disk against `file-size-in-bytes` and its rows against the live files of the snapshot
+  it names, through the metadata panel's own `checkPartitionStatistics`
+  (`PARTITION_STATISTICS`; `PartitionStatsVerdict.differences` is structured now, the strings
+  the panel prints derived from it). A file that cannot be opened is listed with the reason
+  under the stage, which is the finding that matters: the record is a copy kept so a planner
+  never opens the file, and an orphan cleanup that deleted the file leaves nothing on the read
+  path to notice. The readers are the builder's (`readStatisticsFooters`,
+  `readPartitionStatisticsFiles`), the check takes their results, and `StatisticsFilesCheckTest`
+  holds `stats` and `pstats` to agreement, sweeps every fixture, and plants a blob dropped from
+  a footer, a partition figure moved, a partition dropped and a file gone
 - **A file's history is a third reading of the walks the suite already trusts, and it is asked
   of one file at a time.** `model/FileHistory.kt` answers the two questions a missing-file error
   raises — which commit removed it, and what still lists it live, which is what keeps it on disk
@@ -1992,7 +2006,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,218 tests across 162 files (944 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,222 tests across 163 files (948 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

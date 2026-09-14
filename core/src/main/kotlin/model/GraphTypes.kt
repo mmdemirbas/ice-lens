@@ -377,6 +377,8 @@ sealed class GraphNode(
          * the model, since aggregation folds files out of the graph and those are files all the same.
          */
         val fileStats: DeferredRead<List<FileStatsTarget>> = DeferredRead.none(),
+        /** The newest metadata's statistics files opened against their records — see [checkStatisticsFiles]; Iceberg only, read behind the same click as [fileStats]. */
+        val statisticsFiles: DeferredRead<List<StatisticsFileCheck>> = DeferredRead.none(),
         /** What finding a row in the current snapshot takes — see [RowLookupInput]. Nothing on Paimon. */
         val rowLookup: DeferredRead<RowLookupInput> = DeferredRead.none(),
         /** The same for a Paimon table's latest snapshot — see [PaimonReadInput]. Nothing on Iceberg. */

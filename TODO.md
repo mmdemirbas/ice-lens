@@ -134,10 +134,10 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   decoded in this process through the Avro library already here, which is a second row reader
   beside DuckDB's — both real work, neither started.
 
-- **The whole-table integrity check leaves the statistics-file reads out.** `model/Integrity.kt`
-  runs the metadata-only comparisons everywhere; the statistics and partition-statistics files
-  stay on the metadata panel because each is a file open (Puffin footer, DuckDB), and the two
-  closure-walking checks stop at fifty snapshots. The manifest list's `partitions` summaries are
+- **The whole-table integrity check reads the statistics files behind its second click, and
+  stops its closure walks at fifty snapshots.** `model/Integrity.kt` runs the metadata-only
+  comparisons everywhere; the statistics and partition-statistics files are opened against
+  their records behind the same click as the data files (`model/StatisticsFilesCheck.kt`). The manifest list's `partitions` summaries are
   compared now (`model/PartitionSummaryTally.kt`); a data file's own column bounds against its
   rows are checked on the file panel behind a click (`model/StatsCheck.kt`) and over the current
   snapshot's live files behind a second click under `Integrity` (`model/FileStatsSweep.kt`),
