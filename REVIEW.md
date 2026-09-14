@@ -131,10 +131,14 @@ A fresh review pass after the seven group commits surfaced four issues:
 ## Deferred items (with rationale)
 
 - **L-5 / L-9** — micro-optimizations whose return on investment requires actual profiling data we don't have.
-- **L-16** — **partly closed since.** The *periodic* scan is off the main thread now: it was
+- **L-16** — **closed since.** The *periodic* scan went off the main thread first: it was
   measured at 90ms for a thousand tables and 226ms at the 10,000-directory cap, on a three-second
   timer, which is several dropped frames every three seconds rather than a startup cost. That half
   needed no "not yet scanned" state, because a refresh has a previous answer to show. The two
-  one-off scans — `loadPersistedState` at startup and `addWorkspaceRoot` — are still on the main
-  thread, and those are the ones the original rationale applies to.
+  one-off scans followed: `addWorkspaceRoot` is `suspend` and walks on `Dispatchers.IO`, and
+  `loadPersistedState` no longer walks at all — a restored warehouse is in `AppState.unsweptRoots`
+  until the first poll's sweep lands, drawn as `scanning…`, and that sweep seeds its tables as
+  existing rather than new. One stat per local root per recomposition remains in
+  `workspaceRootStatus` (`File(path).exists()` for the `deleted` marker), which is a stat against
+  a warm cache and not a walk.
 - **L-17** — `Locale.US` pinning is consistent and matches power-user expectations.

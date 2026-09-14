@@ -111,6 +111,9 @@ class AppState(
         private set
     var warehouseTableStatuses by mutableStateOf<Map<String, Map<String, WorkspaceTableStatus>>>(emptyMap())
         private set
+    /** Warehouses restored at startup whose first sweep has not landed — drawn as scanning, and seeded as existing when it does. */
+    var unsweptRoots by mutableStateOf<Set<String>>(emptySet())
+        private set
     var singleTableStatuses by mutableStateOf<Map<String, WorkspaceTableStatus>>(emptyMap())
         private set
 
@@ -292,16 +295,15 @@ class AppState(
         // Workspace items
         val saved = prefs.get(PREF_WORKSPACE_ITEMS, "")
         val items = saved.split(";").mapNotNull { WorkspaceItem.deserialize(it) }
-        val refreshed = items.map { item ->
-            if (item is WorkspaceItem.Warehouse) {
-                item.copy(tables = scanForTables(File(item.path)))
-            } else item
-        }
-        val deduplicated = deduplicateWorkspaceItems(refreshed)
-        if (deduplicated.size != refreshed.size) {
+        // A warehouse's tables are not walked here: the first sweep does that, off the main
+        // thread, and until it lands the root is in `unsweptRoots` and drawn as scanning rather
+        // than as empty — see applyWorkspaceScan, which seeds its statuses from that first sweep.
+        val deduplicated = deduplicateWorkspaceItems(items)
+        if (deduplicated.size != items.size) {
             prefs.put(PREF_WORKSPACE_ITEMS, deduplicated.joinToString(";") { it.serialize() })
         }
         workspaceItems = deduplicated
+        unsweptRoots = deduplicated.filterIsInstance<WorkspaceItem.Warehouse>().map { it.path }.toSet()
 
         // Selected table
         selectedTablePath = prefs.get(PREF_SELECTED_TABLE_PATH, "").trim().ifBlank { null }
@@ -314,8 +316,8 @@ class AppState(
             .filter { it.isNotEmpty() }
             .toSet()
 
-        // Statuses
-        warehouseTableStatuses = initialWarehouseTableStatuses(workspaceItems)
+        // Statuses: a warehouse's come from its first sweep; a single table's is one stat.
+        warehouseTableStatuses = emptyMap()
         singleTableStatuses = workspaceItems
             .filterIsInstance<WorkspaceItem.SingleTable>()
             .associate { table ->
@@ -384,7 +386,13 @@ class AppState(
         }
     }
 
-    fun addWorkspaceRoot(path: String) {
+    /**
+     * Adds a local root. `suspend` for the reason [addRemoteWorkspaceRoot] is: "is this a table"
+     * is one stat, but "what is under it" is a directory walk — 90ms for a thousand tables, 226ms
+     * at the cap — and a click that freezes the window for it reads as a hang. The walk runs on
+     * `Dispatchers.IO`; the deciding, and every write to state, comes back to the caller's thread.
+     */
+    suspend fun addWorkspaceRoot(path: String) {
         require(!StorageLocation.isRemote(path)) {
             "A remote root is added through addRemoteWorkspaceRoot, which reads off the main thread"
         }
@@ -396,10 +404,12 @@ class AppState(
                 return
             }
 
-            val newItem = if (isTableDirectory(file)) {
-                WorkspaceItem.SingleTable(normalizedPath, file.name)
-            } else {
-                WorkspaceItem.Warehouse(normalizedPath, file.name, scanForTables(file))
+            val newItem = withContext(Dispatchers.IO) {
+                if (isTableDirectory(file)) {
+                    WorkspaceItem.SingleTable(normalizedPath, file.name)
+                } else {
+                    WorkspaceItem.Warehouse(normalizedPath, file.name, scanForTables(file))
+                }
             }
             logger.info("Adding workspace root: {} ({})", normalizedPath, newItem::class.simpleName)
             if (newItem is WorkspaceItem.Warehouse) {
@@ -565,11 +575,16 @@ class AppState(
         val nextWarehouseStatuses = refreshedItems
             .filterIsInstance<WorkspaceItem.Warehouse>()
             .associate { warehouse ->
-                warehouse.path to nextWarehouseStatuses(
+                // The first sweep of a restored root is its baseline — every table existing, none
+                // new — the way the startup walk seeded it when the walk ran here.
+                val firstSweep = warehouse.path in unsweptRoots && scan.warehouseTables.containsKey(warehouse.path)
+                warehouse.path to if (firstSweep) warehouse.tables.associateWith { WorkspaceTableStatus.EXISTING } else nextWarehouseStatuses(
                     previous = warehouseTableStatuses[warehouse.path].orEmpty(),
                     scanned = warehouse.tables,
                 )
             }
+        val swept = unsweptRoots.filter { it in scan.warehouseTables }
+        if (swept.isNotEmpty()) unsweptRoots = unsweptRoots - swept.toSet()
 
         if (hasWorkspaceUpdate) {
             workspaceItems = deduplicateWorkspaceItems(refreshedItems)

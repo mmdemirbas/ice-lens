@@ -84,8 +84,10 @@ fun App() {
                     state.saveCurrentSessionSelection()
                     state.loadTable(tablePath)
                 },
-                onAddRoot = { path -> state.addWorkspaceRoot(path) },
+                // The walk inside is on Dispatchers.IO; the state it writes is not.
+                onAddRoot = { path -> coroutineScope.launch { state.addWorkspaceRoot(path) } },
                 unreachableRoots = state.unreachableRoots,
+                unsweptRoots = state.unsweptRoots,
                 tableFormats = state.remoteTableFormats,
                 onAddRemote = { remoteDialogExisting = null; remoteDialogOpen = true },
                 onFixRemote = { item ->
@@ -379,7 +381,7 @@ fun App() {
                                 val selected = chooseDirectory(initialDir)
                                 if (selected != null) {
                                     state.updateLastBrowseDirectory(selected.parent ?: selected.absolutePath)
-                                    state.addWorkspaceRoot(selected.absolutePath)
+                                    coroutineScope.launch { state.addWorkspaceRoot(selected.absolutePath) }
                                 }
                             }) {
                                 Icon(Icons.Default.Add, contentDescription = "Add", modifier = Modifier.size(16.dp))

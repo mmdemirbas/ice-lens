@@ -1916,9 +1916,17 @@ intellij/src/main/kotlin/plugin/
   the sweep started from — otherwise a root removed mid-sweep comes back. A path *missing* from the
   scan is a root the sweep never saw, which is not the same as a warehouse with no tables, so it is
   left untouched rather than emptied. `refreshWarehouseTables()` is the two composed, kept for
-  callers where a frame is not at stake. The two remaining main-thread scans are deliberate:
-  `loadPersistedState` at startup and `addWorkspaceRoot` are one-off and user-initiated, and moving
-  them needs a "not yet scanned" state the workspace list does not have
+  callers where a frame is not at stake. **The two one-off scans are off the main thread too, and
+  the state that took is `unsweptRoots`.** `addWorkspaceRoot` is `suspend` and walks the root on
+  `Dispatchers.IO` before the item is appended; `loadPersistedState` walks nothing — a restored
+  warehouse comes back with the empty table list it was saved with and its path in
+  `AppState.unsweptRoots`, the panel draws `scanning…` under it (an empty list under a root would
+  otherwise read as a warehouse with no tables), and the first poll's sweep fills it in. That
+  first sweep is the **baseline**, not a wave of new tables: `applyWorkspaceScan` seeds every
+  table it found as `EXISTING` for a root in `unsweptRoots` and only then takes the root out of
+  the set, which is what the startup walk used to do synchronously. A sweep that did not cover
+  the root — a remote one on the slow cadence — leaves it unswept, so `scanning…` stays until a
+  sweep that did
 - **Moving a cursor must cost what the reader expects it to cost.** The canvas and the structure
   tree make the *selection* the cursor, because selecting is free there. The workspace does not:
   opening a table reads its whole metadata tree, so `workspaceKeyAction` moves a separate
@@ -2102,7 +2110,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,233 tests across 164 files (964 in :core, 260 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,234 tests across 164 files (964 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

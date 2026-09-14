@@ -215,14 +215,6 @@ fun deduplicateWorkspaceItems(items: List<WorkspaceItem>): List<WorkspaceItem> {
     }
 }
 
-fun initialWarehouseTableStatuses(items: List<WorkspaceItem>): Map<String, Map<String, WorkspaceTableStatus>> {
-    return items.asSequence()
-        .filterIsInstance<WorkspaceItem.Warehouse>()
-        .associate { warehouse ->
-            warehouse.path to warehouse.tables.associateWith { WorkspaceTableStatus.EXISTING }
-        }
-}
-
 /**
  * What one sweep of the filesystem found about the workspace roots, and nothing else.
  *

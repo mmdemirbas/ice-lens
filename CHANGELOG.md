@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Startup no longer walks the workspace on the main thread.** A restored warehouse comes back
+  with the table list it was saved with and is drawn as `scanning…` until the first poll's sweep
+  lands, which seeds every table it finds as existing rather than announcing them all as new;
+  adding a root walks it on the IO dispatcher before the item appears. The periodic sweep had
+  been off the main thread already, and these two were the scans the rationale for that applied
+  to
+
 ### Added
 - **A rename inside a struct is read.** The row lookup and the live-row count rebuild a
   file's struct by field id — `struct_pack` over the file's own column tree, a list's or a

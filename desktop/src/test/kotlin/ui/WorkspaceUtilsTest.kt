@@ -64,19 +64,6 @@ class WorkspaceUtilsTest {
     }
 
     @Test
-    fun `initialWarehouseTableStatuses creates EXISTING entries`() {
-        val items = listOf(
-            WorkspaceItem.Warehouse("/tmp/wh", "wh", tables = listOf("t1", "t2")),
-            WorkspaceItem.SingleTable("/tmp/single", "single"),
-        )
-        val result = initialWarehouseTableStatuses(items)
-        assertEquals(1, result.size)
-        val statuses = result["/tmp/wh"]!!
-        assertEquals(WorkspaceTableStatus.EXISTING, statuses["t1"])
-        assertEquals(WorkspaceTableStatus.EXISTING, statuses["t2"])
-    }
-
-    @Test
     fun `scanForTables finds iceberg tables`() {
         val tmpDir = kotlin.io.path.createTempDirectory("warehouse-test").toFile()
         try {

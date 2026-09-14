@@ -41,6 +41,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import model.GraphModel
+import model.WorkspaceItem
+import model.WorkspaceTableStatus
 import model.GraphSearch
 import model.DeferredRead
 import model.GraphNode
@@ -928,6 +930,47 @@ class InspectorRenderTest {
      * would wrap back to the first, which is how the first version of this test produced two
      * byte-identical captures and would have read as "focus draws nothing" a second time.
      */
+    /**
+     * The workspace list with a restored warehouse before its first sweep lands, beside one the
+     * sweep has covered and one the store refused — the three states a root can be in, so the
+     * "scanning" line is judged against the two it must not be mistaken for: a warehouse with no
+     * tables, and one that could not be listed.
+     */
+    @Test
+    fun `a restored warehouse says it is scanning until its first sweep lands`() {
+        // Real directories: a local root the panel cannot stat is drawn as deleted, which is a
+        // fourth state and not the one under test.
+        val wh = kotlin.io.path.createTempDirectory("ws-render").toFile()
+        try {
+            val swept = WorkspaceItem.Warehouse(File(wh, "swept").apply { mkdirs() }.path, "swept", listOf("orders", "customers"))
+            val unswept = WorkspaceItem.Warehouse(File(wh, "unswept").apply { mkdirs() }.path, "unswept", emptyList())
+            val refused = WorkspaceItem.Warehouse("s3://bucket/wh", "wh", emptyList())
+            renderScene("workspace-scanning", width = 600, height = 900) {
+                WorkspacePanel(
+                    workspaceItems = listOf(swept, unswept, refused),
+                    warehouseTableStatuses = mapOf(swept.path to swept.tables.associateWith { WorkspaceTableStatus.EXISTING }),
+                    singleTableStatuses = emptyMap(),
+                    unreachableRoots = mapOf(refused.path to "HTTP 403 (Forbidden): the key was refused"),
+                    unsweptRoots = setOf(unswept.path),
+                    selectedTablePath = null,
+                    expandedPaths = setOf(swept.path, unswept.path),
+                    onExpandedPathsChange = {},
+                    searchQuery = "",
+                    onSearchQueryChange = {},
+                    lastBrowseDirectory = null,
+                    onLastBrowseDirectoryChange = {},
+                    onTableSelect = {},
+                    onAddRoot = {},
+                    onAddRemote = {},
+                    onRemoveRoot = {},
+                    onMoveRoot = { _, _ -> },
+                )
+            }
+        } finally {
+            wh.deleteRecursively()
+        }
+    }
+
     @Test
     fun `focus is visible on the tool-window chrome`() {
         @Composable

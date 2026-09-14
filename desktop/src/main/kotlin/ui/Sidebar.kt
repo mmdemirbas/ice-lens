@@ -238,6 +238,8 @@ fun WorkspacePanel(
     warehouseTableStatuses: Map<String, Map<String, WorkspaceTableStatus>>,
     singleTableStatuses: Map<String, WorkspaceTableStatus>,
     unreachableRoots: Map<String, String> = emptyMap(),
+    /** Warehouses restored at startup whose first walk has not landed — drawn as scanning, not as empty. */
+    unsweptRoots: Set<String> = emptySet(),
     tableFormats: Map<String, String> = emptyMap(),
     selectedTablePath: String?,
     expandedPaths: Set<String>,
@@ -426,6 +428,7 @@ fun WorkspacePanel(
                             status = workspaceRootStatus(item, singleTableStatuses),
                             tableFormat = tableFormats[item.path],
                             unreachable = unreachableRoots[item.path],
+                            scanning = item.path in unsweptRoots,
                             onFixCredentials = if (item.path in unreachableRoots) {
                                 { onFixRemote(item) }
                             } else null,
@@ -613,6 +616,8 @@ fun WorkspaceRootItem(
     status: WorkspaceTableStatus? = null,
     tableFormat: String? = null,
     unreachable: String? = null,
+    /** The root's first walk is still running — its table list is not yet known, rather than empty. */
+    scanning: Boolean = false,
     onFixCredentials: (() -> Unit)? = null,
     onToggleExpand: () -> Unit,
     onSelect: () -> Unit,
@@ -714,6 +719,18 @@ fun WorkspaceRootItem(
         }
     }
 
+        // A restored warehouse before its first walk lands: said, so an empty list under it is
+        // not read as a warehouse with no tables.
+        if (scanning && unreachable == null) {
+            CompactText {
+                Text(
+                    text = "scanning…",
+                    fontSize = TypeScale.micro,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 24.dp, end = 4.dp, bottom = 4.dp),
+                )
+            }
+        }
         // Indented to the row's text, not to its edge: the message is about this root, and the
         // 24dp is the same gutter the expander and the table icon occupy above it.
         if (unreachable != null) {

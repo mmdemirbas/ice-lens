@@ -2,6 +2,7 @@ package ui
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import model.WorkspaceItem
 import model.WorkspaceTableStatus
 import java.io.File
@@ -44,7 +45,7 @@ class AppStateTest {
     fun `addWorkspaceRoot adds a warehouse for non-table directory`() {
         val tmpDir = kotlin.io.path.createTempDirectory("ws-test").toFile()
         try {
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             assertEquals(1, state.workspaceItems.size)
             assertIs<WorkspaceItem.Warehouse>(state.workspaceItems[0])
             assertEquals(tmpDir.canonicalPath, state.workspaceItems[0].path)
@@ -61,7 +62,7 @@ class AppStateTest {
             metaDir.mkdirs()
             File(metaDir, "v1.metadata.json").writeText("{}")
 
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             assertEquals(1, state.workspaceItems.size)
             assertIs<WorkspaceItem.SingleTable>(state.workspaceItems[0])
         } finally {
@@ -76,7 +77,7 @@ class AppStateTest {
             File(tmpDir, "snapshot").mkdirs()
             File(tmpDir, "schema").mkdirs()
 
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             assertEquals(1, state.workspaceItems.size)
             assertIs<WorkspaceItem.SingleTable>(state.workspaceItems[0])
         } finally {
@@ -88,8 +89,8 @@ class AppStateTest {
     fun `addWorkspaceRoot ignores duplicate paths`() {
         val tmpDir = kotlin.io.path.createTempDirectory("ws-test").toFile()
         try {
-            state.addWorkspaceRoot(tmpDir.absolutePath)
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             assertEquals(1, state.workspaceItems.size)
         } finally {
             tmpDir.deleteRecursively()
@@ -98,7 +99,7 @@ class AppStateTest {
 
     @Test
     fun `addWorkspaceRoot ignores non-existent path`() {
-        state.addWorkspaceRoot("/nonexistent/path/that/does/not/exist")
+        runBlocking { state.addWorkspaceRoot("/nonexistent/path/that/does/not/exist") }
         assertEquals(0, state.workspaceItems.size)
     }
 
@@ -116,7 +117,7 @@ class AppStateTest {
             File(table2Dir, "snapshot").mkdirs()
             File(table2Dir, "schema").mkdirs()
 
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             assertEquals(1, state.workspaceItems.size)
             val warehouse = state.workspaceItems[0] as WorkspaceItem.Warehouse
             assertEquals(listOf("db/table1", "db/table2"), warehouse.tables)
@@ -129,7 +130,7 @@ class AppStateTest {
     fun `addWorkspaceRoot auto-expands warehouse`() {
         val tmpDir = kotlin.io.path.createTempDirectory("ws-test").toFile()
         try {
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             val warehouse = state.workspaceItems[0]
             assertTrue(state.workspaceExpandedPaths.contains(warehouse.path))
         } finally {
@@ -141,7 +142,7 @@ class AppStateTest {
     fun `removeWorkspaceRoot removes the item`() {
         val tmpDir = kotlin.io.path.createTempDirectory("ws-test").toFile()
         try {
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             assertEquals(1, state.workspaceItems.size)
 
             state.removeWorkspaceRoot(state.workspaceItems[0])
@@ -156,8 +157,8 @@ class AppStateTest {
         val dir1 = kotlin.io.path.createTempDirectory("ws-test-1").toFile()
         val dir2 = kotlin.io.path.createTempDirectory("ws-test-2").toFile()
         try {
-            state.addWorkspaceRoot(dir1.absolutePath)
-            state.addWorkspaceRoot(dir2.absolutePath)
+            runBlocking { state.addWorkspaceRoot(dir1.absolutePath) }
+            runBlocking { state.addWorkspaceRoot(dir2.absolutePath) }
             assertEquals(2, state.workspaceItems.size)
             assertEquals(dir1.canonicalPath, state.workspaceItems[0].path)
             assertEquals(dir2.canonicalPath, state.workspaceItems[1].path)
@@ -176,7 +177,7 @@ class AppStateTest {
     fun `moveWorkspaceRoot clamps to bounds`() {
         val dir1 = kotlin.io.path.createTempDirectory("ws-test-1").toFile()
         try {
-            state.addWorkspaceRoot(dir1.absolutePath)
+            runBlocking { state.addWorkspaceRoot(dir1.absolutePath) }
             // Move beyond bounds - should be no-op
             state.moveWorkspaceRoot(state.workspaceItems[0], -1)
             assertEquals(1, state.workspaceItems.size)
@@ -195,7 +196,7 @@ class AppStateTest {
     fun `workspace items are persisted and restored`() {
         val tmpDir = kotlin.io.path.createTempDirectory("ws-test").toFile()
         try {
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             assertEquals(1, state.workspaceItems.size)
 
             // Create a new state with the same prefs - should restore
@@ -211,7 +212,7 @@ class AppStateTest {
     fun `workspace items with missing paths are preserved on restore`() {
         val tmpDir = kotlin.io.path.createTempDirectory("ws-test").toFile()
         try {
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             val savedPath = state.workspaceItems[0].path
         } finally {
             tmpDir.deleteRecursively() // Delete before restore
@@ -225,7 +226,7 @@ class AppStateTest {
     fun `expanded paths are persisted and restored`() {
         val tmpDir = kotlin.io.path.createTempDirectory("ws-test").toFile()
         try {
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             val path = state.workspaceItems[0].path
             assertTrue(state.workspaceExpandedPaths.contains(path))
 
@@ -258,7 +259,7 @@ class AppStateTest {
             metaDir.mkdirs()
             File(metaDir, "v1.metadata.json").writeText("{}")
 
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             val path = state.workspaceItems[0].path
             assertEquals(WorkspaceTableStatus.EXISTING, state.singleTableStatuses[path])
         } finally {
@@ -272,7 +273,7 @@ class AppStateTest {
         val metaDir = File(tmpDir, "metadata")
         metaDir.mkdirs()
         File(metaDir, "v1.metadata.json").writeText("{}")
-        state.addWorkspaceRoot(tmpDir.absolutePath)
+        runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
         tmpDir.deleteRecursively() // Delete before restore
 
         val state2 = createState()
@@ -289,7 +290,7 @@ class AppStateTest {
             table1.mkdirs()
             File(table1, "v1.metadata.json").writeText("{}")
 
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             val warehouse = state.workspaceItems[0] as WorkspaceItem.Warehouse
             val statuses = state.warehouseTableStatuses[warehouse.path]!!
             assertEquals(WorkspaceTableStatus.EXISTING, statuses["table1"])
@@ -302,7 +303,7 @@ class AppStateTest {
     fun `refreshWarehouseTables detects new tables`() {
         val tmpDir = kotlin.io.path.createTempDirectory("ws-test").toFile()
         try {
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             val warehouse = state.workspaceItems[0] as WorkspaceItem.Warehouse
             assertEquals(0, warehouse.tables.size)
 
@@ -329,7 +330,7 @@ class AppStateTest {
             tableDir.mkdirs()
             File(tableDir, "v1.metadata.json").writeText("{}")
 
-            state.addWorkspaceRoot(tmpDir.absolutePath)
+            runBlocking { state.addWorkspaceRoot(tmpDir.absolutePath) }
             assertEquals(WorkspaceTableStatus.EXISTING, state.warehouseTableStatuses[state.workspaceItems[0].path]!!["table1"])
 
             // Delete the table
@@ -358,7 +359,7 @@ class AppStateTest {
             listOf(kept, removed).forEach { root ->
                 File(root, "table1/metadata").mkdirs()
                 File(root, "table1/metadata/v1.metadata.json").writeText("{}")
-                state.addWorkspaceRoot(root.absolutePath)
+                runBlocking { state.addWorkspaceRoot(root.absolutePath) }
             }
             assertEquals(2, state.workspaceItems.size)
 
@@ -371,6 +372,44 @@ class AppStateTest {
         } finally {
             kept.deleteRecursively()
             removed.deleteRecursively()
+        }
+    }
+
+    /**
+     * A restored warehouse is not walked at startup — that walk was the one scan still on the
+     * main thread — so until the first sweep lands it is unswept, its tables unknown rather than
+     * none; and that first sweep is its baseline, every table existing, none new, the way the
+     * startup walk seeded them when it ran here. A table appearing after it is new.
+     */
+    @Test
+    fun `a restored warehouse is unswept until the first sweep, which seeds every table as existing`() {
+        val root = kotlin.io.path.createTempDirectory("ws-restored").toFile()
+        try {
+            File(root, "table1/metadata").mkdirs()
+            File(root, "table1/metadata/v1.metadata.json").writeText("{}")
+            File(root, "table2/metadata").mkdirs()
+            File(root, "table2/metadata/v1.metadata.json").writeText("{}")
+            prefs.put(AppState.PREF_WORKSPACE_ITEMS, WorkspaceItem.Warehouse(root.canonicalPath, root.name, emptyList()).serialize())
+            val restored = createState()
+            val warehouse = assertIs<WorkspaceItem.Warehouse>(restored.workspaceItems.single())
+            assertEquals(emptyList(), warehouse.tables, "not walked on the main thread")
+            assertEquals(setOf(root.canonicalPath), restored.unsweptRoots)
+
+            runBlocking { restored.sweepWorkspaceNow() }
+            assertEquals(listOf("table1", "table2"), assertIs<WorkspaceItem.Warehouse>(restored.workspaceItems.single()).tables)
+            assertEquals(emptySet(), restored.unsweptRoots)
+            assertEquals(
+                mapOf("table1" to WorkspaceTableStatus.EXISTING, "table2" to WorkspaceTableStatus.EXISTING),
+                restored.warehouseTableStatuses[root.canonicalPath],
+                "the first sweep is the baseline, not a wave of new tables",
+            )
+
+            File(root, "table3/metadata").mkdirs()
+            File(root, "table3/metadata/v1.metadata.json").writeText("{}")
+            runBlocking { restored.sweepWorkspaceNow() }
+            assertEquals(WorkspaceTableStatus.NEW, restored.warehouseTableStatuses[root.canonicalPath]?.get("table3"))
+        } finally {
+            root.deleteRecursively()
         }
     }
 
@@ -388,13 +427,13 @@ class AppStateTest {
         try {
             File(first, "table1/metadata").mkdirs()
             File(first, "table1/metadata/v1.metadata.json").writeText("{}")
-            state.addWorkspaceRoot(first.absolutePath)
+            runBlocking { state.addWorkspaceRoot(first.absolutePath) }
 
             val inFlight = scanWorkspace(state.workspaceItems)
 
             File(late, "table2/metadata").mkdirs()
             File(late, "table2/metadata/v1.metadata.json").writeText("{}")
-            state.addWorkspaceRoot(late.absolutePath)
+            runBlocking { state.addWorkspaceRoot(late.absolutePath) }
             state.applyWorkspaceScan(inFlight)
 
             val lateItem = state.workspaceItems.first { it.path.contains("ws-late") } as WorkspaceItem.Warehouse
@@ -419,7 +458,7 @@ class AppStateTest {
         try {
             File(warehouse, "orders/metadata").mkdirs()
             File(warehouse, "orders/metadata/v1.metadata.json").writeText("{}")
-            state.addWorkspaceRoot(warehouse.absolutePath)
+            runBlocking { state.addWorkspaceRoot(warehouse.absolutePath) }
             state.applyWorkspaceScan(scanWorkspace(state.workspaceItems))
             // From the workspace, not from the temp dir: a root is stored canonicalised, and on
             // macOS /var canonicalises to /private/var — a message filed under the other spelling
@@ -453,7 +492,7 @@ class AppStateTest {
         try {
             File(warehouse, "orders/metadata").mkdirs()
             File(warehouse, "orders/metadata/v1.metadata.json").writeText("{}")
-            state.addWorkspaceRoot(warehouse.absolutePath)
+            runBlocking { state.addWorkspaceRoot(warehouse.absolutePath) }
             val path = state.workspaceItems.single().path
             state.applyWorkspaceScan(
                 WorkspaceScan(emptyMap(), emptyMap(), mapOf(path to "Access denied"))
@@ -472,7 +511,7 @@ class AppStateTest {
     fun `a sweep that skipped a root leaves its message alone`() {
         val warehouse = kotlin.io.path.createTempDirectory("ws-skipped").toFile()
         try {
-            state.addWorkspaceRoot(warehouse.absolutePath)
+            runBlocking { state.addWorkspaceRoot(warehouse.absolutePath) }
             val path = state.workspaceItems.single().path
             state.applyWorkspaceScan(WorkspaceScan(emptyMap(), emptyMap(), mapOf(path to "Access denied")))
             state.applyWorkspaceScan(WorkspaceScan(emptyMap(), emptyMap(), emptyMap()))
@@ -494,7 +533,7 @@ class AppStateTest {
     fun `a sweep that skipped a remote root keeps the badges under it`() {
         val local = kotlin.io.path.createTempDirectory("ws-badges").toFile()
         try {
-            state.addWorkspaceRoot(local.absolutePath)
+            runBlocking { state.addWorkspaceRoot(local.absolutePath) }
             state.applyWorkspaceScan(
                 WorkspaceScan(
                     warehouseTables = mapOf("s3://warehouse/db" to listOf("mor")),
@@ -528,7 +567,7 @@ class AppStateTest {
     fun `removing a root drops the message and badges it left`() {
         val local = kotlin.io.path.createTempDirectory("ws-pruned").toFile()
         try {
-            state.addWorkspaceRoot(local.absolutePath)
+            runBlocking { state.addWorkspaceRoot(local.absolutePath) }
             val path = state.workspaceItems.single().path
             state.applyWorkspaceScan(
                 WorkspaceScan(
