@@ -702,7 +702,24 @@ intellij/src/main/kotlin/plugin/
   4 d 7`, the first file's `v` read as `label` and its missing `w` as null, the 7 the DDL
   default put into a row that omitted `w`; `PaimonReadProjectionFixtureTest` holds the
   projection, the placement on both `pse` and `pav`, and the lookup on `label`, `w IS NULL` and
-  `w = 7` to it
+  `w = 7` to it. **A key-value file's system columns are placed by id too, and a bucket read is
+  a `UNION ALL` of projections.** Paimon 1.3.1 lets a *primary key* be renamed (`SchemaManager`
+  guards partition keys only, and `primaryKeys` follow), so a bucket holds `_KEY_k` in one
+  file and `_KEY_id` in the next for one key — which the first version, passing `_`-columns
+  through under their own names, asked every file for `_KEY_id` and hit `Binder Error:
+  Referenced column "_KEY_id" not found` on the old one. `PaimonSystemColumns` carries
+  `SpecialFields`' ids — a key field at `KEY_FIELD_ID_START (1073741823) + field id`,
+  `_SEQUENCE_NUMBER` at `Integer.MAX_VALUE - 1`, `_VALUE_KIND` at `- 2` — `paimonFileColumns`
+  derives them from the file's own schema, `paimonSchemaAsIceberg(schema, systemColumns =
+  true)` leads a primary-key schema with them (`PaimonReadInput.readSchema`), and
+  `PaimonRowLookup.BucketSources` is the bucket's files each projected onto it, which
+  `latestPerKeySql`, `sequenceGroupRecords` and `readMatches` all read through and bind
+  through (`FileProjection.of` gained `filename` for the `UNION ALL`). The row panel's `Merge`
+  asks the key under the schema's name from `RowNode.cellsForRead`, since the card's is
+  `_KEY_k`. `pkr` is the fixture — Paimon reads `1 A / 2 b / 3 c` across the rename — and
+  `PaimonRowLookupFixtureTest` holds key 1's old record to superseded by the file written after
+  the rename. The one Paimon read still addressed by name is a data-evolution split's stitch
+  (`readSplit`), which joins by `file_row_number` and selects the schema's names
 - **A sampled row's position is asked for, not inferred.** DuckDB is given
   `read_parquet(?, file_row_number = true)`, and `UnifiedRow.position` carries the answer as
   something separate from the row's cells — it is DuckDB's statement about the file, not a column
@@ -1940,7 +1957,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,212 tests across 161 files (938 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,213 tests across 161 files (939 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2072,6 +2089,7 @@ container invocation and the traps in it:
 | `paimon/db.db/rt` | `PaimonRowTrackingFixtureTest` | `row-tracking.enabled` — two appends recording first ids 0 and 3, then a full compaction whose output records none and carries `_ROW_ID` per row |
 | `paimon/db.db/sm` | `PaimonStatsModeFixtureTest` | `fields.v.stats-mode = none` — `_VALUE_STATS` over two of three columns, named in `_VALUE_STATS_COLS`; the oracle for the subset decoding |
 | `paimon/db.db/se` | `PaimonSchemaEvolutionFixtureTest` | `ADD COLUMN` between two writes, then a compaction — a schema-1 manifest listing a schema-0 file, whose stats decode only against its own schema |
+| `paimon/db.db/pkr` | `PaimonRowLookupFixtureTest`, `PaimonMergedCountFixtureTest` | a primary key renamed between writes — `_KEY_k` in the first file, `_KEY_id` in the two after, key 1 written again after the rename; Paimon's read `1 A / 2 b / 3 c` is printed by the script |
 | `paimon/db.db/pse` | `PaimonReadProjectionFixtureTest` | an append table evolved after its first file — `ADD COLUMN w`, `RENAME COLUMN v TO label`, `ALTER COLUMN w SET DEFAULT 7` — with Paimon's own read printed in the script: the old file's `v` as `label`, its `w` as null, and the default a later write stored for a row that omitted `w` |
 | `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest`, `PaimonRowLookupFixtureTest`, `PaimonScanPruningTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted; the stitched read `(1, 11, 1)` the lookup is held to, and the file bounds pruning must not consult |
 | `paimon/db.db/lk` | `PaimonRowKindTest` | `changelog-producer = lookup` — the `-U` / `+U` pair a re-inserted key produces, carried by the COMPACT snapshot the lookup ran in, and a `-D` with the value it removed |

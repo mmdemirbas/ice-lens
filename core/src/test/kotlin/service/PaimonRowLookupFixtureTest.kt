@@ -112,6 +112,23 @@ class PaimonRowLookupFixtureTest {
         assertEquals(7, vs.live)
     }
 
+    /**
+     * `pkr`: the primary key `k` renamed to `id` after the first file — `_KEY_k` in that file,
+     * `_KEY_id` in the two after — and key 1 written again after the rename. Paimon reads
+     * `1 A / 2 b / 3 c`; the bucket's merge has to see both names as one column.
+     */
+    @Test
+    fun `a primary key renamed between writes is one key across the bucket's files`() {
+        val hits = where("pkr", "id", PredicateOp.EQ, "1").hits.sortedBy { it.cells["_SEQUENCE_NUMBER"] as Long }
+        assertEquals(listOf(RowFate.SUPERSEDED, RowFate.LIVE), hits.map { it.fate }, hits.toString())
+        assertEquals(listOf("a", "A"), hits.map { it.cells["v"].toString() })
+        assertEquals(listOf("1", "1"), hits.map { it.cells["id"].toString() }, "the old file's k reads as id")
+        assertEquals(hits[1].filePath, hits[0].by, "superseded by the file holding the write after the rename")
+        val old = where("pkr", "v", PredicateOp.EQ, "a").hits.single()
+        assertEquals(RowFate.SUPERSEDED, old.fate)
+        assertEquals(listOf(RowFate.LIVE, RowFate.LIVE), listOf(2, 3).map { where("pkr", "id", PredicateOp.EQ, "$it").hits.single().fate })
+    }
+
     @Test
     fun `a file the filter ruled out is not opened, and the count says so`() {
         val input = input("ad")

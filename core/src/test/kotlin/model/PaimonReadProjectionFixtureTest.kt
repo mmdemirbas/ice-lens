@@ -43,14 +43,24 @@ class PaimonReadProjectionFixtureTest {
     }
 
     @Test
-    fun `a file's columns are placed by the schema its own schema id names, and a system column by none`() {
+    fun `a file's columns are placed by the schema its own schema id names, and a system column by its fixed id`() {
         val files = model.snapshots.last().let { replayPaimonSnapshot(it).liveEntries.values }.sortedBy { it.metadata.file?.schemaId }
         assertEquals(listOf(0L, 3L, 3L), files.map { it.metadata.file?.schemaId })
         assertEquals(mapOf("k" to 0, "v" to 1), files[0].fileColumns)
         assertEquals(mapOf("k" to 0, "label" to 1, "w" to 2), files[1].fileColumns)
         val keyed = FixtureCatalog.paimonModel("pav").snapshots.last().let { replayPaimonSnapshot(it).liveEntries.values.first() }
-        assertEquals(setOf("_KEY_k", "_SEQUENCE_NUMBER", "_VALUE_KIND", "k", "v", "n"), keyed.fileColumns.keys)
-        assertEquals(mapOf("k" to 0, "v" to 1, "n" to 2), keyed.fileColumns.filterValues { it != null }, "an Avro file records no ids; the schema places it")
+        assertEquals(
+            mapOf("_KEY_k" to 1073741823, "_SEQUENCE_NUMBER" to 2147483646, "_VALUE_KIND" to 2147483645, "k" to 0, "v" to 1, "n" to 2),
+            keyed.fileColumns, "an Avro file records no ids; the schema places it, and a key column at KEY_FIELD_ID_START + its field's",
+        )
+        // `pkr`: the key renamed between writes is one column under two names, at one id.
+        val renamed = FixtureCatalog.paimonModel("pkr").snapshots.last().let { replayPaimonSnapshot(it).liveEntries.values }.sortedBy { it.metadata.file?.schemaId }
+        assertEquals(listOf(0L, 1L, 1L), renamed.map { it.metadata.file?.schemaId })
+        assertEquals(1073741823, renamed[0].fileColumns["_KEY_k"])
+        assertEquals(1073741823, renamed[1].fileColumns["_KEY_id"])
+        val read = paimonSchemaAsIceberg(FixtureCatalog.paimonModel("pkr").schemas.maxBy { it.id ?: -1 }, systemColumns = true)
+        assertEquals(listOf(1073741823 to "_KEY_id", 2147483646 to "_SEQUENCE_NUMBER", 2147483645 to "_VALUE_KIND", 0 to "id", 1 to "v"), read.struct.fields.map { it.id to it.name })
+        assertEquals(listOf(0 to "id", 1 to "v"), paimonSchemaAsIceberg(FixtureCatalog.paimonModel("pkr").schemas.maxBy { it.id ?: -1 }).struct.fields.map { it.id to it.name })
     }
 
     @Test

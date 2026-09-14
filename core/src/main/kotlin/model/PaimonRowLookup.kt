@@ -87,8 +87,8 @@ data class PaimonReadInput(
     /** `data-evolution.enabled` — a read stitches files by first row id, see [splits]. */
     val dataEvolution: Boolean get() = schema.options[PAIMON_DATA_EVOLUTION_KEY] == "true"
 
-    /** The schema in the shape a file is projected onto — see [paimonSchemaAsIceberg]. */
-    val schemaModel: IcebergSchemaModel by lazy { paimonSchemaAsIceberg(schema) }
+    /** The schema every file of a read is projected onto, system columns included — see [paimonSchemaAsIceberg]. */
+    val readSchema: IcebergSchemaModel by lazy { paimonSchemaAsIceberg(schema, systemColumns = true) }
 
     /**
      * What a read opens as one unit, in the order it opens them: under data evolution, the read

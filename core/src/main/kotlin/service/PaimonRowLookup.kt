@@ -13,6 +13,7 @@ import model.ScanFilter
 import model.duckDbTypeOf
 import model.IcebergSchemaModel
 import model.paimonFileColumns
+import model.PaimonSystemColumns
 import model.paimonTypeAsIceberg
 import model.quoteSqlIdentifier
 import model.toSql
@@ -40,8 +41,27 @@ import org.slf4j.LoggerFactory
 object PaimonRowLookup {
     private val logger = LoggerFactory.getLogger(PaimonRowLookup::class.java)
 
-    const val KEY_PREFIX = "_KEY_"
-    const val SEQUENCE_NUMBER = "_SEQUENCE_NUMBER"
+    const val KEY_PREFIX = PaimonSystemColumns.KEY_PREFIX
+    const val SEQUENCE_NUMBER = PaimonSystemColumns.SEQUENCE_NUMBER
+
+    /**
+     * A bucket's files, each projected onto the read schema — the `UNION ALL` the merge runs
+     * over, and the binding it takes, in file order. Projected, because a bucket's files are
+     * asked for the key under one name and a renamed key sits under two (`pkr`).
+     */
+    internal class BucketSources(val files: List<PaimonLookupFile>, val sources: List<FileProjection>) {
+        fun bind(statement: java.sql.PreparedStatement, startIndex: Int): Int {
+            var i = startIndex
+            files.zip(sources).forEach { (file, source) -> i = source.bind(statement, i, SampleRowReader.resolveForQuery(file.localPath).first) }
+            return i
+        }
+    }
+
+    internal fun bucketSources(input: PaimonReadInput, files: List<PaimonLookupFile>): BucketSources =
+        BucketSources(files, files.map { projectionOf(it, input.readSchema, rowNumber = true, filename = true) })
+
+    private fun projectionOf(file: PaimonLookupFile, schema: IcebergSchemaModel, rowNumber: Boolean, filename: Boolean = false): FileProjection =
+        FileProjection.of(file.extension, paimonFileColumns(SampleRowReader.fileColumnsOf(file.localPath), file.fileSchema), schema, null, rowNumber = rowNumber, filename = filename)
 
     /** One matched record; [stitched] names the other files of its split that supplied columns, where a read stitches. */
     private class Raw(val file: PaimonLookupFile, val position: Long?, val cells: Map<String, Any?>, val stitched: String? = null)
@@ -97,7 +117,7 @@ object PaimonRowLookup {
             val stitched = sources.entries.filter { split[it.value] != base }.groupBy({ split[it.value] }, { it.key })
                 .entries.joinToString("; ") { (file, cols) -> "${cols.joinToString(", ")} from ${file.fileName}" }.ifEmpty { null }
             val rows = runCatching {
-                if (split.size == 1) readMatches(base, predicate.sql, predicate.params, input.schemaModel) else readSplit(split, columns, sources, predicate.sql, predicate.params)
+                if (split.size == 1) readMatches(base, predicate.sql, predicate.params, input.readSchema) else readSplit(split, columns, sources, predicate.sql, predicate.params)
             }
             val error = rows.exceptionOrNull()
             if (error != null) {
@@ -126,12 +146,11 @@ object PaimonRowLookup {
     }
 
     private fun readMatches(file: PaimonLookupFile, where: String, params: List<String>, schema: IcebergSchemaModel): List<Map<String, Any?>> {
-        val (safePath, ext) = SampleRowReader.resolveForQuery(file.localPath)
-        // The file under the schema's names, placed by the ids its own schema gives its columns,
-        // its `_KEY_*`, `_SEQUENCE_NUMBER` and `_VALUE_KIND` passed through as they are — so a
-        // column renamed since the file was written still answers the filter (`pse`); see
-        // FileProjection and paimonFileColumns.
-        val source = FileProjection.of(ext, paimonFileColumns(SampleRowReader.fileColumnsOf(file.localPath), file.fileSchema), schema, null, rowNumber = true, passThrough = { it.startsWith("_") })
+        val (safePath, _) = SampleRowReader.resolveForQuery(file.localPath)
+        // The file under the schema's names, system columns included, placed by the ids its own
+        // schema gives its columns — so a column renamed since the file was written still
+        // answers the filter (`pse`, `pkr`); see FileProjection and paimonFileColumns.
+        val source = projectionOf(file, schema, rowNumber = true)
         return DuckDb.withConnection { conn ->
             conn.prepareStatement("SELECT * FROM ${source.sql} WHERE $where LIMIT ${RowLookup.MAX_HITS_PER_FILE}").use { pstmt ->
                 var i = source.bind(pstmt, 1, safePath)
@@ -221,10 +240,10 @@ object PaimonRowLookup {
         }
         return raws.groupBy { it.file.partition to it.file.bucket }.mapValues { (scope, bucketRaws) ->
             val keys = bucketRaws.map { keyOf(it.cells, keyColumns) }.distinct()
-            val files = input.bucketOf(bucketRaws.first().file)
+            val bucket = bucketSources(input, input.bucketOf(bucketRaws.first().file))
             runCatching {
-                val states = queryKeyStates(files, keyColumns, casts, keys, input.rule.removingKinds)
-                if (input.rule.sequenceGroupRemovals.isNotEmpty()) withSequenceGroupRemovals(input, files, keyColumns, casts, keys, states) else states
+                val states = queryKeyStates(bucket, keyColumns, casts, keys, input.rule.removingKinds)
+                if (input.rule.sequenceGroupRemovals.isNotEmpty()) withSequenceGroupRemovals(input, bucket, keyColumns, casts, keys, states) else states
             }
                 .onFailure { logger.warn("Could not read bucket {}: {}", scope, it.message) }
                 .getOrDefault(emptyMap())
@@ -239,13 +258,13 @@ object PaimonRowLookup {
      */
     private fun withSequenceGroupRemovals(
         input: PaimonReadInput,
-        files: List<PaimonLookupFile>,
+        bucket: BucketSources,
         keyColumns: List<String>,
         casts: List<String?>,
         keys: List<List<String?>>,
         states: Map<List<String?>, KeyState>,
     ): Map<List<String?>, KeyState> {
-        val folds = sequenceGroupRecords(input, files, keyColumns, casts, keys)
+        val folds = sequenceGroupRecords(input, bucket, keyColumns, casts, keys)
         if (folds.isEmpty()) return states
         val notNull = groupNullability(input)
         return states.mapValues { (key, state) ->
@@ -274,7 +293,7 @@ object PaimonRowLookup {
      */
     internal fun sequenceGroupRecords(
         input: PaimonReadInput,
-        files: List<PaimonLookupFile>,
+        bucket: BucketSources,
         keyColumns: List<String>,
         casts: List<String?>,
         keys: List<List<String?>>,
@@ -283,9 +302,9 @@ object PaimonRowLookup {
         val keyList = keyColumns.joinToString(", ", transform = ::quoteSqlIdentifier)
         val fields = groups.flatten().distinct()
         val fieldList = fields.joinToString("") { ", " + quoteSqlIdentifier(it) }
-        val branches = files.joinToString(" UNION ALL ") { file ->
+        val branches = bucket.sources.joinToString(" UNION ALL ") { source ->
             "SELECT $keyList, ${quoteSqlIdentifier(SEQUENCE_NUMBER)} AS s, ${quoteSqlIdentifier(PaimonRowKind.COLUMN)} AS k, " +
-                "filename AS f$fieldList FROM ${SampleRowReader.readerCall(file.extension, filename = true)}"
+                "filename AS f$fieldList FROM ${source.sql}"
         }
         val tuple = "(" + casts.joinToString(", ") { cast -> if (cast == null) "?" else "CAST(? AS $cast)" } + ")"
         val asked = if (keys.isEmpty()) "" else " AND ($keyList) IN (${keys.joinToString(", ") { tuple }})"
@@ -293,8 +312,7 @@ object PaimonRowLookup {
             "WHERE ($keyList) IN (SELECT $keyList FROM u WHERE k = ${PaimonRowKind.DELETE})$asked ORDER BY $keyList, s"
         return DuckDb.withConnection { conn ->
             conn.prepareStatement(sql).use { pstmt ->
-                var i = 1
-                files.forEach { pstmt.setString(i++, SampleRowReader.resolveForQuery(it.localPath).first) }
+                var i = bucket.bind(pstmt, 1)
                 keys.forEach { key -> key.forEach { pstmt.setString(i++, it) } }
                 pstmt.executeQuery().use { rs ->
                     val n = keyColumns.size
@@ -316,7 +334,7 @@ object PaimonRowLookup {
     }
 
     private fun queryKeyStates(
-        files: List<PaimonLookupFile>,
+        bucket: BucketSources,
         keyColumns: List<String>,
         casts: List<String?>,
         keys: List<List<String?>>,
@@ -326,12 +344,11 @@ object PaimonRowLookup {
         val tuple = "(" + casts.joinToString(", ") { cast -> if (cast == null) "?" else "CAST(? AS $cast)" } + ")"
         val inList = keys.joinToString(", ") { tuple }
         val sql = "SELECT $keyList, latest, holder, kind, first, firstHolder, records, retracted, lastRemoval, removalHolder, removalKind, folded " +
-            "FROM (${latestPerKeySql(files, keyColumns, removingKinds)}) " +
+            "FROM (${latestPerKeySql(bucket, keyColumns, removingKinds)}) " +
             "WHERE ($keyList) IN ($inList)"
         return DuckDb.withConnection { conn ->
             conn.prepareStatement(sql).use { pstmt ->
-                var i = 1
-                files.forEach { pstmt.setString(i++, SampleRowReader.resolveForQuery(it.localPath).first) }
+                var i = bucket.bind(pstmt, 1)
                 keys.forEach { key -> key.forEach { pstmt.setString(i++, it) } }
                 pstmt.executeQuery().use { rs ->
                     val states = mutableMapOf<List<String?>, KeyState>()
@@ -367,14 +384,14 @@ object PaimonRowLookup {
      * first, then `latest`, `holder`, `kind`, `pos`, `first`, `firstHolder`, `records`,
      * `retracted`, `lastRemoval`, `removalHolder`, `removalKind`, `folded`.
      */
-    internal fun latestPerKeySql(files: List<PaimonLookupFile>, keyColumns: List<String>, removingKinds: Set<Int>): String {
+    internal fun latestPerKeySql(bucket: BucketSources, keyColumns: List<String>, removingKinds: Set<Int>): String {
         val keyList = keyColumns.joinToString(", ", transform = ::quoteSqlIdentifier)
         // An Avro file has no row number to select, and its `p` is null: the merged count checks
         // [SampleRowReader.hasRowPositions] before putting a position to a vector.
-        val branches = files.joinToString(" UNION ALL ") { file ->
+        val branches = bucket.files.zip(bucket.sources).joinToString(" UNION ALL ") { (file, source) ->
             val position = if (SampleRowReader.hasRowPositions(file.extension)) SampleRowReader.FILE_ROW_NUMBER else "CAST(NULL AS BIGINT)"
             "SELECT $keyList, ${quoteSqlIdentifier(SEQUENCE_NUMBER)} AS s, ${quoteSqlIdentifier(PaimonRowKind.COLUMN)} AS k, " +
-                "filename AS f, $position AS p FROM ${SampleRowReader.readerCall(file.extension, rowNumber = true, filename = true)}"
+                "filename AS f, $position AS p FROM ${source.sql}"
         }
         val retractions = "(${PaimonRowKind.UPDATE_BEFORE}, ${PaimonRowKind.DELETE})"
         val removing = removingKinds.takeIf { it.isNotEmpty() }?.joinToString(", ", "(", ")") ?: "(-1)"

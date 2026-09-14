@@ -113,8 +113,8 @@ object PaimonMergedCount {
         vectors: MutableMap<String, BitSet?>,
     ): BucketCount {
         require(keyColumns.isNotEmpty()) { "a primary-key table with no key column outside the partition" }
-        val paths = files.map { SampleRowReader.resolveForQuery(it.localPath).first }
-        val latest = PaimonRowLookup.latestPerKeySql(files, keyColumns, input.rule.removingKinds)
+        val sources = PaimonRowLookup.bucketSources(input, files)
+        val latest = PaimonRowLookup.latestPerKeySql(sources, keyColumns, input.rule.removingKinds)
         val rule = input.rule
         // The kinds that, as a key's latest record, remove it under this merge engine — none under
         // first-row, or under ignore-delete; and the keys a read would fail on, where a retraction
@@ -127,7 +127,7 @@ object PaimonMergedCount {
                 "SELECT count(*), count(*) FILTER (WHERE kind IN $removing), count(*) FILTER (WHERE retracted), " +
                     "count(*) FILTER (WHERE first IS NULL AND kind NOT IN $removing) FROM ($latest)",
             ).use { pstmt ->
-                paths.forEachIndexed { i, p -> pstmt.setString(i + 1, p) }
+                sources.bind(pstmt, 1)
                 pstmt.executeQuery().use { rs -> rs.next(); listOf(rs.getLong(1), rs.getLong(2), rs.getLong(3), rs.getLong(4)) }
             }
         }
@@ -139,7 +139,7 @@ object PaimonMergedCount {
         // as retracted — unless it never had an insert, which `insertless` already holds.
         val retracted = if (rule.sequenceGroupRemovals.isEmpty()) latestRemoving else {
             val notNull = PaimonRowLookup.groupNullability(input)
-            PaimonRowLookup.sequenceGroupRecords(input, files, keyColumns, casts = emptyList(), keys = emptyList()).values
+            PaimonRowLookup.sequenceGroupRecords(input, sources, keyColumns, casts = emptyList(), keys = emptyList()).values
                 .map { PaimonSequenceGroups.fold(it, notNull) }
                 .count { it.removedNow && it.hasInsert }.toLong()
         }
@@ -165,8 +165,7 @@ object PaimonMergedCount {
                 conn.prepareStatement(
                     "SELECT holder, pos FROM ($latest) WHERE kind NOT IN $removing AND holder IN ($holders)",
                 ).use { pstmt ->
-                    var i = 1
-                    paths.forEach { pstmt.setString(i++, it) }
+                    var i = sources.bind(pstmt, 1)
                     vectored.forEach { pstmt.setString(i++, SampleRowReader.resolveForQuery(it.localPath).first) }
                     pstmt.executeQuery().use { rs ->
                         while (rs.next()) {

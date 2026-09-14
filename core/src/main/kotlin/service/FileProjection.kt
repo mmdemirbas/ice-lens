@@ -20,9 +20,9 @@ import java.sql.PreparedStatement
  * each file column by field id, the name mapping where the file records none
  * ([placeFileColumns]), and aliases it to the schema's name; a field the file lacks is its
  * `initial-default`, bound and cast to the column's type, or `NULL`. The file's row number
- * comes along where the format has one, and so does any column [passThrough] accepts under
- * its own name — a Paimon file's `_KEY_*`, `_SEQUENCE_NUMBER` and `_VALUE_KIND`, which the
- * lookup decides a record by and no schema names. Without a schema the file is read as it is.
+ * comes along where the format has one, and its name when asked (`filename`), which a
+ * `UNION ALL` over a bucket's files tells the files apart by. Without a schema the file is
+ * read as it is.
  */
 internal class FileProjection private constructor(
     /** The `FROM` text: a subquery under its alias, with `?` for the path and one `?` per bound default. */
@@ -45,9 +45,9 @@ internal class FileProjection private constructor(
             mapping: NameMapping?,
             rowNumber: Boolean = false,
             alias: String = "s",
-            passThrough: (String) -> Boolean = { false },
+            filename: Boolean = false,
         ): FileProjection {
-            val reader = SampleRowReader.readerCall(ext, rowNumber = rowNumber)
+            val reader = SampleRowReader.readerCall(ext, rowNumber = rowNumber, filename = filename)
             if (schema == null || fileColumns.isEmpty()) return FileProjection("(SELECT * FROM $reader) $alias", emptyList())
             val placed = placeFileColumns(fileColumns, mapping)
             val defaults = mutableListOf<String>()
@@ -61,7 +61,7 @@ internal class FileProjection private constructor(
                     default != null && type != null -> { defaults += default; "CAST(? AS $type) AS $alias" }
                     else -> "NULL AS $alias"
                 }
-            } + fileColumns.keys.filter(passThrough).map { "f.${quoteSqlIdentifier(it)}" } +
+            } + (if (filename) listOf("f.filename") else emptyList()) +
                 (if (rowNumber && SampleRowReader.hasRowPositions(ext)) listOf("f.${SampleRowReader.FILE_ROW_NUMBER}") else emptyList())
             return FileProjection("(SELECT ${select.joinToString(", ")} FROM $reader f) $alias", defaults)
         }

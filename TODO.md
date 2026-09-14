@@ -64,7 +64,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   top-level fields only — a nested mapping (`fields` inside a field) is parsed and not consulted,
   the same scope as the row projection. **The Paimon twin is in** (`pse`): a file's columns are
   placed by the schema its `_SCHEMA_ID` names, which is the format's own rule and the only one
-  that covers its Avro files, and a `SET DEFAULT` is drawn as the write-time default it is. What the vector work does *not* cover on the
+  that covers its Avro files, and a `SET DEFAULT` is drawn as the write-time default it is; a
+  renamed primary key merges across the bucket (`pkr`). Still by name: a data-evolution
+  split's stitch (`readSplit`), so a rename on such a table is not read. What the vector work does *not* cover on the
   canvas: an Iceberg **positional delete** file (v2) marks no row *card*, because its targets are
   one per row and only known after reading the file — the same reason there is no `e_dv_*`-style
   edge for it. A row's panel answers it behind a click (`RowDeletesSection`), for equality deletes

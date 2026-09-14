@@ -25,35 +25,46 @@ import kotlinx.serialization.json.JsonPrimitive
  * A Paimon schema as an [IcebergSchemaModel] — the fields with their ids, each type through
  * [paimonTypeAsIceberg] (unknown where the bridge has no reading), the write-time
  * `defaultValue` carried as [NestedField.writeDefault] and no initial default, since Paimon
- * assigns a default on write only. What [projectRow] and the lookup's file projection take, so a
- * Paimon row is placed by field id the way an Iceberg row is.
+ * assigns a default on write only. What [projectRow] takes, so a Paimon row is placed by field
+ * id the way an Iceberg row is. With [systemColumns], a primary-key table's schema leads with
+ * the columns its key-value files carry beside the values — `_KEY_<key>` per trimmed primary
+ * key, `_SEQUENCE_NUMBER`, `_VALUE_KIND`, at the ids [PaimonSystemColumns] gives them — which
+ * is what a bucket read is projected onto: the merge is decided on those, and a renamed key
+ * is one column under two names.
  */
-fun paimonSchemaAsIceberg(schema: PaimonSchema): IcebergSchemaModel = IcebergSchemaModel(
-    schemaId = schema.id,
-    struct = IcebergType.StructType(
-        schema.fields.mapNotNull { f ->
-            val id = f.id ?: return@mapNotNull null
-            val name = f.name ?: return@mapNotNull null
-            NestedField(
-                id = id, name = name,
-                type = f.type?.let(::paimonTypeAsIceberg) ?: IcebergType.UnknownType,
-                required = f.type?.trim()?.uppercase()?.endsWith("NOT NULL") == true,
-                writeDefault = f.defaultValue?.let { kotlinx.serialization.json.JsonPrimitive(it) },
-            )
-        },
-    ),
-)
+fun paimonSchemaAsIceberg(schema: PaimonSchema, systemColumns: Boolean = false): IcebergSchemaModel {
+    val values = schema.fields.mapNotNull { f ->
+        val id = f.id ?: return@mapNotNull null
+        val name = f.name ?: return@mapNotNull null
+        NestedField(
+            id = id, name = name,
+            type = f.type?.let(::paimonTypeAsIceberg) ?: IcebergType.UnknownType,
+            required = f.type?.trim()?.uppercase()?.endsWith("NOT NULL") == true,
+            writeDefault = f.defaultValue?.let { kotlinx.serialization.json.JsonPrimitive(it) },
+        )
+    }
+    val system = if (systemColumns && schema.primaryKeys.isNotEmpty()) {
+        schema.primaryKeys.filterNot { it in schema.partitionKeys }.mapNotNull { key ->
+            values.firstOrNull { it.name == key }?.let { NestedField(PaimonSystemColumns.KEY_FIELD_ID_START + it.id, PaimonSystemColumns.KEY_PREFIX + key, it.type, required = true) }
+        } + listOf(
+            NestedField(PaimonSystemColumns.SEQUENCE_NUMBER_ID, PaimonSystemColumns.SEQUENCE_NUMBER, IcebergType.LongType, required = true),
+            NestedField(PaimonSystemColumns.VALUE_KIND_ID, PaimonRowKind.COLUMN, IcebergType.IntType, required = true),
+        )
+    } else emptyList()
+    return IcebergSchemaModel(schemaId = schema.id, struct = IcebergType.StructType(system + values))
+}
 
 /**
  * A Paimon file's columns with the field id each is read by: the id its **own schema** gives
- * the name — the schema the entry's `_SCHEMA_ID` names — and null for a name that schema lacks
- * (`_KEY_*`, `_SEQUENCE_NUMBER`, `_VALUE_KIND`). That is how Paimon evolves a read
- * (`SchemaEvolutionUtil`, from the file's schema id), and it is the same rule for Parquet, Avro
- * and ORC: a Paimon Avro file records no field ids at all (`pav`), and the ids a Paimon Parquet
- * file does record are the schema's.
+ * the name — the schema the entry's `_SCHEMA_ID` names — with a key-value file's `_KEY_*`,
+ * `_SEQUENCE_NUMBER` and `_VALUE_KIND` at the ids [PaimonSystemColumns] derives, and null for
+ * a name the schema lacks. That is how Paimon evolves a read (`SchemaEvolutionUtil`, from the
+ * file's schema id), and it is the same rule for Parquet, Avro and ORC: a Paimon Avro file
+ * records no field ids at all (`pav`), and the ids a Paimon Parquet file does record are the
+ * schema's.
  */
 fun paimonFileColumns(physical: Map<String, Int?>, fileSchema: PaimonSchema?): Map<String, Int?> =
-    physical.mapValues { (name, _) -> fileSchema?.fields?.firstOrNull { it.name == name }?.id }
+    physical.mapValues { (name, _) -> PaimonSystemColumns.fieldIdOf(name) { field -> fileSchema?.fields?.firstOrNull { it.name == field }?.id } }
 
 fun paimonTypeAsIceberg(type: String): IcebergType? {
     val head = Regex("""^([A-Z]+)(?:\((\d+)(?:,\s*(\d+))?\))?""").find(type.trim().uppercase()) ?: return null

@@ -1,0 +1,21 @@
+{
+  "version" : 3,
+  "id" : 1,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "id",
+    "type" : "INT NOT NULL"
+  }, {
+    "id" : 1,
+    "name" : "v",
+    "type" : "STRING"
+  } ],
+  "highestFieldId" : 1,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ "id" ],
+  "options" : {
+    "bucket" : "1",
+    "owner" : "root"
+  },
+  "timeMillis" : 1789351283851
+}

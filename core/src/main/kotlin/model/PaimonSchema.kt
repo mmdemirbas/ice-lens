@@ -201,6 +201,32 @@ data class PaimonManifestFileMeta(
  * only this byte says it retracts the key's earlier value when the levels are merged. A changelog
  * file's rows carry the same byte with the update pair split into before and after.
  */
+/**
+ * The columns a key-value file carries beside the schema's, with the field ids Paimon's
+ * `SpecialFields` gives them (release-1.3.1): a key field is `_KEY_<name>` at
+ * `KEY_FIELD_ID_START + field id`, so a primary key renamed between writes is one column
+ * under two names — `_KEY_k` in one file, `_KEY_id` in the next (`pkr`) — placed by the id
+ * either way; `_SEQUENCE_NUMBER` and `_VALUE_KIND` are at fixed ids under every schema.
+ */
+object PaimonSystemColumns {
+    const val KEY_PREFIX = "_KEY_"
+    /** `SpecialFields.KEY_FIELD_ID_START` — `Integer.MAX_VALUE / 2`. */
+    const val KEY_FIELD_ID_START = 1073741823
+    const val SEQUENCE_NUMBER = "_SEQUENCE_NUMBER"
+    /** `SpecialFields.SEQUENCE_NUMBER` — `Integer.MAX_VALUE - 1`. */
+    const val SEQUENCE_NUMBER_ID = 2147483646
+    /** `SpecialFields.VALUE_KIND` — `Integer.MAX_VALUE - 2`; the column is [PaimonRowKind.COLUMN]. */
+    const val VALUE_KIND_ID = 2147483645
+
+    /** The id a key-value file's column reads by, given the id its own schema gives [fieldId]; null for a name the schema lacks. */
+    fun fieldIdOf(name: String, fieldId: (String) -> Int?): Int? = when {
+        name == SEQUENCE_NUMBER -> SEQUENCE_NUMBER_ID
+        name == PaimonRowKind.COLUMN -> VALUE_KIND_ID
+        name.startsWith(KEY_PREFIX) -> fieldId(name.removePrefix(KEY_PREFIX))?.let { KEY_FIELD_ID_START + it }
+        else -> fieldId(name)
+    }
+}
+
 object PaimonRowKind {
     const val COLUMN = "_VALUE_KIND"
     const val INSERT = 0

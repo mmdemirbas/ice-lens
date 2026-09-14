@@ -65,8 +65,11 @@ internal fun PaimonRowMergeSection(
                     // An append table merges nothing; under data evolution its row is still not
                     // the file's own, and the stitched one is what a read returns.
                     if (keys.isEmpty()) return@runCatching Answer(null, emptyList(), if (input.dataEvolution) PaimonRowLookup.stitchedRowAt(input, file, position) else null)
+                    // The key under the schema's names — the projection's, since a key column
+                    // renamed after the file was written is `_KEY_k` on the card and `id` in the schema.
+                    val cells = node.cellsForRead
                     val terms = keys.map { key ->
-                        val value = node.resolvedData[PaimonRowLookup.KEY_PREFIX + key] ?: node.resolvedData[key]
+                        val value = cells[key] ?: node.resolvedData[PaimonRowLookup.KEY_PREFIX + key]
                         ScanPredicate(key, if (value == null) PredicateOp.IS_NULL else PredicateOp.EQ, value?.toString() ?: "")
                     }
                     Answer(PaimonRowLookup.lookup(input, ScanFilter.And(terms.map { ScanFilter.Term(it) }), emptySet()), keys, null)

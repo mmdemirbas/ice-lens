@@ -2202,6 +2202,19 @@ class InspectorRenderTest {
                 PaimonRowMergeSection(superseded, lkRows, startRequested = true) { mergeSettled.set(true) }
             }
         }
+        // `pkr`: the row of the file written before the key was renamed — `_KEY_k` on its card,
+        // `id` in the schema — asked under the schema's name, and superseded by the write after.
+        val pkrRows = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pkr").absolutePath)),
+            showRows = true,
+        )
+        val renamedKey = pkrRows.nodes.filterIsInstance<GraphNode.RowNode>().first { it.resolvedData["_KEY_k"]?.toString() == "1" }
+        val renamedSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-row-node-merge-renamed-key", width = 1400, height = 620, ready = renamedSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                PaimonRowMergeSection(renamedKey, pkrRows, startRequested = true) { renamedSettled.set(true) }
+            }
+        }
         // And a row of `de`'s patched file: its own cells say b = 1, the read says 11.
         val deRows = GraphLayoutService.layoutGraph(
             PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/de").absolutePath)),

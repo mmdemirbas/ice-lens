@@ -39,6 +39,8 @@ class PaimonMergedCountFixtureTest {
         "pu" to 4, "ag" to 2, "fr" to 1,
         // Avro data files, read through read_avro — the merge needs no row position
         "pav" to 2,
+        // a primary-key column renamed between writes: `_KEY_k` in one file, `_KEY_id` in two
+        "pkr" to 3,
         // append tables, from the metadata
         "ad" to 5, "ao" to 6, "rt" to 5, "de" to 3, "fa" to 5, "ft" to 3, "fb" to 8, "pse" to 4,
     )
