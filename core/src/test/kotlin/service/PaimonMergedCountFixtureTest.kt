@@ -44,7 +44,7 @@ class PaimonMergedCountFixtureTest {
         // a primary-key column renamed between writes: `_KEY_k` in one file, `_KEY_id` in two
         "pkr" to 3,
         // stats modes: a counts default with per-column overrides, and a per-level none whose file was upgraded
-        "psm" to 4, "psl" to 2, "pcl" to 5, "pcn" to 5, "ppx" to 4, "ppxa" to 2, "ptt" to 3, "ptta" to 3, "prb" to 4, "prba" to 2, "pbk" to 3, "pbka" to 4, "po" to 1, "poa" to 1, "pmm" to 10, "pmma" to 10, "brf" to 4,
+        "psm" to 4, "psl" to 2, "pcl" to 5, "pcn" to 5, "ppx" to 4, "ppxa" to 2, "ptt" to 3, "ptta" to 3, "prb" to 4, "prba" to 2, "pbk" to 3, "pbka" to 4, "po" to 1, "poa" to 1, "pmm" to 10, "pmma" to 10, "brf" to 4, "prua" to 2,
         // append tables, from the metadata
         "ad" to 5, "ao" to 6, "rt" to 5, "de" to 3, "der" to 2, "fa" to 5, "ft" to 3, "fb" to 8, "fbs" to 1008, "pse" to 4, "pne" to 3, "psk" to 2,
     )
@@ -62,7 +62,17 @@ class PaimonMergedCountFixtureTest {
     /** A table added under `example/` gets a figure here or fails here — `test` is Flink-written, and no script printed its read. */
     @Test
     fun `every Paimon fixture but the Flink-written one has a figure`() {
-        assertEquals(model.FixtureCatalog.paimon.toSet() - "test", expected.keys)
+        assertEquals(model.FixtureCatalog.paimon.toSet() - "test" - "pru", expected.keys)
+    }
+
+    /** `pru` is the table with two live files deleted by design: each bucket that held one fails, naming the file, and the count is not stated. */
+    @Test
+    fun `a table whose live files are gone fails the buckets that held them`() {
+        val pru = model("pru")
+        val result = countOf(pru, pru.snapshots.last())
+        assertEquals(2, result.failed, result.toString())
+        assertEquals(null, result.merged)
+        assertTrue(result.buckets.all { it.error?.contains(".parquet") == true }, result.toString())
     }
 
     @Test

@@ -58,6 +58,7 @@ import model.ManifestEntryStatus
 import model.DataFileContent
 import model.ScanFilter
 import model.snapshotAsOf
+import model.PaimonUnexistingFilesPlan
 import model.PaimonUnifiedTableModel
 import model.PredicateOp
 import model.ScanPredicate
@@ -2515,6 +2516,28 @@ class InspectorRenderTest {
         renderUntil("missing-files-none", width = 1400, height = 260, ready = cleanSettled::get) {
             Column(Modifier.padding(16.dp)) {
                 MissingFilesSection(morTable, startRequested = true) { cleanSettled.set(true) }
+            }
+        }
+
+        // Paimon: sys.remove_unexisting_files' verdict leads each row — on pru it removes both
+        // missing files, on prua the same two are named by older snapshots only and it reaches
+        // neither — and the maintenance summary carries the plan the section handed up.
+        listOf("pru" to "missing-files-paimon", "prua" to "missing-files-paimon-after").forEach { (name, capture) ->
+            val table = GraphLayoutService.layoutGraph(PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/$name").absolutePath)), showRows = false)
+                .nodes.filterIsInstance<GraphNode.TableNode>().single()
+            val done = java.util.concurrent.atomic.AtomicBoolean(false)
+            val planned = java.util.concurrent.atomic.AtomicReference<PaimonUnexistingFilesPlan?>(null)
+            renderUntil(capture, width = 1400, height = 640, ready = done::get) {
+                Column(Modifier.padding(16.dp)) {
+                    MissingFilesSection(table, startRequested = true, onSettled = { done.set(true) }, onPlanned = { planned.set(it) })
+                }
+            }
+            val plan = requireNotNull(planned.get()) { "$name: the section hands the plan up" }
+            assertEquals(name == "pru", plan.commits)
+            if (name == "pru") {
+                renderScene("maintenance-paimon-unexisting", width = 1400, height = 1500) {
+                    Column(Modifier.padding(16.dp)) { MaintenanceSection(table, null, plan) }
+                }
             }
         }
     }

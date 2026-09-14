@@ -23,7 +23,9 @@ class MissingFilesTest {
             assertEquals(emptyList(), report.missing.map { "$fixture/${report.relativePathOf(it)} ${it.neededBy}" })
             assertTrue(report.needed > 0 && report.snapshotsChecked > 0, "$fixture: ${report.needed} needed, ${report.snapshotsChecked} snapshots")
         }
-        for (fixture in FixtureCatalog.paimon) {
+        // pru and prua are the two tables with a data file deleted by design, for remove_unexisting_files;
+        // PaimonUnexistingFilesFixtureTest holds what each is missing.
+        for (fixture in FixtureCatalog.paimon - setOf("pru", "prua")) {
             val report = FixtureCatalog.paimonModel(fixture).findMissingFiles()
             assertEquals(emptyList(), report.missing.map { "$fixture/${report.relativePathOf(it)} ${it.neededBy}" })
             assertTrue(report.needed > 0 && report.snapshotsChecked > 0, "$fixture: ${report.needed} needed, ${report.snapshotsChecked} snapshots")

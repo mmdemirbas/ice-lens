@@ -116,7 +116,7 @@ class FileLayoutCheckFixtureTest {
     @Test
     fun `every live Paimon file's size is the file's, and no offsets are recorded`() {
         var files = 0
-        for (fixture in FixtureCatalog.paimon) {
+        for (fixture in FixtureCatalog.paimon - "pru") { // pru: two live files deleted by design, for remove_unexisting_files
             for (target in FixtureCatalog.paimonModel(fixture).fileStatsTargets().filter { it.localPath.endsWith(".parquet") }) {
                 files++
                 val layout = assertNotNull(StatsCheckReader.check(target).layout, "$fixture/${target.name}")

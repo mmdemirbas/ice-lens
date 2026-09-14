@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import model.PaimonUnexistingFilesPlan
 import model.ScanFilter
 import model.GraphModel
 import model.GraphNode
@@ -179,7 +180,8 @@ internal fun ColumnScope.TablePanel(
         // What the directory walk found rides here from the section below, so the summary's
         // remove_orphan_files row follows the button without starting the walk itself.
         var orphanReport by remember(node.id) { mutableStateOf(if (node.unreferencedFiles.isRead) node.unreferencedFiles.value else null) }
-        MaintenanceSection(node, orphanReport)
+        var unexistingPlan by remember(node.id) { mutableStateOf<PaimonUnexistingFilesPlan?>(null) }
+        MaintenanceSection(node, orphanReport, unexistingPlan)
         summary.paimonExpiry?.let { PaimonExpirySection(it, nowMs = expiryClock()) }
         summary.paimonExpiry?.let { PaimonExpiryFilesSection(node, it, nowMs = expiryClock()) }
         summary.paimonExpiry?.let { PaimonChangelogExpirySection(it, nowMs = expiryClock()) }
@@ -214,7 +216,7 @@ internal fun ColumnScope.TablePanel(
         // The panel's other controls, kept beside the first for the same reason.
         IntegritySection(node)
         UnreferencedFilesSection(node, onSettled = { orphanReport = node.unreferencedFiles.value })
-        MissingFilesSection(node)
+        MissingFilesSection(node, onPlanned = { unexistingPlan = it })
         IcebergExportSection(node)
 
         // Folded, and out of the identity table above, because none of the three

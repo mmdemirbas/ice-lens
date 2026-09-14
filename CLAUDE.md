@@ -75,6 +75,7 @@ core/src/main/kotlin/
 │   ├── UnreferencedFiles.kt   # What is under the table root that no metadata version names — the orphan question, asked from the directory
 │   ├── OrphanRemovalPlan.kt   # What remove_orphan_files would delete of that now — listed or not, older than the cutoff or not, per format
 │   ├── MissingFiles.kt        # The converse: what the retained snapshots need that is not there — a stat per needed file, both formats
+│   ├── PaimonUnexistingFilesPlan.kt # What sys.remove_unexisting_files would commit for those on Paimon — the latest snapshot's scanned data files, and the missing files it never reaches
 │   ├── StatsCheck.kt          # A data file's recorded column bounds and counts against the same figures counted from its rows — a file read, behind its own click
 │   ├── MetricsConfig.kt       # `write.metadata.metrics.*` read as MetricsConfig.from reads it — each column's mode and the rule that set it — and whether a file records that shape
 │   ├── PaimonStatsMode.kt     # The Paimon twin: `metadata.stats-mode` and its siblings per value column, at the level the file was written to, against its `_VALUE_STATS`
@@ -739,6 +740,29 @@ intellij/src/main/kotlin/plugin/
   holds every checked-in table to nothing missing and deletes a data file, a manifest, a manifest
   list, a tag-only Paimon data file and a schema file from copies to see each named with its
   readers
+- **What `sys.remove_unexisting_files` does about them is planned over that report, and it
+  reaches less than the report lists.** `model/PaimonUnexistingFilesPlan.kt` reads
+  `ListUnexistingFiles` and Spark's `RemoveUnexistingFilesProcedure` at release-1.3.1: partition
+  by partition, the data files of every split the latest snapshot's **batch scan** plans are
+  stat-ed, and the absent ones are committed as one `CommitMessage` per bucket with them as
+  `deletedFiles` — an `APPEND` with a `DELETE` entry per file, `deltaRecordCount` minus their
+  rows, `commitIdentifier` `Long.MAX_VALUE` (every Spark batch commit's); `dry_run` lists the
+  same and commits nothing, and nothing listed commits nothing. So a missing file is `REMOVED`
+  when it is live in the latest snapshot and the scan opens it, `not scanned` when it is a
+  level-0 file of a primary-key table under deletion vectors or `first-row`
+  (`batchScanSkipLevel0`: neither read nor listed, and no batch read fails on it), and `not
+  reached` otherwise — a manifest, a list, an index or changelog file, or a data file only an
+  older snapshot, a tag or a branch names, which is why a time travel to that snapshot fails
+  after the fix as before. `docs/fixtures/paimon-pru.sql` is the oracle, the `pe`/`pea` shape:
+  `pru` a partitioned primary-key table with the one-row files of snapshots 2 and 3 deleted from
+  disk, `prua` after the procedure — snapshot 4, two `DELETE` entries, `-2`, `2` — with the
+  level rule run on two copies of `fr` (its level-0 file gone: nothing listed and `SELECT *`
+  unchanged; its level-4 file gone: listed). `PaimonUnexistingFilesFixtureTest` holds the plan
+  on `pru` to the commit `prua` carries and the plan on `prua` to two files not reached, the
+  `fr` copies to the level rule, and a missing manifest to not reached; the sweeps that open
+  every live file leave `pru` out by name, and `PaimonMergedCountFixtureTest` holds its count
+  to failing on both buckets. The table panel's `Missing Files` leads each row with the verdict
+  on Paimon, and `Maintenance` carries a `remove_unexisting_files` row once the stat has run
 - **Which statistics a column has is a configuration, and the file panel names the rule that
   gave each column its mode.** `model/MetricsConfig.kt` reads `write.metadata.metrics.*` the
   way `MetricsConfig.from` reads it at 1.8.1 — the configured default, else `truncate(16)`, or
@@ -2726,7 +2750,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,390 tests across 190 files (1,100 in :core, 281 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,400 tests across 191 files (1,104 in :core, 281 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2893,6 +2917,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pmm`, `pmma` | `PaimonManifestMergeFixtureTest` | an append table under `manifest.merge-min-count = 5` — twelve commits with a DELETE that removes a whole file in the sixth, whose base lists grow to four and merge to one twice, the second merge folding that DELETE against the ADD it met; `pmma` the same table after `sys.compact_manifest` rewrote its four small manifests into one, and a second call wrote nothing |
 | `paimon/db.db/po`, `poa` | `OrphanRemovalPlanFixtureTest` | one partitioned primary-key table copied before `sys.remove_orphan_files` ran on it — a rollback's leftovers and six strays, one per directory rule; the eleven files the procedure deleted from `poa`, and the three it never lists |
 | `paimon/db.db/pbk`, `pbka` | `PaimonBucketCountFixtureTest` | a primary-key table whose `bucket` was raised from 1 to 2 after three writes, copied before the `INSERT OVERWRITE` that rescales it — three live files recording the old count, every write refused until the rescale; `pbka` after it, rescaled over two buckets and written to again |
+| `paimon/db.db/pru`, `prua` | `PaimonUnexistingFilesFixtureTest` | a partitioned primary-key table with two live data files deleted from disk, copied before `sys.remove_unexisting_files` ran on it — the APPEND with a DELETE entry per file and `deltaRecordCount -2` it commits, the older snapshots it leaves broken, and the `fr` copies that pin the level-0 rule |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`

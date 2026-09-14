@@ -75,6 +75,9 @@ import model.FileChange
 import model.manifestTallies
 import model.MetadataTally
 import model.MissingFilesReport
+import model.PaimonUnexistingFilesPlan
+import model.UnexistingFileVerdict
+import model.planUnexistingFiles
 import model.METRICS_MAX_INFERRED_DEFAULT
 import model.PartitionFieldCheck
 import model.PartitionFieldVerdict
@@ -3218,20 +3221,33 @@ internal fun MetadataTalliesSection(tallies: List<MetadataTally>) {
 internal fun MissingFilesSection(
     node: GraphNode.TableNode,
     startRequested: Boolean = false,
+    /** On Paimon, what `sys.remove_unexisting_files` would do with the report — handed up for the maintenance summary's row. */
+    onPlanned: (PaimonUnexistingFilesPlan) -> Unit = {},
+    /** Last, so a trailing lambda is this and not [onPlanned]. */
     onSettled: () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     if (!node.missingFiles.isPresent) return
 
     var requested by remember(node.id) { mutableStateOf(startRequested) }
-    val outcome by produceState<Result<MissingFilesReport>?>(null, node.id, requested) {
+    // The report, and on Paimon the procedure planned over it — the plan replays the latest
+    // snapshot, which is why it is made on the same IO thread and not at render.
+    val outcome by produceState<Result<Pair<MissingFilesReport, PaimonUnexistingFilesPlan?>>?>(null, node.id, requested) {
         value = null
         if (requested) {
-            value = withContext(Dispatchers.IO) { runCatching { requireNotNull(node.missingFiles.value) { "no report" } } }
+            value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val report = requireNotNull(node.missingFiles.value) { "no report" }
+                    val plan = if (node.paimonRowLookup.isPresent) node.paimonRowLookup.value?.let { planUnexistingFiles(report, it) } else null
+                    report to plan
+                }
+            }
+            value?.getOrNull()?.second?.let(onPlanned)
             onSettled()
         }
     }
-    val report = outcome?.getOrNull()
+    val report = outcome?.getOrNull()?.first
+    val plan = outcome?.getOrNull()?.second
     val title = if (report != null) "Missing Files (${formatCount(report.missing.size)})" else "Missing Files"
 
     Section(title) {
@@ -3263,7 +3279,7 @@ internal fun MissingFilesSection(
                     color = if (report.missing.isEmpty()) colors.onSurface else colors.error,
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
-                if (report.missing.isNotEmpty()) {
+                if (report.missing.isNotEmpty() && plan == null) {
                     WideTable(
                         headers = listOf("Kind", "File", "Read By"),
                         columnWidths = listOf(110.dp, 520.dp, 400.dp),
@@ -3275,6 +3291,53 @@ internal fun MissingFilesSection(
                     if (report.missing.size > MAX_UNREFERENCED_ROWS) {
                         Text("…and ${formatCount(report.missing.size - MAX_UNREFERENCED_ROWS)} more.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
                     }
+                }
+                if (report.missing.isNotEmpty() && plan != null) {
+                    // The procedure's verdict leads each row: what a bare sys.remove_unexisting_files
+                    // commits is the reader's next question, and a missing file it never reaches —
+                    // a manifest, or a data file only an older snapshot names — is the row that
+                    // stays broken after it runs.
+                    Text(
+                        if (plan.commits) {
+                            "sys.remove_unexisting_files would commit one APPEND to snapshot ${plan.snapshotId}'s line: a DELETE entry for " +
+                                "${formatCounted(plan.removed.size, "data file")} across ${formatCounted(plan.buckets, "bucket")} of " +
+                                "${formatCounted(plan.partitions, "partition")}, deltaRecordCount ${plan.deltaRecordCount}" +
+                                (if (plan.notReached.isNotEmpty() || plan.unread.isNotEmpty()) "; ${formatCounted(plan.notReached.size + plan.unread.size, "missing file")} it does not list" else "") + "."
+                        } else {
+                            "sys.remove_unexisting_files would list nothing and commit nothing: none of the missing files is a data file the latest snapshot's batch scan opens."
+                        },
+                        fontSize = TypeScale.small,
+                        fontWeight = FontWeight.Bold,
+                        color = if (plan.commits) verdictSkippedColor() else colors.onSurface,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                    WideTable(
+                        headers = listOf("remove_unexisting_files", "Kind", "File", "Read By", "Rule"),
+                        columnWidths = listOf(170.dp, 110.dp, 480.dp, 360.dp, 560.dp),
+                        leadCellColors = plan.rows.take(MAX_UNREFERENCED_ROWS).map {
+                            when (it.verdict) {
+                                UnexistingFileVerdict.REMOVED -> verdictSkippedColor()
+                                UnexistingFileVerdict.UNREAD -> verdictUnevaluatedColor()
+                                UnexistingFileVerdict.NOT_REACHED -> colors.error
+                            }
+                        },
+                        rows = plan.rows.take(MAX_UNREFERENCED_ROWS).map { row ->
+                            listOf(row.verdict.label, row.file.kind.label, report.relativePathOf(row.file), row.file.neededBy.joinToString(", "), row.reason)
+                        },
+                    )
+                    if (plan.rows.size > MAX_UNREFERENCED_ROWS) {
+                        Text("…and ${formatCount(plan.rows.size - MAX_UNREFERENCED_ROWS)} more.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+                    }
+                    Text(
+                        "The procedure stats the data files of every split the latest snapshot's batch scan plans, partition by " +
+                            "partition, and commits the absent ones as DELETE entries — an APPEND whose deltaRecordCount is minus their " +
+                            "rows; dry_run => true lists the same and commits nothing. A level-0 file of a table whose batch scan skips " +
+                            "level 0 is neither read nor listed, and a manifest, an index file, a changelog file or a data file only an " +
+                            "older snapshot, a tag or a branch names is not reached — a time travel to that snapshot fails after the fix as before.",
+                        fontSize = TypeScale.small,
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
                 Text(
                     "Needed means live in a snapshot the newest metadata retains, or under Paimon's snapshot/, a tag or a branch — " +

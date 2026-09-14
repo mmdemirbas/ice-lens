@@ -38,6 +38,7 @@ import model.CherryPickVerdict
 import model.planCherryPick
 import model.planRollback
 import model.PaimonFastForwardPlan
+import model.PaimonUnexistingFilesPlan
 import model.fastForwardPlans
 import model.planFastForward
 import model.planPaimonManifestCompaction
@@ -272,10 +273,12 @@ internal fun ExpirySection(metadata: TableMetadata, nowMs: Long) {
  *
  * `remove_orphan_files` is the one row that needs a walk of the directory, so it is planned from
  * [orphanReport] — what `Unreferenced Files` found, once its button has been pressed — and says
- * so until then, rather than starting the walk from a summary.
+ * so until then, rather than starting the walk from a summary. Paimon's
+ * `remove_unexisting_files` is the same shape over the stat `Missing Files` runs, carried in
+ * [unexistingPlan].
  */
 @Composable
-internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: UnreferencedFilesReport? = null) {
+internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: UnreferencedFilesReport? = null, unexistingPlan: PaimonUnexistingFilesPlan? = null) {
     val colors = MaterialTheme.colorScheme
     val summary = node.summary
     val nowMs = expiryClock()
@@ -462,6 +465,14 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: Unrefer
                 bareTags.removed.isNotEmpty() -> Row("would remove ${formatCounted(bareTags.removed.size, "tag")}", "expire_tags", "a bare call removes ${bareTags.removed.size} of ${paimonExpiry.tags.size}, whose retention ran out" + (if (freed > 0) ", freeing ${formatCounted(freed, "data file")}" else "") + "; older_than = now removes ${byAgeTags.removed.size}", "table → Tag Expiry", verdictSkippedColor())
                 else -> Row("nothing on a bare call", "expire_tags", "${formatCounted(paimonExpiry.tags.size, "tag")}, ${paimonExpiry.tags.count { it.timeRetainedMs != null }} with a retention, none run out; older_than = now removes ${byAgeTags.removed.size}", "table → Tag Expiry", null)
             }
+        }
+    }
+    if (paimonExpiry != null && node.missingFiles.isPresent) {
+        rows += when {
+            unexistingPlan == null -> Row("not checked", "remove_unexisting_files", "stat the files the retained snapshots need under Missing Files to plan it", "table → Missing Files", null)
+            unexistingPlan.rows.isEmpty() -> Row("nothing to do", "remove_unexisting_files", "every file the retained snapshots need is there", "table → Missing Files", null)
+            unexistingPlan.commits -> Row("would remove ${formatCounted(unexistingPlan.removed.size, "entry")}", "remove_unexisting_files", "an APPEND with a DELETE entry per missing data file of snapshot ${unexistingPlan.snapshotId}, deltaRecordCount ${unexistingPlan.deltaRecordCount}" + (if (unexistingPlan.notReached.size + unexistingPlan.unread.size > 0) "; ${unexistingPlan.notReached.size + unexistingPlan.unread.size} missing it does not list" else ""), "table → Missing Files", verdictSkippedColor())
+            else -> Row("nothing on a call", "remove_unexisting_files", "${formatCounted(unexistingPlan.rows.size, "missing file")}, none a data file the latest snapshot's batch scan opens", "table → Missing Files", null)
         }
     }
     if (node.unreferencedFiles.isPresent) {

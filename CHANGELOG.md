@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`remove_unexisting_files` planned** — on a Paimon table, `Missing Files` leads each missing
+  file with what `sys.remove_unexisting_files` would do: a DELETE entry in one APPEND for a data
+  file the latest snapshot's batch scan opens, not scanned for a level-0 file such a scan skips,
+  not reached for a manifest or a file only an older snapshot names; the commit's
+  `deltaRecordCount` in the headline and a `Maintenance` row. `docs/fixtures/paimon-pru.sql`
+  records the runs, `pru` / `prua` the table before and after
 - **`Cherry-Pick`** on the Iceberg snapshot panel — what `cherrypick_snapshot` does with this
   snapshot, decided the way `CherryPickOperation` decides it: fast-forward main when its parent
   is the current snapshot, publish an append (or a dynamic overwrite) as a new commit carrying
