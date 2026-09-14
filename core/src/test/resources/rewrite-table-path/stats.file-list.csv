@@ -1,0 +1,13 @@
+/wh/default/stats/data/region=ap/00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00002.parquet,/copy/default/stats/data/region=ap/00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00002.parquet
+/wh/default/stats/data/region=eu/00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00001.parquet,/copy/default/stats/data/region=eu/00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00001.parquet
+/wh/default/stats/data/region=us/00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00002.parquet,/copy/default/stats/data/region=us/00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00002.parquet
+/wh/default/stats/data/region=us/00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00001.parquet,/copy/default/stats/data/region=us/00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00001.parquet
+/wh/staging/stats/6542900942027300342-deca9636-4794-4ccd-83e3-9e15d9dfa13b.stats,/copy/default/stats/metadata/6542900942027300342-deca9636-4794-4ccd-83e3-9e15d9dfa13b.stats
+/wh/staging/stats/a9d164ff-7fee-4bc2-a8cb-e396fac61be0-m0.avro,/copy/default/stats/metadata/a9d164ff-7fee-4bc2-a8cb-e396fac61be0-m0.avro
+/wh/staging/stats/e7d66c7f-3149-4ac8-808a-9bba4882e760-m0.avro,/copy/default/stats/metadata/e7d66c7f-3149-4ac8-808a-9bba4882e760-m0.avro
+/wh/staging/stats/snap-5609695205276530621-1-e7d66c7f-3149-4ac8-808a-9bba4882e760.avro,/copy/default/stats/metadata/snap-5609695205276530621-1-e7d66c7f-3149-4ac8-808a-9bba4882e760.avro
+/wh/staging/stats/snap-6542900942027300342-1-a9d164ff-7fee-4bc2-a8cb-e396fac61be0.avro,/copy/default/stats/metadata/snap-6542900942027300342-1-a9d164ff-7fee-4bc2-a8cb-e396fac61be0.avro
+/wh/staging/stats/v1.metadata.json,/copy/default/stats/metadata/v1.metadata.json
+/wh/staging/stats/v2.metadata.json,/copy/default/stats/metadata/v2.metadata.json
+/wh/staging/stats/v3.metadata.json,/copy/default/stats/metadata/v3.metadata.json
+/wh/staging/stats/v4.metadata.json,/copy/default/stats/metadata/v4.metadata.json

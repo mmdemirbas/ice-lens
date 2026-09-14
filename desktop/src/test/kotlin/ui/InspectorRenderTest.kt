@@ -1463,6 +1463,17 @@ class InspectorRenderTest {
     }
 
     /**
+     * rewrite_table_path on the table panel: the form seeded with the recorded location and the
+     * local directory, the staged files and the copy list on `mor` (whose positional deletes are
+     * rewritten) and the never-staged statistics file on `stats`, coloured on its row.
+     */
+    @Test
+    fun `a table plans what rewrite_table_path would stage and list`() {
+        renderInspector(graphFor("mor"), "table_root", "table-node-rewrite-table-path", height = 4200, sectionCollapse = onlyExpanded("Rewrite Table Path"))
+        renderInspector(graphFor("stats"), "table_root", "table-node-rewrite-table-path-stats", height = 3200, sectionCollapse = onlyExpanded("Rewrite Table Path"))
+    }
+
+    /**
      * `sweepb`'s `dev` sits four commits behind `main`, so one of its two pairs moves; `branched`'s
      * two lines have both moved on and every pair is refused — the verdict column needs both. `br`
      * is the Paimon side: fast-forwarding `dev` drops two of main's commits and leaves eight files.

@@ -1,0 +1,9 @@
+/wh/extdata-files/00000-0-45a53a84-7477-4be4-beae-804690913765-0-00001.parquet,/copy/extdata-files/00000-0-45a53a84-7477-4be4-beae-804690913765-0-00001.parquet
+/wh/extdata-files/00000-1-aa0f790f-375d-47f9-944b-80538f14bd4f-0-00001.parquet,/copy/extdata-files/00000-1-aa0f790f-375d-47f9-944b-80538f14bd4f-0-00001.parquet
+/wh/staging/extdata2/091582a0-dc5c-4a33-be0a-39dcd17ae3df-m0.avro,/copy/default/extdata/metadata/091582a0-dc5c-4a33-be0a-39dcd17ae3df-m0.avro
+/wh/staging/extdata2/c9eb3c9b-9224-46f2-9862-14c5e50ce3b7-m0.avro,/copy/default/extdata/metadata/c9eb3c9b-9224-46f2-9862-14c5e50ce3b7-m0.avro
+/wh/staging/extdata2/snap-3333795970454122134-1-c9eb3c9b-9224-46f2-9862-14c5e50ce3b7.avro,/copy/default/extdata/metadata/snap-3333795970454122134-1-c9eb3c9b-9224-46f2-9862-14c5e50ce3b7.avro
+/wh/staging/extdata2/snap-5397428387438375556-1-091582a0-dc5c-4a33-be0a-39dcd17ae3df.avro,/copy/default/extdata/metadata/snap-5397428387438375556-1-091582a0-dc5c-4a33-be0a-39dcd17ae3df.avro
+/wh/staging/extdata2/v1.metadata.json,/copy/default/extdata/metadata/v1.metadata.json
+/wh/staging/extdata2/v2.metadata.json,/copy/default/extdata/metadata/v2.metadata.json
+/wh/staging/extdata2/v3.metadata.json,/copy/default/extdata/metadata/v3.metadata.json

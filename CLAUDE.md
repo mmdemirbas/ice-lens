@@ -94,6 +94,7 @@ core/src/main/kotlin/
 │   ├── FastForwardPlan.kt     # fast_forward on both formats — Iceberg's ref move under the ancestor rule, Paimon's replacement of main from the branch's earliest snapshot on, and what that leaves
 │   ├── IcebergRollbackPlan.kt # rollback_to_snapshot, set_current_snapshot and rollback_to_timestamp — the ancestor rule, what main moves past, and the metadata the commit writes for the expiry after
 │   ├── CherryPickPlan.kt      # What cherrypick_snapshot does with a snapshot — fast-forward, publish, or one of five refusals — CherryPickOperation's order
+│   ├── RewriteTablePathPlan.kt # What rewrite_table_path stages and lists for a copy of the table — every version, list and manifest rewritten, the live files to copy, and what refuses it
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
 │   ├── SchemaFieldRows.kt     # A schema as one row per field, nested fields under their path with the ids the format evolves them by — both schema panels' table
 │   ├── IcebergExport.kt       # The Iceberg metadata a Paimon table writes beside its own, against the table it exports — which of its live files an Iceberg reader sees
@@ -167,6 +168,7 @@ desktop/src/main/kotlin/
     ├── PaimonRowMergeSection.kt # The same on Paimon: the merge engine over the record's key, the row lookup run for it behind a click
     ├── ReadAsSection.kt       # An Iceberg row as a read returns it, where the schema has moved on since the file — drawn only when it differs
     ├── TimeTravelSection.kt   # A typed time and the snapshot it resolves to, on the metadata panel and the Paimon table panel
+    ├── RewriteTablePathSection.kt # Two prefixes and what rewrite_table_path would stage and list under them, on the Iceberg table panel
     ├── RowLookupSection.kt    # The scan filter one step further: the matching rows read from the files it leaves, each with its fate — both formats; under it the history and, on Paimon, the changelog
     ├── NodePanels.kt          # Table, row, error and group panels
     ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
@@ -2604,6 +2606,34 @@ intellij/src/main/kotlin/plugin/
   `CherryPickFixtureTest` holds the plan to those runs, the already-picked case on a synthetic
   published snapshot, and every current ancestor across the corpus to a refusal; the snapshot
   panel's `Cherry-Pick` section draws the verdict under `Rollback`
+- **What `rewrite_table_path` does with a copied table is planned from every version, and the
+  list it writes carries what every retained snapshot reads.** `model/RewriteTablePathPlan.kt`
+  reads `RewriteTablePathSparkAction` and `RewriteTablePathUtil` at 1.8.1: the procedure copies
+  nothing into place — it rewrites the metadata into a staging directory with every path under
+  `source_prefix` moved under `target_prefix` (the end version and its `metadata-log` back to the
+  start version, exclusive, each of which must exist; the manifest list of every snapshot the end
+  holds and the start does not; every manifest the end version's snapshots list, `all_manifests`,
+  or with a start only those a delta snapshot added; a positional delete's `file_path` column)
+  and writes a `file-list` CSV of `(from, to)`: the staged files from staging, and for the
+  **live** entries of the rewritten manifests a data file and an equality delete as they are — a
+  `DELETED` entry keeps its rewritten path and is not listed, so the list holds `mor`'s six data
+  files where the current snapshot reads two. Refused in the action's order: equal prefixes, a
+  version not in the log, partition statistics (`Partition statistics files are not supported
+  yet.`), any path a rewritten file carries not under the source (`Path %s does not start with
+  %s/` — `extdata`'s `write.data.path` under the table prefix, moved under the warehouse prefix
+  instead), and a deletion vector (`Content offset is required for DV`), so a v3 table with a
+  vector cannot be moved by it. Two things the runs settled: **a statistics file is listed from
+  staging and never written there**, so a copy fails on that line, and every retained version is
+  rewritten, an older one naming an expired snapshot's list included, while that list is not
+  staged. `docs/fixtures/rewrite-table-path.sql` records twelve runs on copies of `mor`
+  (whole, from `v4`, to `v3`), `eqdel`, `stats`, `pstats`, `extdata`, `v3` and `expired`; the
+  file lists and staging listings of the seven that ran are under
+  `core/src/test/resources/rewrite-table-path/`, and `RewriteTablePathFixtureTest` holds the
+  plan to each pair for pair and to every refusal. `TableNode.rewriteTablePath` carries the
+  versions with their lists and entries as a `DeferredRead`; the table panel's `Rewrite Table
+  Path` is a form seeded with the recorded location and the directory the table was opened
+  from — the two prefixes a reader of a copied table has in hand — and `Maintenance` carries a
+  `rewrite_table_path` row under the same defaults where they differ
 - **Four layouts, and only one of them gets the refinements.** `GraphLayoutAlgorithm` offers
   layered left-to-right (the default, and the right shape for a containment hierarchy drawn as
   depth), layered top-to-bottom for a tall window, `mrtree` for following one branch down to its
@@ -2755,7 +2785,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,400 tests across 191 files (1,104 in :core, 281 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,410 tests across 192 files (1,110 in :core, 282 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

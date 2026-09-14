@@ -1,0 +1,11 @@
+/wh/default/mor/data/00000-0-b569eaa4-1f75-47ac-87fa-c6c7979dc42c-0-00001.parquet,/copy/default/mor/data/00000-0-b569eaa4-1f75-47ac-87fa-c6c7979dc42c-0-00001.parquet
+/wh/default/mor/data/00000-2-a1fcf519-5e9c-4cca-95ed-3b1262f8e1b6-0-00001.parquet,/copy/default/mor/data/00000-2-a1fcf519-5e9c-4cca-95ed-3b1262f8e1b6-0-00001.parquet
+/wh/default/mor/data/00001-1-b569eaa4-1f75-47ac-87fa-c6c7979dc42c-0-00001.parquet,/copy/default/mor/data/00001-1-b569eaa4-1f75-47ac-87fa-c6c7979dc42c-0-00001.parquet
+/wh/default/mor/data/00001-3-a1fcf519-5e9c-4cca-95ed-3b1262f8e1b6-0-00001.parquet,/copy/default/mor/data/00001-3-a1fcf519-5e9c-4cca-95ed-3b1262f8e1b6-0-00001.parquet
+/wh/staging/mor-to-v3/14465ee4-06ff-4a51-a2f4-09545c681239-m0.avro,/copy/default/mor/metadata/14465ee4-06ff-4a51-a2f4-09545c681239-m0.avro
+/wh/staging/mor-to-v3/ece91950-ac97-401c-baa8-defda327ed80-m0.avro,/copy/default/mor/metadata/ece91950-ac97-401c-baa8-defda327ed80-m0.avro
+/wh/staging/mor-to-v3/snap-2479080604789318646-1-14465ee4-06ff-4a51-a2f4-09545c681239.avro,/copy/default/mor/metadata/snap-2479080604789318646-1-14465ee4-06ff-4a51-a2f4-09545c681239.avro
+/wh/staging/mor-to-v3/snap-4747162675114470207-1-ece91950-ac97-401c-baa8-defda327ed80.avro,/copy/default/mor/metadata/snap-4747162675114470207-1-ece91950-ac97-401c-baa8-defda327ed80.avro
+/wh/staging/mor-to-v3/v1.metadata.json,/copy/default/mor/metadata/v1.metadata.json
+/wh/staging/mor-to-v3/v2.metadata.json,/copy/default/mor/metadata/v2.metadata.json
+/wh/staging/mor-to-v3/v3.metadata.json,/copy/default/mor/metadata/v3.metadata.json

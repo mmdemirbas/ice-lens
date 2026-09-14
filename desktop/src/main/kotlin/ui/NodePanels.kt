@@ -217,6 +217,7 @@ internal fun ColumnScope.TablePanel(
         IntegritySection(node)
         UnreferencedFilesSection(node, onSettled = { orphanReport = node.unreferencedFiles.value })
         MissingFilesSection(node, onPlanned = { unexistingPlan = it })
+        RewriteTablePathSection(node)
         IcebergExportSection(node)
 
         // Folded, and out of the identity table above, because none of the three

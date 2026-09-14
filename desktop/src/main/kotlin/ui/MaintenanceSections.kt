@@ -39,6 +39,8 @@ import model.planCherryPick
 import model.planRollback
 import model.PaimonFastForwardPlan
 import model.PaimonUnexistingFilesPlan
+import model.RewriteTablePathOptions
+import model.planRewriteTablePath
 import model.fastForwardPlans
 import model.planFastForward
 import model.planPaimonManifestCompaction
@@ -465,6 +467,17 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: Unrefer
                 bareTags.removed.isNotEmpty() -> Row("would remove ${formatCounted(bareTags.removed.size, "tag")}", "expire_tags", "a bare call removes ${bareTags.removed.size} of ${paimonExpiry.tags.size}, whose retention ran out" + (if (freed > 0) ", freeing ${formatCounted(freed, "data file")}" else "") + "; older_than = now removes ${byAgeTags.removed.size}", "table → Tag Expiry", verdictSkippedColor())
                 else -> Row("nothing on a bare call", "expire_tags", "${formatCounted(paimonExpiry.tags.size, "tag")}, ${paimonExpiry.tags.count { it.timeRetainedMs != null }} with a retention, none run out; older_than = now removes ${byAgeTags.removed.size}", "table → Tag Expiry", null)
             }
+        }
+    }
+    val recordedLocation = summary.location
+    if (node.rewriteTablePath.isPresent && recordedLocation != null && recordedLocation != summary.tablePath) {
+        // Planned under the prefixes a copied table has in hand; the section holds the form.
+        val plan = node.rewriteTablePath.value?.planRewriteTablePath(RewriteTablePathOptions(recordedLocation, summary.tablePath))
+        val refusal = plan?.refusal
+        rows += when {
+            plan == null -> Row("not readable", "rewrite_table_path", "the table's versions could not be read", "table → Rewrite Table Path", null)
+            refusal != null -> Row("refused", "rewrite_table_path", refusal, "table → Rewrite Table Path", colors.error)
+            else -> Row("would list ${formatCounted(plan.fileCount, "file")}", "rewrite_table_path", "${formatCounted(plan.versions.size, "version")}, ${formatCounted(plan.snapshotIds.size, "list")}, ${formatCounted(plan.manifests.size, "manifest")} rewritten into staging; $recordedLocation → ${summary.tablePath}", "table → Rewrite Table Path", verdictSkippedColor())
         }
     }
     if (paimonExpiry != null && node.missingFiles.isPresent) {

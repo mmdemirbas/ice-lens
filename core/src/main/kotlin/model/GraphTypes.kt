@@ -388,6 +388,8 @@ sealed class GraphNode(
         val expiryFiles: DeferredRead<ExpiryFileInput> = DeferredRead.none(),
         /** The Paimon twin — see [PaimonExpiryFileInput]; nothing on Iceberg. */
         val paimonExpiryFiles: DeferredRead<PaimonExpiryFileInput> = DeferredRead.none(),
+        /** Every version's lists and entries, for `rewrite_table_path` — see [RewriteTablePathInput]; nothing on Paimon. */
+        val rewriteTablePath: DeferredRead<RewriteTablePathInput> = DeferredRead.none(),
         /**
          * The newest metadata and the current snapshot's node, for the planners — see
          * [MaintenanceInput] for why they are carried here rather than looked up on the drawn

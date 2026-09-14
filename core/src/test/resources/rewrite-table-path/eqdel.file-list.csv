@@ -1,0 +1,17 @@
+/wh/default/eqdel/data/00000-0-1d29780d-8c15-44a2-98f1-5c7e3a8ebc17-0-00001.parquet,/copy/default/eqdel/data/00000-0-1d29780d-8c15-44a2-98f1-5c7e3a8ebc17-0-00001.parquet
+/wh/default/eqdel/data/00000-1-2b682d33-7500-456d-92c2-8c531cf1d4c0-0-00001.parquet,/copy/default/eqdel/data/00000-1-2b682d33-7500-456d-92c2-8c531cf1d4c0-0-00001.parquet
+/wh/default/eqdel/data/00000-eq-deletes.parquet,/copy/default/eqdel/data/00000-eq-deletes.parquet
+/wh/staging/eqdel/00000-3-f86b61f1-7cb5-46d7-9dcd-eae21f03ba8e-00001-deletes.parquet,/copy/default/eqdel/data/00000-3-f86b61f1-7cb5-46d7-9dcd-eae21f03ba8e-00001-deletes.parquet
+/wh/staging/eqdel/2a10a094-4b2d-4fc8-9bb2-e60f203d5415-m0.avro,/copy/default/eqdel/metadata/2a10a094-4b2d-4fc8-9bb2-e60f203d5415-m0.avro
+/wh/staging/eqdel/5060731c-b3c4-47ac-a819-21357bb6727a-m0.avro,/copy/default/eqdel/metadata/5060731c-b3c4-47ac-a819-21357bb6727a-m0.avro
+/wh/staging/eqdel/83ce2b0a-9363-43cd-ad2b-c2f1d7f3ca29-m0.avro,/copy/default/eqdel/metadata/83ce2b0a-9363-43cd-ad2b-c2f1d7f3ca29-m0.avro
+/wh/staging/eqdel/cc8805c6-5c49-4e66-8f92-1693f8b9960d-m0.avro,/copy/default/eqdel/metadata/cc8805c6-5c49-4e66-8f92-1693f8b9960d-m0.avro
+/wh/staging/eqdel/snap-1383346609189774084-1-83ce2b0a-9363-43cd-ad2b-c2f1d7f3ca29.avro,/copy/default/eqdel/metadata/snap-1383346609189774084-1-83ce2b0a-9363-43cd-ad2b-c2f1d7f3ca29.avro
+/wh/staging/eqdel/snap-239483717289941561-1-5060731c-b3c4-47ac-a819-21357bb6727a.avro,/copy/default/eqdel/metadata/snap-239483717289941561-1-5060731c-b3c4-47ac-a819-21357bb6727a.avro
+/wh/staging/eqdel/snap-3807811192105641465-1-2a10a094-4b2d-4fc8-9bb2-e60f203d5415.avro,/copy/default/eqdel/metadata/snap-3807811192105641465-1-2a10a094-4b2d-4fc8-9bb2-e60f203d5415.avro
+/wh/staging/eqdel/snap-6926553695912153327-1-cc8805c6-5c49-4e66-8f92-1693f8b9960d.avro,/copy/default/eqdel/metadata/snap-6926553695912153327-1-cc8805c6-5c49-4e66-8f92-1693f8b9960d.avro
+/wh/staging/eqdel/v1.metadata.json,/copy/default/eqdel/metadata/v1.metadata.json
+/wh/staging/eqdel/v2.metadata.json,/copy/default/eqdel/metadata/v2.metadata.json
+/wh/staging/eqdel/v3.metadata.json,/copy/default/eqdel/metadata/v3.metadata.json
+/wh/staging/eqdel/v4.metadata.json,/copy/default/eqdel/metadata/v4.metadata.json
+/wh/staging/eqdel/v5.metadata.json,/copy/default/eqdel/metadata/v5.metadata.json

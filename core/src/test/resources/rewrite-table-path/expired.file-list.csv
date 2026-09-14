@@ -1,0 +1,12 @@
+/wh/default/expired/data/00000-1-7a432ed2-c99b-4db0-87ea-47215f96b760-0-00001.parquet,/copy/default/expired/data/00000-1-7a432ed2-c99b-4db0-87ea-47215f96b760-0-00001.parquet
+/wh/default/expired/data/00000-2-ff50e34c-dab3-4c3d-9d54-9e81cd023b87-0-00001.parquet,/copy/default/expired/data/00000-2-ff50e34c-dab3-4c3d-9d54-9e81cd023b87-0-00001.parquet
+/wh/staging/expired/4ded3085-c308-4a25-8b6c-35f664ab9003-m0.avro,/copy/default/expired/metadata/4ded3085-c308-4a25-8b6c-35f664ab9003-m0.avro
+/wh/staging/expired/684d9048-ae05-4cef-8c51-b57c984a6368-m0.avro,/copy/default/expired/metadata/684d9048-ae05-4cef-8c51-b57c984a6368-m0.avro
+/wh/staging/expired/8bc8e0db-e33a-43d2-8339-5d06346485f3-m0.avro,/copy/default/expired/metadata/8bc8e0db-e33a-43d2-8339-5d06346485f3-m0.avro
+/wh/staging/expired/snap-109929048088262785-1-684d9048-ae05-4cef-8c51-b57c984a6368.avro,/copy/default/expired/metadata/snap-109929048088262785-1-684d9048-ae05-4cef-8c51-b57c984a6368.avro
+/wh/staging/expired/v1.metadata.json,/copy/default/expired/metadata/v1.metadata.json
+/wh/staging/expired/v2.metadata.json,/copy/default/expired/metadata/v2.metadata.json
+/wh/staging/expired/v3.metadata.json,/copy/default/expired/metadata/v3.metadata.json
+/wh/staging/expired/v4.metadata.json,/copy/default/expired/metadata/v4.metadata.json
+/wh/staging/expired/v5.metadata.json,/copy/default/expired/metadata/v5.metadata.json
+/wh/staging/expired/v6.metadata.json,/copy/default/expired/metadata/v6.metadata.json

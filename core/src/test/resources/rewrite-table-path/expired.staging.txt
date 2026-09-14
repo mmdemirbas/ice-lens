@@ -1,0 +1,10 @@
+4ded3085-c308-4a25-8b6c-35f664ab9003-m0.avro
+684d9048-ae05-4cef-8c51-b57c984a6368-m0.avro
+8bc8e0db-e33a-43d2-8339-5d06346485f3-m0.avro
+snap-109929048088262785-1-684d9048-ae05-4cef-8c51-b57c984a6368.avro
+v1.metadata.json
+v2.metadata.json
+v3.metadata.json
+v4.metadata.json
+v5.metadata.json
+v6.metadata.json
