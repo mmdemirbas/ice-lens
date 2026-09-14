@@ -1,0 +1,37 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT NOT NULL"
+  }, {
+    "id" : 1,
+    "name" : "name",
+    "type" : "STRING"
+  }, {
+    "id" : 2,
+    "name" : "note",
+    "type" : "STRING"
+  }, {
+    "id" : 3,
+    "name" : "tag",
+    "type" : "STRING"
+  }, {
+    "id" : 4,
+    "name" : "score",
+    "type" : "DOUBLE"
+  } ],
+  "highestFieldId" : 4,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ "k" ],
+  "options" : {
+    "bucket" : "1",
+    "owner" : "root",
+    "fields.tag.stats-mode" : "none",
+    "fields.name.stats-mode" : "truncate(4)",
+    "fields.note.stats-mode" : "full",
+    "metadata.stats-mode" : "counts"
+  },
+  "timeMillis" : 1789399544679
+}

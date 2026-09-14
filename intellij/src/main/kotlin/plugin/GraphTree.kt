@@ -279,9 +279,10 @@ object GraphTree {
             node.entry.file?.writeCols?.takeIf { node.partial }?.let { "Columns" to it.joinToString(", ") + " only — a partial-column file, stitched by row id on read" },
             // From the index manifest, not the index file: the strip is drawn on selection, on the EDT.
             node.vectorRange?.let { "Deleted rows" to "${it.cardinality ?: "?"} marked by the vector in ${it.indexFileName}" },
-            node.partition?.takeIf { it.values.isNotEmpty() }?.let { partition ->
-                CHECKS to checksLine(paimonPartitionBoundsChecks(partition, node.columnBounds, node.entry.file?.rowCount).map { Triple("partition ${it.field}", it.agrees, "${it.recorded} recorded, ${it.fromBounds ?: it.reason} from the bounds") })
-            },
+            (node.partition?.takeIf { it.values.isNotEmpty() }?.let { partition ->
+                paimonPartitionBoundsChecks(partition, node.columnBounds, node.entry.file?.rowCount).map { Triple("partition ${it.field}", it.agrees, "${it.recorded} recorded, ${it.fromBounds ?: it.reason} from the bounds") }
+            }.orEmpty() + node.statsModes.map { Triple("${it.column} stats-mode", it.agrees, "${it.recorded} recorded under ${it.configured.mode.spelled}: ${it.reason}") })
+                .takeIf { it.isNotEmpty() }?.let { CHECKS to checksLine(it) },
         )
         // A group is the one node that is not an artifact — it stands for the ones this drawing
         // left out, and saying how many is the whole of what it has to say.

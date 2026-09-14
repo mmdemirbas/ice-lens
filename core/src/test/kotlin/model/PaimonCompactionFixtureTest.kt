@@ -67,11 +67,12 @@ class PaimonCompactionFixtureTest {
      * out: a Spark write never runs their compaction, `ad`'s `COMPACT` is a deletion-vector
      * maintenance commit that rewrote no file, and `rt`'s is an explicit `sys.compact` call —
      * the planner's side for it is what such a call would pack, tested below. `se` is the one
-     * primary-key table whose `COMPACT` is a `sys.compact` call too, and is left out for it.
+     * primary-key table whose `COMPACT` is a `sys.compact` call too, and is left out for it, as
+     * is `psl`, whose full compaction upgrades a lone level-0 file.
      */
     @Test
     fun `across every fixture, the plan compacts exactly where the next commit is a COMPACT`() {
-        val writerDriven = FixtureCatalog.paimon.filter { name -> name != "se" && model(name).schemas.any { it.primaryKeys.isNotEmpty() } }
+        val writerDriven = FixtureCatalog.paimon.filter { name -> name !in setOf("se", "psl") && model(name).schemas.any { it.primaryKeys.isNotEmpty() } }
         assertTrue(writerDriven.size >= 20, writerDriven.toString())
         var checked = 0
         for (name in writerDriven) {

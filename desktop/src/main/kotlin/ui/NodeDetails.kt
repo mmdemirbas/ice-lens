@@ -2880,6 +2880,53 @@ internal fun MetricsModesSection(node: GraphNode.FileNode) {
 }
 
 @Composable
+internal fun PaimonStatsModesSection(node: GraphNode.PaimonDataFileNode) {
+    val colors = MaterialTheme.colorScheme
+    val checks = node.statsModes
+    if (checks.isEmpty()) return
+    val differing = checks.count { it.agrees == false }
+    val level = node.entry.file?.let { model.paimonStatsWriteLevel(it) }
+    Section("Stats Modes" + if (differing > 0) " — $differing differ" else "") {
+        Text(
+            "Which statistics the writer records for a column is `metadata.stats-mode` and its " +
+                "siblings, read here from the schema this file names (schema ${node.entry.file?.schemaId ?: "?"}" +
+                (level?.let { ", the mode for level $it, the level the file was written to" } ?: "") + "): " +
+                "the default is truncate(16) on every value column, a system column is truncate(128) " +
+                "whatever the table says, and a column with no bounds is one no filter can skip this " +
+                "file on. Each column's mode, what set it, and whether the file records that shape.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            headers = listOf("Agrees", "Column", "Mode", "Recorded", "Set By", "Why"),
+            columnWidths = listOf(100.dp, 170.dp, 110.dp, 150.dp, 420.dp, 420.dp),
+            leadCellColors = checks.map {
+                when (it.agrees) {
+                    false -> colors.error
+                    null -> verdictUnevaluatedColor()
+                    true -> null
+                }
+            },
+            rows = checks.map { c ->
+                listOf(
+                    when (c.agrees) {
+                        true -> "yes"
+                        false -> "NO"
+                        null -> "not judged"
+                    },
+                    c.column,
+                    c.configured.mode.spelled,
+                    c.recorded,
+                    c.configured.setBy,
+                    c.reason,
+                )
+            },
+        )
+    }
+}
+
+@Composable
 internal fun PartitionBoundsSection(checks: List<PartitionFieldCheck>) {
     val colors = MaterialTheme.colorScheme
     val disagreeing = checks.count { it.verdict == PartitionFieldVerdict.DISAGREES }

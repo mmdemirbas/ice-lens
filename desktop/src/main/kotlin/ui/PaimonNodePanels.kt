@@ -360,5 +360,7 @@ internal fun ColumnScope.PaimonDataFilePanel(
             }
             StatsCheckSection(node.id, node.localPath, node.recordedColumnStats(), file?.rowCount, recordedSize = file?.fileSize)
         }
+        // Why a column has the statistics it has — the stats mode its schema's options give it.
+        PaimonStatsModesSection(node)
         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 }

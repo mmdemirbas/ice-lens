@@ -76,6 +76,7 @@ core/src/main/kotlin/
 │   ├── MissingFiles.kt        # The converse: what the retained snapshots need that is not there — a stat per needed file, both formats
 │   ├── StatsCheck.kt          # A data file's recorded column bounds and counts against the same figures counted from its rows — a file read, behind its own click
 │   ├── MetricsConfig.kt       # `write.metadata.metrics.*` read as MetricsConfig.from reads it — each column's mode and the rule that set it — and whether a file records that shape
+│   ├── PaimonStatsMode.kt     # The Paimon twin: `metadata.stats-mode` and its siblings per value column, at the level the file was written to, against its `_VALUE_STATS`
 │   ├── FileStatsSweep.kt      # The same over the current snapshot's live files from the model, capped — the table panel's second click under Integrity
 │   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
 │   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing — and the fates a hit can have, both formats
@@ -710,6 +711,26 @@ intellij/src/main/kotlin/plugin/
   `METRICS_MODES`, the IDE strip folds it into the file's `Checks` row, and the scan-pruning
   table's "not evaluated" names the mode where the mode is why (`explainMetricsModes`: `tag`
   under `none` records nothing, `id` under `counts` no bound)
+- **The Paimon twin reads `metadata.stats-mode` off the schema the file names, at the level the
+  file was written to.** `model/PaimonStatsMode.kt` follows `StatsCollectorFactories.createStatsFactories`
+  (release-1.3.1): `fields.<name>.stats-mode` first; a system column `truncate(128)` whatever the
+  table says, which is why `_KEY_STATS` keep bounds under a `none` table (`sm`); past
+  `metadata.stats-keep-first-n-columns` (default -1) columns `none`; else the level's mode —
+  `metadata.stats-mode.per.level` (`0:none`) for a key-value file's level, `metadata.stats-mode`
+  (`truncate(16)`) where unlisted. A `SET TBLPROPERTIES` writes a new schema, so a file's
+  `_SCHEMA_ID` names the options it was written under (`psm`'s two files on `tag`). **The level
+  that decides is the one the file was written to**: `psl`'s full compaction upgraded a lone
+  level-0 file to level 5 without rewriting it — the delta's `DELETE` at 0 and `ADD` at 5 name
+  one file — so it carries level 0's nothing at level 5, and an `APPEND`-sourced file is judged
+  at level 0, a `COMPACT`-sourced one at its own (`paimonStatsWriteLevel`). Two more rules the
+  corpus showed first (`ParquetSimpleStatsExtractor.toFieldStats`): a nested column records
+  nothing under any mode, the Parquet statistics being keyed by leaf path and none found under
+  its name (`pne`'s `addr`, `items`); a timestamp past precision 6 records the null count and no
+  bounds. A bound of a type this does not decode (`PaimonColumnBounds.decoded = false` — a
+  `TIMESTAMP(6)`, still) counts as recorded, and an empty `_VALUE_STATS_COLS` is a statistics
+  row with nothing in it, not one that could not be placed. The Paimon file panel's `Stats
+  Modes`, the integrity check's `METRICS_MODES`, the IDE `Checks` row; `PaimonStatsModeTest`
+  sweeps every Paimon fixture and plants each disagreement
 - **A data file's own statistics are the last recorded figures, and they are checked behind a
   click.** `model/StatsCheck.kt` puts each column's recorded lower and upper bound, null count
   and (Iceberg) value and NaN count beside the same figures `service/StatsCheckReader.kt` counts
@@ -2389,7 +2410,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,305 tests across 177 files (1,027 in :core, 267 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,311 tests across 178 files (1,032 in :core, 268 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2526,6 +2547,7 @@ container invocation and the traps in it:
 | `paimon/db.db/fbs` | `PaimonFileIndexTest`, `PaimonFileIndexPruningTest` | a bit-sliced index (`bsi`) on an INT, a DECIMAL(10,2), a DATE and a TIMESTAMP(6) — a file of -5, 3, 10 and null with its index embedded, a thousand-row file, an all-7 file and an all-null file with `.index` files; every comparison held to `FileIndexPredicate` over every file, `n BETWEEN 4 AND 6` skipped inside the bounds by the slices alone |
 | `paimon/db.db/ep` | `PaimonExternalPathFixtureTest` | `data-file.external-paths` — no bucket under the table, both files at `example/paimon/ep-files/bucket-0/` beside it, `_EXTERNAL_PATH` recorded |
 | `paimon/db.db/rt` | `PaimonRowTrackingFixtureTest` | `row-tracking.enabled` — two appends recording first ids 0 and 3, then a full compaction whose output records none and carries `_ROW_ID` per row |
+| `paimon/db.db/psm`, `psk`, `psl` | `PaimonStatsModeTest` | `metadata.stats-mode` on every rule `StatsCollectorFactories` applies — a `counts` default with `truncate(4)`, `full` and `none` per column, the `none` turned to `counts` by a `SET TBLPROPERTIES` that writes a new schema; `metadata.stats-keep-first-n-columns = 2` on five columns; and `metadata.stats-mode.per.level = 0:none` on a file the full compaction upgraded to level 5 without rewriting, level 0's nothing at level 5 |
 | `paimon/db.db/sm` | `PaimonStatsModeFixtureTest` | `fields.v.stats-mode = none` — `_VALUE_STATS` over two of three columns, named in `_VALUE_STATS_COLS`; the oracle for the subset decoding |
 | `paimon/db.db/se` | `PaimonSchemaEvolutionFixtureTest` | `ADD COLUMN` between two writes, then a compaction — a schema-1 manifest listing a schema-0 file, whose stats decode only against its own schema |
 | `paimon/db.db/pkr` | `PaimonRowLookupFixtureTest`, `PaimonMergedCountFixtureTest` | a primary key renamed between writes — `_KEY_k` in the first file, `_KEY_id` in the two after, key 1 written again after the rename; Paimon's read `1 A / 2 b / 3 c` is printed by the script |

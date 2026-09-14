@@ -629,9 +629,11 @@ private fun readPaimonManifest(
             // fixture's patch file has a one-field stats row and a three-field schema.
             val statsNames = file?.valueStatsCols ?: file?.writeCols ?: fileSchema?.fields?.mapNotNull { it.name }.orEmpty()
             val statsFields = statsNames.mapNotNull { name -> fileSchema?.fields?.firstOrNull { it.name == name } }
+            // An empty `_VALUE_STATS_COLS` is a file every column of which is under `none` (`psl`):
+            // a statistics row with nothing in it, which is not the same as one that could not be placed.
             val columnBounds = file?.valueStats
-                ?.takeIf { statsFields.size == statsNames.size && statsFields.isNotEmpty() }
-                ?.let { decodePaimonColumnBounds(it, statsFields) }
+                ?.takeIf { statsFields.size == statsNames.size && (statsFields.isNotEmpty() || file.valueStatsCols?.isEmpty() == true) }
+                ?.let { if (statsFields.isEmpty()) emptyList() else decodePaimonColumnBounds(it, statsFields) }
             val normalizedResolved = runCatching { dataFilePath.toAbsolutePath().normalize() }
                 .getOrElse { dataFilePath.normalize() }
             // A path the table recorded outside itself is the table's own statement and is not

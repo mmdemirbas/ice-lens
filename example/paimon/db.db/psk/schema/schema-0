@@ -1,0 +1,35 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "c1",
+    "type" : "INT"
+  }, {
+    "id" : 1,
+    "name" : "c2",
+    "type" : "STRING"
+  }, {
+    "id" : 2,
+    "name" : "c3",
+    "type" : "STRING"
+  }, {
+    "id" : 3,
+    "name" : "c4",
+    "type" : "INT"
+  }, {
+    "id" : 4,
+    "name" : "c5",
+    "type" : "STRING"
+  } ],
+  "highestFieldId" : 4,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ ],
+  "options" : {
+    "bucket" : "1",
+    "owner" : "root",
+    "bucket-key" : "c1",
+    "metadata.stats-keep-first-n-columns" : "2"
+  },
+  "timeMillis" : 1789399550302
+}

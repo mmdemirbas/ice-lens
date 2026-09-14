@@ -952,6 +952,8 @@ sealed class GraphNode(
         val keyBounds: List<PaimonColumnBounds>? = null,
         /** `_VALUE_STATS` per column — the file's own bounds, decoded. Null when undecodable. */
         val columnBounds: List<PaimonColumnBounds>? = null,
+        /** Each value column's stats mode under the schema the file names, against what it records — see [paimonStatsModeChecks]. */
+        val statsModes: List<PaimonStatsModeCheck> = emptyList(),
         val level: Int? = null,
         val operationKind: Int? = null,     // 0=ADD, 1=DELETE
         val localPath: String? = null,

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The Paimon file panel's `Stats Modes`** — `metadata.stats-mode`, `fields.<name>.stats-mode`,
+  `metadata.stats-keep-first-n-columns` and `metadata.stats-mode.per.level` read off the schema
+  the file names, at the level the file was written to (an upgraded file keeps level 0's), and
+  whether the file's `_VALUE_STATS` are that shape; in the integrity check and on the IDE strip.
+  Fixtures `psm`, `psk`, `psl`.
 - **Each column's metrics mode on the file panel, with the rule that set it** —
   `write.metadata.metrics.*` read the way Iceberg reads it, the inferred limit past a hundred
   columns and the sort-column promotion included — and whether the file records that shape,

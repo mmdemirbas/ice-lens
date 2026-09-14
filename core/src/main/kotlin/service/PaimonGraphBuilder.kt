@@ -319,6 +319,7 @@ object PaimonGraphBuilder {
                                     keyMax = unifiedDataFile.keyMax,
                                     keyBounds = unifiedDataFile.keyBounds,
                                     columnBounds = unifiedDataFile.columnBounds,
+                                    statsModes = entry.file?.let { paimonStatsModeChecks(it, unifiedDataFile.schema, unifiedDataFile.columnBounds, changelog = kind == "changelog") }.orEmpty(),
                                     level = entry.file?.level,
                                     operationKind = entry.kind,
                                     localPath = unifiedDataFile.path.toString(),

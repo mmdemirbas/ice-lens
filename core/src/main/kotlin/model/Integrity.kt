@@ -158,6 +158,7 @@ fun PaimonUnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_
         (paimonSnapshotTallies(s.metadata, schemaIdsByLine[line.branch].orEmpty(), s.sizesOnDisk) + paimonIndexFileTallies(s.indexFiles, s.sizesOnDisk)).forEach { t.count(IntegrityCheck.METADATA_FIGURES, name(line, s), it.label, it.recorded, it.counted, it.agrees) }
         snapshotCount++
         readErrors += s.readErrors.size
+        val changelogKeys = s.changelogManifests.map { paimonManifestKey(it) }.toSet()
         (s.baseManifests + s.deltaManifests + s.changelogManifests).forEach { m ->
             if (!seenManifests.add(paimonManifestKey(m))) return@forEach
             readErrors += m.readErrors.size
@@ -165,10 +166,19 @@ fun PaimonUnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_
             paimonManifestTallies(m.metadata, views, m.partitionMin, m.partitionMax, m.sizeOnDisk).forEach {
                 t.count(IntegrityCheck.MANIFEST_COUNTS, "${m.metadata.fileName ?: m.path.fileName}" + (line.branch?.let { b -> " on $b" } ?: ""), it.label, it.recorded, it.counted, it.agrees)
             }
+            val changelog = paimonManifestKey(m) in changelogKeys
             m.entries.forEach { e ->
-                val partition = e.partition?.takeIf { it.values.isNotEmpty() } ?: return@forEach
-                paimonPartitionBoundsChecks(partition, e.columnBounds, e.metadata.file?.rowCount).forEach {
-                    t.count(IntegrityCheck.FILE_PARTITIONS, e.metadata.file?.fileName ?: e.path.fileName.toString(), "partition ${it.field}", it.recorded, it.fromBounds ?: it.reason, it.agrees)
+                val fileName = e.metadata.file?.fileName ?: e.path.fileName.toString()
+                e.partition?.takeIf { it.values.isNotEmpty() }?.let { partition ->
+                    paimonPartitionBoundsChecks(partition, e.columnBounds, e.metadata.file?.rowCount).forEach {
+                        t.count(IntegrityCheck.FILE_PARTITIONS, fileName, "partition ${it.field}", it.recorded, it.fromBounds ?: it.reason, it.agrees)
+                    }
+                }
+                // Each value column's statistics against the stats mode its schema's options give it.
+                e.metadata.file?.let { file ->
+                    paimonStatsModeChecks(file, e.schema, e.columnBounds, changelog).forEach {
+                        t.count(IntegrityCheck.METRICS_MODES, fileName, "${it.column}: stats-mode", it.configured.mode.spelled, it.recorded, it.agrees)
+                    }
                 }
             }
         }

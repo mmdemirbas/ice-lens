@@ -1886,6 +1886,23 @@ class InspectorRenderTest {
     }
 
     /**
+     * The Paimon twin on `psm`'s first file — a column per rule — and `psl`'s upgraded file,
+     * whose one column records level 0's nothing at level 5 and says so.
+     */
+    @Test
+    fun `the paimon stats-modes section renders every rule, and an upgraded file's level`() {
+        val psm = GraphLayoutService.layoutGraph(PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/psm").absolutePath)), showRows = false)
+        val file = psm.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>().first { n -> n.statsModes.any { it.column == "tag" && it.recorded == "nothing" } }
+        assertTrue(file.statsModes.size == 5 && file.statsModes.all { it.agrees == true }, file.statsModes.toString())
+        renderInspector(psm, file.id, "paimon-stats-modes", height = 2400, sectionCollapse = onlyExpanded("Stats Modes"))
+        val psl = GraphLayoutService.layoutGraph(PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/psl").absolutePath)), showRows = false)
+        val upgraded = psl.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>().first { it.level == 5 && it.operationKind == model.PaimonEntryKind.ADD }
+        renderScene("paimon-stats-modes-upgraded", width = 1400, height = 600) {
+            Column(Modifier.padding(16.dp)) { PaimonStatsModesSection(upgraded) }
+        }
+    }
+
+    /**
      * The same section on the one file with several row groups — `rgs`'s 5,000 rows in
      * thirteen — where the row-groups line has thirteen offsets to put beside the thirteen
      * recorded, and once more with the recorded size off by one and one offset moved, the two
