@@ -369,6 +369,7 @@ fun UnifiedManifest(
         path = manifestPath,
         metadata = manifest,
         pathResolution = pathResolution,
+        sizeOnDisk = runCatching { Files.size(manifestPath) }.getOrNull(),
         schema = manifestSchema,
         partitionSpec = manifestSpec,
         // The summaries come from the manifest list, the spec from the manifest itself. Both
@@ -495,6 +496,8 @@ data class UnifiedManifest(
      * path was actually looked at.
      */
     val pathResolution: PathResolution = PathResolution.FORCED_RELATIVE,
+    /** The manifest file's own length, against `manifest_length` — the length a reader opens it at. Null when it could not be stat-ed. */
+    val sizeOnDisk: Long? = null,
 
     /**
      * The schema this manifest was written against, read from its own Avro file metadata.

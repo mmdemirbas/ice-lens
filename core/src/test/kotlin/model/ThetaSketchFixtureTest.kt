@@ -80,7 +80,7 @@ class ThetaSketchFixtureTest {
             assertEquals(4, rows.size, fixture)
             assertTrue(rows.all { it.sketch != null && it.sketchAgrees == true && it.sketchProblem == null }, "$fixture: $rows")
             val check = assertNotNull(graph.nodes.filterIsInstance<GraphNode.TableNode>().single().statisticsFiles.value).single()
-            assertEquals(8, check.figures, "$fixture: four properties and four sketches")
+            assertEquals(10, check.figures, "$fixture: the file's two lengths, four properties and four sketches")
             assertEquals(emptyList(), check.findings, fixture)
         }
     }

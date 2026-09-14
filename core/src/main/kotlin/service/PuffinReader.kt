@@ -61,29 +61,7 @@ object PuffinReader {
      */
     fun readFooter(path: Path): PuffinFileMetadata {
         Files.newByteChannel(path).use { file ->
-            val size = file.size()
-            if (size < 4L + 4 + 4 + 4 + 4) {
-                throw PuffinFormatException("$size bytes is too short to be a Puffin file")
-            }
-
-            val head = file.readFully(4)
-            if (!head.contentEquals(MAGIC)) {
-                throw PuffinFormatException("does not start with the Puffin magic PFA1")
-            }
-
-            // Footer: Magic | FooterPayload | FooterPayloadSize (4, LE) | Flags (4) | Magic
-            file.position(size - 12)
-            val tail = file.readFully(12)
-            val buffer = ByteBuffer.wrap(tail).order(ByteOrder.LITTLE_ENDIAN)
-            val payloadSize = buffer.getInt()
-            val flags = ByteArray(4).also { buffer.get(it) }
-            val endMagic = ByteArray(4).also { buffer.get(it) }
-            if (!endMagic.contentEquals(MAGIC)) {
-                throw PuffinFormatException("does not end with the Puffin magic PFA1")
-            }
-            if (payloadSize < 0 || payloadSize > size - 20) {
-                throw PuffinFormatException("footer claims a $payloadSize-byte payload in a $size-byte file")
-            }
+            val (size, payloadSize, flags) = readTail(file)
             // Flags byte 0, bit 0: the payload is a single LZ4 frame. Iceberg does not write one
             // today, and a wrong guess here would be a JSON parse error blamed on the wrong thing.
             if (flags[0].toInt() and 1 == 1) {
@@ -95,6 +73,50 @@ object PuffinReader {
             return runCatching { json.decodeFromString<PuffinFileMetadata>(payload.decodeToString()) }
                 .getOrElse { throw PuffinFormatException("the footer is not readable as Puffin JSON: ${it.message}") }
         }
+    }
+
+    /**
+     * The two lengths a `statistics` record carries about the file — `file-size-in-bytes` and
+     * `file-footer-size-in-bytes` — as the file itself has them. Iceberg's `PuffinReader` takes
+     * both as given (1.8.1): it reads the footer as the last `footerSize` bytes of `fileSize`
+     * and requires that to be magic + payload + the 12-byte struct, so a wrong figure is a
+     * failed read of the file rather than a wrong answer. `PuffinWriter.footerSize` is what was
+     * written from the leading footer magic to the end.
+     */
+    fun readSizes(path: Path): PuffinFileSizes = Files.newByteChannel(path).use { file ->
+        val (size, payloadSize, _) = readTail(file)
+        PuffinFileSizes(fileSize = size, footerSize = 4L + payloadSize + 12)
+    }
+
+    private data class Tail(val size: Long, val payloadSize: Int, val flags: ByteArray)
+
+    /** The magic at both ends checked, and the footer's payload size and flags read off its 12-byte struct. */
+    private fun readTail(file: SeekableByteChannel): Tail {
+        val size = file.size()
+        if (size < 4L + 4 + 4 + 4 + 4) {
+            throw PuffinFormatException("$size bytes is too short to be a Puffin file")
+        }
+
+        file.position(0)
+        val head = file.readFully(4)
+        if (!head.contentEquals(MAGIC)) {
+            throw PuffinFormatException("does not start with the Puffin magic PFA1")
+        }
+
+        // Footer: Magic | FooterPayload | FooterPayloadSize (4, LE) | Flags (4) | Magic
+        file.position(size - 12)
+        val tail = file.readFully(12)
+        val buffer = ByteBuffer.wrap(tail).order(ByteOrder.LITTLE_ENDIAN)
+        val payloadSize = buffer.getInt()
+        val flags = ByteArray(4).also { buffer.get(it) }
+        val endMagic = ByteArray(4).also { buffer.get(it) }
+        if (!endMagic.contentEquals(MAGIC)) {
+            throw PuffinFormatException("does not end with the Puffin magic PFA1")
+        }
+        if (payloadSize < 0 || payloadSize > size - 20) {
+            throw PuffinFormatException("footer claims a $payloadSize-byte payload in a $size-byte file")
+        }
+        return Tail(size, payloadSize, flags)
     }
 
     /**
@@ -326,3 +348,6 @@ object PuffinReader {
         return buffer.array()
     }
 }
+
+/** A Puffin file's own length and footer length — what `file-size-in-bytes` and `file-footer-size-in-bytes` record. */
+data class PuffinFileSizes(val fileSize: Long, val footerSize: Long)

@@ -41,7 +41,9 @@ class PaimonManifestTallyTest {
             val nodes = manifestNodes(name)
             assertTrue(nodes.isNotEmpty(), name)
             nodes.forEach { node ->
-                val tallies = paimonManifestTallies(node.data, node.entries, node.partitionMin, node.partitionMax)
+                assertTrue(node.sizeOnDisk != null, "$name/${node.data.fileName} not stat-ed")
+                val tallies = paimonManifestTallies(node.data, node.entries, node.partitionMin, node.partitionMax, node.sizeOnDisk)
+                assertEquals(true, tallies.single { it.label == "File size" }.agrees, "$name/${node.data.fileName}: ${node.data.fileSize} recorded, ${node.sizeOnDisk} on disk")
                 tallies.forEach { tally ->
                     if (tally.agrees == null) return@forEach
                     checked++
@@ -53,6 +55,16 @@ class PaimonManifestTallyTest {
         }
         assertEquals(emptyList(), disagreements)
         assertTrue(checked >= 60, "only $checked figures had anything to check: $checked")
+    }
+
+    @Test
+    fun `the manifest's file size is a tally against the file, left out where the file was not measured`() {
+        val node = manifestNodes("dv").first()
+        val recorded = node.data.fileSize!!
+        val short = paimonManifestTallies(node.data, node.entries, node.partitionMin, node.partitionMax, recorded - 1).single { it.label == "File size" }
+        assertEquals(false, short.agrees)
+        assertEquals("${recorded - 1}", short.counted)
+        assertTrue(paimonManifestTallies(node.data, node.entries, node.partitionMin, node.partitionMax).none { it.label == "File size" })
     }
 
     /**

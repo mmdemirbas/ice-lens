@@ -27,8 +27,28 @@ class StatisticsFilesCheckTest {
         val check = checksOf("stats").single()
         assertEquals(StatisticsFileKind.TABLE, check.kind)
         assertTrue(check.read, check.problem.toString())
-        assertEquals(8, check.figures, "one ndv per blob against the file's property, and one against the sketch inside it")
+        assertEquals(10, check.figures, "the file's two lengths, then one ndv per blob against the file's property and one against the sketch inside it")
         assertEquals(emptyList(), check.findings)
+    }
+
+    @Test
+    fun `a statistics file's recorded lengths are the file's, and either one off is a finding`() {
+        val stats = FixtureCatalog.icebergModel("stats")
+        val statsFile = stats.metadatas.last().metadata.statistics.single()
+        val recorded = assertNotNull(statsFile.statisticsPath)
+        val path = Paths.get(FixtureCatalog.icebergDir("stats").absolutePath, "metadata", recorded.substringAfterLast('/'))
+        val sizes = service.PuffinReader.readSizes(path)
+        assertEquals(statsFile.fileSizeInBytes, sizes.fileSize)
+        assertEquals(statsFile.fileFooterSizeInBytes, sizes.footerSize)
+        // Iceberg's reader takes both as given: the footer is the last `footerSize` bytes of `fileSize`.
+        val footer = service.PuffinReader.readFooter(path)
+        fun checkWith(size: Long, footerSize: Long) =
+            stats.checkStatisticsFiles(mapOf(recorded to StatisticsFileFooter("x", PathResolution.RECORDED, footer, null, sizeOnDisk = size, footerSizeOnDisk = footerSize)), emptyMap()).single()
+        assertEquals(emptyList(), checkWith(sizes.fileSize, sizes.footerSize).findings)
+        val off = checkWith(sizes.fileSize + 1, sizes.footerSize - 1)
+        assertEquals(listOf("file size", "footer size"), off.findings.map { it.figure })
+        assertEquals(listOf("${sizes.fileSize}" to "${sizes.fileSize + 1}", "${sizes.footerSize}" to "${sizes.footerSize - 1}"), off.findings.map { it.recorded to it.counted })
+        assertEquals(6, off.figures, "the two lengths and one ndv per blob — no sketch was handed in, so none is compared")
     }
 
     @Test

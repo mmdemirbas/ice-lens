@@ -58,8 +58,16 @@ fun UnifiedTableModel.checkStatisticsFiles(
         } + blobRows.filter { it.sketchAgrees == false }.map { row ->
             IntegrityFinding(IntegrityCheck.STATISTICS_FILES, "$name (${row.column})", "ndv against the sketch", row.ndv?.toString() ?: "—", "the sketch's own ${row.sketch!!.describe()} gives ${row.sketch.ndv}")
         }
-        val figures = blobRows.count { it.fileRead } + blobRows.count { it.sketchAgrees != null }
-        StatisticsFileCheck(name, StatisticsFileKind.TABLE, file.snapshotId, figures, findings, footer?.problem ?: if (footer == null) "not read" else null)
+        // The two lengths a reader opens the file by — the footer is read as the last
+        // `file-footer-size-in-bytes` of `file-size-in-bytes`, so either one wrong is a failed read.
+        val lengths = buildList {
+            if (file.fileSizeInBytes != null && footer?.sizeOnDisk != null) add(Triple("file size", file.fileSizeInBytes, footer.sizeOnDisk))
+            if (file.fileFooterSizeInBytes != null && footer?.footerSizeOnDisk != null) add(Triple("footer size", file.fileFooterSizeInBytes, footer.footerSizeOnDisk))
+        }
+        val lengthFindings = lengths.filter { (_, recorded, onDisk) -> recorded != onDisk }
+            .map { (figure, recorded, onDisk) -> IntegrityFinding(IntegrityCheck.STATISTICS_FILES, name, figure, recorded.toString(), onDisk.toString()) }
+        val figures = lengths.size + blobRows.count { it.fileRead } + blobRows.count { it.sketchAgrees != null }
+        StatisticsFileCheck(name, StatisticsFileKind.TABLE, file.snapshotId, figures, lengthFindings + findings, footer?.problem ?: if (footer == null) "not read" else null)
     }
     val partitionFiles = newest.partitionStatistics.mapNotNull { file ->
         val recorded = file.statisticsPath ?: return@mapNotNull null

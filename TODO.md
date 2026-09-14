@@ -177,7 +177,10 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   The same read checks `file_size_in_bytes` against the size on disk and `split_offsets`
   against the footer's row-group starts (`FileLayoutCheck`, `rgs`). Not checked: an ORC file's
   stripe offsets, which DuckDB cannot open, and an Avro file's blocks, which Iceberg's writer
-  records no offsets for anyway.
+  records no offsets for anyway. The metadata files' recorded lengths are checked without a
+  click — `manifest_length`, Paimon's manifest `_FILE_SIZE`, a statistics file's two lengths —
+  since a stat is not a read; what is still taken on trust is a Paimon index file's `_FILE_SIZE`
+  in the index manifest, which the vector reader opens by offset and length rather than by size.
 
 - **A statistics blob's sketch is decoded — done.** The `.stats` container is opened, its footer
   shown against what `metadata.json` records (`model/TableStatistics.kt`), and each theta blob's

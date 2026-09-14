@@ -85,7 +85,7 @@ fun UnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_CHECKS
         s.manifests.forEach { m ->
             val path = m.metadata.manifestPath ?: return@forEach
             if (!seenManifests.add(path)) return@forEach
-            manifestTallies(m.metadata, m.dataFiles.map { it.metadata }).forEach {
+            manifestTallies(m.metadata, m.dataFiles.map { it.metadata }, m.sizeOnDisk).forEach {
                 t.count(IntegrityCheck.MANIFEST_COUNTS, path.substringAfterLast('/'), it.label, it.recorded, it.counted, it.agrees)
             }
             partitionSummaryTallies(m.partitionSummaries, m.dataFiles.map { it.partition }).forEach {
@@ -122,7 +122,7 @@ fun PaimonUnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_
             if (!seenManifests.add(paimonManifestKey(m))) return@forEach
             readErrors += m.readErrors.size
             val views = m.entries.mapIndexed { i, e -> PaimonManifestEntryView(i + 1, e.metadata, e.path.toString(), e.partition) }
-            paimonManifestTallies(m.metadata, views, m.partitionMin, m.partitionMax).forEach {
+            paimonManifestTallies(m.metadata, views, m.partitionMin, m.partitionMax, m.sizeOnDisk).forEach {
                 t.count(IntegrityCheck.MANIFEST_COUNTS, "${m.metadata.fileName ?: m.path.fileName}" + (line.branch?.let { b -> " on $b" } ?: ""), it.label, it.recorded, it.counted, it.agrees)
             }
         }

@@ -721,7 +721,19 @@ intellij/src/main/kotlin/plugin/
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
   the read path checks them, so the inspector does. It is also the suite's only assertion that
   compares what this code decoded against what Iceberg recorded about the same bytes — a status
-  misread or an entry dropped shows up as a disagreement on a checked-in table.
+  misread or an entry dropped shows up as a disagreement on a checked-in table. **A seventh
+  tally is the manifest's length against the file**, because `manifest_length` is not a count a
+  scan plans with but the length a reader opens the manifest at — `FileIO.newInputFile(ManifestFile)`
+  is `newInputFile(path, manifest.length())` at 1.8.1, never a stat — so a wrong one fails the
+  read of the manifest, not a figure on a panel. `UnifiedManifest.sizeOnDisk` is stat-ed where
+  the manifest is read (on a remote table that is the bytes just cached) and carried to
+  `ManifestNode.sizeOnDisk`; the tally is left out, not drawn as a disagreement, where the file
+  could not be measured. The same on Paimon: a manifest list entry's `_FILE_SIZE` is what
+  `ManifestFile.read(fileName, fileSize)` hands the Avro reader as the end of the file
+  (release-1.3.1, `AvroBulkFormat.AvroReader.end`), so a size short of the file drops the blocks
+  past it without an error — `paimonManifestTallies` puts it beside `PaimonUnifiedManifest.sizeOnDisk`
+  as `File size`. Both tally sweeps hold every checked-in manifest to its length, and the
+  integrity check lists a disagreement under `MANIFEST_COUNTS` with the counts.
   **The partition summaries get the same treatment**, and they are the figures that matter more:
   a scan skips or opens a manifest on `partitions[i].lower_bound` / `upper_bound` /
   `contains_null` before it reads any count. `partitionSummaryTallies` in
@@ -983,7 +995,16 @@ intellij/src/main/kotlin/plugin/
   rather than inferred from the file-side fields being null, because **"the file was not read" and
   "the file was read and holds no such blob" would otherwise look identical**, and the second is
   the one that means the table is pointing a planner at statistics that are gone. The file also
-  answers three things the record cannot: each blob's compressed size, its codec, and `created-by`
+  answers three things the record cannot: each blob's compressed size, its codec, and `created-by`.
+  **The record's two lengths are checked against the file too** — `file-size-in-bytes` and
+  `file-footer-size-in-bytes`, which Iceberg's `PuffinReader` takes as given (1.8.1): the footer
+  is read as the last `footerSize` bytes of `fileSize` and required to be magic + payload +
+  the 12-byte struct, so either figure wrong is a failed read of the statistics file.
+  `PuffinReader.readSizes` measures both off the trailer (`PuffinFileSizes`; the footer length is
+  from its leading magic to the end, which is what `PuffinWriter.footerSize` wrote),
+  `StatisticsFileFooter.sizeOnDisk` / `.footerSizeOnDisk` carry them, the metadata panel's `Size`
+  and `Footer Size` rows read `recorded, the same in the file`, and `checkStatisticsFiles` counts
+  them among the figures and lists a difference under `STATISTICS_FILES`
 - **A partition statistics file is the same shape one level over, and its rows are Parquet.**
   `partition-statistics` in `metadata.json` names a file per snapshot and nothing more; the
   figures — one row per partition, `data_record_count`, `data_file_count`, the size, the delete
@@ -2235,7 +2256,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,276 tests across 173 files (1,002 in :core, 264 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,279 tests across 173 files (1,005 in :core, 264 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

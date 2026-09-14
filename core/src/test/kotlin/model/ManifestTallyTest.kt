@@ -46,7 +46,9 @@ class ManifestTallyTest {
                 .distinctBy { it.metadata.manifestPath }
                 .forEach { manifest ->
                     val entries = manifest.dataFiles.map { it.metadata }
-                    manifestTallies(manifest.metadata, entries).forEach { tally ->
+                    // The seventh figure is the file's own length; every manifest here is on disk.
+                    assertTrue(manifest.sizeOnDisk != null, "${tableDir.name} ${manifest.path} not stat-ed")
+                    manifestTallies(manifest.metadata, entries, manifest.sizeOnDisk).forEach { tally ->
                         if (tally.agrees == null) return@forEach
                         compared++
                         if (tally.agrees == false) {
@@ -64,6 +66,23 @@ class ManifestTallyTest {
         assertTrue(compared > 100, "only $compared figures were recorded across the fixtures")
         assertTrue(disagreements.isEmpty(), "the manifest list and the entries disagree:\n" +
             disagreements.joinToString("\n"))
+    }
+
+    @Test
+    fun `the manifest's length is a seventh tally, against the file rather than the entries`() {
+        val manifest = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/mor").absolutePath))
+            .metadatas.last().snapshots.last().manifests.first()
+        val recorded = manifest.metadata.manifestLength!!
+        assertEquals(recorded, manifest.sizeOnDisk)
+
+        val length = manifestTallies(manifest.metadata, manifest.dataFiles.map { it.metadata }, manifest.sizeOnDisk).single { it.label == "Manifest length" }
+        assertEquals(true, length.agrees)
+        // Off by one either way is a length the reader would open the file at and fail — a disagreement, not a rounding.
+        val short = manifestTallies(manifest.metadata, manifest.dataFiles.map { it.metadata }, recorded - 1).single { it.label == "Manifest length" }
+        assertEquals(false, short.agrees)
+        assertEquals(recorded - 1, short.counted)
+        // A file that could not be measured adds no tally: there is no seventh figure to be wrong about.
+        assertEquals(6, manifestTallies(manifest.metadata, manifest.dataFiles.map { it.metadata }).size)
     }
 
     @Test

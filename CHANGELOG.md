@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Every recorded length a reader opens a metadata file at is checked against the file.**
+  An Iceberg manifest's `manifest_length` is a seventh tally on the manifest panel and in the
+  integrity check, beside the six counts; a Paimon manifest's `_FILE_SIZE` likewise; and a
+  statistics file's `file-size-in-bytes` and `file-footer-size-in-bytes` are shown against the
+  Puffin file's own on the metadata panel and counted by the statistics-files check. None of
+  the three is stat-ed by a reader — Iceberg opens the manifest and the statistics file at the
+  recorded lengths, and Paimon reads a manifest's Avro blocks up to the recorded size, so a
+  short one loses entries silently.
 - **A data file's size and split offsets checked against the file, on the statistics check
   and the integrity sweep.** `file_size_in_bytes` is put beside the size on disk and
   `split_offsets` beside where the Parquet footer says each row group starts, since a reader

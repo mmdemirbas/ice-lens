@@ -32,7 +32,7 @@ data class ManifestTally(
  * records rather than table rows — that is the spec's own definition of `added_rows_count`, so
  * the comparison holds for both kinds of manifest.
  */
-fun manifestTallies(recorded: ManifestListEntry, entries: List<ManifestEntry>): List<ManifestTally> {
+fun manifestTallies(recorded: ManifestListEntry, entries: List<ManifestEntry>, sizeOnDisk: Long? = null): List<ManifestTally> {
     fun files(status: Int): Long = entries.count { it.status == status }.toLong()
     fun rows(status: Int): Long =
         entries.filter { it.status == status }.sumOf { it.dataFile?.recordCount ?: 0L }
@@ -44,5 +44,10 @@ fun manifestTallies(recorded: ManifestListEntry, entries: List<ManifestEntry>): 
         ManifestTally("Added rows", recorded.addedRowsCount, rows(ManifestEntryStatus.ADDED)),
         ManifestTally("Existing rows", recorded.existingRowsCount, rows(ManifestEntryStatus.EXISTING)),
         ManifestTally("Deleted rows", recorded.deletedRowsCount, rows(ManifestEntryStatus.DELETED)),
+    ) + listOfNotNull(
+        // `manifest_length` is the length `FileIO.newInputFile(ManifestFile)` opens the manifest
+        // at (1.8.1), never stat-ed, so it is a seventh figure a reader takes on trust — against
+        // the file rather than the entries, and only where the file could be measured.
+        sizeOnDisk?.let { ManifestTally("Manifest length", recorded.manifestLength, it) },
     )
 }

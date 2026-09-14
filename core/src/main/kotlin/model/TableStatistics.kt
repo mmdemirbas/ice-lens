@@ -78,6 +78,10 @@ data class StatisticsFileFooter(
     val problem: String?,
     /** Each theta blob's sketch, by the field ids the blob names — read with the footer, since the file is open and a sketch is a few hundred bytes. */
     val sketches: Map<List<Int>, ThetaSketchRead> = emptyMap(),
+    /** The file's own length, against the record's `file-size-in-bytes`; null when the file could not be opened. */
+    val sizeOnDisk: Long? = null,
+    /** The footer's length from its leading magic to the end, against `file-footer-size-in-bytes`. */
+    val footerSizeOnDisk: Long? = null,
 )
 
 /**

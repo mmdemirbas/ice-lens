@@ -119,7 +119,7 @@ internal fun ColumnScope.PaimonManifestPanel(
         DetailTable {
             DetailRow("Property", "Value", isHeader = true)
             DetailRow("File Name", node.data.fileName ?: "N/A", copyable = true)
-            DetailRow("File Size", "${node.data.fileSize ?: "N/A"}")
+            DetailRow("File Size", recordedAgainstFile(node.data.fileSize, node.sizeOnDisk))
             DetailRow("Added Files", "${node.data.numAddedFiles ?: "N/A"}")
             DetailRow("Deleted Files", "${node.data.numDeletedFiles ?: "N/A"}")
             DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
@@ -133,14 +133,15 @@ internal fun ColumnScope.PaimonManifestPanel(
                 "The manifest list carries these so a scan can plan without opening this " +
                     "manifest — the entry counts, the bucket and level ranges, and a per-column " +
                     "minimum and maximum over the entries' partitions. Each sits beside the same " +
-                    "figure folded from the entries.",
+                    "figure folded from the entries — and the file size, which a scan reads the " +
+                    "manifest to, beside the file's own.",
                 fontSize = TypeScale.small,
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 4.dp),
             )
-            val tallies = paimonManifestTallies(node.data, node.entries, node.partitionMin, node.partitionMax)
+            val tallies = paimonManifestTallies(node.data, node.entries, node.partitionMin, node.partitionMax, node.sizeOnDisk)
             WideTable(
-                headers = listOf("Agrees", "Figure", "In the entries", "Recorded"),
+                headers = listOf("Agrees", "Figure", "In the file", "Recorded"),
                 columnWidths = listOf(110.dp, 170.dp, 160.dp, 160.dp),
                 rows = tallies.map { tally ->
                     listOf(

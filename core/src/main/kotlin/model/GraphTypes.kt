@@ -561,6 +561,8 @@ sealed class GraphNode(
          * unpartitioned, or when the spec and the summaries disagree on length.
          */
         val partitionSummaries: List<PartitionSummary> = emptyList(),
+        /** The manifest file's length on disk, against `manifest_length`; null when it could not be stat-ed. */
+        val sizeOnDisk: Long? = null,
         /**
          * Whether [localPath] is where the table said the file is, or where forcing the name
          * relative to the local directory landed. Shown so a missing file names the path that
@@ -902,6 +904,8 @@ sealed class GraphNode(
         /** Every entry in this manifest — see [ManifestNode.entries] for why all of them. */
         val entries: List<PaimonManifestEntryView> = emptyList(),
         val localPath: String? = null,
+        /** The manifest file's length on disk, against the list entry's `_FILE_SIZE`; null when it could not be stat-ed. */
+        val sizeOnDisk: Long? = null,
         /**
          * What each of this manifest's entries did to the live set, when asked.
          *

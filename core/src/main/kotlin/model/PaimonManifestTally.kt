@@ -37,6 +37,8 @@ fun paimonManifestTallies(
     entries: List<PaimonManifestEntryView>,
     recordedMin: DecodedPaimonPartition?,
     recordedMax: DecodedPaimonPartition?,
+    /** The manifest file's length on disk, against the entry's `_FILE_SIZE`; the tally is left out when unknown. */
+    sizeOnDisk: Long? = null,
 ): List<PaimonManifestTally> {
     fun count(kind: Int): String = entries.count { it.entry.kind == kind }.toString()
     fun <T : Comparable<T>> range(values: List<T>): Pair<String?, String?> =
@@ -53,6 +55,10 @@ fun paimonManifestTallies(
         PaimonManifestTally("Lowest level", recorded.minLevel?.toString(), lowestLevel),
         PaimonManifestTally("Highest level", recorded.maxLevel?.toString(), highestLevel),
     )
+    // `_FILE_SIZE` is the length a scan reads the manifest to — `ManifestFile.read(fileName,
+    // fileSize)` hands it to the Avro reader as the end of the file (release-1.3.1), so a size
+    // short of the file drops the blocks past it without an error. Against the file, not the entries.
+    sizeOnDisk?.let { figures += PaimonManifestTally("File size", recorded.fileSize?.toString(), it.toString()) }
 
     // One column at a time: the key's name comes from whichever side decoded, and the counted
     // side folds the entries' decoded values under natural order, nulls left out and counted.

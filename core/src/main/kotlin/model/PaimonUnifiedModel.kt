@@ -147,6 +147,8 @@ data class PaimonUnifiedManifest(
     val partitionMin: DecodedPaimonPartition? = null,
     /** `_PARTITION_STATS` maximums, likewise. */
     val partitionMax: DecodedPaimonPartition? = null,
+    /** The manifest file's own length, against the list entry's `_FILE_SIZE` — what a scan reads the manifest to. Null when it could not be stat-ed. */
+    val sizeOnDisk: Long? = null,
 )
 
 /**
@@ -641,6 +643,7 @@ private fun readPaimonManifest(
         readErrors = manifestErrors,
         partitionMin = decodeStats(meta.partitionStats?.minValues),
         partitionMax = decodeStats(meta.partitionStats?.maxValues),
+        sizeOnDisk = runCatching { Files.size(manifestPath) }.getOrNull(),
     )
 }
 

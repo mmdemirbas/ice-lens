@@ -310,11 +310,10 @@ internal fun ColumnScope.MetadataPanel(
                 DetailTable {
                     DetailRow("File", fileNameFromPath(file.statisticsPath.orEmpty()))
                     DetailRow("Snapshot", file.snapshotId?.toString() ?: "N/A")
-                    DetailRow("Size", file.fileSizeInBytes?.let { formatBytes(it) } ?: "N/A")
-                    DetailRow(
-                        "Footer Size",
-                        file.fileFooterSizeInBytes?.let { formatBytes(it) } ?: "N/A",
-                    )
+                    // Recorded beside the file's own, because a reader opens the file at the
+                    // recorded length and reads the footer as its last recorded-footer-size bytes.
+                    DetailRow("Size", recordedAgainstFile(file.fileSizeInBytes, read?.sizeOnDisk))
+                    DetailRow("Footer Size", recordedAgainstFile(file.fileFooterSizeInBytes, read?.footerSizeOnDisk))
                     // Recorded beside read, the same idea as a manifest's tallies:
                     // metadata.json holds a copy of the blob list so a planner
                     // never opens the file, and that copy is what can go stale.
@@ -691,7 +690,7 @@ internal fun ColumnScope.SnapshotPanel(
                     ),
                     rows = manifestChildren.mapIndexed { index, manifestNode ->
                         val manifest = manifestNode.data
-                        val tallies = manifestTallies(manifest, manifestNode.entries.map { it.entry })
+                        val tallies = manifestTallies(manifest, manifestNode.entries.map { it.entry }, manifestNode.sizeOnDisk)
                         val checkable = tallies.filter { it.agrees != null }
                         listOf(
                             "${index + 1}",
@@ -751,7 +750,7 @@ internal fun ColumnScope.ManifestPanel(
             // The id the manifest's data files without one of their own count up
             // from, in entry order; a delete manifest is never assigned one.
             if (node.data.firstRowId != null) DetailRow("First Row ID", "${node.data.firstRowId}")
-            DetailRow("Manifest Length", "${node.data.manifestLength ?: 0} bytes")
+            DetailRow("Manifest Length", recordedAgainstFile(node.data.manifestLength, node.sizeOnDisk))
             val manifestPath = node.data.manifestPath
             val manifestPathLabel = if (manifestPath == null) "N/A" else "${manifestPath.substringAfterLast("/")} ($manifestPath)"
             DetailRow("Path", manifestPathLabel, copyable = true)
@@ -812,17 +811,18 @@ internal fun ColumnScope.ManifestPanel(
             Text(
                 "The manifest list carries these counts so a scan can plan without opening this " +
                     "manifest, and nothing on the read path checks them. Each one sits beside the " +
-                    "same figure counted from the entries.",
+                    "same figure counted from the entries — and the manifest's length, which a " +
+                    "reader opens the file at, beside the file's own.",
                 fontSize = TypeScale.small,
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 4.dp)
             )
-            val tallies = manifestTallies(node.data, manifestEntries.map { it.entry })
+            val tallies = manifestTallies(node.data, manifestEntries.map { it.entry }, node.sizeOnDisk)
             WideTable(
                 // The verdict leads, as it does on the pruning tables: the reader is
                 // here to find out whether anything disagrees, not to read six pairs
                 // of numbers and compare them by eye.
-                headers = listOf("Agrees", "Figure", "In the entries", "Recorded"),
+                headers = listOf("Agrees", "Figure", "In the file", "Recorded"),
                 columnWidths = listOf(110.dp, 150.dp, 130.dp, 130.dp),
                 rows = tallies.map { tally ->
                     listOf(
@@ -1287,3 +1287,12 @@ internal fun ColumnScope.FilePanel(
         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 }
 
+
+/** A recorded length beside the file's own: `1,234 B recorded, the same in the file`, or the two figures where they differ, or which side is missing. */
+internal fun recordedAgainstFile(recorded: Long?, onDisk: Long?): String = when {
+    recorded == null && onDisk == null -> "N/A"
+    onDisk == null -> "${formatCount(recorded)} B recorded, file not read"
+    recorded == null -> "none recorded, ${formatCount(onDisk)} B in the file"
+    recorded == onDisk -> "${formatCount(recorded)} B recorded, the same in the file"
+    else -> "${formatCount(recorded)} B recorded, but the file is ${formatCount(onDisk)} B"
+}

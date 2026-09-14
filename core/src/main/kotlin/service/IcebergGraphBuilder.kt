@@ -277,7 +277,8 @@ object IcebergGraphBuilder {
                             partitionSummaries = unifiedManifest.partitionSummaries,
                             pathResolution = unifiedManifest.pathResolution,
                             schema = unifiedManifest.schema,
-                            localPath = unifiedManifest.path.toString()
+                            localPath = unifiedManifest.path.toString(),
+                            sizeOnDisk = unifiedManifest.sizeOnDisk,
                         )
                     }
                     unifiedManifest.readErrors.forEach { error ->
@@ -904,12 +905,15 @@ private fun readStatisticsFooters(
                 val decoded = runCatching { ThetaSketch.decode(PuffinReader.readBlob(path, blob)) }
                 blob.fields to ThetaSketchRead(decoded.getOrNull(), decoded.exceptionOrNull()?.let { it.message ?: it::class.simpleName })
             }
+        val sizes = read.getOrNull()?.let { runCatching { PuffinReader.readSizes(path) }.getOrNull() }
         recorded to StatisticsFileFooter(
             localPath = path.toString(),
             resolution = resolution,
             footer = read.getOrNull(),
             problem = read.exceptionOrNull()?.let { it.message ?: it::class.simpleName },
             sketches = sketches,
+            sizeOnDisk = sizes?.fileSize,
+            footerSizeOnDisk = sizes?.footerSize,
         )
     }.toMap()
 }
