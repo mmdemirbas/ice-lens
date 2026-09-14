@@ -1,0 +1,94 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "40639ce9-29ff-43bc-a281-2afcc261bc0d",
+  "location" : "/wh/default/migdeep",
+  "last-sequence-number" : 0,
+  "last-updated-ms" : 1789361324066,
+  "last-column-id" : 11,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "addr",
+      "required" : false,
+      "type" : {
+        "type" : "struct",
+        "fields" : [ {
+          "id" : 5,
+          "name" : "city",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "id" : 6,
+          "name" : "zip",
+          "required" : false,
+          "type" : "int"
+        } ]
+      }
+    }, {
+      "id" : 3,
+      "name" : "items",
+      "required" : false,
+      "type" : {
+        "type" : "list",
+        "element-id" : 7,
+        "element" : {
+          "type" : "struct",
+          "fields" : [ {
+            "id" : 8,
+            "name" : "sku",
+            "required" : false,
+            "type" : "string"
+          }, {
+            "id" : 9,
+            "name" : "qty",
+            "required" : false,
+            "type" : "int"
+          } ]
+        },
+        "element-required" : false
+      }
+    }, {
+      "id" : 4,
+      "name" : "attrs",
+      "required" : false,
+      "type" : {
+        "type" : "map",
+        "key-id" : 10,
+        "key" : "string",
+        "value-id" : 11,
+        "value" : "int",
+        "value-required" : false
+      }
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ ]
+}

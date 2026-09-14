@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A migrated file's nested fields are placed through the name mapping's tree.** A struct,
+  a list's element and a map's entries in a file `add_files` registered read as all-null
+  before — the top level was placed through the mapping and every field inside it was looked
+  up by an id the file does not have — so a filter on a field inside the struct found nothing
+  on exactly the files a migrated table is made of. `migdeep` is the fixture
+
 ### Added
 - **A row lookup past the file cap continues a page at a time.** Sixty-four files a click, the
   headline counting what is not read yet and a control under the table reading the next page,

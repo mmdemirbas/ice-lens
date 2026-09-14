@@ -1,0 +1,195 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "40639ce9-29ff-43bc-a281-2afcc261bc0d",
+  "location" : "/wh/default/migdeep",
+  "last-sequence-number" : 1,
+  "last-updated-ms" : 1789361328477,
+  "last-column-id" : 11,
+  "current-schema-id" : 1,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "addr",
+      "required" : false,
+      "type" : {
+        "type" : "struct",
+        "fields" : [ {
+          "id" : 5,
+          "name" : "city",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "id" : 6,
+          "name" : "zip",
+          "required" : false,
+          "type" : "int"
+        } ]
+      }
+    }, {
+      "id" : 3,
+      "name" : "items",
+      "required" : false,
+      "type" : {
+        "type" : "list",
+        "element-id" : 7,
+        "element" : {
+          "type" : "struct",
+          "fields" : [ {
+            "id" : 8,
+            "name" : "sku",
+            "required" : false,
+            "type" : "string"
+          }, {
+            "id" : 9,
+            "name" : "qty",
+            "required" : false,
+            "type" : "int"
+          } ]
+        },
+        "element-required" : false
+      }
+    }, {
+      "id" : 4,
+      "name" : "attrs",
+      "required" : false,
+      "type" : {
+        "type" : "map",
+        "key-id" : 10,
+        "key" : "string",
+        "value-id" : 11,
+        "value" : "int",
+        "value-required" : false
+      }
+    } ]
+  }, {
+    "type" : "struct",
+    "schema-id" : 1,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "addr",
+      "required" : false,
+      "type" : {
+        "type" : "struct",
+        "fields" : [ {
+          "id" : 5,
+          "name" : "town",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "id" : 6,
+          "name" : "zip",
+          "required" : false,
+          "type" : "int"
+        } ]
+      }
+    }, {
+      "id" : 3,
+      "name" : "items",
+      "required" : false,
+      "type" : {
+        "type" : "list",
+        "element-id" : 7,
+        "element" : {
+          "type" : "struct",
+          "fields" : [ {
+            "id" : 8,
+            "name" : "sku",
+            "required" : false,
+            "type" : "string"
+          }, {
+            "id" : 9,
+            "name" : "qty",
+            "required" : false,
+            "type" : "int"
+          } ]
+        },
+        "element-required" : false
+      }
+    }, {
+      "id" : 4,
+      "name" : "attrs",
+      "required" : false,
+      "type" : {
+        "type" : "map",
+        "key-id" : 10,
+        "key" : "string",
+        "value-id" : 11,
+        "value" : "int",
+        "value-required" : false
+      }
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "schema.name-mapping.default" : "[ {\n  \"field-id\" : 1,\n  \"names\" : [ \"id\" ]\n}, {\n  \"field-id\" : 2,\n  \"names\" : [ \"addr\" ],\n  \"fields\" : [ {\n    \"field-id\" : 5,\n    \"names\" : [ \"town\", \"city\" ]\n  }, {\n    \"field-id\" : 6,\n    \"names\" : [ \"zip\" ]\n  } ]\n}, {\n  \"field-id\" : 3,\n  \"names\" : [ \"items\" ],\n  \"fields\" : [ {\n    \"field-id\" : 7,\n    \"names\" : [ \"element\" ],\n    \"fields\" : [ {\n      \"field-id\" : 8,\n      \"names\" : [ \"sku\" ]\n    }, {\n      \"field-id\" : 9,\n      \"names\" : [ \"qty\" ]\n    } ]\n  } ]\n}, {\n  \"field-id\" : 4,\n  \"names\" : [ \"attrs\" ],\n  \"fields\" : [ {\n    \"field-id\" : 10,\n    \"names\" : [ \"key\" ]\n  }, {\n    \"field-id\" : 11,\n    \"names\" : [ \"value\" ]\n  } ]\n} ]",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : 3137234117549469995,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 3137234117549469995,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 3137234117549469995,
+    "timestamp-ms" : 1789361328411,
+    "summary" : {
+      "operation" : "append",
+      "added-data-files" : "1",
+      "added-records" : "2",
+      "total-records" : "2",
+      "total-files-size" : "0",
+      "total-data-files" : "1",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1789361320961",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/migdeep/metadata/snap-3137234117549469995-1-38587fa8-d70c-4b58-a42d-94db14dfa97f.avro",
+    "schema-id" : 0
+  } ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1789361328411,
+    "snapshot-id" : 3137234117549469995
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1789361324066,
+    "metadata-file" : "/wh/default/migdeep/metadata/v1.metadata.json"
+  }, {
+    "timestamp-ms" : 1789361324299,
+    "metadata-file" : "/wh/default/migdeep/metadata/v2.metadata.json"
+  }, {
+    "timestamp-ms" : 1789361328411,
+    "metadata-file" : "/wh/default/migdeep/metadata/v3.metadata.json"
+  } ]
+}

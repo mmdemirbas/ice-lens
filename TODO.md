@@ -61,8 +61,7 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   values in Spark is currently unsupported` (run 2026-09-13). What is still unsurfaced: the
   **variant / geometry / geography / timestamp_ns** types, which Spark 3.5 cannot write (no
   VARIANT type) and need a Spark 4.0 image. The **name mapping** is applied now (`migrated`),
-  top-level fields only — a nested mapping (`fields` inside a field) is parsed and not consulted,
-  the same scope as the row projection. **The Paimon twin is in** (`pse`): a file's columns are
+  at every level — the mapping's tree is walked as `ApplyNameMapping` walks it (`migdeep`). **The Paimon twin is in** (`pse`): a file's columns are
   placed by the schema its `_SCHEMA_ID` names, which is the format's own rule and the only one
   that covers its Avro files, and a `SET DEFAULT` is drawn as the write-time default it is; a
   renamed primary key merges across the bucket (`pkr`). Still by name: a data-evolution
@@ -70,9 +69,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   pruned, named and read** (`deep`): pruning binds `addr.town` by leaf id, and the SQL readers
   rebuild a struct by id (`FileProjection`, `struct_pack` over the file's column tree), so a
   filter on a struct field answers on a file written before a rename inside the struct, and
-  the row panel's `Read As` rebuilds the struct from the DuckDB value the same way. Still by
-  name: a nested name mapping (parsed, not consulted), a Paimon file's nested fields, and a
-  map's key and value on the row panel. What the vector work does *not* cover on the
+  the row panel's `Read As` rebuilds the struct from the DuckDB value the same way, and the
+  name mapping's tree is walked for a file with no ids at any level (`migdeep`). Still by
+  name: a Paimon file's nested fields, and a map's key and value on the row panel. What the vector work does *not* cover on the
   canvas: an Iceberg **positional delete** file (v2) marks no row *card*, because its targets are
   one per row and only known after reading the file — the same reason there is no `e_dv_*`-style
   edge for it. A row's panel answers it behind a click (`RowDeletesSection`), for equality deletes

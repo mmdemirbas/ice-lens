@@ -78,7 +78,7 @@ core/src/main/kotlin/
 │   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing — and the fates a hit can have, both formats
 │   ├── RowHistory.kt          # The retained snapshots on main with what looking a row up in each takes, and what each commit did to the matching rows — appeared, changed, gone
 │   ├── ReadProjection.kt      # A sampled row as a read returns it: the file's cells placed onto the current schema by field id, a renamed column under its new name, a dropped one not at all, an added one as its initial default
-│   ├── NameMapping.kt         # `schema.name-mapping.default`, and the one rule placing a file's columns — its own field ids first, the mapping for a column recording none
+│   ├── NameMapping.kt         # `schema.name-mapping.default`, and the one rule placing a file's columns — its own field ids first, the mapping's tree for a column recording none, at every level
 │   ├── PaimonRowLookup.kt     # What reading a Paimon snapshot takes: the live files by bucket, the index manifest's vectors, the merge rule — for the row lookup and the merged count
 │   ├── PaimonMergeRule.kt     # What a read does with a key's records under each merge engine, and which level-0 files it never reads
 │   ├── ScanFilterSql.kt       # A ScanFilter as DuckDB's WHERE clause, every literal bound and cast to its column's type
@@ -749,6 +749,20 @@ intellij/src/main/kotlin/plugin/
   `IntegrityFixtureTest` / `SnapshotTotalsTest` hold `migrated` to exactly that rather than to
   agreement. And the manifest `add_files` wrote still names field 2 `name`, so the *statistics*
   check matched the file by name even before the mapping; it is a read that needs it.
+  **The mapping is a tree and is applied as one.** `NameMapping.applyTo` fills every id a
+  file's column tree records nowhere the way Iceberg's `ApplyNameMapping` does (1.8.1): a
+  struct's field by its name under the struct's mapped field, a list's element and a map's key
+  and value by role — the walk normalises those to `element`, `key` and `value` whatever the
+  file calls them, and `MappingUtil.create` writes them under those names. `FileProjection` and
+  `projectRow` place the nested fields off that filled tree, so on `migdeep` — `migrated` with a
+  struct, a list of structs and a map, then `RENAME COLUMN addr.city TO town`, `ADD COLUMN
+  addr.country` and `RENAME COLUMN items.element.sku TO code`, each of which updated the
+  mapping's tree — `addr.town = 'Ankara'` finds the plain file's row and its `addr` reads
+  `{'town': Ankara, 'zip': 6000, 'country': NULL}`. Before this the top level placed through the
+  mapping and every field *inside* the struct was looked up by an id the file did not have, so
+  the struct read as all-null on exactly the files a migrated table is made of, with nothing
+  failing; `MigratedNestedFixtureTest` is the regression, and reverting the two call sites
+  makes it fail with the all-null struct
   **An equality delete file is read the same way**, because it is a Parquet file whose columns
   are named as the schema named them when it was written and a scan matches it by field id
   (`equality_ids`): `eqren` is `eqdel` with `name` renamed to `label` *after* the equality
@@ -2113,7 +2127,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,237 tests across 164 files (967 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,240 tests across 165 files (970 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2207,6 +2221,7 @@ container invocation and the traps in it:
 | `default/eqren` | `RowLookupFixtureTest`, `RowFateFixtureTest`, `IcebergScanPlanTest` | `eqdel` with the equality delete on `name`, then `RENAME COLUMN name TO label` and a row inserted after — the delete file holds `name`, the table calls it `label`, and Spark's read (`1 4 5 7 8`) is printed by the script |
 | `default/v3` | `FormatV3FixtureTest` | format-version 3 with deletion vectors |
 | `default/migrated` | `MigratedFixtureTest` | a plain-Spark Parquet file registered by `add_files` — no field ids, a `file:` URI outside the table, the name mapping the procedure set and a rename extended, and a `total-files-size` the procedure left short |
+| `default/migdeep` | `MigratedNestedFixtureTest` | `migrated` with a struct, a list of structs and a map — no field id at any level, the mapping's tree kept current by a rename and an add inside the struct and a rename inside the list's element; the plain files under `example/iceberg/deep-files/` |
 | `default/defaults` | `ReadProjectionFixtureTest` | format-version 3 column defaults, written by Iceberg 1.10's `UpdateSchema` from spark-shell — `region` with `initial-default eu` and `write-default us` after an `updateColumnDefault`, `score` with `0`; a file written before both, and the writer's read of it printed in the script |
 | `default/lineage` | `RowLineageFixtureTest` | format-version 3 row lineage, written by Iceberg 1.10 — `next-row-id`, a snapshot's and a manifest's `first-row-id`, files inheriting theirs in entry order, a rewritten file carrying `_row_id`, a deletion vector allocating nothing, and a compaction that keeps every id |
 | `default/evolved` | `SchemaEvolutionFixtureTest` | three manifest schemas — `int`→`long`, `float`→`double`, a rename and a drop |

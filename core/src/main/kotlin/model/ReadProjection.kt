@@ -85,7 +85,8 @@ fun projectRow(cells: Map<String, Any?>, fileColumns: Map<String, Int?>, schema:
  */
 fun projectRow(cells: Map<String, Any?>, columns: List<FileColumn>, schema: IcebergSchemaModel, mapping: NameMapping? = null): ProjectedRow {
     val fileColumns = columns.topLevel()
-    val byName = columns.associateBy { it.name }
+    // The tree with the mapping's ids filled in, so a struct's fields place by id below; `viaMapping` reads the file's own.
+    val byName = (mapping?.applyTo(columns) ?: columns).associateBy { it.name }
     val fileColumnById = placeFileColumns(fileColumns.filterKeys { it in cells }, mapping)
     val projected = schema.struct.fields.map { field ->
         val fileColumn = fileColumnById[field.id]

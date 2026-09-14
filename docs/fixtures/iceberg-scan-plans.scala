@@ -9,7 +9,8 @@
 // record (/wh/default/<t>), so the manifests resolve where they say they are:
 //
 //   WH=$PWD/tmp/iplans-wh; rm -rf "$WH"; mkdir -p "$WH/default"
-//   cp -R example/iceberg/default/* "$WH/default/"; cp -R example/iceberg/extdata-files "$WH/"
+//   cp -R example/iceberg/default/* "$WH/default/"
+//   cp -R example/iceberg/extdata-files example/iceberg/plain-files example/iceberg/deep-files "$WH/"
 //   docker run --rm --entrypoint bash \
 //     -v "$WH:/wh" -v "$PWD/docs/fixtures/iceberg-scan-plans.scala:/tmp/plans.scala:ro" \
 //     tabulario/spark-iceberg:latest \

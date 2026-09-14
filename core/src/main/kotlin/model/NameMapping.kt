@@ -15,14 +15,39 @@ import kotlinx.serialization.json.jsonPrimitive
  * (a rename appends the new one, so `migrated`'s field 2 maps `["name", "label"]`). A file
  * column is placed by its own field id first and through this only when it has none; a file
  * with ids and a table with a mapping is the ordinary case after one migrated write, and the
- * ids win. Top-level fields only, the same scope as [projectRow].
+ * ids win. The mapping is a tree — `fields` under a field — and [applyTo] walks it down a
+ * file's column tree the way Iceberg's `ApplyNameMapping` does, by the path of names.
  */
 data class NameMapping(val fields: List<MappedField>) {
     /** The field id a file column's name maps to, or null when the mapping names it nowhere. */
     fun fieldIdOf(name: String): Int? = fields.firstOrNull { name in it.names }?.fieldId
 
+    /**
+     * [columns] with every id a column does not record filled from this mapping, at every
+     * level: a struct's field by its name under the struct's mapped field, a list's element and
+     * a map's key and value by their role — `ApplyNameMapping` normalises those to `element`,
+     * `key` and `value` whatever the file calls them (`array_element`, a Hive-written list's
+     * `array`), and `MappingUtil.create` writes them under those names. A column the mapping
+     * names nowhere keeps its null, and nothing under it is looked for.
+     */
+    fun applyTo(columns: List<FileColumn>): List<FileColumn> = columns.map { apply(it, fields.firstOrNull { f -> it.name in f.names }) }
+
+    private fun apply(column: FileColumn, mapped: MappedField?): FileColumn {
+        val under = mapped?.fields.orEmpty()
+        val children = when (column.kind) {
+            FileColumn.Kind.STRUCT -> column.children.map { child -> apply(child, under.firstOrNull { child.name in it.names }) }
+            FileColumn.Kind.LIST -> column.children.map { child -> apply(child, under.firstOrNull { ELEMENT in it.names }) }
+            FileColumn.Kind.MAP -> column.children.mapIndexed { i, child -> apply(child, under.firstOrNull { (if (i == 0) KEY else VALUE) in it.names }) }
+            FileColumn.Kind.PRIMITIVE -> column.children
+        }
+        return column.copy(fieldId = column.fieldId ?: mapped?.fieldId, children = children)
+    }
+
     companion object {
         const val PROPERTY = "schema.name-mapping.default"
+        private const val ELEMENT = "element"
+        private const val KEY = "key"
+        private const val VALUE = "value"
 
         /** The property's JSON, or null when it does not parse as a list of fields. */
         fun parse(json: String): NameMapping? = runCatching {

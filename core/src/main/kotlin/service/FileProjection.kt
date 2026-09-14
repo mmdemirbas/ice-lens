@@ -72,7 +72,8 @@ internal class FileProjection private constructor(
             val reader = SampleRowReader.readerCall(ext, rowNumber = rowNumber, filename = filename)
             if (schema == null || columns.isEmpty()) return FileProjection("(SELECT * FROM $reader) $alias", emptyList())
             val placed = placeFileColumns(columns.topLevel(), mapping)
-            val byName = columns.associateBy { it.name }
+            // The tree with the mapping's ids filled in, so a struct's fields place by id below.
+            val byName = (mapping?.applyTo(columns) ?: columns).associateBy { it.name }
             val defaults = mutableListOf<String>()
             val select = schema.struct.fields.map { field ->
                 val alias = quoteSqlIdentifier(field.name)
