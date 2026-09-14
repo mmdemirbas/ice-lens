@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **What each commit published for a row — the changelog — under the row lookup on a Paimon
+  table.** The history says what a batch read returns at each snapshot; the new `Changelog`
+  stage reads the changelog files each snapshot names for the same filter and lists every
+  record a streaming consumer received — its kind (`+I`, `-U`, `+U`, `-D`, the retractions
+  coloured), the commit, the sequence number, the cells — under a sentence stating what the
+  table's `changelog-producer` publishes. `lk` and `cl` are the oracle: under `lookup` the
+  update of key 2 is a `-U` / `+U` pair in the COMPACT after the append, under `input` a bare
+  `+I` in the append itself. Every changelog snapshot of every fixture, unfiltered, reads
+  exactly its recorded `changelogRecordCount`.
 - **A statistics blob's theta sketch is decoded, and the panel says whether its distinct count
   is exact or an estimate.** `compute_table_stats` records `ndv` as a property and the sketch
   it was read off beside it; the record keeps the figure and not how it was made. The compact

@@ -22,6 +22,9 @@ import model.GraphNode
 import model.RowChange
 import model.RowFate
 import model.RowHistory
+import model.PaimonChangelog
+import model.PaimonRowKind
+import service.PaimonChangelogTrace
 import model.RowLookupResult
 import model.ScanFilter
 import model.evaluateScan
@@ -55,6 +58,9 @@ internal fun RowLookupSection(
     /** Runs the history trace under the lookup without a click — a capture's way in, like [startRequested]. */
     historyRequested: Boolean = false,
     onHistorySettled: () -> Unit = {},
+    /** The same for the changelog trace, on a Paimon table whose snapshots name one. */
+    changelogRequested: Boolean = false,
+    onChangelogSettled: () -> Unit = {},
     /** Files opened per click; a capture lowers it to reach the paged state on a small table. */
     pageSize: Int = RowLookup.MAX_FILES,
     /** Last, so a caller's trailing lambda is the lookup's. */
@@ -149,8 +155,93 @@ internal fun RowLookupSection(
                     }
                 }
                 if (node.rowHistory.isPresent) RowHistoryStage(node, filter, ruledOut, paimon, historyRequested, onHistorySettled)
+                if (node.paimonChangelog.isPresent) ChangelogStage(node, filter, changelogRequested, onChangelogSettled)
             }
         }
+    }
+}
+
+/**
+ * What each commit *published* for the rows — the changelog files its snapshot names, read for
+ * the same filter — behind a third click; see [PaimonChangelog]. The history above is what a
+ * batch read returns at each snapshot, and this is the other side of `changelog-producer`: the
+ * stream a downstream consumer receives, which under `lookup` carries the change in the COMPACT
+ * commit after the append that made it, and under `input` carries the write as it arrived.
+ */
+@Composable
+private fun ChangelogStage(
+    node: GraphNode.TableNode,
+    filter: ScanFilter,
+    startRequested: Boolean,
+    onSettled: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    var requested by remember(node.id, filter) { mutableStateOf(startRequested) }
+    val outcome by produceState<Result<PaimonChangelog>?>(null, node.id, filter, requested) {
+        value = null
+        if (requested) {
+            value = withContext(Dispatchers.IO) {
+                runCatching { PaimonChangelogTrace.trace(requireNotNull(node.paimonChangelog.value) { "no changelog to read" }, filter) }
+            }
+            onSettled()
+        }
+    }
+    val changelog = outcome?.getOrNull()
+    Text(
+        "Changelog",
+        fontSize = TypeScale.small,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+    )
+    when {
+        !requested -> OutlinedButton(onClick = { requested = true }) {
+            Text("Read what each commit published for these rows")
+        }
+        outcome == null -> Text("Reading each snapshot's changelog…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+        changelog == null -> Text("Could not read: ${outcome?.exceptionOrNull()?.message ?: "unknown error"}", fontSize = TypeScale.small, color = colors.error)
+        else -> ChangelogBody(changelog)
+    }
+}
+
+@Composable
+private fun ChangelogBody(changelog: PaimonChangelog) {
+    val colors = MaterialTheme.colorScheme
+    val published = changelog.publishedAt
+    Text(
+        (if (changelog.capped) "The last ${changelog.snapshotsRead} of ${changelog.withChangelog} snapshots naming a changelog" else "All ${formatCounted(changelog.snapshotsRead, "snapshot")} naming a changelog") +
+            (if (changelog.records.isEmpty()) ": nothing was published for the matching rows." else
+                ": ${formatCounted(changelog.records.size, "record")} published for the matching rows, at ${published.joinToString(", ") { "snapshot $it" }}."),
+        fontSize = TypeScale.small,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(bottom = 4.dp),
+    )
+    Text(
+        changelog.producerRule + (if (changelog.capped) ". Older snapshots are not read." else "."),
+        fontSize = TypeScale.small,
+        color = colors.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 4.dp),
+    )
+    WideTable(
+        headers = listOf("Kind", "Snapshot", "Commit", "Sequence", "File", "Row"),
+        columnWidths = listOf(260.dp, 120.dp, 100.dp, 90.dp, 340.dp, 600.dp),
+        rows = changelog.records.map { record ->
+            listOf(
+                record.kind?.let(PaimonRowKind::describe) ?: "—",
+                record.snapshotId.toString(),
+                record.commitKind ?: "—",
+                record.sequenceNumber?.toString() ?: "—",
+                record.fileName,
+                record.cells.entries.take(MAX_ROW_CELLS).joinToString(", ") { "${it.key}=${it.value ?: "null"}" } + (if (record.cells.size > MAX_ROW_CELLS) ", …" else ""),
+            )
+        },
+        // A retraction is the exception a stream's reader looks for; an insert or an after-image is the ordinary row.
+        leadCellColors = changelog.records.map { if (it.isRetraction) verdictSkippedColor() else null },
+    )
+    if (changelog.unreadable > 0) {
+        Text("${formatCounted(changelog.unreadable, "changelog file")} could not be read; the stream shown is incomplete.", fontSize = TypeScale.small, color = colors.error, modifier = Modifier.padding(top = 4.dp))
+    }
+    if (changelog.filesRead.any { it.matched >= RowLookup.MAX_HITS_PER_FILE }) {
+        Text("A file's records stop at ${RowLookup.MAX_HITS_PER_FILE}; narrow the filter to read the rest.", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
     }
 }
 

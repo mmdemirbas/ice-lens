@@ -155,7 +155,7 @@ desktop/src/main/kotlin/
     ├── PaimonRowMergeSection.kt # The same on Paimon: the merge engine over the record's key, the row lookup run for it behind a click
     ├── ReadAsSection.kt       # An Iceberg row as a read returns it, where the schema has moved on since the file — drawn only when it differs
     ├── TimeTravelSection.kt   # A typed time and the snapshot it resolves to, on the metadata panel and the Paimon table panel
-    ├── RowLookupSection.kt    # The scan filter one step further: the matching rows read from the files it leaves, each with its fate — both formats
+    ├── RowLookupSection.kt    # The scan filter one step further: the matching rows read from the files it leaves, each with its fate — both formats; under it the history and, on Paimon, the changelog
     ├── NodePanels.kt          # Table, row, error and group panels
     ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
     ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
@@ -616,6 +616,25 @@ intellij/src/main/kotlin/plugin/
   `COMPACT`. The `History` stage sits under the lookup's result behind a second click, and its
   change column marks the exception: `unchanged` is printed on the rest so a column of them reads
   as a history rather than a table with holes
+- **What each commit *published* for a row is the other side of `changelog-producer`, and it is
+  read from the changelog files the snapshot names.** The history above is what a batch read
+  returns at each snapshot; a downstream consumer receives the changelog, and the two differ
+  by producer on the same statements. `model/PaimonChangelog.kt` (`paimonChangelogInputs`, a
+  `DeferredRead` on `TableNode.paimonChangelog` where any snapshot names a changelog) lists the
+  retained snapshots on `main` whose changelog manifest list names files, oldest first, capped at
+  `MAX_HISTORY_SNAPSHOTS`, each with its `changelogRecordCount`; `service/PaimonChangelogTrace.kt`
+  reads every file for the lookup's filter through the lookup's own projection (a changelog file
+  is a key-value file — `_KEY_*`, `_SEQUENCE_NUMBER`, `_VALUE_KIND`, the values — under the latest
+  schema's names) in file order, and the `Changelog` stage under the lookup lists each record's
+  kind, commit, sequence number and cells with the retractions coloured, under a sentence stating
+  the producer's rule. `lk` and `cl` are the oracle, one INSERT of key 2 twice and a DELETE of
+  key 3 on both: under `lookup` the change is computed at commit time and published by the
+  **COMPACT after the append** — `+I (2, b)` at snapshot 2, `-U (2, b)` and `+U (2, B)` at 4,
+  `-D (3, c)` at 6 — while under `input` the APPEND publishes the input as it arrived, so the
+  same update is a bare `+I (2, B)` at snapshot 2 with no before image, which is what the
+  history's "changed at the APPEND" and the changelog's "-U/+U at the COMPACT" say between
+  them. `PaimonChangelogFixtureTest` holds both, and every changelog-naming snapshot of every
+  Paimon fixture, unfiltered, to its own `changelogRecordCount`
 - **The one question asked from the directory rather than from the metadata is "what is here that
   nothing names".** `model/UnreferencedFiles.kt` walks the table root and subtracts every path the
   model resolved — manifest lists, manifests, data and delete files, Puffin vectors and statistics,
@@ -2191,7 +2210,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,269 tests across 171 files (996 in :core, 263 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,271 tests across 172 files (998 in :core, 263 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

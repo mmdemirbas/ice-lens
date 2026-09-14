@@ -60,7 +60,7 @@ object PaimonRowLookup {
     internal fun bucketSources(input: PaimonReadInput, files: List<PaimonLookupFile>): BucketSources =
         BucketSources(files, files.map { projectionOf(it, input.readSchema, rowNumber = true, filename = true) })
 
-    private fun projectionOf(file: PaimonLookupFile, schema: IcebergSchemaModel, rowNumber: Boolean, filename: Boolean = false, alias: String = "s"): FileProjection =
+    internal fun projectionOf(file: PaimonLookupFile, schema: IcebergSchemaModel, rowNumber: Boolean, filename: Boolean = false, alias: String = "s"): FileProjection =
         FileProjection.of(file.extension, paimonFileColumnTree(SampleRowReader.fileColumnTreeOf(file.localPath), file.fileSchema), schema, null, rowNumber = rowNumber, alias = alias, filename = filename)
 
     /** One matched record; [stitched] names the other files of its split that supplied columns, where a read stitches. */

@@ -403,6 +403,8 @@ sealed class GraphNode(
         val paimonRowLookup: DeferredRead<PaimonReadInput> = DeferredRead.none(),
         /** The retained snapshots on `main` with what looking a row up in each takes — see [RowHistoryInputs]; both formats. */
         val rowHistory: DeferredRead<RowHistoryInputs> = DeferredRead.none(),
+        /** The changelog files each retained snapshot on `main` names, with what reading them takes — see [PaimonChangelogInputs]; only where some snapshot names one. */
+        val paimonChangelog: DeferredRead<PaimonChangelogInputs> = DeferredRead.none(),
         /** Each schema against the one before it, with the first snapshot written under it — see [schemaEvolution]; both formats, from the model. */
         val schemaEvolution: List<SchemaStep> = emptyList(),
         /** The Iceberg metadata a Paimon table writes beside its own, checked against the table — see [IcebergExportCheck]; only where `metadata/` holds one. */

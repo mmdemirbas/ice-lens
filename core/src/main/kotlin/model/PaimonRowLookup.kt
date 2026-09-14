@@ -137,25 +137,28 @@ val PaimonUnifiedTableModel.latestSchema: PaimonSchema? get() = schemas.maxByOrN
  * commit was written under (`der`: `b` became `bb` after the last write, and `SELECT *` says
  * `bb`), while a read at an older snapshot sees its names.
  */
+/** The entry as what a read opens — null for an entry naming no file or bucket. */
+fun PaimonUnifiedDataFile.asLookupFile(): PaimonLookupFile? {
+    val meta = metadata.file ?: return null
+    return PaimonLookupFile(
+        fileName = meta.fileName ?: return null,
+        localPath = path.toString(),
+        partition = partition?.display.orEmpty(),
+        bucket = metadata.bucket ?: return null,
+        level = meta.level,
+        recordCount = meta.rowCount,
+        partial = partial,
+        firstRowId = meta.firstRowId,
+        maxSequenceNumber = meta.maxSequenceNumber,
+        fileSchema = schema,
+        writeCols = meta.writeCols,
+    )
+}
+
 fun PaimonUnifiedTableModel.paimonReadInputOf(snapshot: PaimonUnifiedSnapshot, replay: PaimonReplay, readSchema: PaimonSchema? = null): PaimonReadInput? {
     val id = snapshot.metadata.id ?: return null
     val schema = readSchema ?: snapshot.schema ?: return null
-    val files = replay.liveEntries.values.mapNotNull { entry ->
-        val meta = entry.metadata.file ?: return@mapNotNull null
-        PaimonLookupFile(
-            fileName = meta.fileName ?: return@mapNotNull null,
-            localPath = entry.path.toString(),
-            partition = entry.partition?.display.orEmpty(),
-            bucket = entry.metadata.bucket ?: return@mapNotNull null,
-            level = meta.level,
-            recordCount = meta.rowCount,
-            partial = entry.partial,
-            firstRowId = meta.firstRowId,
-            maxSequenceNumber = meta.maxSequenceNumber,
-            fileSchema = entry.schema,
-            writeCols = meta.writeCols,
-        )
-    }
+    val files = replay.liveEntries.values.mapNotNull { it.asLookupFile() }
     return PaimonReadInput(
         snapshotId = id,
         schema = schema,

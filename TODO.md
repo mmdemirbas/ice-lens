@@ -119,6 +119,14 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   read that lands for an older selection; the scan is memoised on the node, so a second click is
   instant.
 
+- **A row's changelog is read under the lookup on Paimon — what each commit published, beside
+  the history's what each snapshot returns.** `model/PaimonChangelog.kt` and
+  `service/PaimonChangelogTrace.kt`, held to `lk` (`lookup`) and `cl` (`input`). What is left:
+  a tag-only snapshot's changelog is not traced (its list is what an expiry deletes, `tg`), a
+  branch's changelog is not read, and the two stages are shown one under the other rather than
+  joined on the snapshot — the reader pairs "changed at the APPEND" with "-U/+U at the COMPACT"
+  by eye.
+
 - **The Paimon merge rules are applied on every shape a fixture has been written for.**
   `deduplicate`, `first-row`, `partial-update` and `aggregation` are applied by the merged count
   and the row lookup (`model/PaimonMergeRule.kt`), each on a table written under it;

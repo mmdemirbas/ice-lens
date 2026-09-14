@@ -53,6 +53,7 @@ object PaimonGraphBuilder {
             fileStats = DeferredRead.of { tableModel.fileStatsTargets() },
             paimonRowLookup = DeferredRead.of { tableModel.paimonRowLookupInput() },
             rowHistory = DeferredRead.of { tableModel.rowHistoryInputs() },
+            paimonChangelog = if (tableModel.snapshots.any { it.changelogManifests.isNotEmpty() }) DeferredRead.of { tableModel.paimonChangelogInputs() } else DeferredRead.none(),
             schemaEvolution = schemaSteps,
             // A listing of `metadata/` at build, so the section is drawn only on a table that carries the export; the read itself waits for the click.
             icebergExport = if (tableModel.icebergExportPath != null) DeferredRead.of { tableModel.checkIcebergExport() } else DeferredRead.none(),
