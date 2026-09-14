@@ -74,7 +74,7 @@ class PaimonChangelogLifecycleFixtureTest {
         val options = model.latestSchema!!.options
         assertTrue(paimonChangelogLifecycleDecoupled(options))
         assertTrue(!paimonChangelogLifecycleDecoupled(options - "changelog.num-retained.max" - "changelog.num-retained.min"))
-        FixtureCatalog.paimon.filter { it != "pcl" }.forEach { name ->
+        FixtureCatalog.paimon.filter { it !in setOf("pcl", "pcn") }.forEach { name ->
             val other = PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/$name").absolutePath))
             assertTrue(!paimonChangelogLifecycleDecoupled(other.latestSchema?.options.orEmpty()), name)
         }
@@ -128,11 +128,45 @@ class PaimonChangelogLifecycleFixtureTest {
         assertEquals(listOf(5L), limited.removed.map { it.snapshotId })
         assertTrue(limited.changelogs.last().keptBy.any { it.rule == PaimonKeepRule.EXPIRE_LIMIT })
         // No changelog directory: nothing to plan, and no other fixture has one.
-        FixtureCatalog.paimon.filter { it != "pcl" }.forEach { name ->
+        FixtureCatalog.paimon.filter { it !in setOf("pcl", "pcn") }.forEach { name ->
             val other = PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/$name").absolutePath)).expiryInput()
             assertTrue(other.changelogTimes.isEmpty(), name)
             assertEquals(emptyList(), other.planChangelogExpiry(PaimonExpiryOptions(nowMs = lastCommit)).removed, name)
         }
+    }
+
+    /**
+     * `pcn` is `pcl` without a changelog producer, where the delta list is the change stream: the
+     * decoupled expiry then keeps the base and delta lists too, and every `APPEND`-sourced data
+     * file — the five files the compaction at 6 removed are all still on disk — so the long-lived
+     * changelog replays whole and a plan expiring snapshot 7 frees none of its lists.
+     */
+    @Test
+    fun `without a changelog producer the decoupled expiry keeps the base and delta lists and the APPEND files, and the changelog replays`() {
+        val pcn = PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pcn").absolutePath))
+        assertEquals(listOf(7L, 8L), pcn.snapshots.map { it.metadata.id })
+        assertEquals(listOf(5L, 6L), pcn.changelogs.map { it.metadata.id })
+        assertTrue((pcn.latestSchema!!.options["changelog-producer"] ?: "none") == "none")
+        pcn.changelogs.forEach { c ->
+            assertEquals(emptyList(), c.retiredLists, c.path.toString())
+            assertEquals(emptyList(), c.readErrors, c.readErrors.toString())
+            assertTrue(c.baseManifests.isNotEmpty() || c.deltaManifests.isNotEmpty(), c.path.toString())
+            (c.baseManifests + c.deltaManifests).flatMap { it.entries }.forEach { assertTrue(java.nio.file.Files.exists(it.path), "${c.metadata.id}: ${it.path}") }
+            assertEquals(3, paimonRecordTallies(c, replayPaimonSnapshot(c).liveEntries.values.sumOf { it.metadata.file?.rowCount ?: 0L }).size)
+        }
+        // The compaction at 6 removed the five earlier files; every one is still there for the changelog.
+        val six = pcn.changelogs.last()
+        val removedAtSix = six.deltaManifests.flatMap { it.entries }.filter { it.metadata.kind == PaimonEntryKind.DELETE }
+        assertEquals(5, removedAtSix.size, removedAtSix.map { it.path.fileName }.toString())
+        removedAtSix.forEach { assertTrue(java.nio.file.Files.exists(it.path), it.path.toString()) }
+        assertEquals(emptyList(), findUnreferencedFiles(pcn).unreferenced.map { it.path })
+        val plan = pcn.expiryFileInput().planExpiryFiles(setOf(7L))
+        assertTrue(plan.decoupled)
+        val seven = pcn.snapshots.first { it.metadata.id == 7L }
+        assertTrue(seven.metadata.baseManifestList !in plan.names && seven.metadata.deltaManifestList !in plan.names, plan.names.toString())
+        assertEquals(setOf(PaimonExpiryFileKind.SNAPSHOT), plan.files.map { it.kind }.toSet(), plan.files.toString())
+        // A tag-free table with a producer frees the lists; the same statement's plan on `pcl` does.
+        assertTrue(model.expiryFileInput().planExpiryFiles(setOf(7L)).files.any { it.kind == PaimonExpiryFileKind.MANIFEST_LIST })
     }
 
     @Test

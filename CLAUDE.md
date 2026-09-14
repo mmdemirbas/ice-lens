@@ -2474,7 +2474,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,337 tests across 180 files (1,053 in :core, 273 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,338 tests across 180 files (1,054 in :core, 273 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2632,7 +2632,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pu`, `ag`, `fr` | `PaimonMergeEngineFixtureTest` | one primary-key table per merge engine other than the default — `partial-update` folding two writes and removing a key on `-D` until its re-insert, `aggregation` summing, and `first-row`, whose DELETE Spark ran as a file rewrite to level 0 that a batch read of a first-row table never reads: Paimon's own reads printed one row where the statements describe two |
 | `paimon/db.db/sgm` | `PaimonMergeEngineFixtureTest` | `partial-update` with a sequence group of two fields, `fields.g1,g2.sequence-group = a`, and `remove-record-on-sequence-group = g2` — an insert with a null in the tuple ordered below the row's, and Paimon's read at every snapshot |
 | `paimon/db.db/sg`, `sgd` | `PaimonMergeEngineFixtureTest` | `partial-update` with two sequence groups — `sg` inserts only, a lower group value not overriding a higher; `sgd` with `remove-record-on-sequence-group = ga`, a DELETE writing a `-D` that removes the key and an insert bringing it back, Paimon's read at every snapshot |
-| `paimon/db.db/pcl` | `PaimonChangelogLifecycleFixtureTest` | `changelog-producer = input` with `changelog.num-retained.max` above `snapshot.num-retained.max`, every expiry run at commit — `snapshot/` holds 7 and 8, `changelog/` holds 5 and 6 with their changelog lists and files kept and their base and delta lists gone |
+| `paimon/db.db/pcl`, `pcn` | `PaimonChangelogLifecycleFixtureTest` | `changelog.num-retained.max` above `snapshot.num-retained.max`, every expiry run at commit — `snapshot/` holds 7 and 8, `changelog/` holds 5 and 6; `pcl` under `changelog-producer = input`, its changelog lists and files kept and its base and delta lists gone; `pcn` with no producer, where the delta list is the change stream and the base and delta lists and every `APPEND` file stay — the five files the compaction removed still on disk |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
@@ -2992,7 +2992,10 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   `PaimonChangelogLifecycleFixtureTest` holds `pcl` to all of it — a bare call at the last
   commit's moment removes nothing more than the commit-time run did, `older_than = now` removes
   5 and never the latest — with what the past expiries left of changelog 5 as the oracle for
-  what a decoupled expiry keeps, and the consumer, maximum and limit bounds planted
+  what a decoupled expiry keeps, and the consumer, maximum and limit bounds planted. `pcn` is
+  the no-producer twin, and holds the other branch: both lists present on each long-lived
+  changelog, no retired list, three tallies, the five `APPEND` files the compaction at 6 removed
+  all still on disk, and a plan expiring snapshot 7 that frees nothing but the snapshot file
 - **A Paimon file written outside the table records where, and that is the one path with
   something to resolve.** The format records no path for a file in its own layout —
   `<table>/<partition>/bucket-N/<file>` is the rule — so `PaimonPathResolution.LAYOUT` says

@@ -97,10 +97,11 @@ class PaimonRecordTalliesTest {
             assertTrue(nodes.isNotEmpty())
             nodes.forEach { node ->
                 val tallies = node.recordTallies
-                // A changelog-only snapshot's base and delta are gone: its changelog records alone are tallied.
-                val expected = if (node.retainedByChangelogOnly) 1 else 3
+                // A changelog-only snapshot whose base and delta the expiry deleted has its changelog records alone to tally.
+                val retired = node.retainedByChangelogOnly && node.retiredLists.isNotEmpty()
+                val expected = if (retired) 1 else 3
                 assertTrue(tallies != null && tallies.size == expected, "$name ${node.id}: $tallies")
-                if (!node.retainedByChangelogOnly) {
+                if (!retired) {
                     assertEquals(node.liveFiles?.sumOf { it.recordCount }, tallies!!.first().counted, "$name ${node.id}: the total is the comparison's rows")
                 }
             }

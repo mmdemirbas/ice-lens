@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   decoupled changelog lifecycle keeps after expiry, drawn as `CHANGELOG ONLY` snapshots with
   their changelog list, the lists the expiry deleted named on the panel, their files referenced
   (they were orphans before), and the expiry-file plan keeping what a decoupled expiry keeps
-  under the derived rule rather than an option that does not exist. Fixture `pcl`.
+  under the derived rule rather than an option that does not exist. Fixtures `pcl` and `pcn`
+  (with and without a changelog producer).
 - **`expire_changelogs` planned** — the table panel's `Changelog Expiry`, the way
   `ExpireChangelogImpl` runs it, with the counts against the latest snapshot id and each
   `changelog.*` setting falling back to the snapshot's; a maintenance line beside it.
