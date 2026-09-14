@@ -633,7 +633,15 @@ intellij/src/main/kotlin/plugin/
   `lk`'s key 2 to changed at the append that superseded its value and unchanged at every
   `COMPACT`. The `History` stage sits under the lookup's result behind a second click, and its
   change column marks the exception: `unchanged` is printed on the rest so a column of them reads
-  as a history rather than a table with holes
+  as a history rather than a table with holes. **And the same lookup is offered as of one
+  snapshot, on its panel** (`SnapshotRowLookupSection`, under `Live Rows` / `Merged Rows`),
+  reading the snapshot node's own `readInput` — the input the live-row count and the merged
+  count read from — with the table panel's filter named on it, since the form sits there. It is
+  the answer the history cannot give: a branch tip, a tag-only snapshot, or a commit past
+  `MAX_HISTORY_SNAPSHOTS`, none of which the walk down `main` reaches. `branched`'s audit tip
+  holds id 5 and main never received it; `br`'s dev tip k 5 and main k 6 — both fixture tests
+  hold the lookup as of each tip to exactly that. `RowLookupSection` and it share one
+  `LookupSection` body, the table's adding the history and changelog stages under the result
 - **What each commit *published* for a row is the other side of `changelog-producer`, and it is
   read from the changelog files the snapshot names.** The history above is what a batch read
   returns at each snapshot; a downstream consumer receives the changelog, and the two differ
@@ -2486,7 +2494,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,339 tests across 180 files (1,055 in :core, 273 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,342 tests across 180 files (1,057 in :core, 274 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

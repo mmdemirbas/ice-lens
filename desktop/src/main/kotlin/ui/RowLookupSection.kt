@@ -18,8 +18,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import model.FileFate
 import model.GraphModel
+import model.DeferredRead
 import model.GraphNode
+import model.LookupInput
+import model.PaimonReadInput
 import model.RowChange
+import model.RowLookupInput
 import model.RowFate
 import model.RowHistory
 import model.PaimonChangelog
@@ -66,10 +70,66 @@ internal fun RowLookupSection(
     /** Last, so a caller's trailing lambda is the lookup's. */
     onSettled: () -> Unit = {},
 ) {
-    val colors = MaterialTheme.colorScheme
     val paimon = node.paimonRowLookup.isPresent
     if (!node.rowLookup.isPresent && !paimon) return
+    LookupSection(
+        id = node.id, graph = graph, filter = filter, paimon = paimon,
+        scope = LookupScope.TABLE,
+        read = { if (paimon) node.paimonRowLookup.value else node.rowLookup.value },
+        startRequested = startRequested, pageSize = pageSize, onSettled = onSettled,
+    ) { ruledOut ->
+        if (node.rowHistory.isPresent) RowHistoryStage(node, filter, ruledOut, paimon, historyRequested, onHistorySettled)
+        if (node.paimonChangelog.isPresent) ChangelogStage(node, filter, changelogRequested, onChangelogSettled)
+    }
+}
 
+/**
+ * The same lookup as of one snapshot, on its panel — the answer the table's history cannot
+ * give for a branch tip, a tag-only snapshot, or a commit past [RowHistory]'s cap, since the
+ * history walks `main`'s retained snapshots alone. The snapshot's [readInput] is the input
+ * the live-row count and the merged count read from, so what is looked up is what a read as
+ * of this snapshot returns. No history or changelog stage: those are the table's.
+ */
+@Composable
+internal fun SnapshotRowLookupSection(
+    id: String,
+    readInput: DeferredRead<out LookupInput>,
+    paimon: Boolean,
+    graph: GraphModel,
+    filter: ScanFilter,
+    startRequested: Boolean = false,
+    onSettled: () -> Unit = {},
+) {
+    if (!readInput.isPresent) return
+    LookupSection(
+        id = id, graph = graph, filter = filter, paimon = paimon,
+        scope = LookupScope.SNAPSHOT,
+        read = { readInput.value },
+        startRequested = startRequested, pageSize = RowLookup.MAX_FILES, onSettled = onSettled,
+    ) {}
+}
+
+/** Whose files a lookup reads: the table's current snapshot, where the filter form sits, or the snapshot whose panel it is on. */
+private enum class LookupScope { TABLE, SNAPSHOT }
+
+/**
+ * The lookup itself: the files the filter leaves opened a page per click, the hits with their
+ * fates, and [stages] drawn under the result once one is on screen.
+ */
+@Composable
+private fun LookupSection(
+    id: String,
+    graph: GraphModel,
+    filter: ScanFilter,
+    paimon: Boolean,
+    scope: LookupScope,
+    read: () -> LookupInput?,
+    startRequested: Boolean,
+    pageSize: Int,
+    onSettled: () -> Unit,
+    stages: @Composable (ruledOut: Set<String>) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
     val ruledOut = remember(graph, filter) {
         val plan = evaluateScan(graph, filter)
         plan.files.filter { it.value.fate == FileFate.SKIPPED }.keys
@@ -82,13 +142,13 @@ internal fun RowLookupSection(
             }
             .toSet()
     }
-    var requestedFor by remember(node.id) { mutableStateOf<ScanFilter?>(if (startRequested) filter else null) }
+    var requestedFor by remember(id) { mutableStateOf<ScanFilter?>(if (startRequested) filter else null) }
     // A table past the cap is read a page per click, the pages folded with `plus` — the same
     // shape as the integrity panel's file sweep. A new filter starts the pages over.
-    var pagesRequested by remember(node.id) { mutableStateOf(if (startRequested) 1 else 0) }
-    var outcome by remember(node.id) { mutableStateOf<Result<RowLookupResult>?>(null) }
-    var readingPage by remember(node.id) { mutableStateOf(false) }
-    LaunchedEffect(node.id, requestedFor, pagesRequested) {
+    var pagesRequested by remember(id) { mutableStateOf(if (startRequested) 1 else 0) }
+    var outcome by remember(id) { mutableStateOf<Result<RowLookupResult>?>(null) }
+    var readingPage by remember(id) { mutableStateOf(false) }
+    LaunchedEffect(id, requestedFor, pagesRequested) {
         val asked = requestedFor ?: return@LaunchedEffect
         if (pagesRequested == 0) return@LaunchedEffect
         readingPage = true
@@ -96,10 +156,9 @@ internal fun RowLookupSection(
         val from = soFar?.filesRead?.size ?: 0
         outcome = withContext(Dispatchers.IO) {
             runCatching {
-                val page = if (paimon) {
-                    PaimonRowLookup.lookup(requireNotNull(node.paimonRowLookup.value) { "no snapshot to read" }, asked, ruledOut, from = from, max = pageSize)
-                } else {
-                    RowLookup.lookup(requireNotNull(node.rowLookup.value) { "no current snapshot to read" }, asked, ruledOut, from = from, max = pageSize)
+                val page = when (val input = requireNotNull(read()) { "no snapshot to read" }) {
+                    is PaimonReadInput -> PaimonRowLookup.lookup(input, asked, ruledOut, from = from, max = pageSize)
+                    is RowLookupInput -> RowLookup.lookup(input, asked, ruledOut, from = from, max = pageSize)
                 }
                 soFar?.plus(page) ?: page
             }
@@ -110,17 +169,18 @@ internal fun RowLookupSection(
     val result = outcome?.getOrNull()
     val title = "Row Lookup" + if (result != null) " — ${formatCounted(result.hits.size, "row")}, ${result.live} live" else ""
 
+    val whose = if (scope == LookupScope.SNAPSHOT) "this snapshot's" else "the latest snapshot's"
     Section(title) {
         Text(
             if (paimon) {
-                "The rows the filter matches, read from the latest snapshot's live data files it did not " +
+                "The rows the filter matches, read from $whose live data files it did not " +
                     "rule out, each with its fate: marked by the vector its index file holds, a -D or -U " +
                     "retraction rather than a row, shadowed by a later write for its key, or folded with " +
                     "the key's other records — the merge a read runs under the table's merge engine, " +
-                    "applied to one row. The bucket's other files are read for the key whether or not the " +
-                    "filter left them."
+                    "applied to one row. The bucket's other files whose key range may hold the key are " +
+                    "read for it whether or not the filter left them."
             } else {
-                "The rows the filter matches, read from the live data files it did not rule out, each with " +
+                "The rows the filter matches, read from $whose live data files it did not rule out, each with " +
                     "its fate under the delete files a scan pairs with its file — a vector by the row's " +
                     "position, a positional delete by (file_path, pos), an equality delete by the row's own " +
                     "values. The one question about a merge-on-read table the metadata cannot settle."
@@ -129,8 +189,16 @@ internal fun RowLookupSection(
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 8.dp),
         )
+        // The form the filter is typed in sits on the table panel, so this panel names it.
+        if (scope == LookupScope.SNAPSHOT && !filter.isEmpty()) {
+            Text("The table panel's filter: ${filter.render()}.", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
+        }
         when {
-            filter.isEmpty() -> Text("Enter a filter above to look rows up.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            filter.isEmpty() -> Text(
+                if (scope == LookupScope.SNAPSHOT) "Enter a filter on the table panel to look rows up as of this snapshot." else "Enter a filter above to look rows up.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+            )
             requestedFor == null || (requestedFor != filter && outcome != null) -> {
                 if (requestedFor != null && result != null) {
                     Text("The filter has changed since these rows were read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
@@ -154,8 +222,7 @@ internal fun RowLookupSection(
                         Text("Read the next ${minOf(pageSize, result.filesLeft)} (${formatCounted(result.filesLeft, "file")} left)")
                     }
                 }
-                if (node.rowHistory.isPresent) RowHistoryStage(node, filter, ruledOut, paimon, historyRequested, onHistorySettled)
-                if (node.paimonChangelog.isPresent) ChangelogStage(node, filter, changelogRequested, onChangelogSettled)
+                stages(ruledOut)
             }
         }
     }

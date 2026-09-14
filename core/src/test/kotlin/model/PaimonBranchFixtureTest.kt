@@ -9,6 +9,7 @@ import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -195,5 +196,27 @@ class PaimonBranchFixtureTest {
         )
         val ao = PaimonGraphBuilder.buildTableSummary(PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/ao").absolutePath)))
         assertEquals(emptyList(), ao.branches, "a Paimon table with no branch/ has an empty list, not null")
+    }
+
+    /**
+     * A row lookup as of `dev`'s tip — the snapshot node's own `readInput`, the input the merged
+     * count reads from — finds k 5, written to the branch alone, and the same lookup as of main's
+     * tip finds nothing for it while finding k 6, which the branch never received. The table's
+     * history walks `main` and cannot answer this, which is what the snapshot panel's lookup is for.
+     */
+    @Test
+    fun `a row lookup as of the branch tip finds the row only the branch holds`() {
+        val graph = GraphLayoutService.layoutGraph(model, showRows = false)
+        val devTip = graph.nodeById.getValue("psnap_dev_2") as GraphNode.PaimonSnapshotNode
+        val mainTip = graph.nodeById.getValue("psnap_3") as GraphNode.PaimonSnapshotNode
+        val five = ScanFilter.Term(ScanPredicate("k", PredicateOp.EQ, "5"))
+        val onDev = service.PaimonRowLookup.lookup(assertNotNull(devTip.readInput.value), five, emptySet())
+        assertEquals(listOf("e"), onDev.hits.map { it.cells["v"].toString() }, onDev.toString())
+        assertEquals(1, onDev.live)
+        val onMain = service.PaimonRowLookup.lookup(assertNotNull(mainTip.readInput.value), five, emptySet())
+        assertEquals(0, onMain.hits.size, "main never had k 5: $onMain")
+        val six = ScanFilter.Term(ScanPredicate("k", PredicateOp.EQ, "6"))
+        assertEquals(0, service.PaimonRowLookup.lookup(assertNotNull(devTip.readInput.value), six, emptySet()).hits.size, "dev never received k 6")
+        assertEquals(1, service.PaimonRowLookup.lookup(assertNotNull(mainTip.readInput.value), six, emptySet()).live)
     }
 }

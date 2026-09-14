@@ -7,6 +7,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import model.ScanFilter
 import model.isEmpty
 import model.GraphModel
 import model.GraphNode
@@ -27,6 +28,7 @@ import java.io.File
 internal fun ColumnScope.PaimonSnapshotPanel(
     node: GraphNode.PaimonSnapshotNode,
     currentGraph: GraphModel,
+    scanFilter: ScanFilter = ScanFilter.of(emptyList()),
 ) {
         DetailTable {
             DetailRow("Property", "Value", isHeader = true)
@@ -72,6 +74,7 @@ internal fun ColumnScope.PaimonSnapshotPanel(
         MetadataTalliesSection(paimonSnapshotTallies(node.data, node.schemaIds, node.sizesOnDisk))
         PaimonRecordsSection(node)
         PaimonMergedCountSection(node)
+        SnapshotRowLookupSection(node.id, node.readInput, paimon = true, currentGraph, scanFilter)
         PartitionsSection(node)
         PaimonCompactionSection(node)
         PaimonIndexFilesSection(node)

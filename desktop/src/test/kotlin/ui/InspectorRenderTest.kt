@@ -2561,6 +2561,43 @@ class InspectorRenderTest {
      * updated key's old record superseded by the file holding the new one, the deleted key's
      * record superseded by its `-D`, that `-D` as a retraction, and three live rows.
      */
+    /**
+     * The same lookup as of one snapshot, on the snapshot panel: `branched`'s audit tip holds
+     * id 5, which main never received, and `br`'s dev tip k 5 — the rows the table's history,
+     * which walks `main`, cannot reach. The section is drawn under the live-row count, and the
+     * result reads the same as the table's.
+     */
+    @Test
+    fun `a row lookup as of a branch tip sits on the snapshot panel`() {
+        val branched = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/branched").absolutePath)),
+            showRows = false,
+        )
+        val audit = branched.nodes.filterIsInstance<GraphNode.SnapshotNode>().single { node -> node.refs.any { it.name == "audit" } }
+        val five = ScanFilter.Term(model.ScanPredicate("id", model.PredicateOp.EQ, "5"))
+        // The panel with the filter set: the section in place, offering the read.
+        renderScene("snapshot-row-lookup-panel", width = 1400, height = 2000) {
+            InspectorUnderTest(branched, audit.id, onlyExpanded("Live Rows", "Row Lookup"), scanFilter = five)
+        }
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("snapshot-row-lookup", width = 1400, height = 600, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                SnapshotRowLookupSection(audit.id, audit.readInput, paimon = false, branched, five, startRequested = true) { settled.set(true) }
+            }
+        }
+        val br = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/br").absolutePath)),
+            showRows = false,
+        )
+        val dev = br.nodeById.getValue("psnap_dev_2") as GraphNode.PaimonSnapshotNode
+        val devSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-snapshot-row-lookup", width = 1400, height = 600, ready = devSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                SnapshotRowLookupSection(dev.id, dev.readInput, paimon = true, br, ScanFilter.Term(model.ScanPredicate("k", model.PredicateOp.EQ, "5")), startRequested = true) { devSettled.set(true) }
+            }
+        }
+    }
+
     @Test
     fun `a Paimon row lookup names what shadows each record`() {
         val lk = GraphLayoutService.layoutGraph(
@@ -3356,7 +3393,7 @@ class InspectorRenderTest {
     }
 
     @Composable
-    private fun InspectorUnderTest(graph: GraphModel, nodeId: String, sectionCollapse: SectionCollapseState? = null) {
+    private fun InspectorUnderTest(graph: GraphModel, nodeId: String, sectionCollapse: SectionCollapseState? = null, scanFilter: ScanFilter = ScanFilter.of(emptyList())) {
         // The expiry plan measures ages from a clock; pinned to the table's own last write so the
         // capture is the same whichever day it is taken.
         // A Paimon table has no metadata node; its last commit's time is the same clock, plus a
@@ -3365,7 +3402,7 @@ class InspectorRenderTest {
             ?: graph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().mapNotNull { it.data.timeMillis }.maxOrNull()?.plus(1_000)
             ?: System.currentTimeMillis()
         CompositionLocalProvider(LocalExpiryClock provides { lastWrite }) {
-            if (sectionCollapse == null) NodeDetailsContent(graph, setOf(nodeId)) else NodeDetailsContent(graph, setOf(nodeId), sectionCollapse = sectionCollapse)
+            if (sectionCollapse == null) NodeDetailsContent(graph, setOf(nodeId), scanFilter = scanFilter) else NodeDetailsContent(graph, setOf(nodeId), scanFilter = scanFilter, sectionCollapse = sectionCollapse)
         }
     }
 }

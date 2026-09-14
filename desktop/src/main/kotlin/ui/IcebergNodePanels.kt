@@ -541,6 +541,7 @@ internal fun ColumnScope.SnapshotPanel(
     node: GraphNode.SnapshotNode,
     currentGraph: GraphModel,
     children: List<GraphNode>,
+    scanFilter: ScanFilter = ScanFilter.of(emptyList()),
 ) {
     val colors = MaterialTheme.colorScheme
         DetailTable {
@@ -620,6 +621,7 @@ internal fun ColumnScope.SnapshotPanel(
 
         TotalsSection(node)
         LiveRowsSection(node)
+        SnapshotRowLookupSection(node.id, node.readInput, paimon = false, currentGraph, scanFilter)
 
         PartitionsSection(node)
 

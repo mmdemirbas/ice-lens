@@ -192,4 +192,25 @@ class BranchedFixtureTest {
             "audit forked from a commit that is on main",
         )
     }
+
+    /**
+     * A row lookup as of the branch tip — the snapshot node's own `readInput`, the input the
+     * live-row count reads from — finds the row only the branch holds, and the same lookup as
+     * of main's tip does not: `echo-audit-only` was inserted into `branch_audit` alone. The
+     * table's history walks `main` and cannot answer this, which is what the snapshot panel's
+     * lookup is for.
+     */
+    @Test
+    fun `a row lookup as of the branch tip finds the row only the branch holds`() {
+        val snapshots = IcebergGraphBuilder.buildGraph(branchedModel()).nodes.filterIsInstance<GraphNode.SnapshotNode>()
+        val auditHead = snapshots.single { node -> node.refs.any { it.name == "audit" } }
+        val mainHead = snapshots.single { node -> node.refs.any { it.name == "main" } }
+        val filter = model.ScanFilter.Term(model.ScanPredicate("id", model.PredicateOp.EQ, "5"))
+        val onAudit = RowLookup.lookup(assertNotNull(auditHead.readInput.value), filter, emptySet())
+        assertEquals(listOf("echo-audit-only"), onAudit.hits.map { it.cells["name"] }, onAudit.toString())
+        assertEquals(1, onAudit.live)
+        val onMain = RowLookup.lookup(assertNotNull(mainHead.readInput.value), filter, emptySet())
+        assertEquals(0, onMain.hits.size, "main never had id 5: $onMain")
+        assertEquals(4, onMain.filesRead.size + onMain.filesRuledOut, "main's tip holds four files")
+    }
 }

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A row lookup as of one snapshot, on the snapshot panel** — the table panel's filter read
+  against the snapshot's own live files and delete pairing (Iceberg) or replay and merge rule
+  (Paimon), under `Live Rows` / `Merged Rows`; what the table's history, which walks `main`,
+  cannot answer for a branch tip, a tag-only snapshot or a commit past its cap. `branched`'s
+  audit-only row and `br`'s dev-only key are the oracles.
 - **The Paimon row lookup's bucket read is pruned by key range** — a hit's key is asked of
   its bucket's other files only where their `_KEY_STATS` may hold it, the pruning
   `KeyValueFileStoreScan.filterByStats` runs a key predicate through, asked as one `OR` of
