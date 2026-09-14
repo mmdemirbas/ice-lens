@@ -16,6 +16,14 @@ import model.publishedWapId
 import model.wapId
 import model.describeRowIds
 import model.describe
+import model.manifestTallies
+import model.metadataTallies
+import model.paimonManifestTallies
+import model.paimonPartitionBoundsChecks
+import model.paimonSchemaTallies
+import model.paimonSnapshotTallies
+import model.partitionBoundsChecks
+import model.partitionSummaryTallies
 
 /**
  * The graph as a tree, and what each node has to say about itself.
@@ -157,6 +165,8 @@ object GraphTree {
             "Snapshots listed" to (node.data.snapshots?.size ?: 0).toString(),
         ) + listOfNotNull(
             node.data.nextRowId?.let { "Next row id" to it.toString() },
+            // The file's own figures against its contents — the ids the next DDL allocates from, what a reader refuses on.
+            CHECKS to checksLine(metadataTallies(node.data).map { Triple(it.label, it.agrees, "${it.recorded} recorded, ${it.counted} folded") }),
         )
         // Rows a table may not have are listed only when it has them, so a v2 table's strip
         // stays the strip it was.
@@ -180,6 +190,11 @@ object GraphTree {
             "Existing" to (node.data.existingFilesCount?.toString() ?: "—"),
             "Deleted" to (node.data.deletedFilesCount?.toString() ?: "—"),
             "Entries read" to node.entries.size.toString(),
+            // The manifest list's counts, its length and its partition ranges against the entries and the file — the desktop panel's two tables, in a line.
+            CHECKS to checksLine(
+                manifestTallies(node.data, node.entries.map { it.entry }, node.sizeOnDisk).map { Triple(it.label, it.agrees, "${it.recorded ?: "—"} recorded, ${it.counted} in the file") } +
+                    partitionSummaryTallies(node.partitionSummaries, node.entries.map { it.partition }).map { Triple("${it.field} ${it.figure.lowercase()}", it.agrees, "${it.recorded ?: "—"} recorded, ${it.counted ?: "—"} from the entries") },
+            ),
         )
         is GraphNode.FileNode -> listOf(
             "Path" to (node.data.filePath ?: "—"),
@@ -192,6 +207,10 @@ object GraphTree {
             node.firstRowId?.let { first ->
                 val records = node.data.recordCount ?: 0L
                 "Row ids" to if (records > 0) "$first..${first + records - 1}" else first.toString()
+            },
+            // The partition against the file's own bounds, on a partitioned file only.
+            node.partition?.takeIf { !it.isUnpartitioned }?.let { partition ->
+                CHECKS to checksLine(partitionBoundsChecks(partition, node.columnStats).map { Triple("partition ${it.field}", it.agrees, "${it.recorded} recorded, ${it.fromBounds ?: it.reason} from the bounds") })
             },
         )
         is GraphNode.RowNode -> node.resolvedData.entries.map { (key, value) ->
@@ -215,10 +234,12 @@ object GraphTree {
             "Merged rows" to (node.statistics?.mergedRecordCount?.toString() ?: "—"),
             "Total records" to (node.data.totalRecordCount?.toString() ?: "—"),
             "Delta records" to (node.data.deltaRecordCount?.toString() ?: "—"),
+            CHECKS to checksLine(paimonSnapshotTallies(node.data, node.schemaIds).map { Triple(it.label, it.agrees, "${it.recorded}: ${it.counted}") }),
         )
         is GraphNode.PaimonSchemaNode -> listOf(
             "Schema id" to node.data.id.toString(),
             "Fields" to node.data.fields.size.toString(),
+            CHECKS to checksLine(paimonSchemaTallies(node.data).map { Triple(it.label, it.agrees, "${it.recorded} recorded, ${it.counted} folded") }),
         ) + (node.step?.takeIf { it.fromId != null }?.let { step ->
             listOf("Changes from schema ${step.fromId}" to step.changes.joinToString("; ") { "${it.kind.label} ${it.column}: ${it.detail}".trim() })
         } ?: emptyList())
@@ -235,6 +256,7 @@ object GraphTree {
             "Buckets" to rangeText(node.data.minBucket, node.data.maxBucket),
             "Levels" to rangeText(node.data.minLevel, node.data.maxLevel),
             "Partitions" to partitionRangeText(node.partitionMin, node.partitionMax),
+            CHECKS to checksLine(paimonManifestTallies(node.data, node.entries, node.partitionMin, node.partitionMax, node.sizeOnDisk).map { Triple(it.label, it.agrees, "${it.recorded ?: "—"} recorded, ${it.counted ?: "—"} in the file") }),
         )
         is GraphNode.PaimonDataFileNode -> listOf(
             "File" to (node.entry.file?.fileName ?: "—"),
@@ -247,6 +269,9 @@ object GraphTree {
             node.entry.file?.writeCols?.takeIf { node.partial }?.let { "Columns" to it.joinToString(", ") + " only — a partial-column file, stitched by row id on read" },
             // From the index manifest, not the index file: the strip is drawn on selection, on the EDT.
             node.vectorRange?.let { "Deleted rows" to "${it.cardinality ?: "?"} marked by the vector in ${it.indexFileName}" },
+            node.partition?.takeIf { it.values.isNotEmpty() }?.let { partition ->
+                CHECKS to checksLine(paimonPartitionBoundsChecks(partition, node.columnBounds, node.entry.file?.rowCount).map { Triple("partition ${it.field}", it.agrees, "${it.recorded} recorded, ${it.fromBounds ?: it.reason} from the bounds") })
+            },
         )
         // A group is the one node that is not an artifact — it stands for the ones this drawing
         // left out, and saying how many is the whole of what it has to say.
@@ -254,6 +279,27 @@ object GraphTree {
             "Not drawn" to "%,d %s".format(node.memberCount, node.kind.plural),
             "Errors inside" to node.hiddenErrorCount.toString(),
         )
+    }
+
+    /** The metadata-only checks a node's panel draws as a table, in one line: what agrees, and the first thing that does not. */
+    const val CHECKS = "Checks"
+
+    /**
+     * Every figure with both sides in one line — the count agreeing, or the ones that differ
+     * named with both figures — so a strip reads `all 7 figures agree` on the ordinary node and
+     * the exception is findable without opening the desktop. A figure with one side only is
+     * counted apart, never as agreement.
+     */
+    private fun checksLine(figures: List<Triple<String, Boolean?, String>>): String {
+        val checked = figures.filter { it.second != null }
+        val differing = checked.filter { it.second == false }
+        val unchecked = figures.size - checked.size
+        val tail = if (unchecked > 0) "; $unchecked with nothing to check" else ""
+        return when {
+            checked.isEmpty() -> "nothing to check"
+            differing.isEmpty() -> "all ${checked.size} figures agree$tail"
+            else -> "${differing.size} of ${checked.size} DIFFER — " + differing.joinToString("; ") { "${it.first}: ${it.third}" } + tail
+        }
     }
 
     /** What an absent optional field looks like. One rendering, so a column of them scans. */

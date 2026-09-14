@@ -190,6 +190,35 @@ class GraphTreeTest {
         assertEquals(listOf(null, "added w: INT", "renamed label: v → label", "default changed w: none → 7"), pse.sortedBy { it.data.id }.map { n -> GraphTree.details(n).firstOrNull { it.first.startsWith("Changes from schema") }?.second })
     }
 
+    /**
+     * The metadata-only checks each panel draws as a table are one `Checks` row on the strip —
+     * on the metadata, manifest, file, Paimon snapshot, schema, manifest and data file rows —
+     * every engine-written figure agreeing, and a moved figure named with both sides.
+     */
+    @Test
+    fun `the strip carries the metadata-only checks as one row, and names a figure that differs`() {
+        val parted = flatten(GraphTree.build(graphOf("parted")))
+        val kinds = parted.filter { GraphTree.details(it).any { d -> d.first == GraphTree.CHECKS } }.map { it::class.simpleName }.toSet()
+        assertEquals(setOf("MetadataNode", "ManifestNode", "FileNode"), kinds)
+        val lines = parted.flatMap { GraphTree.details(it) }.filter { it.first == GraphTree.CHECKS }.map { it.second }
+        assertTrue(lines.all { it.startsWith("all ") && it.contains(" figures agree") }, lines.toString())
+        // A manifest's line folds the six counts, the length and four figures for each of eight partition fields; a file's the eight partition fields.
+        assertTrue(parted.filterIsInstance<GraphNode.ManifestNode>().all { n -> GraphTree.details(n).first { it.first == GraphTree.CHECKS }.second.startsWith("all 39 figures agree") }, lines.toString())
+        assertTrue(parted.filterIsInstance<GraphNode.FileNode>().any { n -> GraphTree.details(n).first { it.first == GraphTree.CHECKS }.second == "all 8 figures agree" }, lines.toString())
+        // An unpartitioned file lists no row — there is nothing to hold its partition to.
+        assertTrue(flatten(GraphTree.build(graphOf("test"))).filterIsInstance<GraphNode.FileNode>().none { n -> GraphTree.details(n).any { it.first == GraphTree.CHECKS } })
+
+        val metadata = parted.filterIsInstance<GraphNode.MetadataNode>().maxBy { it.data.lastColumnId ?: 0 }
+        val moved = metadata.copy(data = metadata.data.copy(lastColumnId = 1))
+        val line = GraphTree.details(moved).first { it.first == GraphTree.CHECKS }.second
+        assertTrue(line.startsWith("1 of ") && line.contains("DIFFER — last-column-id: 1 recorded, ${metadata.data.lastColumnId} folded"), line)
+
+        val pt = flatten(GraphTree.build(paimonGraphOf("pt")))
+        val paimonKinds = pt.filter { GraphTree.details(it).any { d -> d.first == GraphTree.CHECKS } }.map { it::class.simpleName }.toSet()
+        assertEquals(setOf("PaimonSnapshotNode", "PaimonSchemaNode", "PaimonManifestNode", "PaimonDataFileNode"), paimonKinds)
+        assertTrue(pt.flatMap { GraphTree.details(it) }.filter { it.first == GraphTree.CHECKS }.all { it.second.startsWith("all ") }, pt.flatMap { GraphTree.details(it) }.filter { it.first == GraphTree.CHECKS }.toString())
+    }
+
     private fun paimonGraphOf(name: String): GraphModel {
         val dir = File(repoRoot, "example/paimon/db.db/$name")
         assertTrue(dir.isDirectory, "fixture missing at $dir")

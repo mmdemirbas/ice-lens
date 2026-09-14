@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The IDE strip carries the metadata-only checks as one `Checks` row** on the metadata,
+  manifest and file rows and their Paimon twins — `all 39 figures agree`, or the figures that
+  differ named with both sides.
 - **`metadata.json`'s own figures folded from its contents, on the metadata panel and in the
   integrity check.** `last-column-id` and `last-partition-id` against the highest ids in use —
   the figures the next `ADD COLUMN` and `ADD PARTITION FIELD` allocate from, which no reader

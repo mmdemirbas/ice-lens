@@ -1825,7 +1825,12 @@ intellij/src/main/kotlin/plugin/
   stays eager and `GraphTree.deferredDetails` holds the `History` row; `IceLensPanel.showDetails`
   puts the eager rows up, draws that row as reading, and fills it from a `Task.Backgroundable`,
   keyed by a selection generation so a scan landing for the previous click is dropped rather
-  than written under the wrong node
+  than written under the wrong node. **A check that costs no read is one `Checks` row**
+  (`GraphTree.CHECKS`): the metadata file's figures, a manifest's counts, length and partition
+  ranges, a file's partition against its bounds, and their Paimon twins — every figure with
+  both sides folded into `all 39 figures agree` or `2 of 39 DIFFER — last-column-id: 1 recorded,
+  7 folded`, since the strip's reader wants the exception findable without the desktop, and a
+  figure with one side only is counted apart rather than as agreement
 - **The tree follows structural edges only.** An `affectsLayout = false` edge is an annotation —
   snapshot lineage, or a deletion vector pointing at the data file it covers — and both run between
   nodes at one depth, so following one would make every commit a child of the commit before it and
@@ -2308,7 +2313,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,289 tests across 175 files (1,014 in :core, 265 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,290 tests across 175 files (1,014 in :core, 265 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
