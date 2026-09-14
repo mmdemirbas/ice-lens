@@ -2785,6 +2785,23 @@ class InspectorRenderTest {
                 IntegritySection(morTable, startRequested = true) { cleanSettled.set(true) }
             }
         }
+
+        // And `pbk`, whose bucket option was raised with nothing rescaled: three files under the
+        // old count, the finding that says why every write is refused; its file panel's Total
+        // Buckets row says the same.
+        val pbk = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pbk").absolutePath)),
+            showRows = false,
+        )
+        val pbkTable = pbk.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val bucketSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("integrity-bucket-count", width = 1400, height = 600, ready = bucketSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                IntegritySection(pbkTable, startRequested = true) { bucketSettled.set(true) }
+            }
+        }
+        val pbkFile = pbk.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>().first()
+        renderInspector(pbk, pbkFile.id, "paimon-file-node-bucket-count", height = 1300, sectionCollapse = onlyExpanded())
     }
 
     /**

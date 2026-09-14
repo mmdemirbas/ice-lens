@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A Paimon file's bucket count checked against the table's** — every manifest entry records
+  `_TOTAL_BUCKETS`, and a write to a bucket whose files record a count other than the `bucket`
+  option is refused until an `INSERT OVERWRITE` rescales the table. The integrity check lists
+  each live file recording a different count (`bucket`, or `bucket of <partition>`), and the
+  file panel's `Total Buckets` row says so on the file. Fixtures `pbk` and `pbka`.
 - **The row history's `Published` column** — once the changelog stage under it is read, each
   history row lists what that snapshot's changelog carries for the rows (`+I`, `-U, +U`, `-D`),
   so a change at an APPEND and its publication by the COMPACT after it read on adjacent rows.

@@ -36,6 +36,8 @@ enum class IntegrityCheck(val label: String) {
     METADATA_FIGURES("metadata figures"),
     /** A data file's recorded statistics against the shape `write.metadata.metrics.*` says for each column — see [metricsModeChecks]. */
     METRICS_MODES("metrics modes"),
+    /** A live Paimon file's `_TOTAL_BUCKETS` against the table's `bucket` — the count a write is refused on until a rescale; see [paimonBucketCountChecks]. */
+    BUCKET_COUNT("bucket counts"),
 }
 
 data class IntegrityFinding(
@@ -191,5 +193,39 @@ fun PaimonUnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_
         val live = paimonLiveFilesOf(replayPaimonSnapshot(s)).sumOf { it.recordCount }
         paimonRecordTallies(s, live).forEach { t.count(IntegrityCheck.RECORD_COUNTS, name(line, s), it.label, it.recorded, it.counted, it.agrees) }
     }
+    // Each line's latest snapshot: its live files' bucket count against the option in force.
+    (listOf(null to snapshots to schemas) + branches.map { (it.name to it.snapshots) to it.schemas }).forEach { (lineSnapshots, lineSchemas) ->
+        val (branch, snaps) = lineSnapshots
+        val latest = snaps.maxByOrNull { it.metadata.id ?: Long.MIN_VALUE } ?: return@forEach
+        val bucket = lineSchemas.maxByOrNull { it.id ?: -1 }?.options?.get(PAIMON_BUCKET_OPTION)?.toIntOrNull() ?: PAIMON_DEFAULT_BUCKET
+        paimonBucketCountChecks(replayPaimonSnapshot(latest).liveEntries.values, bucket).forEach {
+            t.count(IntegrityCheck.BUCKET_COUNT, it.fileName + (branch?.let { b -> " on $b" } ?: ""), "bucket" + (it.partition?.let { p -> " of $p" } ?: ""), it.configured, it.recorded, it.agrees)
+        }
+    }
     return IntegrityReport(t.checked, t.findings, closures.size, snapshotCount, readErrors)
 }
+
+const val PAIMON_BUCKET_OPTION = "bucket"
+const val PAIMON_DEFAULT_BUCKET = -1
+
+data class PaimonBucketCountCheck(val fileName: String, val partition: String?, val configured: Int, val recorded: Int, val agrees: Boolean?)
+
+/**
+ * Each live file's `_TOTAL_BUCKETS` against the table's `bucket` (release-1.3.1). A write
+ * restores a bucket's files and refuses when the count they record differs from the option
+ * (`AbstractFileStoreWrite.scanExistingFileMetas`: "Try to write … with a new bucket num N, but
+ * the previous bucket num is M. Please switch to batch mode, and perform INSERT OVERWRITE to
+ * rescale current data layout first."), and a commit refuses one partition's entries under two
+ * counts unless it is an `OVERWRITE`. `SchemaManager` lets the option change — never from or to
+ * -1, never through a dynamic option — and nothing else checks it, so the table reads and every
+ * write fails until the rescale. An entry recording no count, or a count at or below zero, is
+ * not compared: the commit-time check skips those too. `pbk` is the fixture.
+ */
+fun paimonBucketCountChecks(live: Collection<PaimonUnifiedDataFile>, configuredBucket: Int): List<PaimonBucketCountCheck> =
+    live.map { e ->
+        val recorded = e.metadata.totalBuckets
+        val fileName = e.metadata.file?.fileName ?: e.path.fileName.toString()
+        val partition = e.partition?.takeIf { it.values.isNotEmpty() }?.display
+        if (recorded == null || recorded <= 0) PaimonBucketCountCheck(fileName, partition, configuredBucket, recorded ?: -1, null)
+        else PaimonBucketCountCheck(fileName, partition, configuredBucket, recorded, recorded == configuredBucket)
+    }

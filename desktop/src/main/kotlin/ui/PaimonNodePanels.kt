@@ -213,7 +213,19 @@ internal fun ColumnScope.PaimonDataFilePanel(
                 },
             )
             DetailRow("Bucket", "${node.bucket ?: "N/A"}")
-            DetailRow("Total Buckets", "${node.entry.totalBuckets ?: "N/A"}")
+            // The count the file was written under, against the option in force: a write to its
+            // bucket is refused while the two differ, until an INSERT OVERWRITE rescales it.
+            val bucketOption = currentGraph.nodes.filterIsInstance<GraphNode.TableNode>().firstOrNull()?.summary?.paimonExpiry?.tableOptions?.get(model.PAIMON_BUCKET_OPTION)?.toIntOrNull()
+            val totalBuckets = node.entry.totalBuckets
+            DetailRow(
+                "Total Buckets",
+                when {
+                    totalBuckets == null -> "N/A"
+                    totalBuckets <= 0 -> "$totalBuckets (unaware or dynamic bucketing)"
+                    bucketOption != null && bucketOption != totalBuckets -> "$totalBuckets — the table's bucket option is $bucketOption now, so a write to this bucket is refused until an INSERT OVERWRITE rescales it"
+                    else -> "$totalBuckets"
+                },
+            )
             DetailRow(
                 "LSM Level",
                 "${node.level ?: "N/A"}" + if (node.unreadByBatchRead) {

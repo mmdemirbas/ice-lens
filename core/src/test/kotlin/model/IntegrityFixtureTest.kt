@@ -50,13 +50,27 @@ class IntegrityFixtureTest {
         assertTrue(checked >= 1_000, "checked only $checked comparisons")
     }
 
-    /** `tg` and `pea` each keep a tag on a snapshot whose changelog list the expiry deleted — a tag retains data, not changelog. */
+    /**
+     * `tg` and `pea` each keep a tag on a snapshot whose changelog list the expiry deleted — a tag
+     * retains data, not changelog. `pbk` had its `bucket` raised from 1 to 2 with nothing rescaled,
+     * so its three live files record a count the option no longer says, which is what refuses
+     * every write to it; `pbka`, rescaled by an INSERT OVERWRITE, agrees again.
+     */
     @Test
     fun `every Paimon fixture agrees with itself, but for the changelog count a tag records against a list expiry deleted`() {
         var checked = 0
         for (fixture in paimonFixtures()) {
             val report = PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/$fixture").absolutePath)).integrityReport()
-            if (fixture == "tg" || fixture == "pea") {
+            if (fixture == "pbk") {
+                assertEquals(3, report.findings.size, report.findings.toString())
+                report.findings.forEach { finding ->
+                    assertEquals(IntegrityCheck.BUCKET_COUNT, finding.check)
+                    assertEquals("bucket", finding.figure, "unpartitioned, so no partition is named")
+                    assertEquals("2", finding.recorded, "the option in force")
+                    assertEquals("1", finding.counted, "what the file was written under")
+                    assertTrue(finding.where.startsWith("data-"), finding.where)
+                }
+            } else if (fixture == "tg" || fixture == "pea") {
                 val finding = report.findings.single()
                 assertEquals(IntegrityCheck.RECORD_COUNTS, finding.check)
                 assertEquals("Changelog records", finding.figure)

@@ -1784,6 +1784,26 @@ intellij/src/main/kotlin/plugin/
   (`UnreferencedFilesTest`'s no-orphan sweep leaves `prba` out for that reason), and every
   fixture's latest snapshot to a rollback that removes nothing. The Paimon snapshot panel's
   `Rollback` section draws it on `main`'s retained snapshots
+- **A Paimon file records the bucket count it was written under, and a write is refused while
+  it differs from the table's — so the integrity check compares the two.** Every manifest entry
+  carries `_TOTAL_BUCKETS`, and at release-1.3.1 `AbstractFileStoreWrite.scanExistingFileMetas`
+  restores a bucket's files before writing and refuses when their count is not the `bucket`
+  option in force ("Try to write table with a new bucket num 2, but the previous bucket num is
+  1. Please switch to batch mode, and perform INSERT OVERWRITE to rescale current data layout
+  first."), and `FileStoreCommitImpl` refuses one partition's entries under two counts unless
+  the commit is an `OVERWRITE`. `SchemaManager` lets the option change — never from or to -1,
+  never through a dynamic option — and nothing else checks it, so the table reads fine and every
+  write fails until the rescale. `paimonBucketCountChecks` in `model/Integrity.kt` puts each
+  live file's recorded count beside the option, per line's latest snapshot (`BUCKET_COUNT`,
+  figure `bucket`, or `bucket of <partition>`); an entry recording no count or one at or below
+  zero — unaware or dynamic bucketing — is not compared, the commit's own rule. The file panel's
+  `Total Buckets` row says the same on the file. `pbk` is the fixture: three writes under
+  `bucket = 1`, `ALTER TABLE … SET TBLPROPERTIES ('bucket' = '2')`, copied on disk before the
+  `INSERT OVERWRITE … SELECT *` that rescales it (`pbka`) — the scratch `INSERT` in between was
+  refused with the message above, and the overwrite spread the three rows over `bucket-0` and
+  `bucket-1` under `_TOTAL_BUCKETS 2`, after which the insert went through.
+  `PaimonBucketCountFixtureTest` holds `pbk`'s three files to `1` against `2` and `pbka`'s to
+  agreement, and `IntegrityFixtureTest` holds `pbk` to exactly those three findings
 - **A Paimon bucket is drawn as the LSM tree its writer restores, and the next flush's compaction
   is planned the way `UniversalCompaction.pick()` plans it.** `model/PaimonCompaction.kt`:
   `paimonBucketLsms` groups a snapshot's live files by partition and bucket into sorted runs —
@@ -2571,7 +2591,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,361 tests across 183 files (1,073 in :core, 277 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,364 tests across 185 files (1,076 in :core, 277 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2733,6 +2753,7 @@ container invocation and the traps in it:
 | `paimon/db.db/sgm` | `PaimonMergeEngineFixtureTest` | `partial-update` with a sequence group of two fields, `fields.g1,g2.sequence-group = a`, and `remove-record-on-sequence-group = g2` — an insert with a null in the tuple ordered below the row's, and Paimon's read at every snapshot |
 | `paimon/db.db/sg`, `sgd` | `PaimonMergeEngineFixtureTest` | `partial-update` with two sequence groups — `sg` inserts only, a lower group value not overriding a higher; `sgd` with `remove-record-on-sequence-group = ga`, a DELETE writing a `-D` that removes the key and an insert bringing it back, Paimon's read at every snapshot |
 | `paimon/db.db/pcl`, `pcn` | `PaimonChangelogLifecycleFixtureTest` | `changelog.num-retained.max` above `snapshot.num-retained.max`, every expiry run at commit — `snapshot/` holds 7 and 8, `changelog/` holds 5 and 6; `pcl` under `changelog-producer = input`, its changelog lists and files kept and its base and delta lists gone; `pcn` with no producer, where the delta list is the change stream and the base and delta lists and every `APPEND` file stay — the five files the compaction removed still on disk |
+| `paimon/db.db/pbk`, `pbka` | `PaimonBucketCountFixtureTest` | a primary-key table whose `bucket` was raised from 1 to 2 after three writes, copied before the `INSERT OVERWRITE` that rescales it — three live files recording the old count, every write refused until the rescale; `pbka` after it, rescaled over two buckets and written to again |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
