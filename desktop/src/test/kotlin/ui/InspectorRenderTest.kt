@@ -735,6 +735,21 @@ class InspectorRenderTest {
         renderInspector(ao, aoLast.id, "paimon-snapshot-node-compaction-append", height = 2600)
     }
 
+    /**
+     * `dv`'s latest snapshot under `sys.compact`: a level-0 file of `-D` rows rewritten, two
+     * level-5 files with vectors rewritten in the same group, the rest upgraded or kept — the
+     * one tree in the fixtures where every action but one appears at once.
+     */
+    @Test
+    fun `a snapshot says what a full compaction would rewrite, upgrade and keep`() {
+        val dv = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/dv").absolutePath)),
+            showRows = false,
+        )
+        val latest = dv.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().maxBy { it.data.id ?: 0L }
+        renderInspector(dv, latest.id, "paimon-snapshot-node-full-compaction", height = 3000, sectionCollapse = onlyExpanded("Full Compaction"))
+    }
+
     /** The refs table with retention set on two of three refs, as ages rather than milliseconds. */
     @Test
     fun `refs with retention render their ages`() {

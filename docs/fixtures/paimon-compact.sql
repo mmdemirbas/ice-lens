@@ -1,0 +1,85 @@
+-- sys.compact on a Paimon primary-key table — what a full compaction, the procedure's default,
+-- does to each bucket: the oracle for model/PaimonFullCompaction.kt, recorded rather than
+-- checked in. The procedure was run on copies of seven checked-in tables and each copy's
+-- `$files` listed before and after, so PaimonFullCompactionFixtureTest holds the plan on the
+-- checked-in table to which names went, which were renamed to the top level, and how many new
+-- names arrived. The corpus holds two more runs of its own: `psl` (paimon-psm.sql), a lone
+-- level-0 file upgraded to level 5 without a rewrite, and `se` (paimon-se.sql), two overlapping
+-- level-0 files rewritten into one.
+--
+-- The rules, read at release-1.3.1. CompactProcedure.compactAwareBucketTable calls
+-- write.compact(partition, bucket, fullCompaction = true) per bucket (compact_strategy defaults
+-- to 'full' unless clustering.incremental is on), which is MergeTreeCompactManager.triggerCompaction(true):
+--   - CompactStrategy.pickFullCompaction: no run → nothing; one run at the top level → nothing,
+--     except files with a deletion vector, expired records (record-level.expire-time) or under
+--     compaction.force-rewrite-all-files, which a FileRewriteCompactTask rewrites one by one at
+--     that level; otherwise CompactUnit.fromLevelRuns(maxLevel, every run).
+--   - MergeTreeCompactTask: IntervalPartition cuts the unit's files into sections of intersecting
+--     key ranges, walked in key order; a section of several files joins the pending rewrite; a
+--     lone file under compaction.file-size (target-file-size × 7/10 = 89.6 MiB at the 128 MiB
+--     default) joins it too; a lone file at or over it flushes the pending rewrite and is
+--     upgraded — DataFileMeta.upgrade(level), a DELETE at its level and an ADD of the same name at
+--     the top — unless it holds -D rows (_DELETE_ROW_COUNT > 0, or none recorded), is forced or
+--     holds expired records, when it is rewritten alone; a pending rewrite of exactly one lone
+--     file is an upgrade too. dropDelete is true (the output is the top level), so every rewrite
+--     drops the -D markers. Under changelog-producer lookup an upgraded level-0 file is read to
+--     emit its changelog (LookupMergeTreeCompactRewriter.upgradeStrategy → CHANGELOG_NO_REWRITE).
+--
+-- Run (2026-09-15) with Spark 3.5.5 and the paimon-spark-3.5 jar lakelab built from 1.3
+-- (tabulario/spark-iceberg image, `--jars /opt/paimon-spark.jar`, filesystem catalog at /wh),
+-- each statement its own `spark-sql -e`, on copies mounted as /wh/db.db/<name>c. `$files` lists
+-- the batch scan's files, so a level-0 file of a deletion-vector or first-row table is absent
+-- from it (dv, fr); the plan names it from the manifests all the same, and it is gone after.
+--
+--   dv   before  data-14c31b3c-… L5 1000 rows, data-55edd615-… L4 500 rows (both with vectors, 3 rows marked)
+--        after   data-4d98f31d-… L5 1497 rows;  snapshot 7 COMPACT delta -3 total 1497
+--                two lone files under compaction.file-size in different key ranges → one rewrite group
+--   pc   before  data-440cf6fe-… L5 5 rows, data-542001a6-… L0 1 row, data-91a56f32-… L0 1 row
+--        after   data-845d483a-… L5 7 rows;    snapshot 9 COMPACT delta 0 total 7
+--                three lone small files, keys 1..5, 6, 7 → one rewrite group; nothing upgraded
+--   lk   before  data-9e1aa64e-… L4 2 rows, data-c9d1e9d4-… L5 3 rows, data-c9fecb02-… L3 1 row (1 -D)
+--        after   data-cc82d002-… L5 3 rows;    snapshot 7 COMPACT delta -3 total 3
+--   pu   before  four L0 files (3, 3, 1 with 1 -D, 1 rows)
+--        after   data-5cfbcaab-… L5 4 rows;    snapshot 5 COMPACT delta -4 total 4
+--   sgd  before  data-53877684-… L5 3 rows      after  the same; no snapshot written (6 COMPACT is the fixture's own)
+--   fr   before  data-3dd96d5b-… L4 1 row (its L0 file data-d0ebee7f-… unlisted)
+--        after   data-e738a1c0-… L5 2 rows;    snapshot 6 COMPACT delta 0 total 2
+--   pt   before  seven L0 files over five (dt, region) buckets
+--        after   {2024-03-05, eu} data-5cd37195-… L0 → L5 (upgraded, same name)
+--                {2024-03-05, north-america} two files → data-d321f687-… L5 2 rows
+--                {2024-03-06, eu} two files → data-b0b3752a-… L5 3 rows
+--                {2024-03-06, north-america} data-783ed9fc-… L0 → L5 (upgraded)
+--                {2024-03-07, eu} data-69aee50c-… L0 → L5 (upgraded);  snapshot 4 COMPACT delta 0 total 10
+--   pid  refused: its Iceberg export's manifest lists record /wh/db.db/pid/… and the copy lived
+--        under another name — a table with an export is not location-independent
+--
+-- Traps: the `$files` column is `deleteRowCount`, not `delete_row_count`; and a compaction's
+-- delta_record_count is the merged output against the rows removed, which no manifest figure
+-- predicts — the plan states the -D markers dropped and not the commit's delta.
+--
+-- To reproduce:
+--
+--   WH=$(mktemp -d); mkdir -p $WH/wh/db.db
+--   for t in dv pc lk pu sgd fr pt; do cp -R example/paimon/db.db/$t $WH/wh/db.db/${t}c; done
+--   find $WH/wh -name '.*.crc' -delete
+--   JAR=~/code/spark-kit/lakelab/tasks/01_FlinkUpsertRead/.run/jars/paimon-spark-3.5-local.jar
+--   docker run --rm --entrypoint bash -v "$WH/wh:/wh" -v "$JAR:/opt/paimon-spark.jar:ro" \
+--     tabulario/spark-iceberg -c 'S="/opt/spark/bin/spark-sql --master local[1] \
+--       --jars /opt/paimon-spark.jar \
+--       --conf spark.sql.catalog.paimon=org.apache.paimon.spark.SparkCatalog \
+--       --conf spark.sql.catalog.paimon.warehouse=/wh \
+--       --conf spark.sql.extensions=org.apache.paimon.spark.extensions.PaimonSparkSessionExtensions \
+--       --conf spark.sql.defaultCatalog=paimon --conf spark.ui.enabled=false"; \
+--       for t in dv pc lk pu sgd fr pt; do \
+--         $S -e "SELECT partition, bucket, file_path, level, record_count, deleteRowCount FROM db.\`${t}c\$files\` ORDER BY partition, bucket, file_path"; \
+--         $S -e "CALL sys.compact(table => '"'"'db.'"'"'${t}c'"'"')"; \
+--         $S -e "SELECT partition, bucket, file_path, level, record_count, deleteRowCount FROM db.\`${t}c\$files\` ORDER BY partition, bucket, file_path"; \
+--       done'
+
+CREATE DATABASE IF NOT EXISTS db;
+-- host: cp -R <t> <t>c for dv pc lk pu sgd fr pt
+SELECT partition, bucket, file_path, level, record_count, deleteRowCount FROM db.`dvc$files` ORDER BY partition, bucket, file_path;
+CALL sys.compact(table => 'db.dvc');
+SELECT partition, bucket, file_path, level, record_count, deleteRowCount FROM db.`dvc$files` ORDER BY partition, bucket, file_path;
+SELECT snapshot_id, commit_kind, delta_record_count, total_record_count FROM db.`dvc$snapshots` ORDER BY snapshot_id DESC LIMIT 2;
+-- the same three statements for pcc, lkc, puc, sgdc, frc, ptc

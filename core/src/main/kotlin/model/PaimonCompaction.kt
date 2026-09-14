@@ -37,12 +37,17 @@ data class PaimonSortedRun(
     val sizeBytes: Long get() = files.sumOf { it.fileSize ?: 0L }
 }
 
+/** A file's `_MIN_KEY` and `_MAX_KEY` as values — what `IntervalPartition` orders a compaction's files by. Null where not decoded. */
+data class PaimonKeyRange(val min: List<Any?>?, val max: List<Any?>?)
+
 data class PaimonBucketLsm(
     /** The decoded partition, "" when unpartitioned. */
     val partition: String,
     val bucket: Int,
     /** Newest first, as `Levels.levelSortedRuns()` orders them. */
     val runs: List<PaimonSortedRun>,
+    /** By file name — for the full compaction's sections; see [planFullCompaction]. */
+    val keyRanges: Map<String, PaimonKeyRange> = emptyMap(),
 ) {
     val sortedRunCount: Int get() = runs.size
     val fileCount: Int get() = runs.sumOf { it.files.size }
@@ -145,6 +150,11 @@ fun paimonBucketLsms(liveEntries: Collection<PaimonUnifiedDataFile>): List<Paimo
                 bucket = key.second,
                 runs = level0.map { PaimonSortedRun(0, listOf(it)) } +
                     higher.map { (level, atLevel) -> PaimonSortedRun(level, atLevel) },
+                keyRanges = entries.mapNotNull { e ->
+                    val name = e.metadata.file?.fileName ?: return@mapNotNull null
+                    fun values(row: List<PaimonRowValue>?) = row?.takeIf { it.isNotEmpty() && it.all { v -> v.decoded } }?.map { it.value }
+                    name to PaimonKeyRange(values(e.keyMin), values(e.keyMax))
+                }.toMap(),
             )
         }
 

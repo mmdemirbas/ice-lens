@@ -44,6 +44,9 @@ import model.planRewriteTablePath
 import model.fastForwardPlans
 import model.planFastForward
 import model.planPurge
+import model.planFullCompaction
+import model.PaimonFullCompactionAction
+import model.PaimonFullCompactionOptions
 import model.planPaimonManifestCompaction
 import model.planPaimonManifestMerge
 import model.RewriteOptions
@@ -157,6 +160,89 @@ internal fun PaimonCompactionSection(node: GraphNode.PaimonSnapshotNode) {
                         v.stalls -> colors.error
                         v.compacts -> verdictSkippedColor()
                         else -> null
+                    }
+                },
+            )
+        }
+    }
+}
+
+/**
+ * What `sys.compact(table)` — `compact_strategy => 'full'`, the default — does to each bucket:
+ * [planFullCompaction], `pickFullCompaction` and `MergeTreeCompactTask` at release-1.3.1. Drawn
+ * under the writer's compaction, since the two answer different questions: the writer's is
+ * "will the next flush compact", this is "what does an explicit call do to what is there".
+ */
+@Composable
+internal fun PaimonFullCompactionSection(node: GraphNode.PaimonSnapshotNode) {
+    val colors = MaterialTheme.colorScheme
+    if (!node.hasPrimaryKey) return
+    val lsms = node.bucketLsms
+    val options = PaimonFullCompactionOptions.from(node.tableOptions)
+    val vectored = node.readInput.value?.vectors?.map { it.dataFileName }?.toSet().orEmpty()
+    val verdicts = lsms?.map { it.planFullCompaction(options, vectored) }.orEmpty()
+    val acting = verdicts.count { it.compacts }
+    val title = "Full Compaction" + when {
+        lsms == null -> ""
+        acting > 0 -> " — " + listOfNotNull(
+            verdicts.sumOf { it.rewritten.size }.takeIf { it > 0 }?.let { "${formatCounted(it, "file")} rewritten" },
+            verdicts.sumOf { it.upgraded.size }.takeIf { it > 0 }?.let { "$it upgraded" },
+        ).joinToString(", ")
+        else -> " — nothing to do"
+    }
+    CountedSection(title, verdicts.size, "buckets") {
+        Text(
+            "What sys.compact(table) does to each bucket — compact_strategy full, the default — the way " +
+                "pickFullCompaction and MergeTreeCompactTask do it: a bucket whose only run is at the top level " +
+                "(${verdicts.firstOrNull()?.outputLevel ?: options.numLevels - 1}) is left alone unless a file carries a deletion vector, which is " +
+                "rewritten in place to apply it; otherwise every run goes into one unit, cut into sections of " +
+                "intersecting key ranges: a section of several files is rewritten together, a lone file under " +
+                "compaction.file-size (${formatBytes(options.minFileSizeBytes)}) joins the pending rewrite, and a lone file at " +
+                "or over it is upgraded — renamed to the top level, not rewritten — unless it holds -D rows, " +
+                "which the top level drops. compact_strategy minor is the writer's own pick, above." +
+                (if (options.changelogProducer == "lookup") " Under changelog-producer lookup an upgraded level-0 file is read once to emit its changelog." else "") +
+                (if (options.forceRewriteAllFiles) " compaction.force-rewrite-all-files is set: nothing is upgraded, everything rewritten." else "") +
+                (if (options.recordLevelExpire) " record-level.expire-time is set: files holding expired records are rewritten too, not evaluated here." else ""),
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (lsms == null) {
+            Text("Not readable here — this snapshot's manifests are not retained.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            return@CountedSection
+        }
+        if (verdicts.isEmpty()) return@CountedSection
+        WideTable(
+            headers = listOf("sys.compact", "Partition", "Bucket", "Levels", "Files", "-D Rows Dropped"),
+            columnWidths = listOf(260.dp, 190.dp, 70.dp, 190.dp, 70.dp, 120.dp),
+            rows = verdicts.map { v ->
+                listOf(v.describe(), v.lsm.partition.ifEmpty { "(unpartitioned)" }, "${v.lsm.bucket}", v.lsm.describeLevels(), "${v.lsm.fileCount}", "${v.deleteRowsDropped}")
+            },
+            leadCellColors = verdicts.map { if (it.compacts) verdictSkippedColor() else null },
+        )
+        val files = verdicts.flatMap { v -> v.files.map { v to it } }
+        if (files.any { (_, f) -> f.action != PaimonFullCompactionAction.KEEP }) {
+            WideTable(
+                headers = listOf("Action", "File", "Level", "Group", "Rows", "-D Rows", "Bytes", "Bucket", "Why"),
+                columnWidths = listOf(130.dp, 400.dp, 70.dp, 60.dp, 80.dp, 70.dp, 90.dp, 70.dp, 520.dp),
+                rows = files.map { (v, f) ->
+                    listOf(
+                        f.action.label,
+                        f.file.fileName ?: "—",
+                        "${f.file.level ?: 0}" + (if (f.action != PaimonFullCompactionAction.KEEP && (f.file.level ?: 0) != v.outputLevel) " → ${v.outputLevel}" else ""),
+                        f.group?.toString() ?: "—",
+                        f.file.rowCount?.let { formatCount(it) } ?: "—",
+                        f.file.deleteRowCount?.let { formatCount(it) } ?: "—",
+                        f.file.fileSize?.let(::formatBytes) ?: "—",
+                        "${v.lsm.bucket}",
+                        f.reason,
+                    )
+                },
+                leadCellColors = files.map { (_, f) ->
+                    when (f.action) {
+                        PaimonFullCompactionAction.REWRITE, PaimonFullCompactionAction.REWRITE_IN_PLACE -> verdictSkippedColor()
+                        PaimonFullCompactionAction.UPGRADE -> verdictUnevaluatedColor()
+                        PaimonFullCompactionAction.KEEP -> null
                     }
                 },
             )
@@ -421,6 +507,23 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: Unrefer
                     stalled > 0 -> Row("a writer would wait on $stalled", "compaction", "$due of ${lsms.size} buckets due, $stalled past num-sorted-run.stop-trigger (${options.stopTrigger})", "$snapshotPanel → Compaction", colors.error)
                     due > 0 -> Row("${formatCounted(due, "bucket")} due", "compaction", "$due of ${formatCounted(lsms.size, "bucket")} would compact on the next flush", "$snapshotPanel → Compaction", verdictSkippedColor())
                     else -> Row("not yet", "compaction", "${formatCounted(lsms.size, "bucket")}, every one under num-sorted-run.compaction-trigger (${options.trigger})", "$snapshotPanel → Compaction", null)
+                }
+                val fullOptions = PaimonFullCompactionOptions.from(current.tableOptions)
+                val vectored = current.readInput.value?.vectors?.map { it.dataFileName }?.toSet().orEmpty()
+                val full = lsms?.map { it.planFullCompaction(fullOptions, vectored) }.orEmpty()
+                val rewritten = full.sumOf { it.rewritten.size }
+                val upgraded = full.sumOf { it.upgraded.size }
+                rows += when {
+                    lsms == null -> Row("not readable", "sys.compact", "the latest snapshot's manifests could not be replayed", "$snapshotPanel → Full Compaction", null)
+                    rewritten + upgraded > 0 -> Row(
+                        "would rewrite ${formatCounted(rewritten, "file")}, upgrade $upgraded",
+                        "sys.compact",
+                        "${full.count { it.compacts }} of ${formatCounted(full.size, "bucket")} under compact_strategy full, the default; " +
+                            "${formatCounted(full.sumOf { it.deleteRowsDropped }.toInt(), "-D row")} dropped",
+                        "$snapshotPanel → Full Compaction",
+                        verdictSkippedColor(),
+                    )
+                    else -> Row("nothing to do", "sys.compact", "${formatCounted(full.size, "bucket")}, every one a single run at the top level with no vector", "$snapshotPanel → Full Compaction", null)
                 }
             } else {
                 val verdicts = lsms?.groupBy { it.partition }?.entries?.map { (partition, trees) ->

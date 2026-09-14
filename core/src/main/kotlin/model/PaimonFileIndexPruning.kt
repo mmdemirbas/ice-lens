@@ -273,6 +273,43 @@ internal fun joinNotes(vararg notes: String?): String? = notes.filterNotNull().t
  * raw there only when the plan left it alone in its bucket. A file whose key range this cannot
  * order is left in the section it would have joined, which reads more rather than less.
  */
+/**
+ * `IntervalPartition.partition()` at release-1.3.1, up to its sections: the files sorted by
+ * minimum key then maximum, and a file opening a new section when its minimum lies past every
+ * maximum so far — so a section is a chain of intersecting key ranges, and a section of one file
+ * is a file no other overlaps. A pair this cannot order — a range missing, or a type
+ * `compareValues` does not read — keeps its input order and never closes a section, which can
+ * only merge sections and never split one: more read, more rewritten, never less.
+ */
+internal fun <T> paimonIntervalSections(files: List<T>, minKey: (T) -> List<Any?>?, maxKey: (T) -> List<Any?>?): List<List<T>> {
+    fun compare(a: List<Any?>?, b: List<Any?>?): Int? {
+        if (a == null || b == null || a.size != b.size) return null
+        for (i in a.indices) {
+            val c = compareValues(a[i], b[i]) ?: return null
+            if (c != 0) return c
+        }
+        return 0
+    }
+    val sorted = files.sortedWith { x, y ->
+        (compare(minKey(x), minKey(y)) ?: 0).takeIf { it != 0 } ?: (compare(maxKey(x), maxKey(y)) ?: 0)
+    }
+    val sections = mutableListOf<List<T>>()
+    var section = mutableListOf<T>()
+    var bound: List<Any?>? = null
+    for (f in sorted) {
+        if (section.isNotEmpty() && (compare(minKey(f), bound) ?: 0) > 0) {
+            sections += section
+            section = mutableListOf()
+            bound = null
+        }
+        section += f
+        val max = maxKey(f)
+        if (bound == null || (compare(max, bound) ?: 0) > 0) bound = max ?: bound
+    }
+    if (section.isNotEmpty()) sections += section
+    return sections
+}
+
 fun paimonRawConvertible(files: List<GraphNode.PaimonDataFileNode>, rule: PaimonScanRule): Set<String> {
     if (files.isEmpty()) return emptySet()
     fun noDeleteRow(f: GraphNode.PaimonDataFileNode) = (f.entry.file?.deleteRowCount ?: 0L) == 0L
@@ -282,34 +319,7 @@ fun paimonRawConvertible(files: List<GraphNode.PaimonDataFileNode>, rule: Paimon
 
     fun tuple(f: GraphNode.PaimonDataFileNode, min: Boolean): List<Any?>? =
         f.keyBounds?.takeIf { it.isNotEmpty() && it.all { b -> b.decoded } }?.map { if (min) it.min else it.max }
-    fun compare(a: List<Any?>?, b: List<Any?>?): Int? {
-        if (a == null || b == null || a.size != b.size) return null
-        for (i in a.indices) {
-            val c = compareValues(a[i], b[i]) ?: return null
-            if (c != 0) return c
-        }
-        return 0
-    }
-    // Sorted as the generator sorts; a pair this cannot order keeps its input order, which can
-    // only merge sections and never split one.
-    val sorted = files.sortedWith { x, y ->
-        (compare(tuple(x, true), tuple(y, true)) ?: 0).takeIf { it != 0 } ?: (compare(tuple(x, false), tuple(y, false)) ?: 0)
-    }
-    val sections = mutableListOf<List<GraphNode.PaimonDataFileNode>>()
-    var section = mutableListOf<GraphNode.PaimonDataFileNode>()
-    var bound: List<Any?>? = null
-    for (f in sorted) {
-        // Past every maximum so far: the section is closed. An unorderable pair never closes one.
-        if (section.isNotEmpty() && (compare(tuple(f, true), bound) ?: 0) > 0) {
-            sections += section
-            section = mutableListOf()
-            bound = null
-        }
-        section += f
-        val max = tuple(f, false)
-        if (bound == null || (compare(max, bound) ?: 0) > 0) bound = max ?: bound
-    }
-    if (section.isNotEmpty()) sections += section
+    val sections = paimonIntervalSections(files, { tuple(it, true) }, { tuple(it, false) })
     // BinPacking.packForOrdered: a section joins the open split unless it would overflow it and
     // the split already holds something.
     val splits = mutableListOf<List<GraphNode.PaimonDataFileNode>>()

@@ -78,6 +78,7 @@ internal fun ColumnScope.PaimonSnapshotPanel(
         SnapshotRowLookupSection(node.id, node.readInput, paimon = true, currentGraph, scanFilter)
         PartitionsSection(node)
         PaimonCompactionSection(node)
+        PaimonFullCompactionSection(node)
         PaimonRollbackSection(node, currentGraph)
         PaimonManifestMergeSection(node)
         PaimonIndexFilesSection(node)

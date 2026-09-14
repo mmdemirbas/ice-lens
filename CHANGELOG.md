@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Full Compaction`** on the Paimon snapshot panel — what `sys.compact` (the default `full`
+  strategy) does to each primary-key bucket: which files are rewritten together, which are
+  upgraded to the top level by a rename, which are left, and why, the way `pickFullCompaction`
+  and `MergeTreeCompactTask` decide it; a `sys.compact` row in `Maintenance`.
+  `docs/fixtures/paimon-compact.sql` records the procedure on seven tables
 - **`Purge`** on the Paimon table panel — what `sys.purge_files` takes and keeps, in the order
   `FileStoreTable.purgeFiles` runs it: branches, tags and consumers gone, one truncating
   `OVERWRITE` over the latest snapshot's manifests, every other snapshot expired, `changelog/`

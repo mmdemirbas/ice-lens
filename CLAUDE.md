@@ -91,6 +91,7 @@ core/src/main/kotlin/
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonPurgePlan.kt     # What sys.purge_files takes and keeps — FileStoreTable.purgeFiles's six steps, folded to one file list
+│   ├── PaimonFullCompaction.kt # What sys.compact does to a primary-key bucket — pickFullCompaction and MergeTreeCompactTask's sections, upgrades and rewrites
 │   ├── PaimonManifestMergePlan.kt # What the next Paimon commit does to the base manifest list — ManifestFileMerger's full and minor compactions
 │   ├── FastForwardPlan.kt     # fast_forward on both formats — Iceberg's ref move under the ancestor rule, Paimon's replacement of main from the branch's earliest snapshot on, and what that leaves
 │   ├── IcebergRollbackPlan.kt # rollback_to_snapshot, set_current_snapshot and rollback_to_timestamp — the ancestor rule, what main moves past, and the metadata the commit writes for the expiry after
@@ -1979,6 +1980,32 @@ intellij/src/main/kotlin/plugin/
   snapshot panel's `Compaction` section leads each bucket with the verdict and marks a bucket
   past `num-sorted-run.stop-trigger` in the error colour, because that is the one where the
   writer blocks
+- **What `sys.compact` does to a primary-key bucket is not the writer's pick, and it is planned
+  from the same tree.** `model/PaimonFullCompaction.kt` reads the procedure's default —
+  `compact_strategy => 'full'` — at release-1.3.1: `compactAwareBucketTable` calls
+  `write.compact(partition, bucket, fullCompaction = true)` per bucket, and
+  `CompactStrategy.pickFullCompaction` takes every run into one unit at the top level unless the
+  bucket is one run at the top already, when nothing happens but a rewrite in place of the files a
+  deletion vector marks (or `compaction.force-rewrite-all-files`, or `record-level.expire-time`,
+  which is named and not evaluated). `MergeTreeCompactTask` then cuts the unit into sections of
+  intersecting key ranges (`paimonIntervalSections`, the `IntervalPartition` the raw-split rule
+  already used, now shared) and walks them in key order: a section of several files joins the
+  pending rewrite, a lone file under `compaction.file-size` (7/10 of `target-file-size`,
+  89.6 MiB on the 128 MiB primary-key default) joins it too, and a lone file at or over it flushes
+  the pending rewrite and is **upgraded** — renamed to the top level, a `DELETE` at its level and
+  an `ADD` of the same name at the top, no rewrite — unless it holds `-D` rows, which the top
+  level drops, when it is rewritten alone; a pending rewrite of exactly one lone file is an
+  upgrade too. `PaimonBucketLsm.keyRanges` carries each file's decoded `_MIN_KEY` / `_MAX_KEY`
+  for the sections. `PaimonFullCompactionFixtureTest` holds it to nine runs: `psl`'s lone file
+  upgraded and `se`'s two overlapping files rewritten into one, from the corpus, and
+  `docs/fixtures/paimon-compact.sql`'s seven — the procedure on copies of `dv`, `pc`, `lk`, `pu`,
+  `sgd`, `fr` and `pt` with `$files` before and after — where `pc`'s three lone small files in
+  three key ranges are rewritten *together* (the small-file rule, which a mutation to "every lone
+  file is upgraded" fails on `dv`), `pt`'s three lone files are upgraded and its two pairs
+  rewritten into one each, and `sgd`'s one top-level file writes no snapshot at all. The `-D`
+  markers dropped are stated; the commit's `delta_record_count` is the merged output against the
+  rows removed, which no manifest figure predicts. The Paimon snapshot panel's `Full Compaction`
+  sits under `Compaction`, and `Maintenance` carries a `sys.compact` row beside the writer's
 - **A read as of a time is resolved the way the engine resolves it, and the rolled-back table
   is where that differs from "the newest snapshot before T".** `model/TimeTravel.kt`: Iceberg's
   `SnapshotUtil.nullableSnapshotIdAsOfTime` (1.8.1) takes the **last `snapshot-log` entry at or
@@ -2814,7 +2841,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,407 tests across 193 files (1,112 in :core, 283 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,412 tests across 194 files (1,116 in :core, 284 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
