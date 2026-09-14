@@ -2042,7 +2042,7 @@ internal fun IcebergExportSection(
         }
     }
     val check = outcome?.getOrNull()
-    val agrees = check != null && check.current && check.missingFromIceberg.isEmpty() && check.extraInIceberg.isEmpty() && check.readErrors.isEmpty()
+    val agrees = check?.agrees == true
     val title = "Iceberg Metadata" + when {
         check == null -> ""
         agrees -> " — current"
@@ -2096,10 +2096,32 @@ internal fun IcebergExportSection(
                         modifier = Modifier.padding(bottom = 4.dp),
                     )
                 }
+                if (check.paimonVectors.isNotEmpty()) {
+                    Text(
+                        if (check.vectorsExported) {
+                            "Each exported vector is a puffin delete file whose container is the table's own index file, at the " +
+                                "range the index manifest records and with its cardinality — a 64-bit vector's blob is Iceberg's own layout, " +
+                                "so an Iceberg reader opens it as written."
+                        } else {
+                            "The table's ${formatCounted(check.paimonVectors.size, "deletion vector")} ${if (check.paimonVectors.size == 1) "is" else "are"} not " +
+                                "exported: Paimon writes them as Iceberg's only under deletion-vectors.bitmap64 with " +
+                                "metadata.iceberg.format-version = 3, so an Iceberg reader of this export sees the rows they mark as live."
+                        },
+                        fontSize = TypeScale.small,
+                        color = if (check.vectorsExported) colors.onSurfaceVariant else verdictUnevaluatedColor(),
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
                 check.readErrors.forEach { Text("Could not read ${fileNameFromPath(it.path)}: ${it.message}", fontSize = TypeScale.small, color = colors.error) }
                 check.missingFromIceberg.take(MAX_EXPORT_ROWS).forEach { Text("Live here, not in the export: $it", fontSize = TypeScale.small, color = colors.error) }
                 check.extraInIceberg.take(MAX_EXPORT_ROWS).forEach { Text("In the export, not live here: $it", fontSize = TypeScale.small, color = colors.error) }
-                val more = (check.missingFromIceberg.size - MAX_EXPORT_ROWS).coerceAtLeast(0) + (check.extraInIceberg.size - MAX_EXPORT_ROWS).coerceAtLeast(0)
+                check.vectorsMissingFromIceberg.take(MAX_EXPORT_ROWS).forEach { Text("Vector here, not in the export: $it", fontSize = TypeScale.small, color = colors.error) }
+                check.vectorsExtraInIceberg.take(MAX_EXPORT_ROWS).forEach { Text("Vector in the export, none here: $it", fontSize = TypeScale.small, color = colors.error) }
+                check.vectorsDisagreeing.take(MAX_EXPORT_ROWS).forEach {
+                    Text("Vector recorded differently: $it — the export says ${check.icebergVectors[it]}, the index manifest ${check.paimonVectors[it]}", fontSize = TypeScale.small, color = colors.error)
+                }
+                val more = listOf(check.missingFromIceberg, check.extraInIceberg, check.vectorsMissingFromIceberg, check.vectorsExtraInIceberg, check.vectorsDisagreeing)
+                    .sumOf { (it.size - MAX_EXPORT_ROWS).coerceAtLeast(0) }
                 if (more > 0) Text("…and ${formatCount(more)} more.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
                 Text(intro, fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
             }

@@ -28,6 +28,8 @@ data class LookupDeleteFile(
     val recordedPath: String,
     val localPath: String,
     val kind: DeleteFileKind,
+    /** The file's identity — see [DataFile.ledgerKey]; a vector's is its container with the file it references, so two vectors in one container are two files here and in every cache keyed by it. */
+    val key: String,
     /** A vector's blob, for [service.PuffinReader.readDeletionVector]. */
     val contentOffset: Long? = null,
     val contentSizeInBytes: Long? = null,
@@ -111,9 +113,9 @@ data class RowLookupInput(
     /** The delete files paired with a data file, proved or unsettled, in the order the reach lists them. */
     fun deletesFor(recordedPath: String): List<LookupDeleteFile> {
         val key = normalizeFilePath(recordedPath)
-        val byPath = deleteFiles.associateBy { normalizeFilePath(it.recordedPath) }
+        val byKey = deleteFiles.associateBy { it.key }
         return reach.filter { r -> (r.reaches + r.mayReach).any { normalizeFilePath(it) == key } }
-            .mapNotNull { byPath[normalizeFilePath(it.deletePath)] }
+            .mapNotNull { byKey[it.deleteKey] }
     }
 }
 
@@ -138,6 +140,7 @@ fun GraphNode.FileNode.asLookupDeleteFile(): LookupDeleteFile? {
         recordedPath = recorded,
         localPath = localPath ?: recorded,
         kind = kind,
+        key = file.ledgerKey() ?: return null,
         contentOffset = file.contentOffset,
         contentSizeInBytes = file.contentSizeInBytes,
         recordCount = file.recordCount,
@@ -163,14 +166,14 @@ fun UnifiedTableModel.rowLookupInputOf(snapshot: UnifiedSnapshot, liveFiles: Lis
     val newest = metadatas.lastOrNull()?.metadata ?: return null
     val currentId = snapshot.metadata.snapshotId ?: return null
     val schema = newest.currentSchemaModel()
-    val live = liveFiles.map { normalizeFilePath(it.path) }.toSet()
+    val live = liveFiles.map { it.key }.toSet()
     val data = mutableMapOf<String, LookupDataFile>()
     val deletes = mutableMapOf<String, LookupDeleteFile>()
     snapshot.manifests.forEach { m ->
         m.dataFiles.forEach { unified ->
             val file = unified.metadata.dataFile ?: return@forEach
             val recorded = file.filePath ?: return@forEach
-            val key = normalizeFilePath(recorded)
+            val key = file.ledgerKey() ?: return@forEach
             if (key !in live) return@forEach
             when (deleteKindOf(file)) {
                 null -> data.putIfAbsent(key, LookupDataFile(recorded, unified.path.toString(), file.fileFormat, file.recordCount))
@@ -178,6 +181,7 @@ fun UnifiedTableModel.rowLookupInputOf(snapshot: UnifiedSnapshot, liveFiles: Lis
                     recordedPath = recorded,
                     localPath = unified.path.toString(),
                     kind = deleteKindOf(file)!!,
+                    key = key,
                     contentOffset = file.contentOffset,
                     contentSizeInBytes = file.contentSizeInBytes,
                     recordCount = file.recordCount,

@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   metadata under `metadata/`; the table panel reads it and puts the export's current snapshot
   and its live files against the table's own, naming the files the export leaves out by the
   rule that leaves them out. `pic` is the fixture; `pih` is the same under `hadoop-catalog`,
-  whose export sits in catalog storage beside the warehouse and is found there
+  whose export sits in catalog storage beside the warehouse and is found there; `pid` exports
+  its deletion vectors as Iceberg v3 vectors pointing into the table's own index file, and the
+  check puts each against the index manifest's range
 - **An Iceberg table whose metadata is kept apart from its location says where.** A
   `write.metadata.path` layout, or the catalog-storage export a Paimon table writes, holds the
   metadata in one directory and the data under the location; the table panel and the IDE
@@ -21,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Paimon table the location is, when it is one
 
 ### Fixed
+- **Two deletion vectors in one Puffin container are two delete files.** A writer puts one
+  blob per data file into a container, so vectors share a `file_path`; keyed by path alone the
+  second was a duplicate to the table's figures, paired with nothing by the delete pairing, and
+  answered with the first's positions by the lookup and the live count — a row the second
+  vector deletes read as live. A vector is keyed by its container and the data file it
+  references now, everywhere. Seen on `pid`, a Paimon table's Iceberg v3 export; every Iceberg
+  fixture holds one vector per container
+- **A Paimon 64-bit deletion vector is read by its own size field.** Its index range's
+  recorded length is the whole blob, size and CRC included, where a 32-bit vector's is the
+  magic and bitmap alone; read the 32-bit way, a 64-bit vector overran by eight bytes and the
+  last one in the file could not be read at all
 - **A data-evolution split is stitched by field id, and the latest snapshot is read under the
   latest schema.** A column renamed since either file of a split was written read as a DuckDB
   error or as null, the stitch having selected the schema's names from the files; each file

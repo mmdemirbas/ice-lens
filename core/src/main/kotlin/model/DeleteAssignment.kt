@@ -50,6 +50,8 @@ package model
  */
 data class DeleteReach(
     val deletePath: String,
+    /** The delete file's identity — see [DataFile.ledgerKey]; a vector's is its container with the file it references. */
+    val deleteKey: String,
     val kind: DeleteFileKind,
     val sequenceNumber: Long,
     val recordCount: Long?,
@@ -143,9 +145,9 @@ const val DELETE_FILE_PATH_FIELD_ID = 2147483546
  */
 fun deleteReach(snapshot: UnifiedSnapshot): List<DeleteReach> {
     val live = liveFilesOf(snapshot)
-    val livePaths = live.map { normalizeFilePath(it.path) }.toSet()
+    val liveKeys = live.map { it.key }.toSet()
 
-    class Side(val path: String, val sequence: Long, val file: DataFile, val scope: PartitionScope, val manifest: UnifiedManifest) {
+    class Side(val path: String, val key: String, val sequence: Long, val file: DataFile, val scope: PartitionScope, val manifest: UnifiedManifest) {
         val stats: List<ColumnStats> by lazy { columnStatsFor(file, manifest.schema) }
     }
     val data = mutableListOf<Side>()
@@ -156,12 +158,14 @@ fun deleteReach(snapshot: UnifiedSnapshot): List<DeleteReach> {
             val file = unified.metadata.dataFile ?: return@forEach
             val path = file.filePath?.takeIf { it.isNotBlank() } ?: return@forEach
             val normalized = normalizeFilePath(path)
+            val key = file.ledgerKey() ?: return@forEach
             // Live only, and once: a manifest is carried forward by every snapshot that still
             // needs it, so one file is listed by one manifest inside a closure — but a table with
-            // two manifests naming one path would otherwise pair it twice.
-            if (normalized !in livePaths || !seen.add(normalized)) return@forEach
+            // two manifests naming one path would otherwise pair it twice. By key, not path: two
+            // vectors in one Puffin container are two delete files (`pid`).
+            if (key !in liveKeys || !seen.add(key)) return@forEach
             val sequence = effectiveSequenceNumber(unified.metadata, manifest.metadata.sequenceNumber)
-            val side = Side(normalized, sequence, file, PartitionScope(manifest.metadata.partitionSpecId, unified.partition?.path), manifest)
+            val side = Side(normalized, key, sequence, file, PartitionScope(manifest.metadata.partitionSpecId, unified.partition?.path), manifest)
             if (file.content == DataFileContent.DATA || file.content == null) data += side else deletes += side
         }
     }
@@ -186,6 +190,7 @@ fun deleteReach(snapshot: UnifiedSnapshot): List<DeleteReach> {
         }
         DeleteReach(
             deletePath = normalizeFilePath(file.filePath.orEmpty()),
+            deleteKey = delete.key,
             kind = kind,
             sequenceNumber = sequence,
             recordCount = file.recordCount,
@@ -193,7 +198,7 @@ fun deleteReach(snapshot: UnifiedSnapshot): List<DeleteReach> {
             mayReach = mayReach.sorted(),
             targets = targets,
         )
-    }.sortedBy { it.deletePath }
+    }.sortedBy { it.deleteKey }
 }
 
 /**

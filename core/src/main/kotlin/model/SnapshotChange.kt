@@ -18,6 +18,8 @@ enum class FileChange { ADDED, REMOVED }
 data class ChangedFile(
     val path: String,
     val change: FileChange,
+    /** The ledger's key for the file — see [LiveFile.key]. */
+    val key: String = path,
     val content: Int,
     val recordCount: Long,
     val sizeBytes: Long,
@@ -233,6 +235,7 @@ fun snapshotChangeOf(snapshot: UnifiedSnapshot): SnapshotChange {
                 add(
                     ChangedFile(
                         path = dataFile?.filePath.orEmpty(),
+                        key = file.ledgerFileKey(),
                         change = change,
                         content = dataFile?.content ?: DataFileContent.DATA,
                         recordCount = dataFile?.recordCount ?: 0L,

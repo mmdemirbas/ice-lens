@@ -125,7 +125,7 @@ object RowLookup {
         for (delete in deletes) {
             when (delete.kind) {
                 DeleteFileKind.DELETION_VECTOR -> {
-                    val vector = vectors.getOrPut(delete.recordedPath) {
+                    val vector = vectors.getOrPut(delete.key) {
                         runCatching {
                             PuffinReader.readDeletionVector(
                                 StorageLocation.pathOf(delete.localPath), requireNotNull(delete.contentOffset), requireNotNull(delete.contentSizeInBytes),

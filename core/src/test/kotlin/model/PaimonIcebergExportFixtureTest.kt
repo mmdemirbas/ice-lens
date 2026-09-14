@@ -123,6 +123,80 @@ class PaimonIcebergExportFixtureTest {
         assertEquals(null, FixtureCatalog.icebergModel("mor").let { service.IcebergGraphBuilder.buildGraph(it).nodes.filterIsInstance<GraphNode.TableNode>().single().summary.metadataKeptApartAt }, "a table whose metadata sits under its location lists no such row")
     }
 
+    /**
+     * `pid` is `dv` with its vectors exported as Iceberg v3 deletion vectors —
+     * `deletion-vectors.bitmap64` and `metadata.iceberg.format-version = 3`, which is
+     * `needAddDvToIceberg` at 1.3.1 (`docs/fixtures/paimon-pid.sql`). Three things it settles.
+     * The export's DELETES manifest holds one `puffin` entry per vector whose container is
+     * Paimon's own index file at the range the index manifest records, and Iceberg's own blob
+     * reader decodes it — cardinality, positions and CRC — so the coordinates Paimon records
+     * for a bitmap64 vector are Iceberg's. With the vectors as Iceberg's, the level rule is
+     * `level > 0`: the two files the compactions moved to levels 5 and 4 are both exported,
+     * and the level-0 file of `-D` rows the last compaction removed is in neither table. And
+     * **two vectors in one container are two delete files**: keyed by path alone the ledger
+     * counted the second as a duplicate of the first — one delete file and one position
+     * delete where the export has two and three — which every Iceberg fixture had hidden by
+     * holding one vector per Puffin file.
+     */
+    @Test
+    fun `a bitmap64 table's vectors are exported as Iceberg v3 deletion vectors that Iceberg's reader decodes, two to one container`() {
+        val pid = FixtureCatalog.paimonModel("pid")
+        val check = assertNotNull(pid.checkIcebergExport())
+        assertTrue(check.agrees, "$check")
+        assertTrue(check.vectorsExported && check.aboveLevelZero)
+        assertEquals(6L, check.currentIcebergSnapshotId)
+        assertEquals(setOf(5, 4), check.paimonFiles.values.toSet(), "both live files above level 0, the -D file compacted away: ${check.paimonFiles}")
+        assertEquals(check.paimonFiles.keys, check.icebergFiles, "under deletion vectors every file above level 0 is exported")
+        assertEquals(emptySet(), check.belowExportedLevel + check.exportedBelowLevel)
+        assertEquals(2, check.paimonVectors.size)
+        assertEquals(check.paimonVectors, check.icebergVectors, "the export records each vector at the index manifest's range, with its cardinality")
+        assertEquals(setOf(1L, 2L), check.icebergVectors.values.map { it.cardinality }.toSet(), "k = 2 in the first file; 1001 and 1500 in the second")
+        assertTrue(check.icebergVectors.values.all { it.container.startsWith("index-") })
+        assertTrue(check.describe.endsWith("an Iceberg reader sees 2 of the table's 2 live files; 2 of the table's 2 deletion vectors exported as Iceberg's"), check.describe)
+
+        // Iceberg's own reading of the export: format version 3, a DELETES manifest of two
+        // puffin entries, each decoding through the Puffin blob reader to the positions Paimon marked.
+        val export = assertNotNull(pid.icebergExport)
+        val newest = export.metadatas.last()
+        assertEquals(3, newest.metadata.formatVersion)
+        val current = newest.snapshots.single { it.metadata.snapshotId == 6L }
+        val vectors = current.manifests.filter { it.metadata.content == ManifestContent.DELETES }.flatMap { it.dataFiles }
+        assertEquals(2, vectors.size)
+        val decoded = vectors.associate { entry ->
+            val df = assertNotNull(entry.metadata.dataFile)
+            assertEquals("puffin", df.fileFormat)
+            val vector = service.PuffinReader.readDeletionVector(entry.path, assertNotNull(df.contentOffset), assertNotNull(df.contentSizeInBytes), df.referencedDataFile, df.recordCount)
+            assertTrue(vector.checksumMatches && vector.cardinalityAgrees, vector.toString())
+            df.recordCount to vector.positions
+        }
+        assertEquals(mapOf<Long?, List<Long>>(1L to listOf(1L), 2L to listOf(0L, 499L)), decoded, "position 1 of the first file is k = 2; positions 0 and 499 of the second are 1001 and 1500")
+
+        val live = liveFilesOf(current)
+        assertEquals(2, live.count { it.content == DataFileContent.POSITION_DELETES }, "two vectors in one container are two delete files")
+        assertEquals(3L, live.filter { it.content == DataFileContent.POSITION_DELETES }.sumOf { it.recordCount })
+        val summary = service.IcebergGraphBuilder.buildGraph(export).nodes.filterIsInstance<GraphNode.TableNode>().single().summary
+        assertEquals(2, summary.current.deleteFileCount)
+        assertEquals(3L, summary.current.deleteRecordCount)
+
+        // And paired, looked up and counted as two: the pairing keys a delete by container and
+        // referenced file, each vector reaches exactly its own data file, the lookup's cache of
+        // decoded vectors is keyed the same way, and the live count is the export's 1,497 rows.
+        val reach = deleteReach(current)
+        assertEquals(2, reach.size)
+        assertEquals(check.icebergVectors.keys, reach.map { it.reaches.single().substringAfterLast('/') }.toSet())
+        assertTrue(reach.all { it.mayReach.isEmpty() && it.deleteKey.contains('#') })
+        val input = assertNotNull(export.rowLookupInput())
+        assertEquals(2, input.deleteFiles.size)
+        // One lookup across both files, so the vector decoded for the first file's hit is in the
+        // cache when the second file's hit is decided — keyed by container alone it answered
+        // the first vector's positions for the second, and 1001 at position 0 read as live.
+        val filter = (parseScanFilter("k IN (2, 1001, 1499, 1500)") as ScanFilterParse.Parsed).filter
+        val fates = service.RowLookup.lookup(input, filter, emptySet()).hits.associate { (it.cells["k"] as Number).toInt() to it.fate }
+        assertEquals(mapOf(2 to RowFate.VECTOR_DELETED, 1001 to RowFate.VECTOR_DELETED, 1499 to RowFate.LIVE, 1500 to RowFate.VECTOR_DELETED), fates)
+        val count = service.LiveRowCount.count(input)
+        assertEquals(1497L, count.live, count.toString())
+    }
+
     /** The rule alone, on paths: every storage type but `table-location` goes to catalog storage unless told otherwise, and only from under a `<db>.db` directory. */
     @Test
     fun `the export's directory follows the storage type, the storage-location override, and the db suffix`() {

@@ -28,6 +28,12 @@ data class LiveFile(
     val partition: String? = null,
     /** The partition spec the file's manifest was written under; null for Paimon and where unrecorded. */
     val specId: Int? = null,
+    /**
+     * What the ledger told the file by — the path, with the referenced data file on a deletion
+     * vector, whose Puffin container holds a blob per data file (`UnifiedDataFile.ledgerFileKey`).
+     * The path on Paimon, whose files are one per name.
+     */
+    val key: String = path,
 )
 
 /** One partition's share of a snapshot, folded from its live files — see [partitionBreakdown]. */
@@ -182,6 +188,7 @@ fun liveFilesOf(snapshot: UnifiedSnapshot): List<LiveFile> {
             .map { (entry, unified) ->
                 LiveFile(
                     path = entry.filePath,
+                    key = entry.fileKey,
                     content = entry.content,
                     recordCount = entry.recordCount,
                     sizeBytes = entry.sizeBytes,
@@ -194,18 +201,21 @@ fun liveFilesOf(snapshot: UnifiedSnapshot): List<LiveFile> {
 }
 
 /**
- * The set difference between two live file sets, keyed by normalised path.
+ * The set difference between two live file sets, keyed the way the ledger keys them
+ * ([LiveFile.key]): the normalised path, with the referenced data file on a deletion vector.
  *
  * Path is the key because it is what Iceberg guarantees unique within a table and what a reader
- * recognises. Two files with the same path and different figures is the contradictory case
- * [DiffSide.CHANGED] exists for — not silently merged, and not silently counted twice.
+ * recognises — except for a vector, whose Puffin container holds a blob per data file, so two
+ * vectors share one path and are told apart by the file each references. Two files with the
+ * same key and different figures is the contradictory case [DiffSide.CHANGED] exists for — not
+ * silently merged, and not silently counted twice.
  *
  * The order is stable and chosen for reading: what left, then what arrived, then what stayed,
- * each by path. A diff whose rows move between runs cannot be compared against a previous one.
+ * each by key. A diff whose rows move between runs cannot be compared against a previous one.
  */
 fun snapshotDiff(fromId: Long?, from: List<LiveFile>, toId: Long?, to: List<LiveFile>): SnapshotDiff {
-    val fromByPath = from.associateBy { normalizeFilePath(it.path) }
-    val toByPath = to.associateBy { normalizeFilePath(it.path) }
+    val fromByPath = from.associateBy { it.key }
+    val toByPath = to.associateBy { it.key }
 
     val files = (fromByPath.keys + toByPath.keys).sorted().map { key ->
         val before = fromByPath[key]

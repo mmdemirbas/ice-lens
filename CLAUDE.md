@@ -2176,7 +2176,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,262 tests across 170 files (989 in :core, 263 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,263 tests across 170 files (990 in :core, 263 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2314,6 +2314,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pkr` | `PaimonRowLookupFixtureTest`, `PaimonMergedCountFixtureTest` | a primary key renamed between writes — `_KEY_k` in the first file, `_KEY_id` in the two after, key 1 written again after the rename; Paimon's read `1 A / 2 b / 3 c` is printed by the script |
 | `paimon/db.db/pse` | `PaimonReadProjectionFixtureTest` | an append table evolved after its first file — `ADD COLUMN w`, `RENAME COLUMN v TO label`, `ALTER COLUMN w SET DEFAULT 7` — with Paimon's own read printed in the script: the old file's `v` as `label`, its `w` as null, and the default a later write stored for a row that omitted `w` |
 | `paimon/db.db/pne` | `PaimonNestedEvolutionFixtureTest` | `pse` one level down — a struct and a list of structs, a rename and an add inside the struct and a rename inside the list's element between two writes; the nested type object every schema of such a table carries, and Paimon's read of the old file under the new names |
+| `paimon/db.db/pid` | `PaimonIcebergExportFixtureTest`, `PaimonMergedCountFixtureTest` | `dv` under `deletion-vectors.bitmap64` with a format-version 3 export — the two vectors as Iceberg v3 deletion vectors pointing into Paimon's own index file, decoded by the Puffin reader; two vectors in one container, which is what the ledger, the pairing and the lookup key a vector by its referenced file for; and the 64-bit range length that is the whole blob |
 | `paimon/db.db/pih` | `PaimonIcebergExportFixtureTest`, `GraphTreeTest` | `pic` under `metadata.iceberg.storage = hadoop-catalog` — the export in catalog storage at `example/paimon/iceberg/db/pih/` beside the table, found by the callback's own rule; opened as an Iceberg table its data files resolve to the Paimon table's and its `Metadata Kept At` says the metadata is apart from its location |
 | `paimon/db.db/pic` | `PaimonIcebergExportFixtureTest` | `metadata.iceberg.storage = table-location` — a primary-key table writing Iceberg metadata under its own `metadata/` on every commit, so the directory carries both formats' markers; two appends, neither compacted, and the export lists one of the two live files: snapshot 1 rebuilt it from the snapshot and snapshot 2 went through the level rule |
 | `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest`, `PaimonRowLookupFixtureTest`, `PaimonScanPruningTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted; the stitched read `(1, 11, 1)` the lookup is held to, and the file bounds pruning must not consult |
@@ -2603,7 +2604,37 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   the identity, and the IDE strip lists it only where present — a `write.metadata.path`
   layout has the same shape. And the location re-rooted the same way, when it is a directory
   with `snapshot/` and `schema/`, is `TableSummary.locationIsPaimonTable`: the panel's
-  `Export Of Paimon Table` row and the IDE's, which is what says whose export this is
+  `Export Of Paimon Table` row and the IDE's, which is what says whose export this is.
+  **The table's deletion vectors go out as Iceberg v3 vectors under three options at once**
+  — `deletion-vectors.enabled`, `deletion-vectors.bitmap64` and
+  `metadata.iceberg.format-version = 3`, which is `needAddDvToIceberg` at 1.3.1 — and then
+  every commit writing a vector index also writes a DELETES manifest
+  (`createDvManifestFileMetas`): one `POSITION_DELETES` entry per vector, format `puffin`,
+  whose `file_path` is Paimon's **own index file**, `referenced_data_file` the data file it
+  marks, and `content_offset` / `content_size_in_bytes` the range the index manifest records.
+  `pid` is `dv` under those options, and `PuffinReader.readDeletionVector` decodes its two
+  entries off the index file — cardinality, positions and CRC — because a 64-bit vector's
+  blob *is* Iceberg's layout and its recorded length is the whole blob. With the vectors as
+  Iceberg's the level rule is `level > 0` (`aboveLevelZero`), and the check compares the
+  vectors too (`icebergVectors` / `paimonVectors` as `ExportedVector`s, by data file: the
+  container, offset, length and cardinality); a deletion-vector table exporting under v2 or
+  32-bit vectors exports none, and the panel says an Iceberg reader sees the marked rows as
+  live. Two things `pid` settled beyond the export. **A vector's identity is its container
+  with the data file it references, and every fold and pairing keys it so**: a writer puts
+  one blob per data file into a Puffin container, so two vectors share a `file_path`, and
+  keyed by path alone the ledger counted the second as a duplicate, `deleteReach` paired it
+  with nothing, and the lookup's and the live count's caches of decoded vectors served the
+  first vector's positions for the second — `1001` read as live. `DataFile.ledgerKey()` is
+  the one rule (`path#referenced` on a vector), `LiveFile.key`, `ChangedFile.key`,
+  `DeleteReach.deleteKey` and `LookupDeleteFile.key` carry it, and every Iceberg fixture had
+  hidden it by holding one vector per container. **And a Paimon index range's `length` means
+  two things** (`DeletionVector.read` at 1.3.1): a 32-bit vector's is the size field's own
+  value, magic and bitmap; a 64-bit vector's is the whole blob, size and CRC included —
+  Iceberg's `content_size_in_bytes`, which is what lets the range be handed to an Iceberg
+  reader as it is. `PaimonDeletionVectorReader.readRange` reads by the blob's own size field
+  and holds the recorded length to its kind; read the 32-bit way it overran a 64-bit vector
+  by eight bytes and the last one in the file off its end, so `pid`'s merged count failed
+  before the fix
 - **A tag is a snapshot file under `tag/`, read as one, and it is what keeps files on disk after
   the snapshot is gone.** `PaimonUnifiedTableModel.tags` reads `tag/tag-<name>` through the same
   reader and manifest cache as `snapshot/`; `tagOnlySnapshots` is the tagged snapshots `snapshot/`

@@ -18,8 +18,11 @@ import java.util.zip.CRC32
  * Read off `DeletionVectorsIndexFile` and `DeletionVector.read` at 1.3.1, and checked against
  * the bytes of the `dv` and `ad` fixtures. The file opens with one version byte (`1`); at each
  * offset sits a 4-byte big-endian `size` covering a magic and a bitmap, then the magic, then
- * the bitmap, then a 4-byte big-endian CRC-32 of the magic and bitmap together — and `size` is
- * what the manifest records as the range's length. Two magics decide the bitmap.
+ * the bitmap, then a 4-byte big-endian CRC-32 of the magic and bitmap together. What the
+ * manifest records as the range's length depends on the kind: `size` itself for a 32-bit
+ * vector, `size + 8` — the whole blob, Iceberg's `content_size_in_bytes` — for a 64-bit one
+ * (`DeletionVector.read` at 1.3.1, and `pid`'s index against its Iceberg export). Two magics
+ * decide the bitmap.
  * `BitmapDeletionVector` (`1581511376` big-endian) is a 32-bit Roaring bitmap in the portable
  * layout, which is a Puffin vector's inner bitmap without the bucket wrapper.
  * `Bitmap64DeletionVector` (`1681511377` little-endian — the bytes `D1 D3 39 64`) is Iceberg's
@@ -58,14 +61,35 @@ object PaimonDeletionVectorReader {
         return bits
     }
 
+    /**
+     * The whole vector at [offset] — size, magic, bitmap and CRC — read by the size field the
+     * blob leads with, because the range's recorded [length] means two things
+     * (`DeletionVector.read` at 1.3.1): for a 32-bit vector it is the size field's own value,
+     * magic and bitmap; for a 64-bit one it is the whole blob, size and CRC included — Iceberg's
+     * `content_size_in_bytes`, which is what lets Paimon hand the range to an Iceberg reader as
+     * it is (`pid`). Reading `4 + length + 4` bytes, the 32-bit reading, overran a 64-bit vector
+     * by eight bytes and ran the last one in the file off its end. The length is held to its
+     * kind afterwards, as Paimon holds it.
+     */
     private fun readRange(indexFile: Path, offset: Long, length: Long): ByteArray {
         if (length < 8) throw PaimonIndexFormatException("a $length-byte range is too short to hold a vector")
         return Files.newByteChannel(indexFile).use { file ->
             val version = ByteBuffer.allocate(1).also { file.position(0); file.read(it) }.get(0)
             if (version != VERSION_V1) throw PaimonIndexFormatException("index file version $version is not the 1 this reads")
+            if (offset < 1 || offset + 8 > file.size()) {
+                throw PaimonIndexFormatException("vector at $offset lies outside a ${file.size()}-byte file")
+            }
+            file.position(offset)
+            val head = file.readFully(8)
+            val size = ByteBuffer.wrap(head).order(ByteOrder.BIG_ENDIAN).getInt()
+            val magicLittleEndian = ByteBuffer.wrap(head, 4, 4).order(ByteOrder.LITTLE_ENDIAN).getInt()
+            val expected = if (magicLittleEndian == MAGIC_BITMAP64) size + 8L else size.toLong()
+            if (length != expected) {
+                throw PaimonIndexFormatException("the range records $length bytes where the vector's own size says $expected")
+            }
             // size + magic + bitmap + crc
-            val whole = 4 + length + 4
-            if (offset < 1 || offset + whole > file.size()) {
+            val whole = 4L + size + 4
+            if (size < 4 || offset + whole > file.size()) {
                 throw PaimonIndexFormatException("vector at $offset+$whole lies outside a ${file.size()}-byte file")
             }
             file.position(offset)

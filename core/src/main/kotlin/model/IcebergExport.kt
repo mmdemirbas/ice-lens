@@ -29,6 +29,14 @@ package model
  * half of that is a disagreement — [belowExportedLevel] and [exportedBelowLevel] name each,
  * leaving [missingFromIceberg] and [extraInIceberg] for what no rule explains.
  */
+/**
+ * A deletion vector as one side records it: the file holding the blob, its coordinates, and
+ * the cardinality — Paimon's index manifest range, or the export's `POSITION_DELETES` entry with
+ * `content_offset` / `content_size_in_bytes` and `record_count`. The two are one vector when
+ * every figure agrees, which is what makes the export's vector readable as Iceberg's.
+ */
+data class ExportedVector(val container: String, val offset: Long, val length: Long, val cardinality: Long?)
+
 data class IcebergExportCheck(
     /** The directory whose `metadata/` holds the export — the table's own, or the catalog-storage directory beside the warehouse. */
     val exportPath: String,
@@ -40,10 +48,20 @@ data class IcebergExportCheck(
     val versions: Int,
     val currentIcebergSnapshotId: Long?,
     val latestPaimonSnapshotId: Long?,
-    /** File names the export's current snapshot lists live. */
+    /** Data file names the export's current snapshot lists live — its delete files are [icebergVectors]. */
     val icebergFiles: Set<String>,
     /** The table's latest snapshot's live files by name, with the level each is at. */
     val paimonFiles: Map<String, Int?>,
+    /**
+     * The export's live deletion vectors by the data file each references — written only under
+     * `deletion-vectors.bitmap64` and format version 3, as `puffin` entries whose container is
+     * Paimon's own index file (`pid`).
+     */
+    val icebergVectors: Map<String, ExportedVector> = emptyMap(),
+    /** The table's vectors as its latest index manifest records them, by data file. */
+    val paimonVectors: Map<String, ExportedVector> = emptyMap(),
+    /** Whether the table's vectors go out as Iceberg's: `deletion-vectors.enabled`, `deletion-vectors.bitmap64` and `metadata.iceberg.format-version = 3` (`needAddDvToIceberg` at 1.3.1). */
+    val vectorsExported: Boolean = false,
     /** On a primary-key table, the level a file has to be at to be exported; null on an append table, which exports every file. */
     val exportedLevel: Int? = null,
     /** With deletion vectors, any level above 0 is exported instead of the highest alone. */
@@ -70,6 +88,21 @@ data class IcebergExportCheck(
     /** Files the export lists that the table no longer holds live. */
     val extraInIceberg: Set<String> get() = icebergFiles - paimonFiles.keys
 
+    /** Data files the table has a vector for and the export does not, where the vectors go out as Iceberg's. */
+    val vectorsMissingFromIceberg: Set<String> get() = if (vectorsExported) paimonVectors.keys - icebergVectors.keys else emptySet()
+
+    /** Data files the export has a vector for and the table does not. */
+    val vectorsExtraInIceberg: Set<String> get() = icebergVectors.keys - paimonVectors.keys
+
+    /** Data files whose vector the two sides record with different coordinates or cardinality. */
+    val vectorsDisagreeing: Set<String>
+        get() = icebergVectors.filter { (file, v) -> paimonVectors[file]?.let { it != v } == true }.keys
+
+    /** Whether nothing disagrees — the files, and the vectors where they are exported. */
+    val agrees: Boolean
+        get() = current && missingFromIceberg.isEmpty() && extraInIceberg.isEmpty() &&
+            vectorsMissingFromIceberg.isEmpty() && vectorsExtraInIceberg.isEmpty() && vectorsDisagreeing.isEmpty() && readErrors.isEmpty()
+
     /** Live files the export lists — what an Iceberg reader sees of the table. */
     val seen: Int get() = paimonFiles.keys.count { it in icebergFiles }
 
@@ -85,7 +118,12 @@ data class IcebergExportCheck(
             val where = if (atTable) "under metadata/" else "at $exportPath/metadata/"
             val versionsText = "%,d metadata %s $where".format(versions, if (versions == 1) "version" else "versions")
             val files = "an Iceberg reader sees %,d of the table's %,d live %s".format(seen, paimonFiles.size, if (paimonFiles.size == 1) "file" else "files")
-            return "$head; $versionsText; $files"
+            val vectors = when {
+                icebergVectors.isNotEmpty() || paimonVectors.isNotEmpty() ->
+                    "; %,d of the table's %,d deletion %s exported as Iceberg's".format(icebergVectors.size, paimonVectors.size, if (paimonVectors.size == 1) "vector" else "vectors")
+                else -> ""
+            }
+            return "$head; $versionsText; $files$vectors"
         }
 
     private fun exportsLevel(level: Int?): Boolean = when {
@@ -101,12 +139,29 @@ fun PaimonUnifiedTableModel.checkIcebergExport(): IcebergExportCheck? {
     val newest = export.metadatas.lastOrNull()
     val currentId = newest?.metadata?.currentSnapshotId
     val current = newest?.snapshots?.firstOrNull { it.metadata.snapshotId == currentId }
-    val icebergFiles = current?.let { liveFilesOf(it) }.orEmpty().map { it.path.substringAfterLast('/') }.toSet()
+    val live = current?.let { liveFilesOf(it) }.orEmpty()
+    val icebergFiles = live.filter { it.content == DataFileContent.DATA }.map { it.path.substringAfterLast('/') }.toSet()
+    // The export's vectors, off the entries the live set kept: a vector's live key is its
+    // container with the data file it references, and its coordinates are on the entry.
+    val liveKeys = live.map { normalizeFilePath(it.path) }.toSet()
+    val icebergVectors = current?.manifests.orEmpty().flatMap { it.dataFiles }
+        .filter { it.metadata.status != ManifestEntryStatus.DELETED && it.metadata.dataFile?.contentOffset != null }
+        .filter { normalizeFilePath(it.metadata.dataFile?.filePath.orEmpty()) in liveKeys }
+        .mapNotNull { entry ->
+            val df = entry.metadata.dataFile ?: return@mapNotNull null
+            val referenced = df.referencedDataFile?.substringAfterLast('/') ?: return@mapNotNull null
+            referenced to ExportedVector(df.filePath.orEmpty().substringAfterLast('/'), df.contentOffset ?: return@mapNotNull null, df.contentSizeInBytes ?: return@mapNotNull null, df.recordCount)
+        }.toMap()
     val latest = snapshots.maxByOrNull { it.metadata.id ?: Long.MIN_VALUE }
     val paimonFiles = replayPaimonSnapshot(latest).liveFiles.entries.associate { (name, file) -> name.substringAfterLast('/') to file?.level }
+    val paimonVectors = latest?.let { vectorRangesOf(path, listOf(it)) }.orEmpty()
+        .filterKeys { it in paimonFiles }
+        .mapValues { (_, r) -> ExportedVector(r.indexFileName, r.offset, r.length, r.cardinality) }
     val schema = latest?.schema ?: schemas.maxByOrNull { it.id ?: -1 }
     val primaryKey = schema?.primaryKeys.orEmpty().isNotEmpty()
     val options = schema?.options.orEmpty()
+    val vectorsOn = options["deletion-vectors.enabled"]?.toBoolean() == true
+    val vectorsExported = vectorsOn && options["deletion-vectors.bitmap64"]?.toBoolean() == true && options["metadata.iceberg.format-version"] == "3"
     return IcebergExportCheck(
         exportPath = export.path.toString(),
         atTable = export.path.toAbsolutePath().normalize() == path.toAbsolutePath().normalize(),
@@ -116,8 +171,13 @@ fun PaimonUnifiedTableModel.checkIcebergExport(): IcebergExportCheck? {
         latestPaimonSnapshotId = latest?.metadata?.id,
         icebergFiles = icebergFiles,
         paimonFiles = paimonFiles,
+        icebergVectors = icebergVectors,
+        paimonVectors = paimonVectors,
+        vectorsExported = vectorsExported,
         exportedLevel = if (primaryKey) PaimonCompactionOptions.from(options).numLevels - 1 else null,
-        aboveLevelZero = primaryKey && options["deletion-vectors.enabled"]?.toBoolean() == true,
+        // `shouldAddFileToIceberg` takes `level > 0` under `needAddDvToIceberg`, which is the
+        // vectors going out as Iceberg's — not deletion vectors alone.
+        aboveLevelZero = primaryKey && vectorsExported,
         readErrors = export.readErrors,
     )
 }

@@ -92,7 +92,24 @@ private fun eventOf(added: Int, removed: Int): FileEvent? = when {
 
 /** The key [liveFilesOf] and the ledger know an Iceberg entry's file by. */
 fun UnifiedDataFile.ledgerFileKey(): String =
-    metadata.dataFile?.filePath?.takeIf { it.isNotBlank() }?.let(::normalizeFilePath) ?: "path:$path"
+    metadata.dataFile?.ledgerKey() ?: "path:$path"
+
+/**
+ * The key a file is told apart by, everywhere a set of files is folded or paired: the
+ * normalised path — and on a deletion vector, the path with the data file it references. A
+ * vector's `file_path` is its Puffin container, and a writer puts one blob per data file into
+ * a container, so several delete files share one path; keyed by path alone every vector after
+ * the first in a container was a duplicate — counted once, paired once, and decoded once with
+ * the first's positions served for the second from a cache keyed the same way. `pid`'s export
+ * holds two in one file. Iceberg's identity for a vector is the data file it references (a
+ * table holds at most one per data file), so that is the key's other half. Null where the
+ * entry records no path.
+ */
+fun DataFile.ledgerKey(): String? {
+    val recorded = filePath?.takeIf { it.isNotBlank() }?.let(::normalizeFilePath) ?: return null
+    val referenced = if (contentOffset != null) referencedDataFile?.takeIf { it.isNotBlank() } else null
+    return if (referenced != null) "$recorded#${normalizeFilePath(referenced)}" else recorded
+}
 
 /** The history of the file [fileKey] names — see [UnifiedDataFile.ledgerFileKey] — over the retained snapshots. */
 fun UnifiedTableModel.fileHistoryOf(fileKey: String): FileHistory {

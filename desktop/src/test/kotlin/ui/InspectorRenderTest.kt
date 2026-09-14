@@ -2167,6 +2167,20 @@ class InspectorRenderTest {
                 IcebergExportSection(picTable, startRequested = true) { settled.set(true) }
             }
         }
+
+        // And `pid`, whose vectors go out as Iceberg v3 deletion vectors: the line that says so
+        // reads as ordinary, beside the amber notes the level rule earns on `pic`.
+        val pid = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pid").absolutePath)),
+            showRows = false,
+        )
+        val pidTable = pid.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val pidSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-iceberg-export-vectors", width = 1400, height = 560, ready = pidSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                IcebergExportSection(pidTable, startRequested = true) { pidSettled.set(true) }
+            }
+        }
     }
 
     /**

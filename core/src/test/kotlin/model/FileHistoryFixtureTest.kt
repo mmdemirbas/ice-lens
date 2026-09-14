@@ -36,7 +36,7 @@ class FileHistoryFixtureTest {
         for (fixture in icebergFixtures()) {
             val m = iceberg(fixture)
             val retained = retainedIceberg(m)
-            val liveByWalk = retained.associate { s -> s.metadata.snapshotId!! to liveFilesOf(s).map { normalizeFilePath(it.path) }.toSet() }
+            val liveByWalk = retained.associate { s -> s.metadata.snapshotId!! to liveFilesOf(s).map { it.key }.toSet() }
             val changes = retained.associate { s -> s.metadata.snapshotId!! to snapshotChangeOf(s) }
             val keys = retained.flatMap { s -> s.manifests.flatMap { m -> m.dataFiles.map { it.ledgerFileKey() } } }.toSet()
             for (key in keys) {
@@ -47,8 +47,8 @@ class FileHistoryFixtureTest {
                     val entry = history.snapshots.firstOrNull { it.snapshotId == id }
                     assertEquals(key in liveByWalk.getValue(id), entry?.live ?: false, "$fixture $key live at $id")
                     val change = changes.getValue(id)
-                    val added = change.added.any { normalizeFilePath(it.path) == key }
-                    val removed = change.removed.any { normalizeFilePath(it.path) == key }
+                    val added = change.added.any { it.key == key }
+                    val removed = change.removed.any { it.key == key }
                     assertEquals(added, entry?.event == FileEvent.ADDED || entry?.event == FileEvent.REWRITTEN, "$fixture $key added at $id")
                     assertEquals(removed, entry?.event == FileEvent.REMOVED || entry?.event == FileEvent.REWRITTEN, "$fixture $key removed at $id")
                     if (entry?.event != null) events++
@@ -70,7 +70,7 @@ class FileHistoryFixtureTest {
         val change = snapshotChangeOf(replace)
         assertTrue(change.removed.size >= 2 && change.added.size >= 1, "mor's replace should take files out and put one in")
         for (removed in change.removed) {
-            val history = m.fileHistoryOf(normalizeFilePath(removed.path))
+            val history = m.fileHistoryOf(removed.key)
             val by = assertNotNull(history.removedBy, removed.path)
             assertEquals(replaceId, by.snapshotId)
             assertEquals("replace", by.operation)
@@ -79,7 +79,7 @@ class FileHistoryFixtureTest {
             assertTrue(history.describe.startsWith("removed by snapshot $replaceId (replace) — still listed live by"), history.describe)
         }
         for (added in change.added) {
-            val history = m.fileHistoryOf(normalizeFilePath(added.path))
+            val history = m.fileHistoryOf(added.key)
             assertEquals(replaceId, assertNotNull(history.addedBy).snapshotId)
             assertTrue(history.liveNow)
             assertEquals("live now — added by snapshot $replaceId (replace)", history.describe)
@@ -98,7 +98,7 @@ class FileHistoryFixtureTest {
         val retainedIds = retained.map { it.metadata.snapshotId }.toSet()
         val current = m.metadatas.last().metadata.currentSnapshotId
         val carried = liveFilesOf(retained.first { it.metadata.snapshotId == current })
-            .map { normalizeFilePath(it.path) }
+            .map { it.key }
             .map { m.fileHistoryOf(it) }
             .filter { h -> h.snapshots.any { it.expired } }
         assertTrue(carried.isNotEmpty(), "expired should carry a file added by a snapshot that is gone")

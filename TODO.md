@@ -143,8 +143,10 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   (`hadoop-catalog`, `hive-catalog`, `rest-catalog`) is found beside the warehouse (`pih`), and
   opened from its own directory it says its metadata is kept apart from its location and
   names the Paimon table the location is. A Hive or REST export also has a catalog entry this
-  never sees. No fixture reaches a compacted table's export either, where
-  the level rule lists a level-5 file rather than explaining an absence.
+  never sees. `pid` reaches a compacted table's export — its files at levels 5 and 4 are
+  listed under the `level > 0` rule the vectors bring — and exports the vectors as Iceberg
+  v3 vectors; a compacted table *without* exported vectors, where the level rule lists a
+  level-5 file and leaves a level-4 one out, is still not a fixture.
 
 - **ORC data files cannot be read.** DuckDB 1.4.4 has no ORC table function, core or community;
   every reader says so (`orcfmt`). An ORC reader would be a second engine on the classpath (the

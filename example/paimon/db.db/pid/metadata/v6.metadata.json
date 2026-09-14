@@ -1,0 +1,95 @@
+{
+  "format-version" : 3,
+  "table-uuid" : "79e5941c-5217-453f-b41e-987b2e09f2a8",
+  "location" : "/wh/db.db/pid",
+  "last-sequence-number" : 6,
+  "last-updated-ms" : 1789378445960,
+  "last-column-id" : 1,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 0,
+      "name" : "k",
+      "required" : true,
+      "type" : "int",
+      "doc" : null
+    }, {
+      "id" : 1,
+      "name" : "v",
+      "required" : false,
+      "type" : "string",
+      "doc" : null
+    } ]
+  } ],
+  "current-schema-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "default-spec-id" : 0,
+  "last-partition-id" : 999,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "default-sort-order-id" : 0,
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 1,
+    "timestamp-ms" : 1789378444754,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pid/metadata/snap-1-c0d767f0-9c90-410e-bbaa-7e19b8cecdbb.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 2,
+    "snapshot-id" : 2,
+    "timestamp-ms" : 1789378444815,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pid/metadata/snap-2-c0d767f0-9c90-410e-bbaa-7e19b8cecdbb.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 3,
+    "snapshot-id" : 3,
+    "timestamp-ms" : 1789378445217,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pid/metadata/snap-1-698a0568-06d2-40e3-9fe3-dabdc40075ca.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 4,
+    "snapshot-id" : 4,
+    "timestamp-ms" : 1789378445249,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pid/metadata/snap-2-698a0568-06d2-40e3-9fe3-dabdc40075ca.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 5,
+    "snapshot-id" : 5,
+    "timestamp-ms" : 1789378445898,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pid/metadata/snap-1-f962f140-ffa0-465a-986e-a5ca1272a5c7.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 6,
+    "snapshot-id" : 6,
+    "timestamp-ms" : 1789378445960,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pid/metadata/snap-2-f962f140-ffa0-465a-986e-a5ca1272a5c7.avro",
+    "schema-id" : 0
+  } ],
+  "current-snapshot-id" : 6,
+  "properties" : { },
+  "refs" : { }
+}

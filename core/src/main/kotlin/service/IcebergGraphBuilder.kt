@@ -626,12 +626,8 @@ object IcebergGraphBuilder {
             ?.let(::normalizeFilePath)
             ?: "path:${manifest.path}"
 
-    /** Identity of a data file, for deduplicating the same file across manifests. */
-    private fun dataFileKey(dataFile: UnifiedDataFile): String =
-        dataFile.metadata.dataFile?.filePath
-            ?.takeIf { it.isNotBlank() }
-            ?.let(::normalizeFilePath)
-            ?: "path:${dataFile.path}"
+    /** Identity of a data file, for deduplicating the same file across manifests — the ledger's key, one rule. */
+    private fun dataFileKey(dataFile: UnifiedDataFile): String = dataFile.ledgerFileKey()
 
     /**
      * Accumulates [ContentStats] over manifests fed in any order, ignoring any manifest or

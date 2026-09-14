@@ -100,7 +100,7 @@ object LiveRowCount {
         require(SampleRowReader.hasRowPositions(ext)) { "positions are known for Parquet only; this file is $ext" }
         val bits = BitSet()
         deletes.filter { it.kind == DeleteFileKind.DELETION_VECTOR }.forEach { vector ->
-            val positions = vectors.getOrPut(vector.recordedPath) {
+            val positions = vectors.getOrPut(vector.key) {
                 runCatching { PuffinReader.readDeletionVectorPositions(StorageLocation.pathOf(vector.localPath), requireNotNull(vector.contentOffset), requireNotNull(vector.contentSizeInBytes)) }
                     .onFailure { logger.warn("Could not read the vector in {}: {}", vector.localPath, it.message) }
                     .getOrNull()
