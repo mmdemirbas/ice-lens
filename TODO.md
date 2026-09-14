@@ -141,10 +141,12 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   reaches: a `-D` *below* the row's group value, since Spark's DELETE writes the merged row's own
   values back, so that branch of the fold is pinned by a unit test alone; and `fields.<f>.aggregate-function`
   inside a partial-update group, which changes the row's values and never whether the key is a
-  row. Two edges on the reads: the bucket's other files are read for a hit's key without pruning on their
-  `_MIN_KEY`/`_MAX_KEY`, which a large bucket would want; and a data-evolution split is stitched
+  row. One edge on the reads: a data-evolution split is stitched
   on `file_row_number`, which DuckDB assigns in Parquet only — an Avro data-evolution table
-  reports the split as unreadable rather than reading its files apart.
+  reports the split as unreadable rather than reading its files apart. The bucket read for a
+  hit's key is pruned by each file's `_KEY_STATS` now (`PaimonRowLookup.filesForKeys`), the
+  way `KeyValueFileStoreScan.filterByStats` prunes a key predicate; a file recording no key
+  bounds is opened.
 
 - **A Paimon table's Iceberg export is read and checked; what it does not draw is the export's
   own history.** `metadata.iceberg.storage = table-location` writes Iceberg metadata under

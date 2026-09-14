@@ -9,7 +9,11 @@ import model.PaimonReadInput
 import model.RowFate
 import model.RowHit
 import model.RowLookupResult
+import model.FileFate
+import model.PredicateOp
 import model.ScanFilter
+import model.ScanPredicate
+import model.evaluateFilePruning
 import model.duckDbTypeOf
 import model.IcebergSchemaModel
 import model.paimonFileColumnTree
@@ -59,6 +63,29 @@ object PaimonRowLookup {
 
     internal fun bucketSources(input: PaimonReadInput, files: List<PaimonLookupFile>): BucketSources =
         BucketSources(files, files.map { projectionOf(it, input.readSchema, rowNumber = true, filename = true) })
+
+    /**
+     * The bucket's read files that may hold a record of any of [keys], by their `_KEY_STATS` —
+     * `KeyValueFileStoreScan.filterByStats` runs a key predicate over each file's key bounds,
+     * and a file whose key range excludes every key asked holds no record of any. The keys are
+     * asked as one `OR` of per-key conjunctions (`k = 7`, a null as `k IS NULL`) through the
+     * same [evaluateFilePruning] the scan panel's file stage runs, so a file is left unopened
+     * only where that proves it empty: a file recording no key bounds, or a literal the bounds'
+     * type cannot read, is opened. The files the hits came from are always opened, whatever their
+     * bounds say — a record found there is a record the bucket read must see.
+     */
+    internal fun filesForKeys(input: PaimonReadInput, files: List<PaimonLookupFile>, keys: List<List<String?>>, holding: Set<String>): List<PaimonLookupFile> {
+        val names = input.trimmedPrimaryKeys
+        if (names.isEmpty() || keys.isEmpty()) return files
+        val filter = ScanFilter.Or(keys.map { key ->
+            ScanFilter.And(names.zip(key).map { (name, value) ->
+                ScanFilter.Term(if (value == null) ScanPredicate(name, PredicateOp.IS_NULL) else ScanPredicate(name, PredicateOp.EQ, value))
+            })
+        })
+        return files.filter { file ->
+            file.fileName in holding || file.keyStats.isEmpty() || evaluateFilePruning(file.keyStats, filter).fate != FileFate.SKIPPED
+        }
+    }
 
     internal fun projectionOf(file: PaimonLookupFile, schema: IcebergSchemaModel, rowNumber: Boolean, filename: Boolean = false, alias: String = "s"): FileProjection =
         FileProjection.of(file.extension, paimonFileColumnTree(SampleRowReader.fileColumnTreeOf(file.localPath), file.fileSchema), schema, null, rowNumber = rowNumber, alias = alias, filename = filename)
@@ -141,14 +168,16 @@ object PaimonRowLookup {
         }
         val keyColumns = input.trimmedPrimaryKeys.map { KEY_PREFIX + it }
         val skipped = input.skippedFiles.map { it.fileName }.toSet()
-        val keyStates = if (input.hasPrimaryKey) keyStatesFor(input, raws.filter { it.file.fileName !in skipped }, keyColumns) else emptyMap()
+        val bucketReads = if (input.hasPrimaryKey) keyStatesFor(input, raws.filter { it.file.fileName !in skipped }, keyColumns) else emptyMap()
         val vectors = mutableMapOf<String, DeletionVector?>()
-        val hits = raws.map { raw -> decide(input, raw, keyColumns, keyStates[raw.file.partition to raw.file.bucket].orEmpty(), vectors) }
+        val hits = raws.map { raw -> decide(input, raw, keyColumns, bucketReads[raw.file.partition to raw.file.bucket]?.states.orEmpty(), vectors) }
         return RowLookupResult(
             outcomes, input.files.size - candidates, (candidates - skipping - reading).coerceAtLeast(0), hits,
             rule = if (input.hasPrimaryKey) input.rule.describe() else null,
             skippedFiles = input.skippedFiles.size,
             skippedRows = input.skippedFiles.sumOf { it.recordCount ?: 0L },
+            bucketFilesRead = bucketReads.values.sumOf { it.read },
+            bucketFilesPruned = bucketReads.values.sumOf { it.pruned },
         )
     }
 
@@ -258,22 +287,28 @@ object PaimonRowLookup {
         input: PaimonReadInput,
         raws: List<Raw>,
         keyColumns: List<String>,
-    ): Map<Pair<String, Int>, Map<List<String?>, KeyState>> {
+    ): Map<Pair<String, Int>, BucketRead> {
         if (keyColumns.isEmpty()) return emptyMap()
         val casts = input.trimmedPrimaryKeys.map { name ->
             input.schema.fields.firstOrNull { it.name == name }?.type?.let(::paimonTypeAsIceberg)?.let(::duckDbTypeOf)
         }
         return raws.groupBy { it.file.partition to it.file.bucket }.mapValues { (scope, bucketRaws) ->
             val keys = bucketRaws.map { keyOf(it.cells, keyColumns) }.distinct()
-            val bucket = bucketSources(input, input.bucketOf(bucketRaws.first().file))
-            runCatching {
+            val all = input.bucketOf(bucketRaws.first().file)
+            val opened = filesForKeys(input, all, keys, bucketRaws.map { it.file.fileName }.toSet())
+            val bucket = bucketSources(input, opened)
+            val states = runCatching {
                 val states = queryKeyStates(bucket, keyColumns, casts, keys, input.rule.removingKinds)
                 if (input.rule.sequenceGroupRemovals.isNotEmpty()) withSequenceGroupRemovals(input, bucket, keyColumns, casts, keys, states) else states
             }
                 .onFailure { logger.warn("Could not read bucket {}: {}", scope, it.message) }
                 .getOrDefault(emptyMap())
+            BucketRead(states, read = opened.size, pruned = all.size - opened.size)
         }
     }
+
+    /** One bucket's read for the hits' keys: the states, and how many of its files were opened and left unopened. */
+    private class BucketRead(val states: Map<List<String?>, KeyState>, val read: Int, val pruned: Int)
 
     /**
      * The SQL states know no removal under sequence groups — a `-D` removes by its value on a

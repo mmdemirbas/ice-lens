@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The Paimon row lookup's bucket read is pruned by key range** — a hit's key is asked of
+  its bucket's other files only where their `_KEY_STATS` may hold it, the pruning
+  `KeyValueFileStoreScan.filterByStats` runs a key predicate through, asked as one `OR` of
+  the hits' keys; the lookup's headline says how many bucket files were opened and how many
+  left unopened. On `pc` a key found in one file leaves the other two unopened; a filter
+  reaching every key opens every file.
 - **Paimon's long-lived changelogs are read** — `changelog/changelog-<id>`, the snapshots a
   decoupled changelog lifecycle keeps after expiry, drawn as `CHANGELOG ONLY` snapshots with
   their changelog list, the lists the expiry deleted named on the panel, their files referenced

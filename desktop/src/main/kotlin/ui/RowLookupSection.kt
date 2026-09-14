@@ -370,6 +370,15 @@ private fun ResultBody(result: RowLookupResult, paimon: Boolean) {
             modifier = Modifier.padding(bottom = 4.dp),
         )
     }
+    if (result.bucketFilesRead + result.bucketFilesPruned > 0) {
+        Text(
+            "The hits' keys were asked of their buckets' other files: ${formatCounted(result.bucketFilesRead, "file")} opened" +
+                (if (result.bucketFilesPruned > 0) ", ${result.bucketFilesPruned} left unopened because ${if (result.bucketFilesPruned == 1) "its" else "their"} key range excludes every key asked" else "") + ".",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+    }
     result.filesRead.filter { it.error != null }.forEach { Text("Could not read ${fileNameFromPath(it.filePath)}: ${it.error}", fontSize = TypeScale.small, color = colors.error) }
     if (result.hits.isNotEmpty()) {
         WideTable(

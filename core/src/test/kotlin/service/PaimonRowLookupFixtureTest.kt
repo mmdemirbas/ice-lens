@@ -113,6 +113,39 @@ class PaimonRowLookupFixtureTest {
     }
 
     /**
+     * The bucket read for a hit's key opens only the files whose `_KEY_STATS` may hold the key,
+     * which is `KeyValueFileStoreScan.filterByStats` over a key predicate applied here. `pc`'s
+     * latest snapshot is the compaction's level-5 file of keys 1..5 and a level-0 file each for
+     * 6 and 7, so a key found in one file leaves the other two unopened, and a filter matching
+     * every key opens every file.
+     */
+    @Test
+    fun `the bucket read for a hit's key leaves the files whose key range excludes it unopened`() {
+        val seven = where("pc", "v", PredicateOp.EQ, "g")
+        assertEquals(RowFate.LIVE, seven.hits.single().fate)
+        assertEquals(1 to 2, seven.bucketFilesRead to seven.bucketFilesPruned, "k 7 sits in one level-0 file; the other two exclude it")
+        val three = where("pc", "k", PredicateOp.EQ, "3")
+        assertEquals(1 to 2, three.bucketFilesRead to three.bucketFilesPruned, "k 3 sits in the compacted file alone")
+        val all = where("pc", "v", PredicateOp.GTE, "a")
+        assertEquals(3 to 0, all.bucketFilesRead to all.bucketFilesPruned, "seven keys reach every file")
+        // A key whose other record is in a file the filter never opens still has that file
+        // opened by the bucket read — its key range holds the key (`lk`'s key 2, superseded).
+        val superseded = where("lk", "v", PredicateOp.EQ, "b")
+        assertEquals(RowFate.SUPERSEDED, superseded.hits.single().fate, superseded.hits.toString())
+        assertTrue(superseded.bucketFilesRead >= 2, "the bucket read opened ${superseded.bucketFilesRead} of lk's files")
+        // The keys are asked as an OR: `pu`'s `a IN ('a1', 'a3-again')` finds keys 1 and 3 in
+        // two of its four files, and the `-D` file holding key 3 alone is opened for key 3
+        // though it excludes key 1 — asked as one conjunction it would be left unopened.
+        val two = PaimonRowLookup.lookup(
+            input("pu"),
+            ScanFilter.Or(listOf("a1", "a3-again").map { ScanFilter.Term(ScanPredicate("a", PredicateOp.EQ, it)) }),
+            emptySet(),
+        )
+        assertEquals(setOf(1, 3), two.hits.map { it.cells["k"] }.toSet(), two.hits.toString())
+        assertEquals(4 to 0, two.bucketFilesRead to two.bucketFilesPruned, "every file of pu holds key 1 or key 3")
+    }
+
+    /**
      * `pkr`: the primary key `k` renamed to `id` after the first file — `_KEY_k` in that file,
      * `_KEY_id` in the two after — and key 1 written again after the rename. Paimon reads
      * `1 A / 2 b / 3 c`; the bucket's merge has to see both names as one column.

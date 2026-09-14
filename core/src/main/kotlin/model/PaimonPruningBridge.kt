@@ -266,9 +266,11 @@ fun paimonEvolvedColumnStats(node: GraphNode.PaimonDataFileNode, schema: Iceberg
 }
 
 /** A Paimon data file's `_KEY_STATS` as the statistics a key predicate is evaluated against, one per trimmed primary key. */
-fun paimonKeyColumnStats(node: GraphNode.PaimonDataFileNode): List<ColumnStats> {
-    val bounds = node.keyBounds ?: return emptyList()
-    val rowCount = node.entry.file?.rowCount
+fun paimonKeyColumnStats(node: GraphNode.PaimonDataFileNode): List<ColumnStats> = paimonKeyColumnStats(node.keyBounds, node.entry.file?.rowCount)
+
+/** The same off the decoded bounds, for a file the lookup reads rather than a node the graph draws. */
+fun paimonKeyColumnStats(keyBounds: List<PaimonColumnBounds>?, rowCount: Long?): List<ColumnStats> {
+    val bounds = keyBounds ?: return emptyList()
     return bounds.mapNotNull { bound ->
         if (!bound.decoded) return@mapNotNull null
         val type = paimonTypeAsIceberg(bound.type) ?: return@mapNotNull null

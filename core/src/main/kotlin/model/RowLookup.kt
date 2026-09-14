@@ -90,6 +90,13 @@ data class RowLookupResult(
     /** Live files a batch read of the table skips — Paimon's level 0 under some rules — and their rows. */
     val skippedFiles: Int = 0,
     val skippedRows: Long = 0,
+    /**
+     * The bucket reads for the hits' keys — Paimon only: the bucket files opened for a key's
+     * other records, and the ones left unopened because their `_KEY_STATS` exclude every key
+     * asked of the bucket, the pruning `KeyValueFileStoreScan` runs a key predicate through.
+     */
+    val bucketFilesRead: Int = 0,
+    val bucketFilesPruned: Int = 0,
 ) {
     val live: Int get() = hits.count { it.fate == RowFate.LIVE || it.fate == RowFate.MERGED }
     val deleted: Int get() = hits.count { it.fate.deleted }
@@ -97,7 +104,10 @@ data class RowLookupResult(
 
     /** This result with the page read after it: the files and hits in reading order, what is left as the later page says. */
     operator fun plus(next: RowLookupResult): RowLookupResult =
-        RowLookupResult(filesRead + next.filesRead, next.filesRuledOut, next.filesLeft, hits + next.hits, rule ?: next.rule, next.skippedFiles, next.skippedRows)
+        RowLookupResult(
+            filesRead + next.filesRead, next.filesRuledOut, next.filesLeft, hits + next.hits, rule ?: next.rule, next.skippedFiles, next.skippedRows,
+            bucketFilesRead + next.bucketFilesRead, bucketFilesPruned + next.bucketFilesPruned,
+        )
 }
 
 data class RowLookupInput(

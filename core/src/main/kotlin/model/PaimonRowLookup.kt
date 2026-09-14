@@ -36,6 +36,13 @@ data class PaimonLookupFile(
     val fileSchema: PaimonSchema? = null,
     /** `_WRITE_COLS` — the columns the file holds; null for every column of its schema. */
     val writeCols: List<String>? = null,
+    /**
+     * `_KEY_STATS` over the trimmed primary key as [ColumnStats], the shape the pruning rules
+     * read — what lets a bucket read for a key's other records skip the files whose key range
+     * excludes it, the way `KeyValueFileStoreScan` prunes a key predicate per file. Empty on an
+     * append table or where the bounds did not decode, which prunes nothing.
+     */
+    val keyStats: List<ColumnStats> = emptyList(),
 ) {
     /** The file's format by its name — what decides which DuckDB table function reads it. */
     val extension: String get() = fileName.substringAfterLast('.', "").lowercase()
@@ -152,6 +159,7 @@ fun PaimonUnifiedDataFile.asLookupFile(): PaimonLookupFile? {
         maxSequenceNumber = meta.maxSequenceNumber,
         fileSchema = schema,
         writeCols = meta.writeCols,
+        keyStats = paimonKeyColumnStats(keyBounds, meta.rowCount),
     )
 }
 

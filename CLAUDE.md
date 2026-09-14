@@ -549,7 +549,19 @@ intellij/src/main/kotlin/plugin/
   filter left them** — `lk`'s `v = 'b'` matches the old record of a key whose new value is `B`,
   and the new record is in a file the filter never opens — so the bucket is asked once per bucket
   the hits fall in (`UNION ALL` over its live files, the hit keys bound and cast, `max` and
-  `arg_max` per key), never once per hit. A merge engine that combines versions rather than
+  `arg_max` per key), never once per hit. **And the bucket's files are pruned by their
+  `_KEY_STATS` before that read** (`PaimonRowLookup.filesForKeys`): the hits' keys as one
+  `OR` of per-key conjunctions through the same `evaluateFilePruning` the scan panel's file
+  stage runs, against `PaimonLookupFile.keyStats` — the file's key bounds in `ColumnStats`
+  shape, the `paimonKeyColumnStats` the primary-key pruning already reads — which is
+  `KeyValueFileStoreScan.filterByStats` over a key predicate; a file whose key range excludes
+  every key asked holds no record of any. A file recording no key bounds, or a literal its
+  bounds' type cannot read, is opened; the files the hits came from always are.
+  `RowLookupResult.bucketFilesRead` / `.bucketFilesPruned` carry the figures to the
+  headline. `pc` is the oracle — a key found in one of its three live files leaves the other
+  two unopened, seven keys open all three — and `pu`'s `a IN ('a1', 'a3-again')` pins the
+  `OR`: the `-D` file holding key 3 alone is opened for key 3 though it excludes key 1, which
+  one conjunction would have left unopened, losing the retraction. A merge engine that combines versions rather than
   picking one is reported and not applied: a key with one record is that record, a key with
   several is `not decided`. An append table has neither keys nor sequence, so a hit is live
   unless its vector marks it (`ad`). `service/PaimonDeletionVectorReader.kt` decodes the vector
@@ -2474,7 +2486,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,338 tests across 180 files (1,054 in :core, 273 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,339 tests across 180 files (1,055 in :core, 273 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
