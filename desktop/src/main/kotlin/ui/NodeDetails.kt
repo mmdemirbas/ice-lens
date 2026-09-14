@@ -36,6 +36,7 @@ import kotlinx.coroutines.withContext
 import service.PositionalDeleteTally
 import service.SampleRowReader
 import model.DeletionVector
+import model.SchemaFieldRow
 import model.DeleteCandidate
 import model.UnreferencedFilesReport
 import model.DeleteReachVerdict
@@ -126,6 +127,38 @@ internal fun normalizeText(value: String?): String {
         .replace("\n", "\\n")
         .replace("\r", "\\r")
         .replace("\t", "\\t")
+}
+
+/**
+ * A schema as one row per field, nested fields included — [SchemaFieldRow], the same table on
+ * the Iceberg metadata panel and the Paimon schema panel. The field column holds the dotted
+ * path, which is the name a filter and Iceberg's metadata tables use, and a container's row
+ * says only what it is; its fields are the rows under it. [identifierIds] draws the
+ * identifier column (Iceberg only); the default columns are drawn only where a field records
+ * one, since on most tables they would be a column of `none`.
+ */
+@Composable
+internal fun SchemaFieldsTable(rows: List<SchemaFieldRow>, identifierIds: Set<Int>? = null) {
+    val hasInitial = rows.any { it.initialDefault != null }
+    val hasWrite = rows.any { it.writeDefault != null }
+    val headers = listOf("Field ID", "Field", "Required", "Type") +
+        (if (identifierIds != null) listOf("Is Identifier Field") else emptyList()) +
+        (if (hasInitial) listOf("Initial Default") else emptyList()) +
+        (if (hasWrite) listOf(if (hasInitial) "Write Default" else "Default") else emptyList())
+    val widths = listOf(90.dp, 220.dp, 80.dp, 180.dp) +
+        (if (identifierIds != null) listOf(120.dp) else emptyList()) +
+        (if (hasInitial) listOf(120.dp) else emptyList()) +
+        (if (hasWrite) listOf(120.dp) else emptyList())
+    WideTable(
+        headers = headers,
+        columnWidths = widths,
+        rows = rows.map { row ->
+            listOf(row.id.toString(), row.path, row.required.toString(), row.type) +
+                (if (identifierIds != null) listOf(if (row.id in identifierIds) "Yes" else "No") else emptyList()) +
+                (if (hasInitial) listOf(row.initialDefault ?: "none") else emptyList()) +
+                (if (hasWrite) listOf(row.writeDefault ?: "none") else emptyList())
+        },
+    )
 }
 
 internal fun kvLongs(values: List<KeyValuePairLong>?): String =

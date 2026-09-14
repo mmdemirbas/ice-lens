@@ -41,6 +41,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import model.GraphModel
+import model.currentSchemaModel
+import model.fieldRows
 import model.WorkspaceItem
 import model.WorkspaceTableStatus
 import model.GraphSearch
@@ -450,6 +452,14 @@ class InspectorRenderTest {
         }
         val metadata = defaults.nodes.filterIsInstance<GraphNode.MetadataNode>().first { it.fileName == "v6.metadata.json" }
         renderInspector(defaults, metadata.id, "metadata-node-defaults", height = 5200)
+        // The schema table with nested fields as rows of their own: `deep`'s newest schema,
+        // where `addr.town` (field 6, renamed from `city`) and `addr.country` (11, added since)
+        // sit under `addr` with the ids a file's columns are placed by.
+        val deepModel = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/deep").absolutePath))
+        val deepSchema = assertNotNull(deepModel.metadatas.last().metadata.currentSchemaModel())
+        renderScene("schema-fields-nested", width = 1400, height = 900) {
+            Column(Modifier.padding(16.dp)) { SchemaFieldsTable(deepSchema.fieldRows(), identifierIds = deepSchema.identifierFieldIds) }
+        }
 
         // The Paimon twin: `pse`'s first file holds `v`, read as `label`, and no `w`; the
         // latest schema's panel carries the write default its SET DEFAULT stored.

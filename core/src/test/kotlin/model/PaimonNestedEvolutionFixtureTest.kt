@@ -106,6 +106,20 @@ class PaimonNestedEvolutionFixtureTest {
         assertTrue(assertNotNull(new.readAs.value).cells.none { it.rebuilt }, "the schema's shape: nothing rebuilt")
     }
 
+    /** The schema panel's rows, in Paimon's spelling, the element at the id its Parquet writer records. */
+    @Test
+    fun `the schema's rows list the nested fields by path, the element at its derived id`() {
+        val rows = model.schemas.maxByOrNull { it.id ?: -1 }!!.fieldRows()
+        assertEquals(
+            listOf(
+                Triple(0, "k", "INT"), Triple(1, "addr", "ROW"), Triple(2, "addr.town", "STRING"), Triple(3, "addr.zip", "INT"), Triple(7, "addr.country", "STRING"),
+                Triple(4, "items", "ARRAY"), Triple(536875008, "items.element", "ROW"), Triple(5, "items.element.code", "STRING"), Triple(6, "items.element.qty", "INT"),
+            ),
+            rows.map { Triple(it.id, it.path, it.type) },
+        )
+        assertEquals(listOf(0, 0, 1, 1, 1, 0, 1, 2, 2), rows.map { it.depth })
+    }
+
     /** The schema steps name the change where it happened: inside `addr`, inside the list's element — never a type change on the parent. */
     @Test
     fun `the schema evolution names a rename inside a struct and inside a list's element, not a type change on the parent`() {

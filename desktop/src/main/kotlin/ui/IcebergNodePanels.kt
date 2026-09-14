@@ -12,6 +12,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import model.newestIcebergMetadata
+import model.fieldRows
+import model.tableSchemaModel
 import model.nameMapping
 import model.deleteTargetsOf
 import model.effectiveMinSequenceNumber
@@ -93,28 +95,13 @@ internal fun ColumnScope.MetadataPanel(
                         fontSize = TypeScale.body
                     )
                     Spacer(Modifier.height(4.dp))
-                    // v3 column defaults, drawn only where the schema records one: the initial
-                    // default is what a read returns for rows written before the column, the
-                    // write default what a writer stores when a row omits it — two figures that
-                    // differ once `updateColumnDefault` has run (`defaults`).
-                    val hasDefaults = schema.fields.any { it.initialDefault != null || it.writeDefault != null }
-                    WideTable(
-                        headers = listOf("Field ID", "Field Name", "Required", "Type", "Is Identifier Field") +
-                            (if (hasDefaults) listOf("Initial Default", "Write Default") else emptyList()),
-                        columnWidths = listOf(70.dp, 160.dp, 80.dp, 180.dp, 120.dp) + (if (hasDefaults) listOf(120.dp, 120.dp) else emptyList()),
-                        rows = schema.fields
-                            .sortedBy { it.id ?: Int.MAX_VALUE }
-                            .map { field ->
-                                val isIdentifier = field.id != null && field.id in schema.identifierFieldIds
-                                listOf(
-                                    "${field.id ?: "N/A"}",
-                                    field.name ?: "N/A",
-                                    "${field.required ?: false}",
-                                    normalizeText(field.type?.toString()?.trim('"')),
-                                    if (isIdentifier) "Yes" else "No"
-                                ) + if (hasDefaults) listOf(showJsonDefault(field.initialDefault), showJsonDefault(field.writeDefault)) else emptyList()
-                            }
-                    )
+                    // One row per field, a struct's fields under it by path (`deep`); v3 column
+                    // defaults drawn only where the schema records one — the initial default is
+                    // what a read returns for rows written before the column, the write default
+                    // what a writer stores when a row omits it, two figures that differ once
+                    // `updateColumnDefault` has run (`defaults`).
+                    val model = tableSchemaModel(schema)
+                    SchemaFieldsTable(model.fieldRows(), identifierIds = model.identifierFieldIds)
                     Spacer(Modifier.height(12.dp))
                 }
         }
@@ -1273,6 +1260,3 @@ internal fun ColumnScope.FilePanel(
         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 }
 
-/** A v3 default as the schema table prints it — the JSON scalar's text, `none` where the field records none. */
-private fun showJsonDefault(default: kotlinx.serialization.json.JsonElement?): String =
-    default?.let { (it as? kotlinx.serialization.json.JsonPrimitive)?.content ?: it.toString() } ?: "none"

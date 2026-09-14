@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on exactly the files a migrated table is made of. `migdeep` is the fixture
 
 ### Added
+- **Both schema panels list nested fields as rows of their own.** A struct's fields under
+  their path (`addr.town`), a list's element and a map's key and value, each with the id the
+  format places and renames it by — where the metadata panel printed a nested type's JSON in
+  one cell and the Paimon schema panel its `ROW<…>` spelling
 - **A row lookup past the file cap continues a page at a time.** Sixty-four files a click, the
   headline counting what is not read yet and a control under the table reading the next page,
   the pages folded into one result — on both formats, a Paimon page keeping a data-evolution

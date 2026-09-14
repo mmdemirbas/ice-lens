@@ -74,8 +74,8 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   file's nested fields are placed by id under its own schema's tree too (`pne`), which also
   made a Paimon table with any nested column *open* — its schema JSON writes such a type as an
   object, which read as an error on every schema before. Still by name: a map's key and value
-  on the row panel. Both schema panels print a nested type as one cell; listing the nested
-  fields as rows of their own, with the ids the formats evolve them by, is the next step there. What the vector work does *not* cover on the
+  on the row panel. Both schema panels list nested fields as rows of their own, by path, with
+  the ids the formats evolve them by (`model/SchemaFieldRows.kt`). What the vector work does *not* cover on the
   canvas: an Iceberg **positional delete** file (v2) marks no row *card*, because its targets are
   one per row and only known after reading the file — the same reason there is no `e_dv_*`-style
   edge for it. A row's panel answers it behind a click (`RowDeletesSection`), for equality deletes

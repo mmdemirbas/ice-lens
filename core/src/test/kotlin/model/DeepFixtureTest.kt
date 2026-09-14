@@ -131,6 +131,21 @@ class DeepFixtureTest {
         assertTrue("Izmir" in newAddr.value && "TR" in newAddr.value, newAddr.value)
     }
 
+    /** The schema panel's rows: every field, nested ones under their path, a container's row naming only its kind. */
+    @Test
+    fun `the schema's rows list nested fields by path with their ids, depth-first`() {
+        val rows = schema.fieldRows()
+        assertEquals(
+            listOf(
+                Triple(1, "id", "int"), Triple(2, "name", "string"), Triple(3, "addr", "struct"), Triple(6, "addr.town", "string"), Triple(7, "addr.zip", "int"), Triple(11, "addr.country", "string"),
+                Triple(4, "tags", "list"), Triple(8, "tags.element", "string"), Triple(5, "props", "map"), Triple(9, "props.key", "string"), Triple(10, "props.value", "int"),
+            ),
+            rows.map { Triple(it.id, it.path, it.type) },
+        )
+        assertEquals(listOf(0, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1), rows.map { it.depth })
+        assertTrue(rows.single { it.path == "props.key" }.required, "a map's key is required")
+    }
+
     @Test
     fun `a file's column tree has the schema's shape, the list and map wrappers folded away`() {
         val file = model.metadatas.last().snapshots.first().manifests.flatMap { it.dataFiles }.first()

@@ -85,6 +85,7 @@ core/src/main/kotlin/
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
+│   ├── SchemaFieldRows.kt     # A schema as one row per field, nested fields under their path with the ids the format evolves them by — both schema panels' table
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
 │   ├── PartitionSummaryTally.kt # manifest_file's partition summaries — the bounds a scan prunes on — against the entries' decoded partitions
@@ -836,7 +837,15 @@ intellij/src/main/kotlin/plugin/
   `RENAME COLUMN items.element.sku TO code`, Paimon's read printed in the script; the schema
   steps name the change where it happened (`renamed addr.town: city → town`, `renamed
   items.element.code`) rather than a type change on the parent, since `paimonFieldChanges`
-  recurses into a row and compares everything else by its spelling without nullability
+  recurses into a row and compares everything else by its spelling without nullability.
+  **Both schema panels list nested fields as rows.** `model/SchemaFieldRows.kt` walks either
+  schema depth-first into one `SchemaFieldRow` per field — the dotted path a filter and
+  Iceberg's metadata tables use, the id, a container's kind alone (`struct`, `list`, `map`;
+  `ROW`, `ARRAY`, `MAP`) with its fields as the rows under it — and `SchemaFieldsTable` in
+  `ui/NodeDetails.kt` draws it on the metadata panel and the Paimon schema panel. The Iceberg
+  table printed a nested type as its JSON and the Paimon one as `ROW<…>` in one cell, which
+  hid the one fact about a nested column a reader comes for: the id it is placed and renamed
+  by. A Paimon element, key or value is listed at the id its Parquet writer derives
 - **A sampled row's position is asked for, not inferred.** DuckDB is given
   `read_parquet(?, file_row_number = true)`, and `UnifiedRow.position` carries the answer as
   something separate from the row's cells — it is DuckDB's statement about the file, not a column
@@ -2146,7 +2155,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,246 tests across 166 files (976 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,248 tests across 166 files (978 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

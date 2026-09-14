@@ -13,6 +13,7 @@ import model.GraphNode
 import model.recordedColumnStats
 import model.MAIN_BRANCH
 import model.PaimonFileSource
+import model.fieldRows
 import model.paimonManifestTallies
 import java.io.File
 
@@ -78,17 +79,11 @@ internal fun ColumnScope.PaimonSchemaPanel(
         node.step?.let { SchemaStepSection(it) }
         if (node.data.fields.isNotEmpty()) {
             Section("Fields") {
-                // A default is write-time — `ALTER COLUMN … SET DEFAULT` — so a file written
-                // before it reads the column as null; the column is drawn only where one is set.
-                val hasDefaults = node.data.fields.any { it.defaultValue != null }
-                WideTable(
-                    headers = listOf("Field ID", "Name", "Type") + (if (hasDefaults) listOf("Default") else emptyList()),
-                    columnWidths = listOf(70.dp, 160.dp, 200.dp) + (if (hasDefaults) listOf(120.dp) else emptyList()),
-                    rows = node.data.fields.map { field ->
-                        listOf("${field.id ?: "N/A"}", field.name ?: "?", field.type ?: "?") +
-                            (if (hasDefaults) listOf(field.defaultValue ?: "") else emptyList())
-                    },
-                )
+                // One row per field, a ROW's fields under it by path with the ids Paimon evolves
+                // them by (`pne`). A default is write-time — `ALTER COLUMN … SET DEFAULT` — so a
+                // file written before it reads the column as null; the column is drawn only
+                // where one is set.
+                SchemaFieldsTable(node.data.fieldRows())
             }
         }
         if (node.data.options.isNotEmpty()) {
