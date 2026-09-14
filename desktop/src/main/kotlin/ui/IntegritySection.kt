@@ -81,7 +81,7 @@ internal fun IntegritySection(
             runCatching {
                 val targets = requireNotNull(node.fileStats.value) { "no files to read" }
                 val page = sweepFileStats(targets, max = pageSize, from = soFar?.sweep?.filesRead ?: 0) {
-                    StatsCheckReader.check(it.localPath, it.recorded, it.recordedRows, it.nameMapping)
+                    StatsCheckReader.check(it)
                 }
                 FileReads(soFar?.sweep?.plus(page) ?: page, node.statisticsFiles.value.orEmpty())
             }

@@ -349,7 +349,7 @@ internal fun ColumnScope.PaimonDataFilePanel(
                     },
                 )
             }
-            StatsCheckSection(node.id, node.localPath, node.recordedColumnStats(), file?.rowCount)
+            StatsCheckSection(node.id, node.localPath, node.recordedColumnStats(), file?.rowCount, recordedSize = file?.fileSize)
         }
         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 }

@@ -1281,7 +1281,7 @@ internal fun ColumnScope.FilePanel(
             }
             // The name mapping places a registered file's columns, which record no field ids.
             val nameMapping = currentGraph.newestIcebergMetadata()?.nameMapping()
-            StatsCheckSection(node.id, node.localPath, node.recordedColumnStats(), node.data.recordCount, nameMapping = nameMapping)
+            StatsCheckSection(node.id, node.localPath, node.recordedColumnStats(), node.data.recordCount, nameMapping = nameMapping, recordedSize = node.data.fileSizeInBytes, recordedSplitOffsets = node.data.splitOffsets)
         }
 
         RecursiveDataTableSection(node = node, graphModel = currentGraph)

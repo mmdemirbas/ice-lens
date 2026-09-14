@@ -61,18 +61,59 @@ data class StatsCheckResult(
     /** The entry's `record_count` (`_ROW_COUNT`), compared with [rows]. */
     val recordedRows: Long?,
     val columns: List<ColumnStatsCheck>,
+    /** The file's size and row groups against what the entry records of them; null where the read gave none. */
+    val layout: FileLayoutCheck? = null,
 ) {
     val rowsAgree: Boolean? get() = recordedRows?.let { it == rows }
-    val disagreements: Int get() = columns.count { it.verdict == StatsVerdict.DISAGREES } + (if (rowsAgree == false) 1 else 0)
-    val checked: Int get() = columns.count { it.verdict != StatsVerdict.NOT_CHECKED } + (if (rowsAgree != null) 1 else 0)
-    /** Figures compared, over every column and the row count — what [problems] is a share of. */
-    val figures: Int get() = columns.sumOf { it.compared } + (if (rowsAgree != null) 1 else 0)
+    val disagreements: Int get() = columns.count { it.verdict == StatsVerdict.DISAGREES } + (if (rowsAgree == false) 1 else 0) + (layout?.problems?.size ?: 0)
+    val checked: Int get() = columns.count { it.verdict != StatsVerdict.NOT_CHECKED } + (if (rowsAgree != null) 1 else 0) + (layout?.compared ?: 0)
+    /** Figures compared, over every column, the row count and the layout — what [problems] is a share of. */
+    val figures: Int get() = columns.sumOf { it.compared } + (if (rowsAgree != null) 1 else 0) + (layout?.compared ?: 0)
 
-    /** Every disagreement, the row count first, each column's figure named with its column. */
+    /** Every disagreement, the row count first, then the layout's, then each column's figure named with its column. */
     val problems: List<StatsProblem>
         get() = buildList {
             if (rowsAgree == false) add(StatsProblem("row count", "$recordedRows", "$rows"))
+            layout?.let { addAll(it.problems) }
             for (c in columns) for (p in c.problems) add(StatsProblem("${c.column} ${p.figure}", p.recorded, p.counted))
+        }
+}
+
+/** One Parquet row group as the footer lists it: the position its first column chunk starts at, and its rows. */
+data class RowGroup(val start: Long, val rows: Long)
+
+/**
+ * The entry's two layout figures against the file itself: `file_size_in_bytes` against the size
+ * on disk, and `split_offsets` against where the footer says the row groups start.
+ *
+ * Both are figures a reader takes without a stat. `FileIO.newInputFile(DataFile)` opens the file
+ * at the recorded length and `HadoopInputFile.getLength()` answers it without asking the
+ * filesystem (1.8.1), and the Parquet reader finds the footer by that length — so a wrong size
+ * is a failed read, not a wrong answer. `split_offsets` is where a scan cuts the file into
+ * tasks: `OffsetsAwareSplitScanTaskIterator` makes one task per offset, from it to the next and
+ * the last to the file's length, which is why `BaseFile.splitOffsets()` hands the list out only
+ * while its last offset is below `file_size_in_bytes` (`hasWellDefinedOffsets`, #8925) and
+ * otherwise drops it without a word, leaving the file to be split by size. A row group starts
+ * where its first column chunk does — the dictionary page where one precedes the data page,
+ * else the data page (`ColumnChunkMetaData.getStartingPos`) — and `ParquetUtil.getSplitOffsets`
+ * records those, sorted. `rgs` is the fixture with more than one; every other file's list is `[4]`.
+ */
+data class FileLayoutCheck(
+    val recordedSize: Long?,
+    val sizeOnDisk: Long?,
+    val recordedSplitOffsets: List<Long>?,
+    /** The row groups in footer order; null where the file has none DuckDB lists — an Avro file is read in blocks. */
+    val rowGroups: List<RowGroup>?,
+) {
+    val sizeAgrees: Boolean? get() = if (recordedSize == null || sizeOnDisk == null) null else recordedSize == sizeOnDisk
+    val offsetsAgree: Boolean? get() = if (recordedSplitOffsets == null || rowGroups == null) null else recordedSplitOffsets == rowGroups.map { it.start }
+    /** Whether Iceberg would use the recorded list at all — its last offset below the recorded size (`BaseFile.hasWellDefinedOffsets`, 1.8.1); null where none is recorded. */
+    val offsetsUsable: Boolean? get() = recordedSplitOffsets?.let { it.isNotEmpty() && recordedSize != null && it.last() < recordedSize }
+    val compared: Int get() = (if (sizeAgrees != null) 1 else 0) + (if (offsetsAgree != null) 1 else 0)
+    val problems: List<StatsProblem>
+        get() = buildList {
+            if (sizeAgrees == false) add(StatsProblem("file size", "$recordedSize", "$sizeOnDisk"))
+            if (offsetsAgree == false) add(StatsProblem("split offsets", recordedSplitOffsets.orEmpty().joinToString(", "), rowGroups.orEmpty().joinToString(", ") { "${it.start}" }))
         }
 }
 

@@ -690,7 +690,32 @@ intellij/src/main/kotlin/plugin/
   `FileStatsSweepTest` holds every fixture's targets to exactly the live set (a page size of
   one shows the graph draws fewer than the sweep reads) and every target to no finding through
   DuckDB, and folds injected reads to see a throwing read become one unreadable file, a moved
-  bound one finding, the cap stated, and two pages fold to the one sweep
+  bound one finding, the cap stated, and two pages fold to the one sweep.
+  **The same read puts the entry's two layout figures beside the file** (`FileLayoutCheck` in
+  `model/StatsCheck.kt`, carried on `StatsCheckResult.layout` and folded into its `figures`
+  and `problems`, so the sweep lists them under `FILE_STATISTICS` with the column findings):
+  `file_size_in_bytes` against the size on disk, and `split_offsets` against where the Parquet
+  footer says the row groups start. Both are figures a reader takes without a stat —
+  `FileIO.newInputFile(DataFile)` opens the file at the recorded length and
+  `HadoopInputFile.getLength()` answers it without asking the filesystem (1.8.1), so a wrong size
+  is a failed footer read; and `OffsetsAwareSplitScanTaskIterator` makes one task per recorded
+  offset, from it to the next and the last to the file's length, which is why
+  `BaseFile.splitOffsets()` hands the list out only while its last offset is below
+  `file_size_in_bytes` (`hasWellDefinedOffsets`, #8925) and otherwise drops it without a word,
+  the file then split by size. A row group starts where its first column chunk does — the
+  dictionary page where one precedes the data page, else the data page
+  (`ColumnChunkMetaData.getStartingPos`), read off DuckDB's `parquet_metadata` for column 0 —
+  and the sweep over every fixture is what holds that reading: four files in the corpus open
+  with a dictionary page, and reading the data page's offset instead disagrees on all four. `rgs`
+  is the fixture with more than one row group (thirteen, under
+  `write.parquet.row-group-size-bytes = 8192`; every other file's list is `[4]`), and two facts
+  the corpus settled: **a file `add_files` registered records no offsets** — `migrated` and
+  `migdeep`, since `TableMigrationUtil.buildDataFile` sets the size and the metrics and nothing
+  else, so a scan splits a migrated file by size alone — and **Iceberg's Avro writer records none
+  either** (`avrofmt`), where DuckDB lists no blocks to compare against. Paimon records `_FILE_SIZE`
+  and no offsets, so its files get the size line alone. `FileLayoutCheckFixtureTest` holds every
+  live file of every fixture to agreement and plants a size off by one, an offset moved by one and
+  a list ending past the file size, the last of which the panel names as the list Iceberg drops
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
@@ -2210,7 +2235,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,271 tests across 172 files (998 in :core, 263 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,276 tests across 173 files (1,002 in :core, 264 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2313,6 +2338,7 @@ container invocation and the traps in it:
 | `default/respec` | `PartitionSpecEvolutionTest` | two partition specs — dropped, rebucketed, `days`→`months` |
 | `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
+| `default/rgs` | `FileLayoutCheckFixtureTest` | a 5,000-row file of thirteen Parquet row groups under `write.parquet.row-group-size-bytes = 8192`, each opening with a dictionary page, and a one-row file beside it — the one table whose `split_offsets` is more than `[4]`, checked against the footer's row-group starts |
 | `default/ndv` | `ThetaSketchFixtureTest` | the four shapes a compact theta sketch is serialised in — 20,000 distinct ids past the 4,096 nominal entries (an estimate, `ndv 20158`), seven exact, a single value, an all-null column — each blob's `ndv` the oracle for the decoded estimate |
 | `default/pstats` | `PartitionStatsFixtureTest` | a partition statistics file, written by Iceberg 1.10 — three partitions, one with a positional delete, checked against the writer's `.partitions` and this app's own live-file walk |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |

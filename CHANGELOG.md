@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A data file's size and split offsets checked against the file, on the statistics check
+  and the integrity sweep.** `file_size_in_bytes` is put beside the size on disk and
+  `split_offsets` beside where the Parquet footer says each row group starts, since a reader
+  opens the file at the recorded length and a scan cuts it into tasks at the recorded offsets —
+  neither is checked on any read path, and Iceberg silently drops an offsets list whose last
+  entry is not below the file size, which the panel now says. The new `rgs` fixture is the one
+  file with several row groups (thirteen); every other fixture's list was `[4]`. Two facts the
+  sweep settled: a file `add_files` registered records no offsets, and neither does Iceberg's
+  Avro writer.
 - **What each commit published for a row — the changelog — under the row lookup on a Paimon
   table.** The history says what a batch read returns at each snapshot; the new `Changelog`
   stage reads the changelog files each snapshot names for the same filter and lists every

@@ -1825,7 +1825,7 @@ class InspectorRenderTest {
         val settled = java.util.concurrent.atomic.AtomicBoolean(false)
         renderUntil("stats-check", width = 1400, height = 700, ready = settled::get) {
             Column(Modifier.padding(16.dp)) {
-                StatsCheckSection(file.id, file.localPath, recorded, file.data.recordCount, startRequested = true) { settled.set(true) }
+                StatsCheckSection(file.id, file.localPath, recorded, file.data.recordCount, recordedSize = file.data.fileSizeInBytes, recordedSplitOffsets = file.data.splitOffsets, startRequested = true) { settled.set(true) }
             }
         }
         val moved = recorded.map {
@@ -1838,7 +1838,33 @@ class InspectorRenderTest {
         val settledMoved = java.util.concurrent.atomic.AtomicBoolean(false)
         renderUntil("stats-check-disagreeing", width = 1400, height = 700, ready = settledMoved::get) {
             Column(Modifier.padding(16.dp)) {
-                StatsCheckSection(file.id + "-moved", file.localPath, moved, (file.data.recordCount ?: 0L) + 1, startRequested = true) { settledMoved.set(true) }
+                StatsCheckSection(file.id + "-moved", file.localPath, moved, (file.data.recordCount ?: 0L) + 1, recordedSize = file.data.fileSizeInBytes, recordedSplitOffsets = file.data.splitOffsets, startRequested = true) { settledMoved.set(true) }
+            }
+        }
+    }
+
+    /**
+     * The same section on the one file with several row groups — `rgs`'s 5,000 rows in
+     * thirteen — where the row-groups line has thirteen offsets to put beside the thirteen
+     * recorded, and once more with the recorded size off by one and one offset moved, the two
+     * layout figures a reader takes on trust drawn in the error colour.
+     */
+    @Test
+    fun `the statistics check renders the row groups beside the recorded split offsets`() {
+        val graph = graphFor("rgs")
+        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().first { it.data.recordCount == 5000L }
+        val recorded = file.recordedColumnStats()
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("stats-check-row-groups", width = 1400, height = 900, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                StatsCheckSection(file.id, file.localPath, recorded, file.data.recordCount, recordedSize = file.data.fileSizeInBytes, recordedSplitOffsets = file.data.splitOffsets, startRequested = true) { settled.set(true) }
+            }
+        }
+        val offsets = file.data.splitOffsets!!.toMutableList().also { it[1] = it[1] + 1 }
+        val settledMoved = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("stats-check-row-groups-disagreeing", width = 1400, height = 900, ready = settledMoved::get) {
+            Column(Modifier.padding(16.dp)) {
+                StatsCheckSection(file.id + "-moved", file.localPath, recorded, file.data.recordCount, recordedSize = file.data.fileSizeInBytes!! + 1, recordedSplitOffsets = offsets, startRequested = true) { settledMoved.set(true) }
             }
         }
     }

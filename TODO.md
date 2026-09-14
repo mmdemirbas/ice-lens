@@ -174,6 +174,10 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   rows are checked on the file panel behind a click (`model/StatsCheck.kt`) and over the current
   snapshot's live files behind a second click under `Integrity` (`model/FileStatsSweep.kt`),
   64 at a click, and a table past that is read a page at a time with the count left stated.
+  The same read checks `file_size_in_bytes` against the size on disk and `split_offsets`
+  against the footer's row-group starts (`FileLayoutCheck`, `rgs`). Not checked: an ORC file's
+  stripe offsets, which DuckDB cannot open, and an Avro file's blocks, which Iceberg's writer
+  records no offsets for anyway.
 
 - **A statistics blob's sketch is decoded — done.** The `.stats` container is opened, its footer
   shown against what `metadata.json` records (`model/TableStatistics.kt`), and each theta blob's

@@ -18,6 +18,9 @@ data class FileStatsTarget(
     val recordedRows: Long?,
     /** The table's name mapping, for a file recording no field ids — Iceberg only. */
     val nameMapping: NameMapping? = null,
+    /** The entry's `file_size_in_bytes` (`_FILE_SIZE`) and `split_offsets`, for [FileLayoutCheck]; Paimon records no offsets. */
+    val recordedSize: Long? = null,
+    val recordedSplitOffsets: List<Long>? = null,
 )
 
 data class FileStatsSweep(
@@ -97,6 +100,8 @@ fun UnifiedTableModel.fileStatsTargets(): List<FileStatsTarget> {
                 recorded = recordedColumnStatsOf(columnStatsFor(file, m.schema, tableFieldsById), file),
                 recordedRows = file.recordCount,
                 nameMapping = mapping,
+                recordedSize = file.fileSizeInBytes,
+                recordedSplitOffsets = file.splitOffsets,
             )
         }
     }
@@ -112,6 +117,7 @@ fun PaimonUnifiedTableModel.fileStatsTargets(): List<FileStatsTarget> {
             localPath = entry.path.toString(),
             recorded = paimonRecordedColumnStats(entry.keyBounds, entry.columnBounds),
             recordedRows = meta.rowCount,
+            recordedSize = meta.fileSize,
         )
     }
 }
