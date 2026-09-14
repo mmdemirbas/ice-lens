@@ -988,7 +988,7 @@ fun PaimonNodeCard(node: GraphNode, isSelected: Boolean = false) {
             when (node) {
                 is GraphNode.PaimonSnapshotNode -> {
                     Text(
-                        "PAIMON SNAP ${node.simpleId}" + if (node.retainedByTagOnly) " — TAG ONLY" else "",
+                        "PAIMON SNAP ${node.simpleId}" + if (node.retainedByTagOnly) " — TAG ONLY" else if (node.retainedByChangelogOnly) " — CHANGELOG ONLY" else "",
                         fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary(), maxLines = 1,
                     )
                     Text(node.commitKind ?: "N/A", fontSize = TypeScale.small, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)

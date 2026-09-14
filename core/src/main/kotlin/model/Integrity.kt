@@ -137,11 +137,13 @@ fun UnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_CHECKS
 fun PaimonUnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_CHECKS): IntegrityReport {
     val t = Tallying()
     data class Line(val branch: String?, val snapshots: List<PaimonUnifiedSnapshot>, val tagOnlyIds: Set<Long?>)
-    val lines = listOf(Line(null, snapshots + tagOnlySnapshots, tagOnlySnapshots.map { it.metadata.id }.toSet())) +
-        branches.map { Line(it.name, it.snapshots + it.tagOnlySnapshots, it.tagOnlySnapshots.map { t -> t.metadata.id }.toSet()) }
+    // A long-lived changelog is checked too — its changelog records against its list — but
+    // after the tag-only snapshots, so a snapshot both a tag and a changelog hold is the tag's.
+    val lines = listOf(Line(null, snapshots + tagOnlySnapshots + changelogs, tagOnlySnapshots.map { it.metadata.id }.toSet())) +
+        branches.map { Line(it.name, it.snapshots + it.tagOnlySnapshots + it.changelogs, it.tagOnlySnapshots.map { t -> t.metadata.id }.toSet()) }
     fun name(line: Line, s: PaimonUnifiedSnapshot) =
         "snapshot ${s.metadata.id}" + (s.metadata.commitKind?.let { " ($it)" } ?: "") +
-            (if (s.metadata.id in line.tagOnlyIds) ", retained by a tag only" else "") + (line.branch?.let { " on $it" } ?: "")
+            (if (s.metadata.id in line.tagOnlyIds) ", retained by a tag only" else if (s.longLivedChangelog) ", a long-lived changelog" else "") + (line.branch?.let { " on $it" } ?: "")
 
     val seenManifests = mutableSetOf<String>()
     var readErrors = readErrors.size

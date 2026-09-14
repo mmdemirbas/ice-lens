@@ -97,8 +97,12 @@ class PaimonRecordTalliesTest {
             assertTrue(nodes.isNotEmpty())
             nodes.forEach { node ->
                 val tallies = node.recordTallies
-                assertTrue(tallies != null && tallies.size == 3, "$name ${node.id}")
-                assertEquals(node.liveFiles?.sumOf { it.recordCount }, tallies!!.first().counted, "$name ${node.id}: the total is the comparison's rows")
+                // A changelog-only snapshot's base and delta are gone: its changelog records alone are tallied.
+                val expected = if (node.retainedByChangelogOnly) 1 else 3
+                assertTrue(tallies != null && tallies.size == expected, "$name ${node.id}: $tallies")
+                if (!node.retainedByChangelogOnly) {
+                    assertEquals(node.liveFiles?.sumOf { it.recordCount }, tallies!!.first().counted, "$name ${node.id}: the total is the comparison's rows")
+                }
             }
         }
     }

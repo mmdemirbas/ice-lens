@@ -109,8 +109,8 @@ private fun icebergReferencedFiles(model: UnifiedTableModel): List<Path> {
 }
 
 private fun paimonReferencedFiles(model: PaimonUnifiedTableModel): List<Path> =
-    paimonLineReferencedFiles(model.path, model.path, model.schemas, model.snapshots, model.tags) +
-        model.branches.flatMap { paimonLineReferencedFiles(model.path, it.path, it.schemas, it.snapshots, it.tags) } +
+    paimonLineReferencedFiles(model.path, model.path, model.schemas, model.snapshots, model.tags, model.changelogs) +
+        model.branches.flatMap { paimonLineReferencedFiles(model.path, it.path, it.schemas, it.snapshots, it.tags, it.changelogs) } +
         model.consumers.map { it.path } +
         // The Iceberg export under `metadata/` names its own manifest lists and manifests, and
         // the data files it lists are the table's; without this every file of the export is a
@@ -128,15 +128,22 @@ private fun paimonLineReferencedFiles(
     schemas: List<PaimonSchema>,
     snapshots: List<PaimonUnifiedSnapshot>,
     tags: List<PaimonUnifiedTag>,
+    /** The line's long-lived changelogs, whose changelog lists and files an expiry kept — `pcl`'s, false orphans without this. */
+    changelogs: List<PaimonUnifiedSnapshot> = emptyList(),
 ): List<Path> {
     val manifestDir = root.resolve("manifest")
     // add(), not +=: a Path is an Iterable<Path> of its own segments, and += would append those.
     val paths = mutableListOf<Path>()
     paths.add(metadataRoot.resolve("snapshot").resolve("EARLIEST"))
     paths.add(metadataRoot.resolve("snapshot").resolve("LATEST"))
+    // `changelog/` keeps its own hints; only a table whose changelog outlives its snapshots has the directory.
+    metadataRoot.resolve("changelog").takeIf { Files.isDirectory(it) }?.let { dir ->
+        paths.add(dir.resolve("EARLIEST"))
+        paths.add(dir.resolve("LATEST"))
+    }
     schemas.forEach { schema -> schema.id?.let { paths.add(metadataRoot.resolve("schema").resolve("schema-$it")) } }
     tags.forEach { paths.add(it.path) }
-    (snapshots + tags.map { it.snapshot }).forEach { snapshot ->
+    (snapshots + tags.map { it.snapshot } + changelogs).forEach { snapshot ->
         paths.add(snapshot.path)
         val md = snapshot.metadata
         listOfNotNull(md.baseManifestList, md.deltaManifestList, md.changelogManifestList, md.indexManifest)

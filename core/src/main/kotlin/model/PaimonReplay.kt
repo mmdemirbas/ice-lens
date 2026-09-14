@@ -268,9 +268,13 @@ fun paimonRecordTallies(snapshot: PaimonUnifiedSnapshot, liveRecords: Long): Lis
         if (signed && (entry.metadata.kind ?: PaimonEntryKind.ADD) == PaimonEntryKind.DELETE) -rows else rows
     }
     val recorded = snapshot.metadata
-    return listOf(
-        CommitTally("Total records", recorded.totalRecordCount, liveRecords),
-        CommitTally("Delta records", recorded.deltaRecordCount, rows(snapshot.deltaManifests, signed = true)),
+    // A long-lived changelog whose base or delta list the expiry deleted has nothing to count
+    // those two against: the replay is over what is left, which is not what was recorded.
+    val baseRetired = snapshot.metadata.baseManifestList in snapshot.retiredLists
+    val deltaRetired = snapshot.metadata.deltaManifestList in snapshot.retiredLists
+    return listOfNotNull(
+        if (baseRetired || deltaRetired) null else CommitTally("Total records", recorded.totalRecordCount, liveRecords),
+        if (deltaRetired) null else CommitTally("Delta records", recorded.deltaRecordCount, rows(snapshot.deltaManifests, signed = true)),
         CommitTally("Changelog records", recorded.changelogRecordCount, rows(snapshot.changelogManifests, signed = false)),
     )
 }

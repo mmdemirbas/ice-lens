@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Paimon's long-lived changelogs are read** — `changelog/changelog-<id>`, the snapshots a
+  decoupled changelog lifecycle keeps after expiry, drawn as `CHANGELOG ONLY` snapshots with
+  their changelog list, the lists the expiry deleted named on the panel, their files referenced
+  (they were orphans before), and the expiry-file plan keeping what a decoupled expiry keeps
+  under the derived rule rather than an option that does not exist. Fixture `pcl`.
 - **`rewrite_manifests` planned** — the snapshot panel's `Manifest Rewrite`: per content kind,
   the manifests under the output spec rewritten into their length over
   `commit.manifest.target-size-bytes`, a kind of one manifest within the target left alone,

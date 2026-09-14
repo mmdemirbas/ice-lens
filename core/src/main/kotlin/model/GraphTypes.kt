@@ -854,6 +854,14 @@ sealed class GraphNode(
          */
         val retainedByTagOnly: Boolean = false,
         /**
+         * True for a `changelog/changelog-<id>` file — see [PaimonUnifiedSnapshot.longLivedChangelog]:
+         * an expired snapshot whose change stream the decoupled changelog lifecycle keeps. Its
+         * base and delta lists are usually gone, named in [retiredLists], so it draws its
+         * changelog list and nothing a replay could run over.
+         */
+        val retainedByChangelogOnly: Boolean = false,
+        val retiredLists: List<String> = emptyList(),
+        /**
          * The branch whose `snapshot/` holds this file — null for main, whose snapshots sit at
          * the table root. A branch's snapshot ids are its own, so two nodes with one `data.id`
          * on two branches are two commits, and this is what tells them apart.

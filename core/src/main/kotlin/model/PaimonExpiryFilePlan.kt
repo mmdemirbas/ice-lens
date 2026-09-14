@@ -25,8 +25,16 @@ package model
  *    set, which is why a tag keeps data and not changelog.
  * 4. The snapshot files.
  *
- * `changelog.lifecycle-decoupled` changes passes 1 and 3 (the changelog and its manifests outlive
- * the snapshot); the plan is the default's and says so in [PaimonExpiryFilePlan.decoupled].
+ * **A decoupled changelog lifecycle changes what goes.** `CoreOptions.changelogLifecycleDecoupled`
+ * is derived, not an option of its own: `changelog.num-retained.max`, `.min` or
+ * `changelog.time-retained` above the snapshot setting (each defaulting to it). Then the expiry
+ * keeps the change stream for `expire_changelogs` and writes the snapshot again as
+ * `changelog/changelog-<id>`: pass 2 frees no changelog file and pass 3 no changelog list, and
+ * on a table with no changelog producer — whose delta list *is* its change stream — pass 1 keeps
+ * every `APPEND`-sourced data file and pass 3 the base and delta lists too
+ * (`SnapshotDeletion.cleanUnusedDataFiles` / `cleanUnusedManifests`, `produceChangelog`). `pcl`
+ * is the fixture: its `changelog/` holds what the passes left. [PaimonExpiryFilePlan.decoupled]
+ * says which rule the plan ran under.
  */
 enum class PaimonExpiryFileKind(val label: String) {
     DATA_FILE("data file"),
@@ -114,7 +122,8 @@ fun PaimonUnifiedTableModel.expiryFileInput(): PaimonExpiryFileInput = PaimonExp
 
 /** The plan for removing every snapshot in [removed] — the ids [planExpiry] would drop, a contiguous range from the earliest. */
 fun PaimonExpiryFileInput.planExpiryFiles(removed: Set<Long>): PaimonExpiryFilePlan {
-    val decoupled = tableOptions["changelog.lifecycle-decoupled"]?.toBooleanStrictOrNull() ?: false
+    val decoupled = paimonChangelogLifecycleDecoupled(tableOptions)
+    val producesChangelog = (tableOptions["changelog-producer"] ?: "none").lowercase() != "none"
     val ids = snapshots.keys.sorted()
     val removedIds = ids.filter { it in removed }
     if (removedIds.isEmpty()) return PaimonExpiryFilePlan(null, null, decoupled, emptyList(), emptyList())
@@ -151,7 +160,10 @@ fun PaimonExpiryFileInput.planExpiryFiles(removed: Set<Long>): PaimonExpiryFileP
         val previousTag = tags.lastOrNull { (it.snapshot.id ?: Long.MAX_VALUE) < id }
         val held = previousTag?.let { t -> tagFiles.getOrPut(t.snapshot.id!!) { mergedNames(t.snapshot) } }.orEmpty()
         toDelete.forEach { (name, e) ->
+            // Decoupled with no changelog producer: an APPEND-sourced file is the change stream itself, left to expire_changelogs.
+            val keptForChangelog = decoupled && !producesChangelog && (e.metadata.file?.fileSource ?: PaimonFileSource.APPEND) == PaimonFileSource.APPEND
             if (name in held) protectedByTag.add(PaimonExpiryProtected(name, previousTag!!.name, previousTag.snapshot.id!!, id))
+            else if (keptForChangelog) Unit
             else {
                 add(PaimonExpiryFileKind.DATA_FILE, name, e.path.toString(), e.metadata.file?.fileSize, PaimonExpiryFileReason.REMOVED_BY_LATER, id)
                 e.metadata.file?.extraFiles.orEmpty().forEach { extra -> add(PaimonExpiryFileKind.DATA_FILE, extra, e.path.resolveSibling(extra).toString(), null, PaimonExpiryFileReason.REMOVED_BY_LATER, id) }
@@ -159,7 +171,7 @@ fun PaimonExpiryFileInput.planExpiryFiles(removed: Set<Long>): PaimonExpiryFileP
         }
     }
 
-    // 2. Changelog files added by [begin, end).
+    // 2. Changelog files added by [begin, end) — kept for the changelog when its lifecycle is decoupled.
     if (!decoupled) {
         range.forEach { id ->
             snapshots[id]?.changelog?.forEach { m ->
@@ -195,11 +207,13 @@ fun PaimonExpiryFileInput.planExpiryFiles(removed: Set<Long>): PaimonExpiryFileP
             }
             if (name !in skipping) add(PaimonExpiryFileKind.MANIFEST_LIST, name, "manifest/$name", null, PaimonExpiryFileReason.EXPIRED_SNAPSHOT, id)
         }
-        if (!decoupled) {
+        // Decoupled: the changelog list stays for expire_changelogs; the base and delta lists go
+        // unless the table produces no changelog, in which case the delta list is the change stream.
+        if (!decoupled || producesChangelog) {
             list(s.metadata.baseManifestList, s.base)
             list(s.metadata.deltaManifestList, s.delta)
-            list(s.metadata.changelogManifestList, s.changelog)
         }
+        if (!decoupled) list(s.metadata.changelogManifestList, s.changelog)
         s.metadata.indexManifest?.let { im ->
             s.indexFiles.forEach { f -> f.fileName?.takeIf { it !in skipping }?.let { add(PaimonExpiryFileKind.INDEX_FILE, it, "index/$it", f.fileSize, PaimonExpiryFileReason.UNNAMED, id) } }
             if (im !in skipping) add(PaimonExpiryFileKind.INDEX_MANIFEST, im, "index/$im", null, PaimonExpiryFileReason.UNNAMED, id)

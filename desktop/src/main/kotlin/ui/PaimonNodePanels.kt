@@ -41,6 +41,17 @@ internal fun ColumnScope.PaimonSnapshotPanel(
             if (node.retainedByTagOnly) {
                 DetailRow("Retained By", "its tag only — expired from snapshot/, files kept on disk by the tag")
             }
+            if (node.retainedByChangelogOnly) {
+                DetailRow(
+                    "Retained By",
+                    "its long-lived changelog only — expired from snapshot/ and written again under changelog/ " +
+                        "because changelog.num-retained.* or changelog.time-retained outlives the snapshot setting; " +
+                        "the change stream is kept for a streaming reader, and expire_changelogs retires it",
+                )
+                if (node.retiredLists.isNotEmpty()) {
+                    DetailRow("Retired Lists", "${node.retiredLists.joinToString(", ")} — deleted with the snapshot, so nothing here replays its data")
+                }
+            }
             DetailRow("Version", "${node.data.version ?: "N/A"}")
             DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
             DetailRow("Commit Kind", node.commitKind ?: "N/A")

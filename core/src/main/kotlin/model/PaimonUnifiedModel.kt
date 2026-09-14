@@ -23,6 +23,8 @@ data class PaimonUnifiedTableModel(
     val branches: List<PaimonUnifiedBranch> = emptyList(),
     /** What `consumer/` holds, by id — see [PaimonUnifiedConsumer]. */
     val consumers: List<PaimonUnifiedConsumer> = emptyList(),
+    /** What `changelog/` holds — the long-lived changelogs of expired snapshots; see [PaimonUnifiedSnapshot.longLivedChangelog]. */
+    val changelogs: List<PaimonUnifiedSnapshot> = emptyList(),
     override val readErrors: List<UnifiedReadError> = emptyList(),
 ) : FormatTableModel {
     /** The tags naming a snapshot id, by id — a tag on a live snapshot and a tag on an expired one alike. */
@@ -70,6 +72,8 @@ data class PaimonUnifiedBranch(
     val schemas: List<PaimonSchema>,
     val snapshots: List<PaimonUnifiedSnapshot>,
     val tags: List<PaimonUnifiedTag> = emptyList(),
+    /** The line's `changelog/` — see [PaimonUnifiedSnapshot.longLivedChangelog]. */
+    val changelogs: List<PaimonUnifiedSnapshot> = emptyList(),
     val readErrors: List<UnifiedReadError> = emptyList(),
 ) {
     val tagNamesBySnapshotId: Map<Long, List<String>> by lazy { tagNamesBySnapshotId(tags) }
@@ -137,6 +141,20 @@ data class PaimonUnifiedSnapshot(
     val readErrors: List<UnifiedReadError> = emptyList(),
     /** The lengths the snapshot records for the files it names, each beside the file's length on disk. */
     val sizesOnDisk: PaimonSnapshotSizes = PaimonSnapshotSizes(),
+    /**
+     * True for `changelog/changelog-<id>`: the JSON of a snapshot an expiry removed, written
+     * again under `changelog/` because the changelog's lifecycle is decoupled from the
+     * snapshots' (`changelog.num-retained.*` or `changelog.time-retained` above the snapshot
+     * setting — `CoreOptions.changelogLifecycleDecoupled` at release-1.3.1). What the file keeps
+     * is the change stream: `ExpireSnapshotsImpl.expireUntil` leaves its changelog manifest list
+     * and changelog files alone, deletes its base and delta lists where the table produces a
+     * changelog (`SnapshotDeletion.cleanUnusedManifests`), and `ExpireChangelogImpl` retires the
+     * file under `changelog.num-retained.*`. So its base and delta manifests are usually gone —
+     * [retiredLists] names them — and reading them is not an error here the way it is on a tag.
+     */
+    val longLivedChangelog: Boolean = false,
+    /** The manifest lists the changelog names that the expiry deleted, by name — base and delta on a table that produces a changelog. */
+    val retiredLists: List<String> = emptyList(),
 )
 
 /**
@@ -292,6 +310,7 @@ fun PaimonUnifiedTableModel(tablePath: Path): PaimonUnifiedTableModel {
         tags = main.tags,
         branches = branches,
         consumers = consumers,
+        changelogs = main.changelogs,
         readErrors = errors,
     )
 }
@@ -354,14 +373,37 @@ private fun readPaimonBranch(
     }.sortedBy { it.name }
     if (tags.isNotEmpty()) logger.info("  [{}] Tags: {}", name, tags.map { it.name })
 
+    // Long-lived changelogs: the same file shape again, under `changelog/`, with the base and
+    // delta lists the expiry deleted read only where they are still there.
+    val changelogs = listChangelogFiles(metadataRoot.resolve("changelog"), errors).mapNotNull { changelogPath ->
+        readPaimonSnapshot(tablePath, changelogPath, schemasById, errors, manifestCache, longLivedChangelog = true)
+    }.sortedBy { it.metadata.id ?: Long.MAX_VALUE }
+    if (changelogs.isNotEmpty()) logger.info("  [{}] Long-lived changelogs: {}", name, changelogs.map { it.metadata.id })
+
     return PaimonUnifiedBranch(
         name = name,
         path = metadataRoot,
         schemas = schemas,
         snapshots = snapshots,
         tags = tags,
+        changelogs = changelogs,
         readErrors = errors,
     )
+}
+
+/** `changelog/changelog-<id>`, or nothing: only a table whose changelog outlives its snapshots has the directory. */
+private fun listChangelogFiles(changelogDir: Path, errors: MutableList<UnifiedReadError>): List<Path> {
+    if (!Files.isDirectory(changelogDir)) return emptyList()
+    return runCatching {
+        Files.list(changelogDir)
+            .asSequence()
+            .filter { Files.isRegularFile(it) }
+            .filter { it.fileName.toString().startsWith("changelog-") }
+            .toList()
+    }.getOrElse { e ->
+        errors += toError("list-changelog-files", changelogDir.toString(), e)
+        emptyList()
+    }
 }
 
 /** `branch/branch-<name>/`, or nothing: most tables have no `branch/` directory at all, which is not an error. */
@@ -454,6 +496,8 @@ private fun readPaimonSnapshot(
     schemasById: Map<Int?, PaimonSchema>,
     errors: MutableList<UnifiedReadError>,
     manifestCache: PaimonManifestCache,
+    /** A `changelog/` file: its base and delta lists, index manifest and statistics are read only where the expiry left them. */
+    longLivedChangelog: Boolean = false,
 ): PaimonUnifiedSnapshot? {
     val snapshot = runCatching { PaimonReader.readSnapshot(snapshotPath.toString()) }
         .onFailure { e ->
@@ -464,11 +508,19 @@ private fun readPaimonSnapshot(
     val schema = schemasById[snapshot.schemaId]
     val snapshotErrors = mutableListOf<UnifiedReadError>()
 
-    val baseManifests = readManifestList(tablePath, snapshot.baseManifestList, "base-manifest-list", snapshotErrors, manifestCache, schemasById)
-    val deltaManifests = readManifestList(tablePath, snapshot.deltaManifestList, "delta-manifest-list", snapshotErrors, manifestCache, schemasById)
+    val retired = mutableListOf<String>()
+    fun retiredUnlessThere(name: String?): String? {
+        if (!longLivedChangelog || name.isNullOrBlank()) return name
+        val manifestDir = tablePath.resolve("manifest")
+        if (Files.exists(manifestDir.resolve(name)) || Files.exists(tablePath.resolve(name))) return name
+        retired += name
+        return null
+    }
+    val baseManifests = readManifestList(tablePath, retiredUnlessThere(snapshot.baseManifestList), "base-manifest-list", snapshotErrors, manifestCache, schemasById)
+    val deltaManifests = readManifestList(tablePath, retiredUnlessThere(snapshot.deltaManifestList), "delta-manifest-list", snapshotErrors, manifestCache, schemasById)
     val changelogManifests = readManifestList(tablePath, snapshot.changelogManifestList, "changelog-manifest-list", snapshotErrors, manifestCache, schemasById)
 
-    val indexFiles = readIndexManifest(tablePath, snapshot.indexManifest, snapshotErrors)
+    val indexFiles = readIndexManifest(tablePath, retiredUnlessThere(snapshot.indexManifest), snapshotErrors)
     // The same resolution `readManifestList` applies: under `manifest/`, else at the table root.
     val manifestDir = tablePath.resolve("manifest")
     fun listSize(name: String?): Long? = name?.takeIf { it.isNotBlank() }
@@ -482,8 +534,10 @@ private fun readPaimonSnapshot(
         deltaManifests = deltaManifests,
         changelogManifests = changelogManifests,
         indexFiles = indexFiles,
-        statistics = readStatistics(tablePath, snapshot.statistics, snapshotErrors),
+        statistics = readStatistics(tablePath, if (longLivedChangelog && snapshot.statistics?.let { Files.exists(tablePath.resolve("statistics").resolve(it)) } == false) null else snapshot.statistics, snapshotErrors),
         readErrors = snapshotErrors,
+        longLivedChangelog = longLivedChangelog,
+        retiredLists = retired,
         sizesOnDisk = PaimonSnapshotSizes(
             baseManifestList = listSize(snapshot.baseManifestList),
             deltaManifestList = listSize(snapshot.deltaManifestList),

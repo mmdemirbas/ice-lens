@@ -1392,6 +1392,23 @@ class InspectorRenderTest {
      * against the full one: the fixture has a `HASH` index and no deletion vectors, so the column
      * that would carry the deleted-row link has to read as "there are none" rather than as a gap.
      */
+    /**
+     * A long-lived changelog: `pcl`'s snapshot 5, expired from `snapshot/` and written again
+     * under `changelog/` — the identity table says what retains it and which lists the expiry
+     * deleted, the card's eyebrow says `CHANGELOG ONLY`, and the recorded figures carry only the
+     * changelog tally, since nothing is left to replay.
+     */
+    @Test
+    fun `a paimon changelog-only snapshot says what retains it and what is gone`() {
+        val graph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pcl").absolutePath)),
+            showRows = false,
+        )
+        val snapshot = graph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().firstOrNull { it.retainedByChangelogOnly }
+        assertNotNull(snapshot, "the pcl fixture should carry a changelog-only snapshot")
+        renderInspector(graph, snapshot.id, "paimon-snapshot-changelog-only", height = 2000, sectionCollapse = onlyExpanded("Recorded Summary"))
+    }
+
     @Test
     fun `a paimon snapshot lists its index files`() {
         val graph = GraphLayoutService.layoutGraph(

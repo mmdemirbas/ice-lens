@@ -2474,7 +2474,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,330 tests across 179 files (1,048 in :core, 271 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,335 tests across 180 files (1,052 in :core, 272 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2632,6 +2632,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pu`, `ag`, `fr` | `PaimonMergeEngineFixtureTest` | one primary-key table per merge engine other than the default — `partial-update` folding two writes and removing a key on `-D` until its re-insert, `aggregation` summing, and `first-row`, whose DELETE Spark ran as a file rewrite to level 0 that a batch read of a first-row table never reads: Paimon's own reads printed one row where the statements describe two |
 | `paimon/db.db/sgm` | `PaimonMergeEngineFixtureTest` | `partial-update` with a sequence group of two fields, `fields.g1,g2.sequence-group = a`, and `remove-record-on-sequence-group = g2` — an insert with a null in the tuple ordered below the row's, and Paimon's read at every snapshot |
 | `paimon/db.db/sg`, `sgd` | `PaimonMergeEngineFixtureTest` | `partial-update` with two sequence groups — `sg` inserts only, a lower group value not overriding a higher; `sgd` with `remove-record-on-sequence-group = ga`, a DELETE writing a `-D` that removes the key and an insert bringing it back, Paimon's read at every snapshot |
+| `paimon/db.db/pcl` | `PaimonChangelogLifecycleFixtureTest` | `changelog-producer = input` with `changelog.num-retained.max` above `snapshot.num-retained.max`, every expiry run at commit — `snapshot/` holds 7 and 8, `changelog/` holds 5 and 6 with their changelog lists and files kept and their base and delta lists gone |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
@@ -2956,6 +2957,30 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   is why the referenced set follows tags, or that file is a false orphan in the direction that
   gets a file deleted. **A tag retains data, not changelog**: expiry deleted the changelog manifest
   list the tag still names, and the tag reads with exactly that one read error, drawn under it.
+- **A changelog can outlive its snapshot, and then `changelog/changelog-<id>` is a snapshot file
+  of a third kind.** `CoreOptions.changelogLifecycleDecoupled` (release-1.3.1) is *derived*:
+  `changelog.num-retained.max`, `.min` or `changelog.time-retained` above the snapshot setting,
+  each defaulting to it (`paimonChangelogLifecycleDecoupled`). Then `ExpireSnapshotsImpl.expireUntil`
+  keeps an expiring snapshot's changelog manifest list and changelog files, writes its JSON again
+  under `changelog/` (`Changelog`, the same fields), and deletes its base and delta lists — unless
+  the table produces no changelog, whose delta list *is* the change stream and stays with its
+  `APPEND`-sourced files (`SnapshotDeletion`, `produceChangelog`); `ExpireChangelogImpl` retires
+  the file under `changelog.num-retained.*`, **counting the live snapshots toward the maximum**:
+  `pcl`, seven inserts under max 2 snapshots and max 4 changelogs, holds snapshots 7 and 8 and
+  changelogs 5 and 6 — the floor is the latest snapshot id less the maximum plus one. So
+  `PaimonUnifiedBranch.changelogs` reads the directory through `readPaimonSnapshot` with
+  `longLivedChangelog = true`, which reads the base and delta lists, index manifest and statistics
+  only where the expiry left them and names the rest in `retiredLists` rather than as errors — a
+  tag's missing changelog list is an error and a changelog's missing base list is the rule. It is
+  drawn as a `CHANGELOG ONLY` snapshot (`PaimonSnapshotNode.retainedByChangelogOnly`) with its
+  changelog list and nothing to replay, tallied on its changelog records alone, counted in
+  `history`, checked by the integrity report, and **its files are referenced** — before this every
+  file `changelog/` kept was an orphan to the walk, in the direction that gets a file deleted.
+  The expiry-file plan follows the same rules (`planExpiryFiles`: no changelog file or list freed
+  when decoupled; base and delta lists and `APPEND` files kept too when nothing produces a
+  changelog) and says so; the option it read before, `changelog.lifecycle-decoupled`, does not
+  exist. `PaimonChangelogLifecycleFixtureTest` holds `pcl` to all of it, with what the past
+  expiries left of changelog 5 as the oracle for what a decoupled expiry keeps
 - **A Paimon file written outside the table records where, and that is the one path with
   something to resolve.** The format records no path for a file in its own layout —
   `<table>/<partition>/bucket-N/<file>` is the rule — so `PaimonPathResolution.LAYOUT` says

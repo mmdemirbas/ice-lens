@@ -492,7 +492,7 @@ internal fun PaimonExpiryFilesSection(node: GraphNode.TableNode, input: PaimonEx
                 Text(
                     "Snapshots ${plan.beginInclusive} to ${plan.endExclusive?.minus(1)} go. ${formatBytes(plan.knownBytes)} the metadata can account for" +
                         " — a list and a snapshot file record no size." +
-                        (if (plan.decoupled) " changelog.lifecycle-decoupled is set: the changelog and its manifests outlive the snapshot, and this plan is the default's." else ""),
+                        (if (plan.decoupled) " The changelog lifecycle is decoupled (changelog.num-retained.* or changelog.time-retained above the snapshot setting): the changelog lists and files stay for expire_changelogs, and each expired snapshot is written again under changelog/." else ""),
                     fontSize = TypeScale.small,
                     color = colors.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 4.dp),

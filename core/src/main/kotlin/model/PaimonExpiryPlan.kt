@@ -155,6 +155,21 @@ fun PaimonExpiryInput.planExpiry(options: PaimonExpiryOptions): PaimonExpiryPlan
 }
 
 /**
+ * `CoreOptions.changelogLifecycleDecoupled` at release-1.3.1: the changelog outlives the snapshots
+ * when `changelog.num-retained.max`, `changelog.num-retained.min` or `changelog.time-retained` —
+ * each defaulting to the snapshot setting — is above it. Derived, so a table never states it.
+ */
+fun paimonChangelogLifecycleDecoupled(options: Map<String, String>): Boolean {
+    val snapshotMin = options["snapshot.num-retained.min"]?.toIntOrNull() ?: PAIMON_DEFAULT_RETAIN_MIN
+    val snapshotMax = options["snapshot.num-retained.max"]?.toIntOrNull() ?: Int.MAX_VALUE
+    val snapshotTime = options["snapshot.time-retained"]?.let { parsePaimonDurationMs(it) } ?: PAIMON_DEFAULT_TIME_RETAINED_MS
+    val changelogMin = options["changelog.num-retained.min"]?.toIntOrNull() ?: snapshotMin
+    val changelogMax = options["changelog.num-retained.max"]?.toIntOrNull() ?: snapshotMax
+    val changelogTime = options["changelog.time-retained"]?.let { parsePaimonDurationMs(it) } ?: snapshotTime
+    return changelogMax > snapshotMax || changelogTime > snapshotTime || changelogMin > snapshotMin
+}
+
+/**
  * Paimon's `TimeUtils.parseDuration`: digits, then an optional unit label — `ms`, `s`, `min`/`m`,
  * `h`, `d` and their long forms, plural or not; no label is milliseconds. Null for anything it
  * would reject, so a mistyped option falls back to the default rather than to a wrong number.

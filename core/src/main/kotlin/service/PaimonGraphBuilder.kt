@@ -195,6 +195,8 @@ object PaimonGraphBuilder {
                     statistics = unifiedSnapshot.statistics,
                     tags = tagNames,
                     retainedByTagOnly = retainedByTagOnly,
+                    retainedByChangelogOnly = unifiedSnapshot.longLivedChangelog,
+                    retiredLists = unifiedSnapshot.retiredLists,
                     branch = branch,
                 )
             }
@@ -353,13 +355,15 @@ object PaimonGraphBuilder {
         // Snapshot nodes: what snapshot/ holds, then what only a tag still holds — a snapshot
         // expiry removed whose files a tag keeps on disk. Drawn in id order so the tagged one
         // sits where it was committed rather than after everything.
+        // Then what only a long-lived changelog still holds, after the tag-only ones: a snapshot
+        // a tag and a changelog both keep is drawn from the tag, which has its base and delta.
         val liveIds = tableModel.snapshots.mapNotNull { it.metadata.id }.toSet()
-        (tableModel.snapshots + tableModel.tagOnlySnapshots)
-            .sortedBy { it.metadata.id ?: Long.MAX_VALUE }
+        (tableModel.snapshots + tableModel.tagOnlySnapshots + tableModel.changelogs)
+            .sortedWith(compareBy({ it.metadata.id ?: Long.MAX_VALUE }, { it.longLivedChangelog }))
             .forEach { unifiedSnapshot ->
                 val id = unifiedSnapshot.metadata.id
                 val latest = unifiedSnapshot === tableModel.snapshots.lastOrNull()
-                addSnapshot(unifiedSnapshot, null, id?.let { tableModel.tagNamesBySnapshotId[it] }.orEmpty(), id !in liveIds, if (latest) tableModel.latestSchema else null, tableModel.schemas)
+                addSnapshot(unifiedSnapshot, null, id?.let { tableModel.tagNamesBySnapshotId[it] }.orEmpty(), id !in liveIds && !unifiedSnapshot.longLivedChangelog, if (latest) tableModel.latestSchema else null, tableModel.schemas)
             }
 
         // Then each branch's, the same way and under the same table root: a branch is another
@@ -369,12 +373,12 @@ object PaimonGraphBuilder {
         tableModel.branches.forEach { branch ->
             branch.readErrors.forEach { addErrorNode(tableNodeId, "BRANCH READ ERROR", it) }
             val branchLiveIds = branch.snapshots.mapNotNull { it.metadata.id }.toSet()
-            (branch.snapshots + branch.tagOnlySnapshots)
-                .sortedBy { it.metadata.id ?: Long.MAX_VALUE }
+            (branch.snapshots + branch.tagOnlySnapshots + branch.changelogs)
+                .sortedWith(compareBy({ it.metadata.id ?: Long.MAX_VALUE }, { it.longLivedChangelog }))
                 .forEach { unifiedSnapshot ->
                     val id = unifiedSnapshot.metadata.id
                     val latest = unifiedSnapshot === branch.snapshots.lastOrNull()
-                    addSnapshot(unifiedSnapshot, branch.name, id?.let { branch.tagNamesBySnapshotId[it] }.orEmpty(), id !in branchLiveIds, if (latest) branch.schemas.maxByOrNull { it.id ?: -1 } else null, branch.schemas)
+                    addSnapshot(unifiedSnapshot, branch.name, id?.let { branch.tagNamesBySnapshotId[it] }.orEmpty(), id !in branchLiveIds && !unifiedSnapshot.longLivedChangelog, if (latest) branch.schemas.maxByOrNull { it.id ?: -1 } else null, branch.schemas)
                 }
         }
 
@@ -503,8 +507,8 @@ object PaimonGraphBuilder {
         // History is everything a retained snapshot reaches: a tag retains one, and a branch
         // retains its own line. A branch's copied first snapshot reaches main's manifests, which
         // the deduplication credits to the snapshot that counted them first.
-        val retained = tableModel.snapshots + tableModel.tagOnlySnapshots +
-            tableModel.branches.flatMap { it.snapshots + it.tagOnlySnapshots }
+        val retained = tableModel.snapshots + tableModel.tagOnlySnapshots + tableModel.changelogs +
+            tableModel.branches.flatMap { it.snapshots + it.tagOnlySnapshots + it.changelogs }
         retained.forEach { snapshot ->
             val countedIn = snapshot.metadata.id?.let { "snapshot $it" }
                 ?: "snapshot file ${snapshot.path.fileName}"

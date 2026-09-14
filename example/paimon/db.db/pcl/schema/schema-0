@@ -1,0 +1,26 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT NOT NULL"
+  }, {
+    "id" : 1,
+    "name" : "v",
+    "type" : "STRING"
+  } ],
+  "highestFieldId" : 1,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ "k" ],
+  "options" : {
+    "bucket" : "1",
+    "owner" : "root",
+    "changelog.num-retained.min" : "1",
+    "changelog.num-retained.max" : "4",
+    "snapshot.num-retained.max" : "2",
+    "changelog-producer" : "input",
+    "snapshot.num-retained.min" : "1"
+  },
+  "timeMillis" : 1789404044049
+}
