@@ -56,7 +56,7 @@ core/src/main/kotlin/
 │   ├── IcebergSchema.kt       # @Serializable Iceberg data classes (metadata, snapshot, manifest, data file)
 │   ├── IcebergPaths.kt        # Shared path utilities (normalizeFilePath, metadataVersionFromFileName)
 │   ├── UnifiedModel.kt        # Aggregated data layer — reads & links all Iceberg artifacts into a tree
-│   ├── PaimonSchema.kt        # @Serializable Paimon data classes (snapshot, schema, manifest list, manifest entry)
+│   ├── PaimonSchema.kt        # @Serializable Paimon data classes (snapshot, schema, manifest list, manifest entry), and PaimonType — a field's type as the tree the JSON writes for a ROW, ARRAY or MAP
 │   ├── PaimonUnifiedModel.kt  # Aggregated Paimon data layer — reads & links snapshots, schemas, manifests
 │   ├── GraphTypes.kt          # Point, GraphModel (nodeById, layoutPositions, groups), GraphNode (sealed incl. Paimon + GroupNode), AggregationKind, GraphEdge, TableSummary/ContentStats
 │   ├── IcebergTypes.kt        # Iceberg type model + parser (field-id → type, from a manifest's own schema)
@@ -817,7 +817,26 @@ intellij/src/main/kotlin/plugin/
   `_KEY_k`. `pkr` is the fixture — Paimon reads `1 A / 2 b / 3 c` across the rename — and
   `PaimonRowLookupFixtureTest` holds key 1's old record to superseded by the file written after
   the rename. The one Paimon read still addressed by name is a data-evolution split's stitch
-  (`readSplit`), which joins by `file_row_number` and selects the schema's names
+  (`readSplit`), which joins by `file_row_number` and selects the schema's names.
+  **A nested type is an object in the schema JSON, and the nested fields evolve by id too.**
+  `PaimonField.type` was a `String`, and a `ROW`, `ARRAY`, `MULTISET` or `MAP` is written as
+  `{"type": "ROW", "fields": [...]}` (`DataTypeJsonParser` at 1.3.1, `NOT NULL` in the head
+  string) — so every schema of a table with any such column was a read error and the table
+  opened as nothing else, on the ordinary shape of a table with an address column.
+  `PaimonFieldSerializer` reads either form into `PaimonType` (a tree; a row's fields are
+  `PaimonField`s with ids of their own) and `type` is Paimon's SQL spelling of it
+  (`ROW<town STRING, zip INT, country STRING>`), so every reader of the string sees a type.
+  Paimon evolves inside a row by `DataField.id()` (`SchemaEvolutionUtil.createRowCastExecutor`,
+  arrays and maps through their element), so `paimonSchemaAsIceberg` carries the tree as a
+  struct with those ids — the element, key and value at the ids `SpecialFields` derives
+  (`base + parent × 1024 + depth`, which is the `536875008` the Parquet footer records on an
+  array's element) — `paimonFileColumnTree` places a file's tree by name under its own schema
+  at every level, and `FileProjection` / `projectRow` rebuild the struct exactly as on Iceberg.
+  `pne` is `pse` one level down: `RENAME COLUMN addr.city TO town`, `ADD COLUMN addr.country`,
+  `RENAME COLUMN items.element.sku TO code`, Paimon's read printed in the script; the schema
+  steps name the change where it happened (`renamed addr.town: city → town`, `renamed
+  items.element.code`) rather than a type change on the parent, since `paimonFieldChanges`
+  recurses into a row and compares everything else by its spelling without nullability
 - **A sampled row's position is asked for, not inferred.** DuckDB is given
   `read_parquet(?, file_row_number = true)`, and `UnifiedRow.position` carries the answer as
   something separate from the row's cells — it is DuckDB's statement about the file, not a column
@@ -2127,7 +2146,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,240 tests across 165 files (970 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,246 tests across 166 files (976 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2263,6 +2282,7 @@ container invocation and the traps in it:
 | `paimon/db.db/se` | `PaimonSchemaEvolutionFixtureTest` | `ADD COLUMN` between two writes, then a compaction — a schema-1 manifest listing a schema-0 file, whose stats decode only against its own schema |
 | `paimon/db.db/pkr` | `PaimonRowLookupFixtureTest`, `PaimonMergedCountFixtureTest` | a primary key renamed between writes — `_KEY_k` in the first file, `_KEY_id` in the two after, key 1 written again after the rename; Paimon's read `1 A / 2 b / 3 c` is printed by the script |
 | `paimon/db.db/pse` | `PaimonReadProjectionFixtureTest` | an append table evolved after its first file — `ADD COLUMN w`, `RENAME COLUMN v TO label`, `ALTER COLUMN w SET DEFAULT 7` — with Paimon's own read printed in the script: the old file's `v` as `label`, its `w` as null, and the default a later write stored for a row that omitted `w` |
+| `paimon/db.db/pne` | `PaimonNestedEvolutionFixtureTest` | `pse` one level down — a struct and a list of structs, a rename and an add inside the struct and a rename inside the list's element between two writes; the nested type object every schema of such a table carries, and Paimon's read of the old file under the new names |
 | `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest`, `PaimonRowLookupFixtureTest`, `PaimonScanPruningTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted; the stitched read `(1, 11, 1)` the lookup is held to, and the file bounds pruning must not consult |
 | `paimon/db.db/lk` | `PaimonRowKindTest` | `changelog-producer = lookup` — the `-U` / `+U` pair a re-inserted key produces, carried by the COMPACT snapshot the lookup ran in, and a `-D` with the value it removed |
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |

@@ -33,16 +33,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * is one column under two names.
  */
 fun paimonSchemaAsIceberg(schema: PaimonSchema, systemColumns: Boolean = false): IcebergSchemaModel {
-    val values = schema.fields.mapNotNull { f ->
-        val id = f.id ?: return@mapNotNull null
-        val name = f.name ?: return@mapNotNull null
-        NestedField(
-            id = id, name = name,
-            type = f.type?.let(::paimonTypeAsIceberg) ?: IcebergType.UnknownType,
-            required = f.type?.trim()?.uppercase()?.endsWith("NOT NULL") == true,
-            writeDefault = f.defaultValue?.let { kotlinx.serialization.json.JsonPrimitive(it) },
-        )
-    }
+    val values = schema.fields.mapNotNull { f -> paimonFieldAsIceberg(f, depth = 0) }
     val system = if (systemColumns && schema.primaryKeys.isNotEmpty()) {
         schema.primaryKeys.filterNot { it in schema.partitionKeys }.mapNotNull { key ->
             values.firstOrNull { it.name == key }?.let { NestedField(PaimonSystemColumns.KEY_FIELD_ID_START + it.id, PaimonSystemColumns.KEY_PREFIX + key, it.type, required = true) }
@@ -55,6 +46,79 @@ fun paimonSchemaAsIceberg(schema: PaimonSchema, systemColumns: Boolean = false):
 }
 
 /**
+ * A Paimon field as Iceberg's, its type through [paimonTypeAsIceberg] — a `ROW` as a struct of
+ * the fields it carries, each with its own id, an `ARRAY` and a `MAP` with the element, key
+ * and value ids Paimon's Parquet writer records for them (`SpecialFields`, from the parent's
+ * id and the depth) — so a nested field places by id the way a top-level one does.
+ */
+private fun paimonFieldAsIceberg(f: PaimonField, depth: Int): NestedField? {
+    val id = f.id ?: return null
+    val name = f.name ?: return null
+    val type = f.dataType
+    return NestedField(
+        id = id, name = name,
+        type = type?.let { paimonTypeAsIceberg(it, id, depth) } ?: IcebergType.UnknownType,
+        required = type?.nullable == false,
+        writeDefault = f.defaultValue?.let { kotlinx.serialization.json.JsonPrimitive(it) },
+    )
+}
+
+/** [paimonTypeAsIceberg] over the tree, [fieldId] and [depth] naming the ids an element, a key and a value get. */
+fun paimonTypeAsIceberg(type: PaimonType, fieldId: Int, depth: Int): IcebergType? = when (type) {
+    is PaimonType.Primitive -> paimonTypeAsIceberg(type.sql)
+    is PaimonType.Row -> IcebergType.StructType(type.fields.mapNotNull { paimonFieldAsIceberg(it, depth + 1) })
+    is PaimonType.Array -> paimonTypeAsIceberg(type.element, fieldId, depth + 1)
+        ?.let { IcebergType.ListType(PaimonSystemColumns.arrayElementFieldId(fieldId, depth + 1), it, elementRequired = !type.element.nullable) }
+    is PaimonType.Multiset -> paimonTypeAsIceberg(type.element, fieldId, depth + 1)
+        ?.let { IcebergType.ListType(PaimonSystemColumns.arrayElementFieldId(fieldId, depth + 1), it, elementRequired = !type.element.nullable) }
+    is PaimonType.Map -> paimonTypeAsIceberg(type.key, fieldId, depth + 1)?.let { k ->
+        paimonTypeAsIceberg(type.value, fieldId, depth + 1)?.let { v ->
+            IcebergType.MapType(PaimonSystemColumns.mapKeyFieldId(fieldId, depth + 1), k, PaimonSystemColumns.mapValueFieldId(fieldId, depth + 1), v, valueRequired = !type.value.nullable)
+        }
+    }
+}
+
+/**
+ * A Paimon file's column tree with the id each column is read by — [paimonFileColumns]'s rule
+ * at every level: a struct's field by its name under the schema field's `ROW`, an array's
+ * element and a map's key and value by role, at the ids Paimon derives for them. A nested name
+ * the schema lacks keeps the id the file recorded, if any.
+ */
+fun paimonFileColumnTree(physical: List<FileColumn>, fileSchema: PaimonSchema?): List<FileColumn> = physical.map { column ->
+    val field = fileSchema?.fields?.firstOrNull { it.name == column.name }
+        ?: column.name.takeIf { it.startsWith(PaimonSystemColumns.KEY_PREFIX) }?.let { key -> fileSchema?.fields?.firstOrNull { it.name == key.removePrefix(PaimonSystemColumns.KEY_PREFIX) } }
+    val id = PaimonSystemColumns.fieldIdOf(column.name) { name -> fileSchema?.fields?.firstOrNull { it.name == name }?.id }
+    placeNested(column, field?.dataType, id ?: column.fieldId, id, depth = 0)
+}
+
+private fun placeNested(column: FileColumn, type: PaimonType?, id: Int?, parentId: Int?, depth: Int): FileColumn {
+    val children = when (column.kind) {
+        FileColumn.Kind.STRUCT -> {
+            val fields = (type as? PaimonType.Row)?.fields.orEmpty()
+            column.children.map { child ->
+                val field = fields.firstOrNull { it.name == child.name }
+                placeNested(child, field?.dataType, field?.id ?: child.fieldId, field?.id, depth + 1)
+            }
+        }
+        FileColumn.Kind.LIST -> {
+            val element = (type as? PaimonType.Array)?.element ?: (type as? PaimonType.Multiset)?.element
+            column.children.map { child ->
+                placeNested(child, element, parentId?.let { PaimonSystemColumns.arrayElementFieldId(it, depth + 1) } ?: child.fieldId, parentId, depth + 1)
+            }
+        }
+        FileColumn.Kind.MAP -> {
+            val map = type as? PaimonType.Map
+            column.children.mapIndexed { i, child ->
+                val derived = parentId?.let { if (i == 0) PaimonSystemColumns.mapKeyFieldId(it, depth + 1) else PaimonSystemColumns.mapValueFieldId(it, depth + 1) }
+                placeNested(child, if (i == 0) map?.key else map?.value, derived ?: child.fieldId, parentId, depth + 1)
+            }
+        }
+        FileColumn.Kind.PRIMITIVE -> column.children
+    }
+    return column.copy(fieldId = id, children = children)
+}
+
+/**
  * A Paimon file's columns with the field id each is read by: the id its **own schema** gives
  * the name — the schema the entry's `_SCHEMA_ID` names — with a key-value file's `_KEY_*`,
  * `_SEQUENCE_NUMBER` and `_VALUE_KIND` at the ids [PaimonSystemColumns] derives, and null for
@@ -64,7 +128,7 @@ fun paimonSchemaAsIceberg(schema: PaimonSchema, systemColumns: Boolean = false):
  * schema's.
  */
 fun paimonFileColumns(physical: Map<String, Int?>, fileSchema: PaimonSchema?): Map<String, Int?> =
-    physical.mapValues { (name, _) -> PaimonSystemColumns.fieldIdOf(name) { field -> fileSchema?.fields?.firstOrNull { it.name == field }?.id } }
+    paimonFileColumnTree(physical.map { (name, id) -> FileColumn.leaf(name, id) }, fileSchema).topLevel()
 
 fun paimonTypeAsIceberg(type: String): IcebergType? {
     val head = Regex("""^([A-Z]+)(?:\((\d+)(?:,\s*(\d+))?\))?""").find(type.trim().uppercase()) ?: return null

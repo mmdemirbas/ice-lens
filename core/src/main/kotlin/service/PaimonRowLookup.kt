@@ -12,7 +12,7 @@ import model.RowLookupResult
 import model.ScanFilter
 import model.duckDbTypeOf
 import model.IcebergSchemaModel
-import model.paimonFileColumns
+import model.paimonFileColumnTree
 import model.PaimonSystemColumns
 import model.paimonTypeAsIceberg
 import model.quoteSqlIdentifier
@@ -61,7 +61,7 @@ object PaimonRowLookup {
         BucketSources(files, files.map { projectionOf(it, input.readSchema, rowNumber = true, filename = true) })
 
     private fun projectionOf(file: PaimonLookupFile, schema: IcebergSchemaModel, rowNumber: Boolean, filename: Boolean = false): FileProjection =
-        FileProjection.of(file.extension, paimonFileColumns(SampleRowReader.fileColumnsOf(file.localPath), file.fileSchema), schema, null, rowNumber = rowNumber, filename = filename)
+        FileProjection.of(file.extension, paimonFileColumnTree(SampleRowReader.fileColumnTreeOf(file.localPath), file.fileSchema), schema, null, rowNumber = rowNumber, filename = filename)
 
     /** One matched record; [stitched] names the other files of its split that supplied columns, where a read stitches. */
     private class Raw(val file: PaimonLookupFile, val position: Long?, val cells: Map<String, Any?>, val stitched: String? = null)
@@ -114,7 +114,8 @@ object PaimonRowLookup {
             reading += split.size
         }
         val columns = input.schema.fields.mapNotNull { it.name }
-        val predicate = filter.toSql { column -> input.schema.fields.firstOrNull { it.name == column }?.type?.let(::paimonTypeAsIceberg) }
+        // By path through the read schema, so `addr.town` binds to the struct field's type.
+        val predicate = filter.toSql { column -> input.readSchema.let { s -> s.idOfPath(column)?.let(s::typeOf) } }
         val outcomes = mutableListOf<LookupFileOutcome>()
         val raws = mutableListOf<Raw>()
         for (split in toRead) {

@@ -1,7 +1,18 @@
 package model
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /** Paimon snapshot metadata, deserialized from `snapshot/snapshot-N` JSON files. */
 @Serializable
@@ -139,18 +150,99 @@ data class PaimonSchema(
     val timeMillis: Long? = null,
 )
 
-/** A single field in a Paimon table schema. */
-@Serializable
+/**
+ * A single field in a Paimon table schema. A primitive's `type` is written as a string
+ * (`INT NOT NULL`); a `ROW`, `ARRAY`, `MULTISET` or `MAP` is written as an object, which
+ * [PaimonFieldSerializer] reads into [dataType] — [type] is then Paimon's own SQL spelling of
+ * the tree, so every reader of the string sees `ROW<city STRING, zip INT>` where it saw a
+ * parse error before (`pne`: four schemas, four read errors, no table).
+ */
+@Serializable(with = PaimonFieldSerializer::class)
 data class PaimonField(
     val id: Int? = null,
     val name: String? = null,
-    val type: String? = null,   // Paimon encodes types as strings like "INT NOT NULL"
+    val type: String? = null,
     /**
      * `ALTER COLUMN … SET DEFAULT`: the value a write stores when a row omits the column — a
      * write-time default, which is why a file written before it reads the column as null (`pse`).
      */
     val defaultValue: String? = null,
+    /** The type as a tree; a primitive built from [type] alone is [PaimonType.Primitive] over it. */
+    val dataType: PaimonType? = type?.let { PaimonType.Primitive(it) },
 )
+
+/**
+ * A Paimon type as `DataTypeJsonParser` (release-1.3.1) reads it: a string for a primitive,
+ * `NOT NULL` included; an object whose `type` starts `ARRAY`, `MULTISET`, `MAP` or `ROW` — with
+ * `NOT NULL` in that string for a non-nullable one — and `element`, `key` / `value` or `fields`
+ * under it. A row's fields are [PaimonField]s with ids of their own, which is what lets Paimon
+ * evolve a nested field by id (`SchemaEvolutionUtil.createRowCastExecutor`).
+ */
+sealed interface PaimonType {
+    val nullable: Boolean
+    /** Paimon's SQL spelling of the type, `NOT NULL` where it is. */
+    val sql: String
+
+    data class Primitive(override val sql: String) : PaimonType {
+        override val nullable: Boolean get() = !sql.trim().uppercase().endsWith("NOT NULL")
+    }
+
+    data class Row(val fields: List<PaimonField>, override val nullable: Boolean = true) : PaimonType {
+        override val sql: String get() = "ROW<${fields.joinToString(", ") { "${it.name} ${it.type}" }}>" + notNull(nullable)
+    }
+
+    data class Array(val element: PaimonType, override val nullable: Boolean = true) : PaimonType {
+        override val sql: String get() = "ARRAY<${element.sql}>" + notNull(nullable)
+    }
+
+    data class Multiset(val element: PaimonType, override val nullable: Boolean = true) : PaimonType {
+        override val sql: String get() = "MULTISET<${element.sql}>" + notNull(nullable)
+    }
+
+    data class Map(val key: PaimonType, val value: PaimonType, override val nullable: Boolean = true) : PaimonType {
+        override val sql: String get() = "MAP<${key.sql}, ${value.sql}>" + notNull(nullable)
+    }
+
+    companion object {
+        private val json = Json { ignoreUnknownKeys = true }
+
+        private fun notNull(nullable: Boolean) = if (nullable) "" else " NOT NULL"
+
+        /** The type [element] encodes, or null for a shape this does not read. */
+        fun parse(element: JsonElement): PaimonType? = when (element) {
+            is JsonPrimitive -> element.contentOrNull?.let { Primitive(it) }
+            is JsonObject -> {
+                val head = element["type"]?.jsonPrimitive?.contentOrNull?.trim()?.uppercase() ?: return null
+                val nullable = !head.endsWith("NOT NULL")
+                when {
+                    head.startsWith("ARRAY") -> element["element"]?.let(::parse)?.let { Array(it, nullable) }
+                    head.startsWith("MULTISET") -> element["element"]?.let(::parse)?.let { Multiset(it, nullable) }
+                    head.startsWith("MAP") -> element["key"]?.let(::parse)?.let { k -> element["value"]?.let(::parse)?.let { v -> Map(k, v, nullable) } }
+                    head.startsWith("ROW") -> element["fields"]?.let { runCatching { json.decodeFromJsonElement(ListSerializer(PaimonField.serializer()), it) }.getOrNull() }?.let { Row(it, nullable) }
+                    else -> null
+                }
+            }
+            else -> null
+        }
+    }
+}
+
+/** Reads a field's `type` as a string or as the object a nested type is written as — see [PaimonType]. */
+object PaimonFieldSerializer : KSerializer<PaimonField> {
+    @Serializable
+    private class Surrogate(val id: Int? = null, val name: String? = null, val type: JsonElement? = null, val defaultValue: String? = null)
+
+    override val descriptor: SerialDescriptor = Surrogate.serializer().descriptor
+
+    override fun deserialize(decoder: Decoder): PaimonField {
+        val s = decoder.decodeSerializableValue(Surrogate.serializer())
+        val dataType = s.type?.let(PaimonType::parse)
+        return PaimonField(s.id, s.name, dataType?.sql ?: (s.type as? JsonPrimitive)?.contentOrNull, s.defaultValue, dataType)
+    }
+
+    override fun serialize(encoder: Encoder, value: PaimonField) =
+        encoder.encodeSerializableValue(Surrogate.serializer(), Surrogate(value.id, value.name, value.type?.let(::JsonPrimitive), value.defaultValue))
+}
 
 /**
  * Paimon's column-wise statistics over a set of rows: a `BinaryRow` of per-field minimums, one
@@ -217,6 +309,18 @@ object PaimonSystemColumns {
     const val SEQUENCE_NUMBER_ID = 2147483646
     /** `SpecialFields.VALUE_KIND` — `Integer.MAX_VALUE - 2`; the column is [PaimonRowKind.COLUMN]. */
     const val VALUE_KIND_ID = 2147483645
+
+    /** `SpecialFields.STRUCTURED_TYPE_FIELD_ID_BASE` — `Integer.MAX_VALUE / 4`. */
+    const val STRUCTURED_TYPE_FIELD_ID_BASE = 536870911
+    /** `SpecialFields.STRUCTURED_TYPE_FIELD_DEPTH_LIMIT` — `1 shl 10`. */
+    const val STRUCTURED_TYPE_FIELD_DEPTH_LIMIT = 1024
+
+    /** The id a Paimon Parquet file records on an array's element, from the array's own id and the element's depth (`SpecialFields.getArrayElementFieldId`). */
+    fun arrayElementFieldId(arrayFieldId: Int, depth: Int): Int = STRUCTURED_TYPE_FIELD_ID_BASE + arrayFieldId * STRUCTURED_TYPE_FIELD_DEPTH_LIMIT + depth
+    /** `SpecialFields.getMapKeyFieldId`. */
+    fun mapKeyFieldId(mapFieldId: Int, depth: Int): Int = STRUCTURED_TYPE_FIELD_ID_BASE - mapFieldId * STRUCTURED_TYPE_FIELD_DEPTH_LIMIT - depth
+    /** `SpecialFields.getMapValueFieldId`. */
+    fun mapValueFieldId(mapFieldId: Int, depth: Int): Int = STRUCTURED_TYPE_FIELD_ID_BASE + mapFieldId * STRUCTURED_TYPE_FIELD_DEPTH_LIMIT + depth
 
     /** The id a key-value file's column reads by, given the id its own schema gives [fieldId]; null for a name the schema lacks. */
     fun fieldIdOf(name: String, fieldId: (String) -> Int?): Int? = when {

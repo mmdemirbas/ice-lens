@@ -404,7 +404,7 @@ object PaimonGraphBuilder {
                     deletedPositions = deleted,
                     vectorsResolved = resolved,
                     readAs = if (readSchema != null) DeferredRead.of {
-                        dataFile.rows.getOrNull(rowIndex)?.let { projectRow(it.cells, dataFile.fileColumns, readSchema) }
+                        dataFile.rows.getOrNull(rowIndex)?.let { projectRow(it.cells, dataFile.fileColumnTree, readSchema) }
                     } else DeferredRead.none(),
                     dataLoader = {
                         try {

@@ -183,8 +183,11 @@ data class PaimonUnifiedDataFile(
 ) {
     val rows: List<UnifiedRow> by lazy { rowsLoader() }
 
-    /** The file's top-level columns, each with the field id its own schema gives the name — what a read places them by; see [projectRow]. */
-    val fileColumns: Map<String, Int?> by lazy { paimonFileColumns(SampleRowReader.fileColumnsOf(path.toString()), schema) }
+    /** The file's column tree, each column with the field id its own schema gives the name, a struct's fields included — what a read places them by; see [projectRow]. */
+    val fileColumnTree: List<FileColumn> by lazy { paimonFileColumnTree(SampleRowReader.fileColumnTreeOf(path.toString()), schema) }
+
+    /** [fileColumnTree]'s top level. */
+    val fileColumns: Map<String, Int?> get() = fileColumnTree.topLevel()
 }
 
 /**

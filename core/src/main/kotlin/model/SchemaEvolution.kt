@@ -170,33 +170,7 @@ fun TableMetadata.schemaEvolution(): List<SchemaStep> {
  */
 fun paimonSchemaChanges(from: PaimonSchema, to: PaimonSchema): List<SchemaChange> {
     val changes = mutableListOf<SchemaChange>()
-    val before = from.fields.filter { it.id != null }.associateBy { it.id!! }
-    val after = to.fields.filter { it.id != null }.associateBy { it.id!! }
-    val common = before.keys intersect after.keys
-    for ((id, field) in after) {
-        val name = field.name ?: "$id"
-        val old = before[id]
-        if (old == null) {
-            changes += SchemaChange(SchemaChangeKind.ADDED, id, name, field.type ?: "?")
-            continue
-        }
-        if (old.name != field.name) changes += SchemaChange(SchemaChangeKind.RENAMED, id, name, "${old.name} → $name")
-        val oldType = old.type?.removeSuffix(" NOT NULL")
-        val newType = field.type?.removeSuffix(" NOT NULL")
-        if (oldType != newType) changes += SchemaChange(SchemaChangeKind.TYPE_CHANGED, id, name, "${old.type} → ${field.type}")
-        val wasRequired = old.type?.endsWith(" NOT NULL") == true
-        val isRequired = field.type?.endsWith(" NOT NULL") == true
-        if (wasRequired != isRequired) changes += SchemaChange(SchemaChangeKind.REQUIRED_CHANGED, id, name, if (isRequired) "optional → required" else "required → optional")
-        if (old.defaultValue != field.defaultValue) changes += SchemaChange(SchemaChangeKind.DEFAULT_CHANGED, id, name, "${old.defaultValue ?: "none"} → ${field.defaultValue ?: "none"}")
-    }
-    val children = to.fields.mapNotNull { it.id }
-    for (id in movedIds(from.fields.mapNotNull { it.id }.filter { it in common }, children.filter { it in common })) {
-        val at = children.indexOf(id)
-        changes += SchemaChange(SchemaChangeKind.MOVED, id, after[id]?.name ?: "$id", if (at > 0) "after ${after[children[at - 1]]?.name}" else "first")
-    }
-    for ((id, field) in before) {
-        if (id !in after) changes += SchemaChange(SchemaChangeKind.DROPPED, id, field.name ?: "$id", field.type ?: "?")
-    }
+    changes += paimonFieldChanges(from.fields, to.fields, prefix = "")
     if (from.primaryKeys != to.primaryKeys) changes += SchemaChange(SchemaChangeKind.KEYS_CHANGED, null, "", "primary key ${from.primaryKeys.ifEmpty { listOf("none") }.joinToString(", ")} → ${to.primaryKeys.ifEmpty { listOf("none") }.joinToString(", ")}")
     if (from.partitionKeys != to.partitionKeys) changes += SchemaChange(SchemaChangeKind.KEYS_CHANGED, null, "", "partition keys ${from.partitionKeys.ifEmpty { listOf("none") }.joinToString(", ")} → ${to.partitionKeys.ifEmpty { listOf("none") }.joinToString(", ")}")
     for (key in (from.options.keys + to.options.keys).distinct().sorted()) {
@@ -207,6 +181,67 @@ fun paimonSchemaChanges(from: PaimonSchema, to: PaimonSchema): List<SchemaChange
     if (from.comment != to.comment) changes += SchemaChange(SchemaChangeKind.COMMENT_CHANGED, null, "", "${from.comment ?: "none"} → ${to.comment ?: "none"}")
     return changes
 }
+
+/**
+ * The changes between two field lists, by id, [prefix] naming the row they sit in (`addr.`).
+ * A `ROW` is compared through its fields rather than as a type — a rename inside it is one
+ * `RENAMED` at `addr.city`, not a `TYPE_CHANGED` on `addr` — and an `ARRAY` or `MAP` whose
+ * element is a row through that row, under `element`, `key` or `value` the way Spark names
+ * them (`RENAME COLUMN items.element.sku TO code`). Paimon evolves nested fields by id
+ * (`SchemaEvolutionUtil.createRowCastExecutor` at 1.3.1), so the comparison is the reader's.
+ */
+private fun paimonFieldChanges(fromFields: List<PaimonField>, toFields: List<PaimonField>, prefix: String): List<SchemaChange> {
+    val changes = mutableListOf<SchemaChange>()
+    val before = fromFields.filter { it.id != null }.associateBy { it.id!! }
+    val after = toFields.filter { it.id != null }.associateBy { it.id!! }
+    val common = before.keys intersect after.keys
+    for ((id, field) in after) {
+        val name = prefix + (field.name ?: "$id")
+        val old = before[id]
+        if (old == null) {
+            changes += SchemaChange(SchemaChangeKind.ADDED, id, name, field.type ?: "?")
+            continue
+        }
+        if (old.name != field.name) changes += SchemaChange(SchemaChangeKind.RENAMED, id, name, "${old.name?.substringAfterLast('.')} → ${field.name?.substringAfterLast('.')}")
+        val oldType = old.dataType
+        val newType = field.dataType
+        val nested = nestedRows(oldType, newType)
+        if (nested != null) {
+            changes += paimonFieldChanges(nested.first, nested.second, "$name.")
+        } else if (oldType?.let(::withoutNullability) != newType?.let(::withoutNullability)) {
+            changes += SchemaChange(SchemaChangeKind.TYPE_CHANGED, id, name, "${old.type} → ${field.type}")
+        }
+        val wasRequired = oldType?.nullable == false
+        val isRequired = newType?.nullable == false
+        if (wasRequired != isRequired) changes += SchemaChange(SchemaChangeKind.REQUIRED_CHANGED, id, name, if (isRequired) "optional → required" else "required → optional")
+        if (old.defaultValue != field.defaultValue) changes += SchemaChange(SchemaChangeKind.DEFAULT_CHANGED, id, name, "${old.defaultValue ?: "none"} → ${field.defaultValue ?: "none"}")
+    }
+    val children = toFields.mapNotNull { it.id }
+    for (id in movedIds(fromFields.mapNotNull { it.id }.filter { it in common }, children.filter { it in common })) {
+        val at = children.indexOf(id)
+        changes += SchemaChange(SchemaChangeKind.MOVED, id, prefix + (after[id]?.name ?: "$id"), if (at > 0) "after ${after[children[at - 1]]?.name}" else "first")
+    }
+    for ((id, field) in before) {
+        if (id !in after) changes += SchemaChange(SchemaChangeKind.DROPPED, id, prefix + (field.name ?: "$id"), field.type ?: "?")
+    }
+    return changes
+}
+
+/** The two rows to compare field by field when both types hold one at the same place, with the path segment the row sits under; null otherwise. */
+private fun nestedRows(old: PaimonType?, new: PaimonType?): Pair<List<PaimonField>, List<PaimonField>>? = when {
+    old is PaimonType.Row && new is PaimonType.Row -> old.fields to new.fields
+    old is PaimonType.Array && new is PaimonType.Array -> nestedRows(old.element, new.element)?.let { (a, b) -> a.map { it.under("element") } to b.map { it.under("element") } }
+    old is PaimonType.Multiset && new is PaimonType.Multiset -> nestedRows(old.element, new.element)?.let { (a, b) -> a.map { it.under("element") } to b.map { it.under("element") } }
+    old is PaimonType.Map && new is PaimonType.Map && old.key.sql == new.key.sql ->
+        nestedRows(old.value, new.value)?.let { (a, b) -> a.map { it.under("value") } to b.map { it.under("value") } }
+    else -> null
+}
+
+/** [this] as it is named under the wrapper [segment] — `element.sku` — so a change inside a list's row reads the way Spark addresses it. */
+private fun PaimonField.under(segment: String): PaimonField = copy(name = "$segment.${name ?: id}")
+
+/** The type's SQL with nullability stripped at every level, for a comparison that reports nullability separately. */
+private fun withoutNullability(type: PaimonType): String = type.sql.replace(" NOT NULL", "")
 
 /** Every schema under `schema/` in id order against the one before it, each with the first snapshot on `main` written under it. */
 fun PaimonUnifiedTableModel.schemaEvolution(): List<SchemaStep> {

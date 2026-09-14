@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A Paimon table with a struct, array or map column opens.** Its schema JSON writes such a
+  type as an object, which the schema reader took for a string — every schema of the table was
+  a read error and nothing else was drawn. The type is read as a tree now, printed the way
+  Paimon spells it, and the nested fields are placed by their own ids, so a field renamed or
+  added inside a struct reads the way Paimon reads it; the schema steps name the change inside
+  the struct rather than a type change on it. `pne` is the fixture
 - **A migrated file's nested fields are placed through the name mapping's tree.** A struct,
   a list's element and a map's entries in a file `add_files` registered read as all-null
   before — the top level was placed through the mapping and every field inside it was looked

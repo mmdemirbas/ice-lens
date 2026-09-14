@@ -482,6 +482,10 @@ class InspectorRenderTest {
         val pse = GraphLayoutService.layoutGraph(PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pse").absolutePath)), showRows = false)
         val renamed = pse.nodes.filterIsInstance<GraphNode.PaimonSchemaNode>().first { it.data.id == 2 }
         renderInspector(pse, renamed.id, "paimon-schema-node-changes", height = 900)
+        // A nested type on the field table, and a rename inside a list's element as its own row.
+        val pne = GraphLayoutService.layoutGraph(PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pne").absolutePath)), showRows = false)
+        val nested = pne.nodes.filterIsInstance<GraphNode.PaimonSchemaNode>().first { it.data.id == 3 }
+        renderInspector(pne, nested.id, "paimon-schema-node-nested", height = 1300)
     }
 
     /**

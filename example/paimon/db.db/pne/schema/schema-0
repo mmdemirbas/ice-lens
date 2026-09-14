@@ -1,0 +1,49 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT"
+  }, {
+    "id" : 1,
+    "name" : "addr",
+    "type" : {
+      "type" : "ROW",
+      "fields" : [ {
+        "id" : 2,
+        "name" : "city",
+        "type" : "STRING"
+      }, {
+        "id" : 3,
+        "name" : "zip",
+        "type" : "INT"
+      } ]
+    }
+  }, {
+    "id" : 4,
+    "name" : "items",
+    "type" : {
+      "type" : "ARRAY",
+      "element" : {
+        "type" : "ROW",
+        "fields" : [ {
+          "id" : 5,
+          "name" : "sku",
+          "type" : "STRING"
+        }, {
+          "id" : 6,
+          "name" : "qty",
+          "type" : "INT"
+        } ]
+      }
+    }
+  } ],
+  "highestFieldId" : 6,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ ],
+  "options" : {
+    "owner" : "root"
+  },
+  "timeMillis" : 1789361893750
+}
