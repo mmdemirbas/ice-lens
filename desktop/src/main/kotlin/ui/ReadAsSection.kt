@@ -47,10 +47,15 @@ internal fun ReadAsSection(node: GraphNode.RowNode, onSettled: () -> Unit = {}) 
         )
         WideTable(
             headers = listOf("Column", "Value", "From", "Type", "Field ID"),
-            columnWidths = listOf(160.dp, 200.dp, 300.dp, 110.dp, 70.dp),
+            // 320dp of value holds a three-field struct on one line, which a rebuilt one is.
+            columnWidths = listOf(160.dp, 320.dp, 340.dp, 110.dp, 70.dp),
             rows = projected.cells.map { cell ->
                 val from = when (cell.source) {
-                    ProjectedCellSource.FILE -> if (cell.fileColumn == cell.name) "the file" else "the file's ${cell.fileColumn}, renamed since"
+                    ProjectedCellSource.FILE -> when {
+                        cell.rebuilt -> "the file's ${cell.fileColumn}, a field inside renamed or added since"
+                        cell.fileColumn == cell.name -> "the file"
+                        else -> "the file's ${cell.fileColumn}, renamed since"
+                    }
                     ProjectedCellSource.INITIAL_DEFAULT -> "initial default; the file predates the column"
                     ProjectedCellSource.ABSENT -> "absent from the file; read as null"
                 }

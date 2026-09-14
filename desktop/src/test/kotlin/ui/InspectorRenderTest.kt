@@ -437,6 +437,15 @@ class InspectorRenderTest {
         renderUntil("row-node-read-as-dropped", width = 1400, height = 700, ready = evolvedSettled::get) {
             Column(Modifier.padding(16.dp)) { ReadAsSection(renamed) { evolvedSettled.set(true) } }
         }
+
+        // `deep`'s first row was written when `addr.town` was `city` and before `addr.country`:
+        // the struct is rebuilt by id, so the cell reads `town` and a NULL `country`.
+        val deep = GraphLayoutService.layoutGraph(UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/deep").absolutePath)), showRows = true)
+        val nested = deep.nodes.filterIsInstance<GraphNode.RowNode>().first { it.resolvedData["id"]?.toString() == "1" }
+        val deepSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("row-node-read-as-nested", width = 1400, height = 700, ready = deepSettled::get) {
+            Column(Modifier.padding(16.dp)) { ReadAsSection(nested) { deepSettled.set(true) } }
+        }
         val metadata = defaults.nodes.filterIsInstance<GraphNode.MetadataNode>().first { it.fileName == "v6.metadata.json" }
         renderInspector(defaults, metadata.id, "metadata-node-defaults", height = 5200)
 

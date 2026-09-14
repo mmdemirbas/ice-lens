@@ -538,8 +538,11 @@ data class UnifiedDataFile(
 ) {
     val rows: List<UnifiedRow> by lazy { rowsLoader() }
 
-    /** The file's top-level columns with the field id each records, or null — what a read places them by; see [projectRow]. */
-    val fileColumns: Map<String, Int?> by lazy { SampleRowReader.fileColumnsOf(path.toString()) }
+    /** The file's columns as a tree with the field id each records — what a read places them by, a struct's fields included; see [projectRow]. */
+    val fileColumnTree: List<FileColumn> by lazy { SampleRowReader.fileColumnTreeOf(path.toString()) }
+
+    /** [fileColumnTree]'s top level. */
+    val fileColumns: Map<String, Int?> get() = fileColumnTree.topLevel()
 }
 
 /**

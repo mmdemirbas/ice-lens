@@ -952,10 +952,14 @@ intellij/src/main/kotlin/plugin/
   it is; a list's element and a map's key and value go through `list_transform` with DuckDB's
   `lambda` form. So `addr.town = 'Ankara'` finds the two rows in the file written when it was
   `city`, and `addr.country IS NULL` the three rows that predate the column. The tree is the
-  one reader and the flat map is its top level, so nothing that placed by name changed. What
-  is still by name: a Paimon file's nested fields (its placement is a flat map by the file's
-  schema) and the row panel's `Read As`, which renames the cells it has and cannot rebuild a
-  struct inside a DuckDB value
+  one reader and the flat map is its top level, so nothing that placed by name changed. The
+  row panel's `Read As` rebuilds the same struct from the DuckDB value the card holds
+  (`projectRow` over the tree: a `java.sql.Struct`'s attributes are in the file's field
+  order, matched to the schema's fields by id and printed in DuckDB's own spelling), marks the
+  cell `rebuilt` so the section is drawn and says why, and leaves a value whose shape is the
+  schema's exactly as DuckDB prints it — `row-node-read-as-nested` is the capture. What is
+  still by name: a Paimon file's nested fields (its placement is a flat map by the file's
+  schema), and a map's key and value on the row panel, left as they print
 - **A filter is a boolean expression, and `NOT` is removed before anything is evaluated.**
   `model/ScanFilter.kt` holds `Term`/`And`/`Or`/`Not`; `evaluateScan`, `evaluatePruning` and
   `evaluateFilePruning` each take one, and the list form every existing caller passes is wrapped
@@ -2098,7 +2102,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,232 tests across 164 files (963 in :core, 260 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,233 tests across 164 files (964 in :core, 260 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

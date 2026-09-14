@@ -107,6 +107,30 @@ class DeepFixtureTest {
         assertEquals(listOf("4"), tr.hits.map { it.cells["id"].toString() })
     }
 
+    /**
+     * The row panel's `Read As` rebuilds the struct the same way from the DuckDB value the card
+     * holds: the old file's row reads `addr` with `town` and a null `country`, in DuckDB's own
+     * spelling, and the new file's row keeps DuckDB's rendering untouched since its shape is
+     * the schema's.
+     */
+    @Test
+    fun `a sampled row's Read As rebuilds a struct by id where the file's shape is not the schema's`() {
+        val withRows = GraphLayoutService.layoutGraph(model, showRows = true)
+        val rows = withRows.nodes.filterIsInstance<GraphNode.RowNode>()
+        val old = rows.first { it.resolvedData["id"].toString() == "1" }
+        val read = assertNotNull(old.readAs.value)
+        val addr = read.cells.single { it.name == "addr" }
+        assertEquals("{'town': Ankara, 'zip': 6000, 'country': NULL}", addr.value)
+        assertEquals(ProjectedCellSource.FILE, addr.source)
+        assertTrue(addr.rebuilt && read.differsFromFile, "the section is drawn for a struct rebuilt inside: ${read.describe}")
+        assertTrue("rebuilt inside" in read.describe, read.describe)
+        val new = rows.first { it.resolvedData["id"].toString() == "4" }
+        val newAddr = assertNotNull(new.readAs.value).cells.single { it.name == "addr" }
+        assertEquals(new.resolvedData["addr"].toString(), newAddr.value, "the schema's shape: DuckDB's own rendering")
+        assertTrue(!newAddr.rebuilt, "nothing rebuilt where the file has the schema's shape")
+        assertTrue("Izmir" in newAddr.value && "TR" in newAddr.value, newAddr.value)
+    }
+
     @Test
     fun `a file's column tree has the schema's shape, the list and map wrappers folded away`() {
         val file = model.metadatas.last().snapshots.first().manifests.flatMap { it.dataFiles }.first()

@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   file's struct by field id — `struct_pack` over the file's own column tree, a list's or a
   map's elements through `list_transform` — so `addr.town = 'Ankara'` finds the rows in a file
   written when the field was `city`, and a field added since reads as null there, where the
-  file reported DuckDB's error before
+  file reported DuckDB's error before. The row panel's `Read As` rebuilds the struct the same
+  way and says a field inside was renamed or added since
 - **Schema evolution by field id, with the snapshot first written under each schema.** The
   table panel's `Schema Evolution` lists every change from each schema to the one before it —
   added, dropped, renamed, moved, type changed, nullability, default, identifier fields; on

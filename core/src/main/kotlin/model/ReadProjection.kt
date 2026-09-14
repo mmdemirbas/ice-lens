@@ -25,7 +25,7 @@ data class ProjectedRow(
 ) {
     /** Whether a read returns anything other than the file's columns under the file's names. */
     val differsFromFile: Boolean
-        get() = dropped.isNotEmpty() || unmatched.isNotEmpty() || cells.any { it.source != ProjectedCellSource.FILE || it.fileColumn != it.name || it.viaMapping }
+        get() = dropped.isNotEmpty() || unmatched.isNotEmpty() || cells.any { it.source != ProjectedCellSource.FILE || it.fileColumn != it.name || it.viaMapping || it.rebuilt }
 
     val describe: String
         get() {
@@ -34,6 +34,7 @@ data class ProjectedRow(
                 cells.count { it.source == ProjectedCellSource.ABSENT }.takeIf { it > 0 }?.let { add("$it absent from the file, read as null") }
                 cells.count { it.source == ProjectedCellSource.FILE && it.fileColumn != it.name }.takeIf { it > 0 }?.let { add("$it renamed since the file was written") }
                 cells.count { it.viaMapping }.takeIf { it > 0 }?.let { add("$it placed by the name mapping, the file recording no field ids") }
+                cells.count { it.rebuilt }.takeIf { it > 0 }?.let { add("$it rebuilt inside, a field renamed or added within it since the file was written") }
                 dropped.size.takeIf { it > 0 }?.let { add("$it of the file's columns dropped from the table") }
                 unmatched.size.takeIf { it > 0 }?.let { add("$it of the file's columns without a field id") }
             }
@@ -59,6 +60,8 @@ data class ProjectedCell(
     val fileColumn: String? = null,
     /** Whether the file column was placed through the name mapping rather than by an id it records. */
     val viaMapping: Boolean = false,
+    /** Whether a struct inside the value was rebuilt by id — a field renamed or added within it since the file was written. */
+    val rebuilt: Boolean = false,
 )
 
 data class DroppedCell(val fileColumn: String, val fieldId: Int, val value: String)
@@ -71,12 +74,29 @@ private fun isMetadataColumn(name: String) = name.startsWith("_")
  * (file column name → the field id it records, or null — from the file's own footer or header)
  * and, for a column recording none, by [mapping] — see [placeFileColumns].
  */
-fun projectRow(cells: Map<String, Any?>, fileColumns: Map<String, Int?>, schema: IcebergSchemaModel, mapping: NameMapping? = null): ProjectedRow {
+fun projectRow(cells: Map<String, Any?>, fileColumns: Map<String, Int?>, schema: IcebergSchemaModel, mapping: NameMapping? = null): ProjectedRow =
+    projectRow(cells, fileColumns.map { (name, id) -> FileColumn.leaf(name, id) }, schema, mapping)
+
+/**
+ * The same over the file's column tree ([FileColumn]), so a struct's fields are placed by id
+ * too: a DuckDB struct value is rebuilt under the schema's field names where the file's shape
+ * is not the schema's — a field renamed inside the struct under its new name, one the file
+ * predates as null — and left as DuckDB prints it where it is.
+ */
+fun projectRow(cells: Map<String, Any?>, columns: List<FileColumn>, schema: IcebergSchemaModel, mapping: NameMapping? = null): ProjectedRow {
+    val fileColumns = columns.topLevel()
+    val byName = columns.associateBy { it.name }
     val fileColumnById = placeFileColumns(fileColumns.filterKeys { it in cells }, mapping)
     val projected = schema.struct.fields.map { field ->
         val fileColumn = fileColumnById[field.id]
         when {
-            fileColumn != null -> ProjectedCell(field.id, field.name, field.type.typeName, cells[fileColumn].toString(), ProjectedCellSource.FILE, fileColumn, viaMapping = fileColumns[fileColumn] == null)
+            fileColumn != null -> {
+                val rebuilt = byName[fileColumn]?.let { projectValue(cells[fileColumn], field.type, it) }
+                ProjectedCell(
+                    field.id, field.name, field.type.typeName, rebuilt ?: cells[fileColumn].toString(),
+                    ProjectedCellSource.FILE, fileColumn, viaMapping = fileColumns[fileColumn] == null, rebuilt = rebuilt != null,
+                )
+            }
             field.initialDefault != null -> ProjectedCell(field.id, field.name, field.type.typeName, field.showDefault(field.initialDefault) ?: "null", ProjectedCellSource.INITIAL_DEFAULT)
             else -> ProjectedCell(field.id, field.name, field.type.typeName, "null", ProjectedCellSource.ABSENT)
         }
@@ -87,4 +107,41 @@ fun projectRow(cells: Map<String, Any?>, fileColumns: Map<String, Int?>, schema:
         .map { DroppedCell(it, idOf(it)!!, cells[it].toString()) }
     val unmatched = cells.keys.filter { it !in placed && !isMetadataColumn(it) && idOf(it) == null }
     return ProjectedRow(projected, dropped, unmatched)
+}
+
+/**
+ * [value] as text under [type] through the file's [column], rebuilt by id in DuckDB's own
+ * spelling where the file's shape is not the schema's — or null where it is, and the value
+ * stands as DuckDB prints it. A struct arrives as a `java.sql.Struct` whose attributes are in
+ * the file's field order, a list as a `java.sql.Array`; a map is left as it prints.
+ */
+private fun projectValue(value: Any?, type: IcebergType, column: FileColumn): String? = when {
+    value == null -> null
+    type is IcebergType.StructType && column.kind == FileColumn.Kind.STRUCT && value is java.sql.Struct && structDiffers(type, column) -> {
+        val attributes = runCatching { value.attributes }.getOrNull()
+        if (attributes == null) null else {
+            val byId = column.children.mapIndexedNotNull { i, child -> child.fieldId?.let { it to (child to attributes.getOrNull(i)) } }.toMap()
+            type.fields.joinToString(", ", "{", "}") { f ->
+                val (child, inner) = byId[f.id] ?: (null to null)
+                "'${f.name}': " + when {
+                    child == null || inner == null -> "NULL"
+                    else -> projectValue(inner, f.type, child) ?: inner.toString()
+                }
+            }
+        }
+    }
+    type is IcebergType.ListType && column.kind == FileColumn.Kind.LIST && value is java.sql.Array && column.children.size == 1 &&
+        type.element is IcebergType.StructType && structDiffers(type.element, column.children.single()) -> {
+        val element = column.children.single()
+        runCatching { (value.array as? Array<*>)?.toList() }.getOrNull()
+            ?.joinToString(", ", "[", "]") { if (it == null) "NULL" else projectValue(it, type.element, element) ?: it.toString() }
+    }
+    else -> null
+}
+
+/** Whether a struct's fields, by id, are not the file's — a rename, a field the file lacks, or a nested one that differs. */
+private fun structDiffers(type: IcebergType.StructType, column: FileColumn): Boolean = type.fields.any { f ->
+    val child = column.child(f.id) ?: return@any true
+    child.name != f.name || (f.type is IcebergType.StructType && child.kind == FileColumn.Kind.STRUCT && structDiffers(f.type, child)) ||
+        (f.type is IcebergType.ListType && child.kind == FileColumn.Kind.LIST && f.type.element is IcebergType.StructType && child.children.size == 1 && structDiffers(f.type.element, child.children.single()))
 }

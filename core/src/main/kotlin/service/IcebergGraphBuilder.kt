@@ -510,7 +510,7 @@ object IcebergGraphBuilder {
                     identifierFields = identifierFields,
                     deletedPositions = deleted,
                     readAs = if (contentType == DataFileContent.DATA && currentSchema != null) DeferredRead.of {
-                        dataFile.rows.getOrNull(rowIndex)?.let { projectRow(it.cells, dataFile.fileColumns, currentSchema, nameMapping) }
+                        dataFile.rows.getOrNull(rowIndex)?.let { projectRow(it.cells, dataFile.fileColumnTree, currentSchema, nameMapping) }
                     } else DeferredRead.none(),
                     dataLoader = {
                         try {

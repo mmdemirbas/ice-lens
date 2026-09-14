@@ -69,9 +69,10 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   split's stitch (`readSplit`), so a rename on such a table is not read. **Nested columns are
   pruned, named and read** (`deep`): pruning binds `addr.town` by leaf id, and the SQL readers
   rebuild a struct by id (`FileProjection`, `struct_pack` over the file's column tree), so a
-  filter on a struct field answers on a file written before a rename inside the struct. Still
-  by name: a nested name mapping (parsed, not consulted), a Paimon file's nested fields, and
-  the row panel's `Read As`, which renames top-level cells only. What the vector work does *not* cover on the
+  filter on a struct field answers on a file written before a rename inside the struct, and
+  the row panel's `Read As` rebuilds the struct from the DuckDB value the same way. Still by
+  name: a nested name mapping (parsed, not consulted), a Paimon file's nested fields, and a
+  map's key and value on the row panel. What the vector work does *not* cover on the
   canvas: an Iceberg **positional delete** file (v2) marks no row *card*, because its targets are
   one per row and only known after reading the file — the same reason there is no `e_dv_*`-style
   edge for it. A row's panel answers it behind a click (`RowDeletesSection`), for equality deletes
