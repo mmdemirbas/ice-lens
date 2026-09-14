@@ -65,6 +65,25 @@ data class PaimonSnapshot(
         else -> null
     }
 
+    /**
+     * `commitIdentifier` as a reader wants it said: `Long.MAX_VALUE` is
+     * `BatchWriteBuilder.COMMIT_IDENTIFIER`, every batch write's (Spark, and Flink batch); a
+     * streaming Flink sink writes its checkpoint id, which is what makes the identifier a
+     * deduplication key — two snapshots with one identifier are one checkpoint committed twice.
+     */
+    fun describeCommitIdentifier(): String = when (val id = commitIdentifier) {
+        null -> "N/A"
+        Long.MAX_VALUE -> "batch write ($id, BatchWriteBuilder.COMMIT_IDENTIFIER)"
+        else -> "$id — a streaming sink's checkpoint id"
+    }
+
+    /** `watermark` as a reader wants it said: `Long.MIN_VALUE` is a Flink batch job's, no watermark ever having advanced. */
+    fun describeWatermark(): String = when (val w = watermark) {
+        null -> "not recorded"
+        Long.MIN_VALUE -> "none ($w, Long.MIN_VALUE — a Flink batch write's)"
+        else -> "$w (${formatPaimonEpochMillis(w)})"
+    }
+
     /** `tagTimeRetained` in milliseconds — seconds as a number, or an ISO duration string. */
     fun tagTimeRetainedMs(): Long? = when (val e = tagTimeRetained) {
         null -> null
@@ -74,6 +93,9 @@ data class PaimonSnapshot(
         else -> null
     }
 }
+
+private fun formatPaimonEpochMillis(ms: Long): String =
+    java.time.format.DateTimeFormatter.ISO_INSTANT.format(java.time.Instant.ofEpochMilli(ms))
 
 /**
  * What an `ANALYZE TABLE` commit writes under `statistics/`, as Paimon's `Statistics` serialises it.

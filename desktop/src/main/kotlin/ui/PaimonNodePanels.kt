@@ -57,11 +57,12 @@ internal fun ColumnScope.PaimonSnapshotPanel(
             DetailRow("Version", "${node.data.version ?: "N/A"}")
             DetailRow("Schema ID", "${node.data.schemaId ?: "N/A"}")
             DetailRow("Commit Kind", node.commitKind ?: "N/A")
+            // One user per writer instance: an append and the compaction it triggered share it.
             DetailRow("Commit User", node.data.commitUser ?: "N/A", copyable = true)
-            DetailRow("Commit Identifier", "${node.data.commitIdentifier ?: "N/A"}")
+            DetailRow("Commit Identifier", node.data.describeCommitIdentifier())
             DetailRow("Timestamp", ui.formatTimestamp(node.data.timeMillis))
             // The three record counts are checked below, against the manifests.
-            DetailRow("Watermark", "${node.data.watermark ?: "N/A"}")
+            DetailRow("Watermark", node.data.describeWatermark())
             DetailRow("Base Manifest List", node.data.baseManifestList ?: "N/A", copyable = true)
             DetailRow("Delta Manifest List", node.data.deltaManifestList ?: "N/A", copyable = true)
             DetailRow("Changelog Manifest List", node.data.changelogManifestList ?: "N/A", copyable = true)

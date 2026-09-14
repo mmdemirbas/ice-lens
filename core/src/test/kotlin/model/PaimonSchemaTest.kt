@@ -3,6 +3,7 @@ package model
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -48,6 +49,18 @@ class PaimonSchemaTest {
         assertEquals(10L, snapshot.deltaRecordCount)
         assertEquals(0L, snapshot.changelogRecordCount)
         assertEquals(Long.MIN_VALUE, snapshot.watermark)
+    }
+
+    /** `test` (Flink batch) and every Spark fixture record `Long.MAX_VALUE`, the batch identifier; `test` also a `Long.MIN_VALUE` watermark. */
+    @Test
+    fun `the commit identifier and watermark are said for what they are`() {
+        val batch = json.decodeFromString(PaimonSnapshot.serializer(), """{"id": 1, "commitIdentifier": 9223372036854775807, "watermark": -9223372036854775808}""")
+        assertTrue(batch.describeCommitIdentifier().startsWith("batch write (9223372036854775807"), batch.describeCommitIdentifier())
+        assertTrue(batch.describeWatermark().startsWith("none ("), batch.describeWatermark())
+        val streaming = json.decodeFromString(PaimonSnapshot.serializer(), """{"id": 2, "commitIdentifier": 17, "watermark": 1700000000000}""")
+        assertEquals("17 — a streaming sink's checkpoint id", streaming.describeCommitIdentifier())
+        assertEquals("1700000000000 (2023-11-14T22:13:20Z)", streaming.describeWatermark())
+        assertEquals("not recorded", json.decodeFromString(PaimonSnapshot.serializer(), """{"id": 3}""").describeWatermark())
     }
 
     @Test

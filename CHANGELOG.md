@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A Paimon snapshot's `commitIdentifier` and `watermark` are said for what they are** —
+  `Long.MAX_VALUE` is every batch write's identifier (`BatchWriteBuilder.COMMIT_IDENTIFIER`;
+  a streaming sink writes its checkpoint id, the deduplication key), and a `Long.MIN_VALUE`
+  watermark is a Flink batch write's.
 - **A Paimon rollback planned** — the snapshot panel's `Rollback`: what `rollback_to` this
   snapshot removes (the snapshot files, long-lived changelogs and tags above it) and what it
   leaves on disk named by nothing — the rolled-back commits' data files, manifests and lists,
