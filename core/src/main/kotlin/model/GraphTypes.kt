@@ -790,6 +790,8 @@ sealed class GraphNode(
         val simpleId: Int,
         val commitKind: String? = null,
         val localPath: String? = null,
+        /** The ids of the schema files this line has, for [paimonSnapshotTallies]: which schema a commit's files are read under. */
+        val schemaIds: Set<Int> = emptySet(),
         /**
          * Every file the table holds at this snapshot, read on first ask — see [liveFiles].
          *

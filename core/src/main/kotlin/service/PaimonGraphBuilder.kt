@@ -158,6 +158,8 @@ object PaimonGraphBuilder {
             retainedByTagOnly: Boolean,
             /** The line's newest schema for its latest snapshot, which a read goes through; null for the rest — see paimonReadInputOf. */
             lineSchema: PaimonSchema?,
+            /** Every schema file the line has, for the snapshot's schemaId tally. */
+            lineSchemas: List<PaimonSchema>,
         ) {
             val snap = unifiedSnapshot.metadata
             val idPrefix = if (branch == null) "" else "${branch}_"
@@ -178,6 +180,7 @@ object PaimonGraphBuilder {
                     simpleId = simpleId,
                     commitKind = snap.commitKind,
                     localPath = unifiedSnapshot.path.toString(),
+                    schemaIds = lineSchemas.mapNotNull { it.id }.toSet(),
                     liveFilesLoader = liveFiles,
                     recordTalliesLoader = DeferredRead.of {
                         paimonRecordTallies(unifiedSnapshot, liveFiles.value.orEmpty().sumOf { it.recordCount })
@@ -353,7 +356,7 @@ object PaimonGraphBuilder {
             .forEach { unifiedSnapshot ->
                 val id = unifiedSnapshot.metadata.id
                 val latest = unifiedSnapshot === tableModel.snapshots.lastOrNull()
-                addSnapshot(unifiedSnapshot, null, id?.let { tableModel.tagNamesBySnapshotId[it] }.orEmpty(), id !in liveIds, if (latest) tableModel.latestSchema else null)
+                addSnapshot(unifiedSnapshot, null, id?.let { tableModel.tagNamesBySnapshotId[it] }.orEmpty(), id !in liveIds, if (latest) tableModel.latestSchema else null, tableModel.schemas)
             }
 
         // Then each branch's, the same way and under the same table root: a branch is another
@@ -368,7 +371,7 @@ object PaimonGraphBuilder {
                 .forEach { unifiedSnapshot ->
                     val id = unifiedSnapshot.metadata.id
                     val latest = unifiedSnapshot === branch.snapshots.lastOrNull()
-                    addSnapshot(unifiedSnapshot, branch.name, id?.let { branch.tagNamesBySnapshotId[it] }.orEmpty(), id !in branchLiveIds, if (latest) branch.schemas.maxByOrNull { it.id ?: -1 } else null)
+                    addSnapshot(unifiedSnapshot, branch.name, id?.let { branch.tagNamesBySnapshotId[it] }.orEmpty(), id !in branchLiveIds, if (latest) branch.schemas.maxByOrNull { it.id ?: -1 } else null, branch.schemas)
                 }
         }
 

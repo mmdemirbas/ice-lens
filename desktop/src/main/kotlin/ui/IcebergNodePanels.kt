@@ -30,6 +30,7 @@ import model.ManifestEntryStatus
 import model.TermEffect
 import model.evaluatePruning
 import model.manifestTallies
+import model.metadataTallies
 import model.partitionBoundsChecks
 import model.snapshotAsOf
 import model.partitionSummaryTallies
@@ -74,6 +75,8 @@ internal fun ColumnScope.MetadataPanel(
             DetailRow("Default Sort Order ID", "${node.data.defaultSortOrderId ?: "N/A"}")
             DetailRow("Current Snapshot ID", currentSnapshotLabel(node.data.currentSnapshotId))
         }
+
+        MetadataTalliesSection(metadataTallies(node.data))
 
         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 

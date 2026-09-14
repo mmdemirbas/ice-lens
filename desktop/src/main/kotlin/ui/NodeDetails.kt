@@ -69,6 +69,7 @@ import model.SnapshotChange
 import model.snapshotTotals
 import model.FileChange
 import model.manifestTallies
+import model.MetadataTally
 import model.PartitionFieldCheck
 import model.PartitionFieldVerdict
 import model.partialRows
@@ -2867,6 +2868,53 @@ internal fun PartitionBoundsSection(checks: List<PartitionFieldCheck>) {
                     c.transform.ifEmpty { "N/A" },
                     c.source,
                     c.reason,
+                )
+            },
+        )
+    }
+}
+
+/**
+ * A metadata file's own figures against the same figures folded from its contents — on the
+ * Iceberg metadata panel, the Paimon schema panel and the Paimon snapshot panel. The rule
+ * column says what each figure decides, because a disagreement here is not a wrong panel: it
+ * is a table the engine refuses to open, or one whose next DDL hands an id out twice.
+ */
+@Composable
+internal fun MetadataTalliesSection(tallies: List<MetadataTally>) {
+    val colors = MaterialTheme.colorScheme
+    val disagreeing = tallies.count { it.agrees == false }
+    Section("Recorded Figures" + if (disagreeing > 0) " — $disagreeing disagree" else "") {
+        Text(
+            "Each figure the file records about itself, beside the same figure folded from its " +
+                "contents. Some a reader refuses the table on; the ids the next DDL allocates from " +
+                "are checked by nothing, and a short one gives a new column or partition field an id " +
+                "already in use.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            headers = listOf("Agrees", "Figure", "Recorded", "Folded", "What it decides"),
+            columnWidths = listOf(110.dp, 170.dp, 170.dp, 190.dp, 620.dp),
+            leadCellColors = tallies.map {
+                when (it.agrees) {
+                    true -> null
+                    false -> colors.error
+                    null -> verdictUnevaluatedColor()
+                }
+            },
+            rows = tallies.map { t ->
+                listOf(
+                    when (t.agrees) {
+                        true -> "yes"
+                        false -> "NO"
+                        null -> "nothing to check"
+                    },
+                    t.label,
+                    t.recorded,
+                    t.counted,
+                    t.consequence,
                 )
             },
         )

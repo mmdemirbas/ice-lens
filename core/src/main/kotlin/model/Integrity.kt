@@ -32,6 +32,8 @@ enum class IntegrityCheck(val label: String) {
     PARTITION_STATISTICS("partition statistics"),
     /** A data file's partition tuple against its own column bounds — see [partitionBoundsChecks]. */
     FILE_PARTITIONS("file partitions"),
+    /** The metadata file's own figures against its contents — the ids the next DDL allocates from, what a reader refuses on — see [metadataTallies]. */
+    METADATA_FIGURES("metadata figures"),
 }
 
 data class IntegrityFinding(
@@ -84,6 +86,10 @@ fun UnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_CHECKS
         .sortedWith(compareByDescending<UnifiedSnapshot> { it.metadata.effectiveSequenceNumber }.thenByDescending { it.metadata.timestampMs ?: Long.MIN_VALUE })
     fun name(s: UnifiedSnapshot) = "snapshot ${s.metadata.snapshotId}" + (s.metadata.summary["operation"]?.let { " ($it)" } ?: "")
 
+    // The newest metadata's own figures — the one version a reader opens, and the one the next commit allocates from.
+    metadatas.lastOrNull()?.let { newest ->
+        metadataTallies(newest.metadata).forEach { t.count(IntegrityCheck.METADATA_FIGURES, newest.path.fileName.toString(), it.label, it.recorded, it.counted, it.agrees) }
+    }
     val seenManifests = mutableSetOf<String>()
     retained.forEach { s ->
         s.manifests.forEach { m ->
@@ -127,7 +133,15 @@ fun PaimonUnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_
     var readErrors = readErrors.size
     var snapshotCount = 0
     val all = lines.flatMap { line -> line.snapshots.distinctBy { it.metadata.id }.map { line to it } }
+    // Each line's schemas: the id the next column takes, and each snapshot's schema file present.
+    (listOf(null to schemas) + branches.map { it.name to it.schemas }).forEach { (branch, lineSchemas) ->
+        lineSchemas.forEach { schema ->
+            paimonSchemaTallies(schema).forEach { t.count(IntegrityCheck.METADATA_FIGURES, "schema-${schema.id}" + (branch?.let { " on $it" } ?: ""), it.label, it.recorded, it.counted, it.agrees) }
+        }
+    }
+    val schemaIdsByLine = (listOf(null to schemas) + branches.map { it.name to it.schemas }).associate { (b, ss) -> b to ss.mapNotNull { it.id }.toSet() }
     all.forEach { (line, s) ->
+        paimonSnapshotTallies(s.metadata, schemaIdsByLine[line.branch].orEmpty()).forEach { t.count(IntegrityCheck.METADATA_FIGURES, name(line, s), it.label, it.recorded, it.counted, it.agrees) }
         snapshotCount++
         readErrors += s.readErrors.size
         (s.baseManifests + s.deltaManifests + s.changelogManifests).forEach { m ->

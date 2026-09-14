@@ -91,6 +91,7 @@ core/src/main/kotlin/
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
 │   ├── PartitionSummaryTally.kt # manifest_file's partition summaries — the bounds a scan prunes on — against the entries' decoded partitions
 │   ├── PartitionBoundsCheck.kt # A data file's partition tuple against its own column bounds — the pair no read path compares, both formats
+│   ├── MetadataTally.kt       # metadata.json's own figures against its contents — the ids the next DDL allocates from, what a reader refuses on; Paimon's highestFieldId and a snapshot's schemaId
 │   ├── ManifestLedger.kt      # Per-entry: what it added to a manifest's figures, or which rule dropped it
 │   ├── ScanPruning.kt         # Predicate → which manifests a scan would skip, and which term did it
 │   ├── GraphNavigation.kt     # Arrow keys → the next node, decided from where the nodes are drawn
@@ -748,6 +749,30 @@ intellij/src/main/kotlin/plugin/
   across every transform the corpus carries, moves one bound by hand to see one figure
   disagree, and holds `lineage`'s DELETED-only manifests to recording their removed files'
   partitions as bounds — the status-blind fold seen, not read
+- **`metadata.json`'s own figures are folded from its contents, and two of them are the ones
+  that corrupt.** `model/MetadataTally.kt` puts `last-column-id` beside the highest field id any
+  schema carries (nested leaves included) and `last-partition-id` beside the highest partition
+  field id any spec carries (999 for an unpartitioned spec, `PartitionSpec.lastAssignedFieldId`),
+  because `SchemaUpdate` hands the next added column `last-column-id + 1` and
+  `TableMetadata.Builder` the next partition field `last-partition-id + 1` (1.8.1) and **nothing
+  checks either** — a figure below the highest id in use gives a new column or field an id an
+  old one already has, silently, until a file written under the old id is read under the new
+  column. The rest are what `TableMetadata` refuses the table on as it opens: a snapshot's
+  `sequence-number` above `last-sequence-number`, `last-updated-ms` more than a minute before
+  the last log entry (the tolerance is for clock skew between committers, and is kept), a
+  `current-snapshot-id` no snapshot has, `main` naming another snapshot than the current one
+  (a v1 table's missing `main` is allowed), a ref naming a snapshot the list lacks, a
+  `current-schema-id` no schema has, a snapshot log running backwards by more than a minute;
+  and `next-row-id` against the furthest `first-row-id + added-rows` any commit reached,
+  which is the same allocation rule as the ids. Each tally carries what the figure decides, since
+  a disagreement here is not a wrong panel. The metadata panel's `Recorded Figures` draws every
+  version's; the integrity report runs the newest under `METADATA_FIGURES`. Paimon's
+  `highestFieldId` is the same figure with the same consequence (`SchemaManager` assigns from
+  `highestFieldId + 1`, release-1.3.1), folded from the fields with nested row fields included
+  (`pne`), on the schema panel; a snapshot's `schemaId` against the schema files its line has, on
+  the snapshot panel. `MetadataTallyTest` holds every version of every fixture to agreement on
+  both formats and moves each figure by hand; a strict `>` and a zero tolerance were each run and
+  caught
 - **A file's partition tuple is checked against its own column bounds, and it is the one pair
   of recorded figures about a file that no read path compares.** A scan prunes on the partition
   before it looks at a bound, so a file registered under the wrong partition — `add_files` takes
@@ -1336,7 +1361,7 @@ intellij/src/main/kotlin/plugin/
   small enough to draw whole. Data files first and in the error colour, `MAX_EXPIRY_FILE_ROWS`
   (200) listed
 - **"Is this table consistent" is one click, and it runs the panels' own checks.**
-  `model/Integrity.kt` runs `manifestTallies`, `partitionSummaryTallies` and `partitionBoundsChecks` on every distinct manifest, each commit's
+  `model/Integrity.kt` runs `metadataTallies` on the newest metadata, `manifestTallies`, `partitionSummaryTallies` and `partitionBoundsChecks` on every distinct manifest, each commit's
   `snapshotChangeOf(...).tallies` and `snapshotTotals` on its closure (Iceberg), and
   `paimonManifestTallies` on every distinct manifest with `paimonRecordTallies` on every
   snapshot's replay across main, the branches and the tag-only snapshots (Paimon), and lists the
@@ -2281,7 +2306,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,284 tests across 174 files (1,009 in :core, 265 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,289 tests across 175 files (1,014 in :core, 265 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -15,6 +15,8 @@ import model.MAIN_BRANCH
 import model.PaimonFileSource
 import model.fieldRows
 import model.paimonManifestTallies
+import model.paimonSchemaTallies
+import model.paimonSnapshotTallies
 import model.paimonPartitionBoundsChecks
 import java.io.File
 
@@ -56,6 +58,7 @@ internal fun ColumnScope.PaimonSnapshotPanel(
             // a different thing from a table that has produced no rows yet.
             DetailRow("Next Row ID", "${node.data.nextRowId ?: "not recorded"}")
         }
+        MetadataTalliesSection(paimonSnapshotTallies(node.data, node.schemaIds))
         PaimonRecordsSection(node)
         PaimonMergedCountSection(node)
         PartitionsSection(node)
@@ -77,6 +80,7 @@ internal fun ColumnScope.PaimonSchemaPanel(
             DetailRow("Primary Keys", node.data.primaryKeys.joinToString(", ").ifEmpty { "N/A" })
             DetailRow("Comment", node.data.comment ?: "N/A")
         }
+        MetadataTalliesSection(paimonSchemaTallies(node.data))
         node.step?.let { SchemaStepSection(it) }
         if (node.data.fields.isNotEmpty()) {
             Section("Fields") {

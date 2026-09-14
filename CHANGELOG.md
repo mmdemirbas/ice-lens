@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`metadata.json`'s own figures folded from its contents, on the metadata panel and in the
+  integrity check.** `last-column-id` and `last-partition-id` against the highest ids in use —
+  the figures the next `ADD COLUMN` and `ADD PARTITION FIELD` allocate from, which no reader
+  checks and which hand an id out twice when short — and the figures Iceberg refuses the table
+  on: a sequence number above `last-sequence-number`, `last-updated-ms` before the log, a
+  current snapshot or ref the list lacks, a `current-schema-id` no schema has, a log out of
+  order, plus `next-row-id` against the furthest commit. Paimon's `highestFieldId` and a
+  snapshot's `schemaId` get the same treatment.
 - **A data file's partition checked against its own column bounds, on both file panels and
   in the integrity check.** A scan prunes on the partition before it looks at a bound, so a
   file registered under the wrong partition is skipped for the value its rows hold with
