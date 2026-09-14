@@ -82,6 +82,7 @@ internal fun FileHistorySection(history: DeferredRead<FileHistory>, graph: Graph
                     "${e.snapshotId}" + when {
                         e.isCurrent -> " (current)"
                         e.expired -> " (expired)"
+                        e.changelogOnly -> " (changelog only)"
                         else -> ""
                     },
                     e.operation ?: "N/A",
@@ -137,8 +138,10 @@ private fun expiryLineFor(h: FileHistory, graph: GraphModel, nowMs: Long): Strin
         call = "expire_snapshots(retain_min = 1, older_than = now)"
         freed = h.fileKey in files.names
         val protecting = files.protectedByTag.firstOrNull { it.name == h.fileKey }
+        val changelog = h.liveIn.firstOrNull { it.changelogOnly }
         kept = when {
             protecting != null -> "tag ${protecting.tag} (snapshot ${protecting.tagSnapshotId}) still holds it"
+            changelog != null -> "long-lived changelog ${changelog.snapshotId} still lists it, for expire_changelogs to free"
             else -> "a snapshot that lists it live is kept"
         }
     }

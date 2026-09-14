@@ -160,6 +160,13 @@ class PaimonChangelogLifecycleFixtureTest {
         assertEquals(5, removedAtSix.size, removedAtSix.map { it.path.fileName }.toString())
         removedAtSix.forEach { assertTrue(java.nio.file.Files.exists(it.path), it.path.toString()) }
         assertEquals(emptyList(), findUnreferencedFiles(pcn).unreferenced.map { it.path })
+        // A removed file's history: listed live by changelog 5, removed by changelog 6, both long-lived.
+        val history = pcn.fileHistoryOf(paimonDataFileKey(removedAtSix.first()))
+        assertEquals(6L, history.removedBy?.snapshotId, history.toString())
+        assertTrue(history.removedBy?.changelogOnly == true)
+        assertTrue(history.liveIn.any { it.snapshotId == 5L && it.changelogOnly }, history.toString())
+        assertEquals(4, history.retainedSnapshotCount)
+        assertTrue(history.describe.contains("a long-lived changelog"), history.describe)
         val plan = pcn.expiryFileInput().planExpiryFiles(setOf(7L))
         assertTrue(plan.decoupled)
         val seven = pcn.snapshots.first { it.metadata.id == 7L }

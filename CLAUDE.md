@@ -2995,7 +2995,12 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   what a decoupled expiry keeps, and the consumer, maximum and limit bounds planted. `pcn` is
   the no-producer twin, and holds the other branch: both lists present on each long-lived
   changelog, no retired list, three tallies, the five `APPEND` files the compaction at 6 removed
-  all still on disk, and a plan expiring snapshot 7 that frees nothing but the snapshot file
+  all still on disk, and a plan expiring snapshot 7 that frees nothing but the snapshot file.
+  A file's history counts such a changelog as a retained snapshot — `FileHistoryEntry.changelogOnly`,
+  the panel's `(changelog only)` and the history line's "kept by long-lived changelog 5, for
+  `expire_changelogs` to free" — only where its lists are whole: a changelog with a retired list
+  holds the change stream alone and can say nothing about a data file, and counting it made
+  `pcl`'s files "become live without an add" between changelog 6 and snapshot 7
 - **A Paimon file written outside the table records where, and that is the one path with
   something to resolve.** The format records no path for a file in its own layout —
   `<table>/<partition>/bucket-N/<file>` is the rule — so `PaimonPathResolution.LAYOUT` says

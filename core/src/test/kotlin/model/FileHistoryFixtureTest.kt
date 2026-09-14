@@ -147,8 +147,9 @@ class FileHistoryFixtureTest {
 
     private fun lines(): List<Pair<PaimonUnifiedTableModel, Line>> = paimonFixtures().flatMap { fixture ->
         val m = paimon(fixture)
-        listOf(m to Line(fixture, null, m.snapshots, m.tagOnlySnapshots)) +
-            m.branches.map { b -> m to Line(fixture, b.name, b.snapshots, b.tagOnlySnapshots) }
+        // A long-lived changelog whose lists the expiry left is retained like a tag-only snapshot; one with a retired list holds nothing about data files.
+        listOf(m to Line(fixture, null, m.snapshots, m.tagOnlySnapshots + m.changelogs.filter { it.retiredLists.isEmpty() })) +
+            m.branches.map { b -> m to Line(fixture, b.name, b.snapshots, b.tagOnlySnapshots + b.changelogs.filter { it.retiredLists.isEmpty() }) }
     }
 
     @Test

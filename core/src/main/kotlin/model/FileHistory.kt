@@ -44,6 +44,13 @@ data class FileHistoryEntry(
      * snapshot still carries — Iceberg's `added_snapshot_id` outlives the snapshot. Never live.
      */
     val expired: Boolean = false,
+    /**
+     * A Paimon snapshot `snapshot/` no longer holds that a long-lived changelog keeps —
+     * `changelog/changelog-<id>`, see [PaimonUnifiedSnapshot.longLivedChangelog]. Listed live
+     * only where the expiry left the base and delta lists, which is a table with no changelog
+     * producer, where every `APPEND` file stays on disk for the change stream.
+     */
+    val changelogOnly: Boolean = false,
 )
 
 data class FileHistory(
@@ -71,7 +78,7 @@ data class FileHistory(
         val added = addedBy
         val removed = removedBy
         val live = liveIn
-        fun name(e: FileHistoryEntry) = "snapshot ${e.snapshotId}" + (e.operation?.let { " ($it)" } ?: "") + (if (e.expired) ", since expired" else "")
+        fun name(e: FileHistoryEntry) = "snapshot ${e.snapshotId}" + (e.operation?.let { " ($it)" } ?: "") + (if (e.expired) ", since expired" else if (e.changelogOnly) ", a long-lived changelog" else "")
         return when {
             liveNow && added != null -> "live now — added by ${name(added)}"
             liveNow -> "live now — carried in from a snapshot no longer retained"
@@ -171,14 +178,20 @@ fun UnifiedTableModel.fileHistoryOf(fileKey: String): FileHistory {
 /**
  * The history of the file [fileKey] names — see [paimonDataFileKey] — over the snapshots of
  * [branch], main when null. Snapshot ids are per branch, and a tag-only snapshot is retained
- * too: its files are the table's for as long as the tag stands.
+ * too: its files are the table's for as long as the tag stands — as is a long-lived changelog's
+ * (`changelog/`), whose base and delta lists say what it still holds where the expiry left them.
  */
 fun PaimonUnifiedTableModel.fileHistoryOf(fileKey: String, branch: String? = null): FileHistory {
     val line = branch?.let { name -> branches.firstOrNull { it.name == name } }
     val snapshots = if (branch == null) this.snapshots else line?.snapshots.orEmpty()
     val tagOnly = if (branch == null) this.tagOnlySnapshots else line?.tagOnlySnapshots.orEmpty()
+    // Only a changelog whose base and delta lists the expiry left can say anything about a data
+    // file; one with a retired list holds the change stream alone and is not a retained snapshot here.
+    val changelogs = (if (branch == null) this.changelogs else line?.changelogs.orEmpty()).filter { it.retiredLists.isEmpty() }
     val currentId = snapshots.lastOrNull()?.metadata?.id
-    val retained = (snapshots + tagOnly).filter { it.metadata.id != null }.distinctBy { it.metadata.id }.sortedBy { it.metadata.id }
+    // A snapshot a tag and a changelog both hold is the tag's, which has its lists whole.
+    val retained = (snapshots + tagOnly + changelogs).filter { it.metadata.id != null }.distinctBy { it.metadata.id }.sortedBy { it.metadata.id }
+    val changelogOnlyIds = retained.filter { it.longLivedChangelog }.map { it.metadata.id }.toSet()
     // Each distinct manifest's entries for the file, in entry order — the order decides.
     val holdings = mutableMapOf<String, List<Int>>()
     retained.forEach { s ->
@@ -202,7 +215,7 @@ fun PaimonUnifiedTableModel.fileHistoryOf(fileKey: String, branch: String? = nul
         val live = last != null && last != PaimonEntryKind.DELETE
         val event = eventOf(added, removed)
         if (!live && event == null) return@mapNotNull null
-        FileHistoryEntry(id, s.metadata.timeMillis, s.metadata.commitKind, live, event, isCurrent = id == currentId)
+        FileHistoryEntry(id, s.metadata.timeMillis, s.metadata.commitKind, live, event, isCurrent = id == currentId, changelogOnly = id in changelogOnlyIds)
     }
     return FileHistory(fileKey, entries, retained.size, branch)
 }
