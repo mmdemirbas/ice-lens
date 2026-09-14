@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with its modification time and the reason. On Iceberg the files only an older metadata
   version or a `DELETED` entry names are planned too — the procedure reaches from the current
   metadata alone and deletes them while the walk counts them referenced. Fixtures `orph`/`orpha`
-  and `po`/`poa`, each a table copied before the procedure ran.
+  and `po`/`poa`, each a table copied before the procedure ran. The `Maintenance` summary gains
+  the row once the walk has run.
 - **A Paimon file's bucket count checked against the table's** — every manifest entry records
   `_TOTAL_BUCKETS`, and a write to a bucket whose files record a count other than the `bucket`
   option is refused until an `INSERT OVERWRITE` rescales the table. The integrity check lists

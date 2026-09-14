@@ -709,7 +709,10 @@ intellij/src/main/kotlin/plugin/
   second copy lacks (ten on Iceberg: v1..v3, three lists, a manifest, a data file, two strays,
   the `_stray` kept; eleven on Paimon, `junk-at-root`, `p=x/stray-in-partition` and
   `schema/junk` kept), and the sweep holds every other fixture to nothing unreached from the
-  current metadata. The section leads with the bare call's verdict and colours `REMOVED`
+  current metadata. The section leads with the bare call's verdict and colours `REMOVED`; the
+  table panel's `Maintenance` summary carries a `remove_orphan_files` row planned from the same
+  report once the walk has run (`DeferredRead.isRead`, and the panel hands the section's result
+  to the summary) and says `not walked` until then, since a summary must not start a walk
 - **The converse is asked from the metadata: what the retained snapshots need that is not there.**
   `model/MissingFiles.kt` is the question a `NoSuchFileException` at query time asks after the
   fact, and it is scoped to what a reader can still be asked for — every snapshot the newest

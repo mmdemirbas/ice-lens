@@ -28,7 +28,9 @@ import model.ManifestMergeOptions
 import model.ManifestMergePlan
 import model.ManifestMergeVerdict
 import model.assumedManifestBytes
+import model.UnreferencedFilesReport
 import model.planManifestMerge
+import model.planOrphanRemoval
 import model.RewriteOptions
 import model.planRewrite
 import model.PositionDeleteRewriteOptions
@@ -256,9 +258,13 @@ internal fun ExpirySection(metadata: TableMetadata, nowMs: Long) {
  * and the verdicts otherwise live three panels deep; the figures are the same functions the
  * detail sections call, so nothing here can drift from them. The leading cell is coloured only
  * where a procedure would act, and in the error colour where a writer would block.
+ *
+ * `remove_orphan_files` is the one row that needs a walk of the directory, so it is planned from
+ * [orphanReport] — what `Unreferenced Files` found, once its button has been pressed — and says
+ * so until then, rather than starting the walk from a summary.
  */
 @Composable
-internal fun MaintenanceSection(node: GraphNode.TableNode) {
+internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: UnreferencedFilesReport? = null) {
     val colors = MaterialTheme.colorScheme
     val summary = node.summary
     val nowMs = expiryClock()
@@ -399,6 +405,15 @@ internal fun MaintenanceSection(node: GraphNode.TableNode) {
                 bareTags.removed.isNotEmpty() -> Row("would remove ${formatCounted(bareTags.removed.size, "tag")}", "expire_tags", "a bare call removes ${bareTags.removed.size} of ${paimonExpiry.tags.size}, whose retention ran out" + (if (freed > 0) ", freeing ${formatCounted(freed, "data file")}" else "") + "; older_than = now removes ${byAgeTags.removed.size}", "table → Tag Expiry", verdictSkippedColor())
                 else -> Row("nothing on a bare call", "expire_tags", "${formatCounted(paimonExpiry.tags.size, "tag")}, ${paimonExpiry.tags.count { it.timeRetainedMs != null }} with a retention, none run out; older_than = now removes ${byAgeTags.removed.size}", "table → Tag Expiry", null)
             }
+        }
+    }
+    if (node.unreferencedFiles.isPresent) {
+        val orphans = orphanReport?.let { planOrphanRemoval(it, nowMs) }
+        rows += when {
+            orphans == null -> Row("not walked", "remove_orphan_files", "walk the table directory under Unreferenced Files to plan it", "table → Unreferenced Files", null)
+            orphans.rows.isEmpty() -> Row("nothing to delete", "remove_orphan_files", "every file on disk is named by the metadata the procedure reads", "table → Unreferenced Files", null)
+            orphans.removed.isEmpty() -> Row("nothing on a bare call", "remove_orphan_files", "${formatCounted(orphans.rows.size, "file")} named by nothing: ${orphans.tooYoung} younger than ${orphans.defaultIntervalText}, ${orphans.unlisted} where it never lists", "table → Unreferenced Files", null)
+            else -> Row("would delete ${formatCounted(orphans.removed.size, "file")}", "remove_orphan_files", "${formatBytes(orphans.removedBytes)}, older than ${orphans.defaultIntervalText}; ${orphans.tooYoung} younger held back, ${orphans.unlisted} never listed", "table → Unreferenced Files", verdictSkippedColor())
         }
     }
     if (rows.isEmpty()) return

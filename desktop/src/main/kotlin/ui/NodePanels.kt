@@ -8,7 +8,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -173,7 +176,10 @@ internal fun ColumnScope.TablePanel(
         // Beside the consumers, because a consumer is the usual answer to the
         // question this section asks. Iceberg's plan sits on the metadata node,
         // which is where Iceberg keeps the refs and the retention properties.
-        MaintenanceSection(node)
+        // What the directory walk found rides here from the section below, so the summary's
+        // remove_orphan_files row follows the button without starting the walk itself.
+        var orphanReport by remember(node.id) { mutableStateOf(if (node.unreferencedFiles.isRead) node.unreferencedFiles.value else null) }
+        MaintenanceSection(node, orphanReport)
         summary.paimonExpiry?.let { PaimonExpirySection(it, nowMs = expiryClock()) }
         summary.paimonExpiry?.let { PaimonExpiryFilesSection(node, it, nowMs = expiryClock()) }
         summary.paimonExpiry?.let { PaimonChangelogExpirySection(it, nowMs = expiryClock()) }
@@ -206,7 +212,7 @@ internal fun ColumnScope.TablePanel(
         }
         // The panel's other controls, kept beside the first for the same reason.
         IntegritySection(node)
-        UnreferencedFilesSection(node)
+        UnreferencedFilesSection(node, onSettled = { orphanReport = node.unreferencedFiles.value })
         MissingFilesSection(node)
         IcebergExportSection(node)
 

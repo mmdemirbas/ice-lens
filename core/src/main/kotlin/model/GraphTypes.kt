@@ -21,15 +21,23 @@ package model
  */
 class DeferredRead<T : Any> private constructor(private val load: (() -> T?)?) {
 
+    private val read = lazy { load?.invoke() }
+
     /** The value, read on first ask. Null when there is nothing to read, or the read gave nothing. */
-    val value: T? by lazy { load?.invoke() }
+    val value: T? get() = read.value
 
     /** Whether there is anything to read at all, answerable without reading it. */
     val isPresent: Boolean get() = load != null
 
+    /**
+     * Whether the read has already happened — what lets a summary say what a walk found without
+     * being the thing that starts the walk.
+     */
+    val isRead: Boolean get() = read.isInitialized()
+
     override fun equals(other: Any?): Boolean = other is DeferredRead<*>
     override fun hashCode(): Int = 0
-    override fun toString(): String = if (isPresent) "DeferredRead(unread or read)" else "DeferredRead(nothing)"
+    override fun toString(): String = if (!isPresent) "DeferredRead(nothing)" else if (isRead) "DeferredRead(read)" else "DeferredRead(unread)"
 
     companion object {
         /** Nothing to read — the ordinary case for a node the deferred read does not apply to. */

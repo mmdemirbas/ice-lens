@@ -2415,7 +2415,17 @@ class InspectorRenderTest {
                 }
             }
         }
-        capture("orphan-removal-plan", graphFor("orph").nodes.filterIsInstance<GraphNode.TableNode>().single(), height = 1300)
+        val orph = graphFor("orph").nodes.filterIsInstance<GraphNode.TableNode>().single()
+        capture("orphan-removal-plan", orph, height = 1300)
+        // The summary's row, planned from the same report once the walk has run.
+        val newest = orph.unreferencedFiles.value!!.let { r -> (r.unreferenced + r.unreachedFromCurrent).maxOf { it.modifiedMs } }
+        renderScene("maintenance-orphan-row", width = 1400, height = 1300) {
+            CompositionLocalProvider(LocalExpiryClock provides { newest + 4L * 24 * 3_600_000 }) {
+                Column(Modifier.padding(16.dp)) {
+                    MaintenanceSection(orph, orph.unreferencedFiles.value)
+                }
+            }
+        }
         val po = GraphLayoutService.layoutGraph(
             PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/po").absolutePath)),
             showRows = false,
