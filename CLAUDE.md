@@ -763,8 +763,10 @@ intellij/src/main/kotlin/plugin/
   `current-snapshot-id` no snapshot has, `main` naming another snapshot than the current one
   (a v1 table's missing `main` is allowed), a ref naming a snapshot the list lacks, a
   `current-schema-id` no schema has, a snapshot log running backwards by more than a minute;
-  and `next-row-id` against the furthest `first-row-id + added-rows` any commit reached,
-  which is the same allocation rule as the ids. Each tally carries what the figure decides, since
+  `next-row-id` against the furthest `first-row-id + added-rows` any commit reached, which is
+  the same allocation rule as the ids; and **every child's sequence number above its parent's**,
+  which no reader checks and which delete application rests on — a delete applies to data files
+  at or below its own number. Each tally carries what the figure decides, since
   a disagreement here is not a wrong panel. The metadata panel's `Recorded Figures` draws every
   version's; the integrity report runs the newest under `METADATA_FIGURES`. Paimon's
   `highestFieldId` is the same figure with the same consequence (`SchemaManager` assigns from

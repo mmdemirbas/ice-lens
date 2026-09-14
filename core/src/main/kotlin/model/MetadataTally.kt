@@ -117,6 +117,20 @@ fun metadataTallies(metadata: TableMetadata): List<MetadataTally> {
             "the next commit allocates row ids from here, so a figure below a commit's first-row-id + added-rows hands ids out twice — nothing checks it",
         )
     }
+    // Every commit takes last-sequence-number + 1, so a child's number is above its parent's on
+    // every line; a delete applies to data files at or below its own number, which is what breaks
+    // when a child sits at or below its parent. v1 tables keep every snapshot at 0.
+    val bySnapshot = metadata.snapshots.associateBy { it.snapshotId }
+    val parented = metadata.snapshots.filter { s -> s.sequenceNumber != null && bySnapshot[s.parentSnapshotId]?.sequenceNumber != null }
+    if (parented.isNotEmpty() && (metadata.formatVersion ?: 1) >= 2) {
+        val below = parented.filter { s -> s.sequenceNumber!! <= bySnapshot.getValue(s.parentSnapshotId).sequenceNumber!! }
+        tally(
+            "snapshot sequence order", "${parented.size} commits with a retained parent",
+            if (below.isEmpty()) "every child above its parent" else "snapshot ${below.first().snapshotId} at ${below.first().sequenceNumber} under parent's ${bySnapshot.getValue(below.first().parentSnapshotId).sequenceNumber}",
+            below.isEmpty(),
+            "a delete file applies to data files at or below its own sequence number, and every commit takes last-sequence-number + 1 — a child at or below its parent applies deletes to the wrong files; nothing checks it",
+        )
+    }
     // The logs are read in order, and a reader refuses one that runs backwards by more than a minute.
     fun outOfOrder(times: List<Long>): Int? = times.zipWithNext().indexOfFirst { (a, b) -> b - a < -CLOCK_SKEW_MS }.takeIf { it >= 0 }
     val snapshotLogTimes = metadata.snapshotLog.mapNotNull { it.timestampMs }

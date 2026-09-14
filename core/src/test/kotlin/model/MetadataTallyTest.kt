@@ -87,6 +87,12 @@ class MetadataTallyTest {
         // An unpartitioned v2 table records 999, which is what an empty spec folds to.
         val unpartitioned = FixtureCatalog.icebergModel("test").metadatas.last().metadata
         assertEquals("999" to "999", tally(unpartitioned, "last-partition-id").let { it.recorded to it.counted })
+        // A child at its parent's sequence number: the shape that applies deletes to the wrong files.
+        val child = newest.snapshots.first { it.parentSnapshotId != null && newest.snapshots.any { p -> p.snapshotId == it.parentSnapshotId } }
+        val parent = newest.snapshots.first { it.snapshotId == child.parentSnapshotId }
+        val flat = newest.copy(snapshots = newest.snapshots.map { if (it.snapshotId == child.snapshotId) it.copy(sequenceNumber = parent.sequenceNumber) else it })
+        assertEquals(false, tally(flat, "snapshot sequence order").agrees)
+        assertEquals(true, tally(newest, "snapshot sequence order").agrees)
         // Two entries two minutes apart, written the wrong way round; a fixture's own entries are seconds apart, inside the tolerance either way.
         val first = newest.snapshotLog.first()
         val swapped = newest.copy(snapshotLog = listOf(first.copy(timestampMs = first.timestampMs!! + 120_000), first))
