@@ -60,8 +60,8 @@ object PaimonRowLookup {
     internal fun bucketSources(input: PaimonReadInput, files: List<PaimonLookupFile>): BucketSources =
         BucketSources(files, files.map { projectionOf(it, input.readSchema, rowNumber = true, filename = true) })
 
-    private fun projectionOf(file: PaimonLookupFile, schema: IcebergSchemaModel, rowNumber: Boolean, filename: Boolean = false): FileProjection =
-        FileProjection.of(file.extension, paimonFileColumnTree(SampleRowReader.fileColumnTreeOf(file.localPath), file.fileSchema), schema, null, rowNumber = rowNumber, filename = filename)
+    private fun projectionOf(file: PaimonLookupFile, schema: IcebergSchemaModel, rowNumber: Boolean, filename: Boolean = false, alias: String = "s"): FileProjection =
+        FileProjection.of(file.extension, paimonFileColumnTree(SampleRowReader.fileColumnTreeOf(file.localPath), file.fileSchema), schema, null, rowNumber = rowNumber, alias = alias, filename = filename)
 
     /** One matched record; [stitched] names the other files of its split that supplied columns, where a read stitches. */
     private class Raw(val file: PaimonLookupFile, val position: Long?, val cells: Map<String, Any?>, val stitched: String? = null)
@@ -120,11 +120,11 @@ object PaimonRowLookup {
         val raws = mutableListOf<Raw>()
         for (split in toRead) {
             val base = split.firstOrNull { !it.partial } ?: split.last()
-            val sources = if (split.size == 1) emptyMap() else columns.mapNotNull { c -> split.indexOfFirst { it.holds(c) }.takeIf { it >= 0 }?.let { c to it } }.toMap()
+            val sources = if (split.size == 1) emptyMap() else sourcesOf(input, split)
             val stitched = sources.entries.filter { split[it.value] != base }.groupBy({ split[it.value] }, { it.key })
                 .entries.joinToString("; ") { (file, cols) -> "${cols.joinToString(", ")} from ${file.fileName}" }.ifEmpty { null }
             val rows = runCatching {
-                if (split.size == 1) readMatches(base, predicate.sql, predicate.params, input.readSchema) else readSplit(split, columns, sources, predicate.sql, predicate.params)
+                if (split.size == 1) readMatches(base, predicate.sql, predicate.params, input.readSchema) else readSplit(split, columns, sources, predicate.sql, predicate.params, input.readSchema)
             }
             val error = rows.exceptionOrNull()
             if (error != null) {
@@ -185,18 +185,33 @@ object PaimonRowLookup {
         val split = input.splitsOf(input.files).firstOrNull { s -> s.any { it.fileName == file.fileName } } ?: return null
         if (split.size < 2) return null
         val columns = input.schema.fields.mapNotNull { it.name }
-        val sources = columns.mapNotNull { c -> split.indexOfFirst { it.holds(c) }.takeIf { it >= 0 }?.let { c to it } }.toMap()
-        val rows = readSplit(split, columns, sources, "${SampleRowReader.FILE_ROW_NUMBER} = CAST(? AS BIGINT)", listOf(position.toString()))
+        val sources = sourcesOf(input, split)
+        val rows = readSplit(split, columns, sources, "${SampleRowReader.FILE_ROW_NUMBER} = CAST(? AS BIGINT)", listOf(position.toString()), input.readSchema)
         val cells = rows.firstOrNull()?.minus(SampleRowReader.FILE_ROW_NUMBER) ?: return null
         return StitchedRow(cells, sources.mapValues { (_, i) -> split[i].fileName })
     }
 
     /**
+     * Which file of a split supplies each column of the read schema, by name: the first file —
+     * freshest first — holding the column's field id. By id, because `_WRITE_COLS` names the
+     * columns as the file's schema named them (`der`).
+     */
+    private fun sourcesOf(input: PaimonReadInput, split: List<PaimonLookupFile>): Map<String, Int> =
+        input.schema.fields.mapNotNull { field ->
+            val name = field.name ?: return@mapNotNull null
+            val id = field.id ?: return@mapNotNull null
+            split.indexOfFirst { it.holds(id) }.takeIf { it >= 0 }?.let { name to it }
+        }.toMap()
+
+    /**
      * A data-evolution split as one statement: the files joined on their row number — every file
      * of a split holds the same rows in the same order, which `DataEvolutionSplitRead` checks by
      * row count — with each column taken from the file [sources] names for it, freshest first,
-     * and a column no file holds as null. The filter runs over the stitched row, so a literal in
-     * a patch finds the row whose other columns are in the file it patches.
+     * and a column no file holds as null. Each file is read through its projection onto
+     * [schema], placed by the ids its own schema gives its columns (`projectionOf`), so a column
+     * renamed since either file was written is joined and selected under its new name (`der`).
+     * The filter runs over the stitched row, so a literal in a patch finds the row whose other
+     * columns are in the file it patches.
      */
     private fun readSplit(
         split: List<PaimonLookupFile>,
@@ -204,6 +219,7 @@ object PaimonRowLookup {
         sources: Map<String, Int>,
         where: String,
         params: List<String>,
+        schema: IcebergSchemaModel,
     ): List<Map<String, Any?>> {
         val paths = split.map { SampleRowReader.resolveForQuery(it.localPath) }
         require(paths.all { SampleRowReader.hasRowPositions(it.second) }) { "a split is stitched on row numbers, which DuckDB assigns in Parquet only" }
@@ -212,13 +228,15 @@ object PaimonRowLookup {
             val i = sources[c]
             if (i == null) "NULL AS ${quoteSqlIdentifier(c)}" else "f$i.${quoteSqlIdentifier(c)} AS ${quoteSqlIdentifier(c)}"
         }).joinToString(", ")
-        val from = split.indices.joinToString(" ") { i ->
-            if (i == 0) "read_parquet(?, file_row_number = true, hive_partitioning = false) f0" else "JOIN read_parquet(?, file_row_number = true, hive_partitioning = false) f$i ON f$i.$rowNumber = f0.$rowNumber"
-        }
+        val projections = split.mapIndexed { i, file -> projectionOf(file, schema, rowNumber = true, alias = "f$i") }
+        val from = projections.mapIndexed { i, p ->
+            if (i == 0) p.sql else "JOIN ${p.sql} ON f$i.$rowNumber = f0.$rowNumber"
+        }.joinToString(" ")
         return DuckDb.withConnection { conn ->
             conn.prepareStatement("SELECT * FROM (SELECT $select FROM $from) s WHERE $where LIMIT ${RowLookup.MAX_HITS_PER_FILE}").use { pstmt ->
-                paths.forEachIndexed { i, (path, _) -> pstmt.setString(i + 1, path) }
-                params.forEachIndexed { i, p -> pstmt.setString(paths.size + i + 1, p) }
+                var next = 1
+                projections.forEachIndexed { i, p -> next = p.bind(pstmt, next, paths[i].first) }
+                params.forEach { p -> pstmt.setString(next++, p) }
                 pstmt.executeQuery().use { rs ->
                     val meta = rs.metaData
                     val rows = mutableListOf<Map<String, Any?>>()

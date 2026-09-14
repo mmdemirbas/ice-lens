@@ -216,6 +216,40 @@ class PaimonRowLookupFixtureTest {
         assertEquals(null, three.note, "a whole file is not stitched")
     }
 
+    /**
+     * `der` is `de` with a column renamed on either side of the patch — `a` to `aa` before it,
+     * `b` to `bb` after — so the schema names neither file's columns and the stitch has to place
+     * each file through the schema its own `_SCHEMA_ID` names, the way every other Paimon read
+     * does. Paimon reads `1 1 11 / 2 2 2`. Selecting the schema's names from the files, as the
+     * first version did, found `aa` and `bb` in neither and read them as null — a row the table
+     * has, with its values missing, and nothing failing.
+     */
+    @Test
+    fun `a data-evolution split is stitched by field id, so a column renamed on either side of the patch reads under its new name`() {
+        val input = input("der")
+        assertTrue(input.dataEvolution)
+        val stitched = input.splits.single()
+        assertEquals(2, stitched.size)
+        val whole = stitched.last()
+        val patch = stitched.first()
+        assertTrue(patch.partial && !whole.partial)
+
+        val byOld = where("der", "aa", PredicateOp.EQ, "1")
+        assertTrue(byOld.filesRead.none { it.error != null }, byOld.filesRead.toString())
+        val one = byOld.hits.single()
+        assertEquals(RowFate.LIVE, one.fate)
+        assertEquals(listOf(1, 1, 11), listOf("id", "aa", "bb").map { (one.cells[it] as Number).toInt() })
+        assertEquals("bb from ${patch.fileName}", one.note)
+        assertEquals(listOf(1), where("der", "bb", PredicateOp.EQ, "11").hits.map { (it.cells["id"] as Number).toInt() })
+        assertEquals(listOf(2), where("der", "bb", PredicateOp.EQ, "2").hits.map { (it.cells["id"] as Number).toInt() })
+        assertEquals(emptyList(), where("der", "bb", PredicateOp.EQ, "1").hits, "the value the patch replaced is no row's")
+
+        val row = assertNotNull(PaimonRowLookup.stitchedRowAt(input, whole, 0))
+        assertEquals(listOf(1, 1, 11), listOf("id", "aa", "bb").map { (row.cells[it] as Number).toInt() })
+        assertEquals(patch.fileName, row.sourceOf["bb"])
+        assertEquals(whole.fileName, row.sourceOf["aa"])
+    }
+
     @Test
     fun `a split is read whole when the filter ruled out one file of it`() {
         val input = input("de")

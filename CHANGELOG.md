@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rule that leaves them out. `pic` is the fixture
 
 ### Fixed
+- **A data-evolution split is stitched by field id, and the latest snapshot is read under the
+  latest schema.** A column renamed since either file of a split was written read as a DuckDB
+  error or as null, the stitch having selected the schema's names from the files; each file
+  goes through its projection now, and which file holds a column is decided by id. A rename
+  written after the last commit is what a read shows, as Paimon opens a table under the newest
+  schema file and switches to a snapshot's own only on time travel. `der` is the fixture
 - **A directory carrying both formats' markers opens as the Paimon table.** Such a directory is
   a Paimon table whose Iceberg metadata is its export, and opened as Iceberg its `snapshot/`,
   `schema/` and `manifest/` read as orphans and its snapshots, levels and merge engine are

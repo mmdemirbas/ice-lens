@@ -44,7 +44,7 @@ class PaimonMergedCountFixtureTest {
         // a primary-key column renamed between writes: `_KEY_k` in one file, `_KEY_id` in two
         "pkr" to 3,
         // append tables, from the metadata
-        "ad" to 5, "ao" to 6, "rt" to 5, "de" to 3, "fa" to 5, "ft" to 3, "fb" to 8, "pse" to 4, "pne" to 3,
+        "ad" to 5, "ao" to 6, "rt" to 5, "de" to 3, "der" to 2, "fa" to 5, "ft" to 3, "fb" to 8, "pse" to 4, "pne" to 3,
     )
 
     @Test

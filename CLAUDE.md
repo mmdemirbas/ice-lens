@@ -818,8 +818,8 @@ intellij/src/main/kotlin/plugin/
   asks the key under the schema's name from `RowNode.cellsForRead`, since the card's is
   `_KEY_k`. `pkr` is the fixture — Paimon reads `1 A / 2 b / 3 c` across the rename — and
   `PaimonRowLookupFixtureTest` holds key 1's old record to superseded by the file written after
-  the rename. The one Paimon read still addressed by name is a data-evolution split's stitch
-  (`readSplit`), which joins by `file_row_number` and selects the schema's names.
+  the rename. A data-evolution split's stitch (`readSplit`) goes through the same projections,
+  one per file of the split, joined on `file_row_number` — `der` is where that mattered.
   **A nested type is an object in the schema JSON, and the nested fields evolve by id too.**
   `PaimonField.type` was a `String`, and a `ROW`, `ARRAY`, `MULTISET` or `MAP` is written as
   `{"type": "ROW", "fields": [...]}` (`DataTypeJsonParser` at 1.3.1, `NOT NULL` in the head
@@ -1004,8 +1004,7 @@ intellij/src/main/kotlin/plugin/
   order, matched to the schema's fields by id and printed in DuckDB's own spelling), marks the
   cell `rebuilt` so the section is drawn and says why, and leaves a value whose shape is the
   schema's exactly as DuckDB prints it — `row-node-read-as-nested` is the capture. What is
-  still by name: a map's key and value on the row panel, left as they print, and a
-  data-evolution split's stitch (`readSplit`), which selects the schema's names from each file
+  still by name: a map's key and value on the row panel, left as they print
 - **A filter is a boolean expression, and `NOT` is removed before anything is evaluated.**
   `model/ScanFilter.kt` holds `Term`/`And`/`Or`/`Not`; `evaluateScan`, `evaluatePruning` and
   `evaluateFilePruning` each take one, and the list form every existing caller passes is wrapped
@@ -2172,7 +2171,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,256 tests across 170 files (985 in :core, 262 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,257 tests across 170 files (986 in :core, 262 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2312,6 +2311,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pne` | `PaimonNestedEvolutionFixtureTest` | `pse` one level down — a struct and a list of structs, a rename and an add inside the struct and a rename inside the list's element between two writes; the nested type object every schema of such a table carries, and Paimon's read of the old file under the new names |
 | `paimon/db.db/pic` | `PaimonIcebergExportFixtureTest` | `metadata.iceberg.storage = table-location` — a primary-key table writing Iceberg metadata under its own `metadata/` on every commit, so the directory carries both formats' markers; two appends, neither compacted, and the export lists one of the two live files: snapshot 1 rebuilt it from the snapshot and snapshot 2 went through the level rule |
 | `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest`, `PaimonRowLookupFixtureTest`, `PaimonScanPruningTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted; the stitched read `(1, 11, 1)` the lookup is held to, and the file bounds pruning must not consult |
+| `paimon/db.db/der` | `PaimonRowLookupFixtureTest` | `de` with a column renamed on either side of the patch — `a` to `aa` before the `MERGE INTO`, `b` to `bb` after it, the last rename written under no snapshot; the stitch placed by field id, and the read of the latest snapshot under the latest schema file, to Paimon's `1 1 11 / 2 2 2` |
 | `paimon/db.db/lk` | `PaimonRowKindTest` | `changelog-producer = lookup` — the `-U` / `+U` pair a re-inserted key produces, carried by the COMPACT snapshot the lookup ran in, and a `-D` with the value it removed |
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |
 | `paimon/db.db/px`, `pxa` | `PaimonExpiryFixtureTest` | one table written twice — six commits, a tag on 2, a consumer at 4; `px` as it is, `pxa` after `expire_snapshots(retain_max = 2, retain_min = 1)` — the survivors the plan for `px` is checked against |
@@ -2643,7 +2643,21 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   recording no first id alone — and `PaimonRowLookup.readSplit` reads a split of two or more as one
   statement, the files joined on `file_row_number` (every file of a split holds the same rows in
   the same order; `DataEvolutionSplitRead` checks the row counts agree) with each column taken from
-  the first file holding it and the filter run over the stitched row. So `id = 1` on `de` answers
+  the first file holding it and the filter run over the stitched row. **Each file of the split is
+  its projection onto the read schema, and which file holds a column is decided by field id**:
+  `_WRITE_COLS` names the columns as the file's own schema named them, so `PaimonLookupFile.holds`
+  takes the id and looks the name up in the file's schema. `der` is `de` with `a` renamed to `aa`
+  before the patch and `b` to `bb` after it — Paimon reads `1 1 11 / 2 2 2` — and the first
+  version, which selected the schema's names from the files and matched `_WRITE_COLS` by name,
+  answered a DuckDB error on the whole file for `aa` and would have read `bb` as null from a
+  file whose `_WRITE_COLS` still says `b`. `der` settled a second thing: **a read of the latest
+  snapshot goes through the latest schema file, whether or not a commit was written under it.**
+  `FileStoreTableFactory.create` opens a table with `SchemaManager.latest()` (1.3.1) and only a
+  time travel switches to the snapshot's own (`AbstractFileStoreTable.tryTimeTravel`), so
+  `SELECT *` says `bb` though snapshot 2 was written under the schema that says `b`.
+  `paimonReadInputOf` takes the schema to read under, `paimonRowLookupInput` and the builder
+  pass each line's newest for its latest snapshot, and every older snapshot reads under its own,
+  as does the row history, which is a time travel per step. So `id = 1` on `de` answers
   `(1, 11, 1)` at the file holding the row with `b from <patch>` as its note, and `b = 11` finds
   it though the file holding `id` records `b` in 1..2 — which is why **a split is read whole when
   the filter left any file of it**, the ruled-out file being the one with the row's other columns.

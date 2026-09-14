@@ -1,0 +1,27 @@
+{
+  "version" : 3,
+  "id" : 1,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "id",
+    "type" : "INT"
+  }, {
+    "id" : 1,
+    "name" : "aa",
+    "type" : "INT"
+  }, {
+    "id" : 2,
+    "name" : "b",
+    "type" : "INT"
+  } ],
+  "highestFieldId" : 2,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ ],
+  "options" : {
+    "bucket" : "-1",
+    "owner" : "root",
+    "data-evolution.enabled" : "true",
+    "row-tracking.enabled" : "true"
+  },
+  "timeMillis" : 1789375971584
+}

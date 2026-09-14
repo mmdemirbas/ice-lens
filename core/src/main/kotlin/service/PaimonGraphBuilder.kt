@@ -155,6 +155,8 @@ object PaimonGraphBuilder {
             branch: String?,
             tagNames: List<String>,
             retainedByTagOnly: Boolean,
+            /** The line's newest schema for its latest snapshot, which a read goes through; null for the rest — see paimonReadInputOf. */
+            lineSchema: PaimonSchema?,
         ) {
             val snap = unifiedSnapshot.metadata
             val idPrefix = if (branch == null) "" else "${branch}_"
@@ -180,7 +182,7 @@ object PaimonGraphBuilder {
                         paimonRecordTallies(unifiedSnapshot, liveFiles.value.orEmpty().sumOf { it.recordCount })
                     },
                     bucketLsmsLoader = DeferredRead.of { replay.value?.let { paimonBucketLsms(it.liveEntries.values) } },
-                    readInput = DeferredRead.of { replay.value?.let { tableModel.paimonReadInputOf(unifiedSnapshot, it) } },
+                    readInput = DeferredRead.of { replay.value?.let { tableModel.paimonReadInputOf(unifiedSnapshot, it, lineSchema) } },
                     tableOptions = unifiedSnapshot.schema?.options.orEmpty(),
                     hasPrimaryKey = unifiedSnapshot.schema?.primaryKeys?.isNotEmpty() ?: true,
                     indexFiles = unifiedSnapshot.indexFiles,
@@ -348,7 +350,8 @@ object PaimonGraphBuilder {
             .sortedBy { it.metadata.id ?: Long.MAX_VALUE }
             .forEach { unifiedSnapshot ->
                 val id = unifiedSnapshot.metadata.id
-                addSnapshot(unifiedSnapshot, null, id?.let { tableModel.tagNamesBySnapshotId[it] }.orEmpty(), id !in liveIds)
+                val latest = unifiedSnapshot === tableModel.snapshots.lastOrNull()
+                addSnapshot(unifiedSnapshot, null, id?.let { tableModel.tagNamesBySnapshotId[it] }.orEmpty(), id !in liveIds, if (latest) tableModel.latestSchema else null)
             }
 
         // Then each branch's, the same way and under the same table root: a branch is another
@@ -362,7 +365,8 @@ object PaimonGraphBuilder {
                 .sortedBy { it.metadata.id ?: Long.MAX_VALUE }
                 .forEach { unifiedSnapshot ->
                     val id = unifiedSnapshot.metadata.id
-                    addSnapshot(unifiedSnapshot, branch.name, id?.let { branch.tagNamesBySnapshotId[it] }.orEmpty(), id !in branchLiveIds)
+                    val latest = unifiedSnapshot === branch.snapshots.lastOrNull()
+                    addSnapshot(unifiedSnapshot, branch.name, id?.let { branch.tagNamesBySnapshotId[it] }.orEmpty(), id !in branchLiveIds, if (latest) branch.schemas.maxByOrNull { it.id ?: -1 } else null)
                 }
         }
 

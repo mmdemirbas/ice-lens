@@ -39,8 +39,17 @@ data class PaimonLookupFile(
 ) {
     /** The file's format by its name — what decides which DuckDB table function reads it. */
     val extension: String get() = fileName.substringAfterLast('.', "").lowercase()
-    /** Whether the file holds [column] — every column when `_WRITE_COLS` is not recorded. */
-    fun holds(column: String): Boolean = writeCols?.contains(column) ?: true
+    /**
+     * Whether the file holds the column with [fieldId] — every column when `_WRITE_COLS` is not
+     * recorded. `_WRITE_COLS` names the columns as the file's own schema named them, so the
+     * question is asked by id: a column renamed since the file was written is still its column
+     * (`der`), and a name alone would find it in no file.
+     */
+    fun holds(fieldId: Int): Boolean {
+        val cols = writeCols ?: return true
+        val fields = fileSchema?.fields ?: return false
+        return cols.any { name -> fields.firstOrNull { it.name == name }?.id == fieldId }
+    }
 }
 
 /**
@@ -114,12 +123,23 @@ const val PAIMON_DATA_EVOLUTION_KEY = "data-evolution.enabled"
 
 /** The read input for the latest snapshot on `main`, or null when the table has none. */
 fun PaimonUnifiedTableModel.paimonRowLookupInput(): PaimonReadInput? =
-    snapshots.lastOrNull()?.let { paimonReadInputOf(it, replayPaimonSnapshot(it)) }
+    snapshots.lastOrNull()?.let { paimonReadInputOf(it, replayPaimonSnapshot(it), latestSchema) }
 
-/** The read input for one snapshot, from a replay already run — null where the snapshot names no id or schema. */
-fun PaimonUnifiedTableModel.paimonReadInputOf(snapshot: PaimonUnifiedSnapshot, replay: PaimonReplay): PaimonReadInput? {
+/** The schema a read of the table as it stands goes through — the newest under `schema/`, whether or not a snapshot was written under it. */
+val PaimonUnifiedTableModel.latestSchema: PaimonSchema? get() = schemas.maxByOrNull { it.id ?: -1 }
+
+/**
+ * The read input for one snapshot, from a replay already run — null where the snapshot names no
+ * id or schema. A read goes through [readSchema] when given, else the snapshot's own: Paimon
+ * opens a table under the **latest** schema file (`FileStoreTableFactory.create` takes
+ * `SchemaManager.latest()`, 1.3.1) and switches to a snapshot's own only on time travel
+ * (`AbstractFileStoreTable.tryTimeTravel`), so a read of the latest snapshot sees a rename no
+ * commit was written under (`der`: `b` became `bb` after the last write, and `SELECT *` says
+ * `bb`), while a read at an older snapshot sees its names.
+ */
+fun PaimonUnifiedTableModel.paimonReadInputOf(snapshot: PaimonUnifiedSnapshot, replay: PaimonReplay, readSchema: PaimonSchema? = null): PaimonReadInput? {
     val id = snapshot.metadata.id ?: return null
-    val schema = snapshot.schema ?: return null
+    val schema = readSchema ?: snapshot.schema ?: return null
     val files = replay.liveEntries.values.mapNotNull { entry ->
         val meta = entry.metadata.file ?: return@mapNotNull null
         PaimonLookupFile(
