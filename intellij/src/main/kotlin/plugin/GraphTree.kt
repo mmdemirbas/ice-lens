@@ -13,6 +13,7 @@ import model.TableMetadata
 import model.fastForwardPlans
 import model.planCherryPick
 import model.planRollback
+import model.planUnexistingFiles
 import model.PaimonExpiryOptions
 import model.displayLabel
 import model.planExpiry
@@ -137,7 +138,7 @@ object GraphTree {
             } ?: "could not be read"))
             // The export is another table's metadata tree, read whole — deferred like the history.
             is GraphNode.TableNode -> return listOfNotNull(
-                if (node.missingFiles.isPresent) MISSING_FILES to (node.missingFiles.value?.let { missingFilesLine(it) } ?: "could not be read") else null,
+                if (node.missingFiles.isPresent) MISSING_FILES to (node.missingFiles.value?.let { missingFilesLine(it, node) } ?: "could not be read") else null,
                 if (node.icebergExport.isPresent) ICEBERG_EXPORT to (node.icebergExport.value?.describe ?: "could not be read") else null,
             )
             else -> return emptyList()
@@ -311,12 +312,23 @@ object GraphTree {
     /** The metadata-only checks a node's panel draws as a table, in one line: what agrees, and the first thing that does not. */
     const val CHECKS = "Checks"
 
-    /** `none of the 41 files the 6 retained snapshots need`, or the missing ones named with the snapshot that reads them. */
-    private fun missingFilesLine(report: MissingFilesReport): String {
+    /**
+     * `none of the 41 files the 6 retained snapshots need`, or the missing ones named with the
+     * snapshot that reads them — and on Paimon what `sys.remove_unexisting_files` would do about
+     * them, planned over the same report the way the desktop's section plans it.
+     */
+    private fun missingFilesLine(report: MissingFilesReport, node: GraphNode.TableNode): String {
         val needed = "%,d files the %,d retained snapshots need".format(report.needed, report.snapshotsChecked)
         if (report.missing.isEmpty()) return "none of the $needed"
-        return "${report.missing.size} of the $needed — " + report.missing.take(3).joinToString("; ") { "${report.relativePathOf(it)} (${it.kind.label}, read by ${it.neededBy.first()}${if (it.neededBy.size > 1) " and ${it.neededBy.size - 1} more" else ""})" } +
+        val named = "${report.missing.size} of the $needed — " + report.missing.take(3).joinToString("; ") { "${report.relativePathOf(it)} (${it.kind.label}, read by ${it.neededBy.first()}${if (it.neededBy.size > 1) " and ${it.neededBy.size - 1} more" else ""})" } +
             (if (report.missing.size > 3) "; …" else "")
+        val plan = if (node.paimonRowLookup.isPresent) node.paimonRowLookup.value?.let { planUnexistingFiles(report, it) } else null
+        return when {
+            plan == null -> named
+            plan.commits -> "$named; remove_unexisting_files would commit a DELETE entry for ${plan.removed.size} of them (deltaRecordCount ${plan.deltaRecordCount})" +
+                (if (plan.rows.size > plan.removed.size) " and not reach ${plan.rows.size - plan.removed.size}" else "")
+            else -> "$named; remove_unexisting_files would list none of them"
+        }
     }
 
     /**

@@ -304,6 +304,11 @@ class GraphTreeTest {
         val table = flatten(GraphTree.build(mor)).first { it is GraphNode.TableNode }
         assertTrue(GraphTree.hasDeferredDetails(table) && GraphTree.deferredLabel(table) == GraphTree.MISSING_FILES)
         assertEquals(listOf(GraphTree.MISSING_FILES to "none of the 25 files the 6 retained snapshots need"), GraphTree.deferredDetails(table))
+        // pru: two files gone from disk, both of them removable by the procedure; prua: the same two, named by older snapshots only.
+        val pru = GraphTree.deferredDetails(paimonGraphOf("pru").nodes.filterIsInstance<GraphNode.TableNode>().single()).single { it.first == GraphTree.MISSING_FILES }.second
+        assertTrue(pru.startsWith("2 of the 14 files the 3 retained snapshots need — ") && pru.endsWith("; remove_unexisting_files would commit a DELETE entry for 2 of them (deltaRecordCount -2)"), pru)
+        val prua = GraphTree.deferredDetails(paimonGraphOf("prua").nodes.filterIsInstance<GraphNode.TableNode>().single()).single { it.first == GraphTree.MISSING_FILES }.second
+        assertTrue(prua.endsWith("; remove_unexisting_files would list none of them"), prua)
         val dv = flatten(GraphTree.build(paimonGraphOf("dv"))).filterIsInstance<GraphNode.PaimonDataFileNode>()
         assertTrue(dv.map { GraphTree.deferredDetails(it).single().second }.any { it.startsWith("removed by snapshot") }, "dv's upgrade compactions remove files")
     }

@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   statistics file the action lists and never stages, and the refusals — partition statistics, a
   path outside the prefix, a deletion vector. A `Maintenance` row; `docs/fixtures/rewrite-table-path.sql`
   records the runs
+- **IDE strip: the Paimon `Missing files` row says what `remove_unexisting_files` would do about them**
 - **IDE strip: `Fast-forward`, `Rollback` and `Cherry-pick` rows** — the metadata row says
   which pairs of refs `fast_forward` would move, and an unexpired snapshot's row what
   `rollback_to_snapshot` and `cherrypick_snapshot` would do with it, planned as the desktop plans them

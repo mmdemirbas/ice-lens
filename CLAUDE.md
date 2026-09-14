@@ -2240,7 +2240,8 @@ intellij/src/main/kotlin/plugin/
   metadata row (every branch against every other ref, listed only where there is a pair), and
   `Rollback` and `Cherry-pick` on an unexpired snapshot's row, planned against the newest
   metadata `GraphTree.Item` carries — `details(node, nowMs, newest)` — since the strip lists a
-  node without the graph. It is
+  node without the graph. The deferred `Missing files` row on a Paimon table ends with what
+  `remove_unexisting_files` would do about them, planned over the same report. It is
   deliberately not what `GraphSearch.searchableText` answers — a label is one line chosen to fit a row, so a manifest
   reads by its add count and cannot be found by its path, which is right for a label and wrong for
   a search. `GraphTree.details` is *not* shared: the desktop inspector is a panel per node kind
