@@ -92,6 +92,7 @@ core/src/main/kotlin/
 │   ├── PaimonManifestMergePlan.kt # What the next Paimon commit does to the base manifest list — ManifestFileMerger's full and minor compactions
 │   ├── FastForwardPlan.kt     # fast_forward on both formats — Iceberg's ref move under the ancestor rule, Paimon's replacement of main from the branch's earliest snapshot on, and what that leaves
 │   ├── IcebergRollbackPlan.kt # rollback_to_snapshot, set_current_snapshot and rollback_to_timestamp — the ancestor rule, what main moves past, and the metadata the commit writes for the expiry after
+│   ├── CherryPickPlan.kt      # What cherrypick_snapshot does with a snapshot — fast-forward, publish, or one of five refusals — CherryPickOperation's order
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
 │   ├── SchemaFieldRows.kt     # A schema as one row per field, nested fields under their path with the ids the format evolves them by — both schema panels' table
 │   ├── IcebergExport.kt       # The Iceberg metadata a Paimon table writes beside its own, against the table it exports — which of its live files an Iceberg reader sees
@@ -2555,6 +2556,25 @@ intellij/src/main/kotlin/plugin/
   (`IcebergSchema.kt`), the audit id is searchable from both ends, and `wap` is the fixture.
   `lineRanks` is what keeps the staged commit out of `main`'s column: it and main's next
   commit are both children of one snapshot, and the staged one was written first
+- **What `cherrypick_snapshot` does with a snapshot is decided the way `CherryPickOperation`
+  decides it, and a fast-forward is the parent alone.** `model/CherryPickPlan.kt`, at 1.8.1: an
+  unknown id is refused; an `append` whose staged `wap.id` a current ancestor already staged or
+  published is a duplicate (`WapUtil.validateWapPublish`); a snapshot whose parent **is** the
+  current snapshot is **fast-forwarded** — main is pointed at it and no snapshot is written,
+  whatever its operation; otherwise an `append` is **published** as a new commit on main carrying
+  its added data files by reference, `source-snapshot-id` naming it and `published-wap-id` its
+  wap id, refused when it is already an ancestor or some ancestor's `source-snapshot-id` already
+  names it (`CherrypickAncestorCommitException`); an overwrite written by `replace-partitions`
+  is published with its deletes provided its parent is a current ancestor; a delete, a plain
+  overwrite or a replace is refused unless it fast-forwards. `docs/fixtures/cherrypick.sql`
+  records the runs: `wap`'s staged snapshot a duplicate of the wap id its publish carried,
+  `rolled`'s abandoned commit published as `8545125033544548937` and refused as already picked
+  the second time, `branched`'s `v1` snapshot already an ancestor — and after
+  `set_current_snapshot` to it both children fast-forward, the first pick moving main (five
+  snapshots still) and turning the second into a publish — `mor`'s delete not pickable.
+  `CherryPickFixtureTest` holds the plan to those runs, the already-picked case on a synthetic
+  published snapshot, and every current ancestor across the corpus to a refusal; the snapshot
+  panel's `Cherry-Pick` section draws the verdict under `Rollback`
 - **Four layouts, and only one of them gets the refinements.** `GraphLayoutAlgorithm` offers
   layered left-to-right (the default, and the right shape for a containment hierarchy drawn as
   depth), layered top-to-bottom for a tall window, `mrtree` for following one branch down to its
@@ -2706,7 +2726,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,390 tests across 189 files (1,096 in :core, 281 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,390 tests across 190 files (1,100 in :core, 281 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

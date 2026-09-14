@@ -34,6 +34,8 @@ import model.PaimonManifestMergeOptions
 import model.planOrphanRemoval
 import model.IcebergFastForwardVerdict
 import model.IcebergRollbackVerdict
+import model.CherryPickVerdict
+import model.planCherryPick
 import model.planRollback
 import model.PaimonFastForwardPlan
 import model.fastForwardPlans
@@ -1015,6 +1017,55 @@ internal fun IcebergRollbackSection(node: GraphNode.SnapshotNode, graph: GraphMo
 private fun windowText(w: LongRange): String =
     "rollback_to_timestamp lands here for a time from ${formatAppTimestampExact(w.first)}" +
         (if (w.last == Long.MAX_VALUE) " on" else " up to ${formatAppTimestampExact(w.last)}") + "."
+
+/**
+ * What `cherrypick_snapshot` would do with this snapshot — see [planCherryPick]: fast-forward
+ * main onto it when its parent is the current snapshot, publish an append (or a dynamic
+ * overwrite) as a new commit carrying its files, or refuse — a duplicate wap id, an ancestor,
+ * a snapshot already picked, a delete. Drawn on every unexpired snapshot, since which refusal
+ * applies is the answer on the current line and the publish is the answer off it.
+ */
+@Composable
+internal fun CherryPickSection(node: GraphNode.SnapshotNode, graph: GraphModel) {
+    val colors = MaterialTheme.colorScheme
+    if (node.expired) return
+    val meta = graph.newestMetadata() ?: return
+    val id = node.data.snapshotId ?: return
+    val plan = meta.planCherryPick(id)
+    val title = "Cherry-Pick — " + when (plan.verdict) {
+        CherryPickVerdict.FAST_FORWARD -> "would fast-forward main here"
+        CherryPickVerdict.PUBLISH -> "would publish " + (plan.addedDataFiles?.let { formatCounted(it, "data file") } ?: "its files")
+        else -> "refused"
+    }
+    Section(title) {
+        Text(
+            "What cherrypick_snapshot($id) does, the way CherryPickOperation decides it: a snapshot whose parent " +
+                "is the current snapshot fast-forwards main onto it with no new snapshot; otherwise an append — or an " +
+                "overwrite written by replace-partitions — is published as a new commit on main carrying its files, " +
+                "source-snapshot-id naming it and published-wap-id its staged wap.id; a snapshot already on the " +
+                "current line, one some ancestor was already picked from, a wap id already published, or a delete " +
+                "is refused. This is the publish half of write-audit-publish.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        Text(
+            "${plan.verdict.label} — ${plan.reason}.",
+            fontSize = TypeScale.small,
+            fontWeight = FontWeight.Bold,
+            color = if (plan.verdict.moves) verdictSkippedColor() else colors.onSurface,
+        )
+        if (plan.verdict == CherryPickVerdict.PUBLISH) {
+            Text(
+                "The published commit lists the same data files — copied by reference into a manifest of its own, nothing rewritten" +
+                    (if (plan.replacesPartitions) "; its ${plan.deletedDataFiles ?: "?"} deleted files are deleted again, and the commit fails if any partition it replaces has been written to since its parent" else "") + ".",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+    }
+}
 
 /**
  * What `fast_forward(table, branch, to)` would do for every branch against every other ref —

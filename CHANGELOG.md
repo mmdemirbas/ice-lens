@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Cherry-Pick`** on the Iceberg snapshot panel — what `cherrypick_snapshot` does with this
+  snapshot, decided the way `CherryPickOperation` decides it: fast-forward main when its parent
+  is the current snapshot, publish an append (or a dynamic overwrite) as a new commit carrying
+  its files by reference, or refuse — a duplicate wap id, an ancestor, a snapshot already
+  picked, a delete. `docs/fixtures/cherrypick.sql` records the runs
 - **`Rollback`** on the Iceberg snapshot panel — whether `rollback_to_snapshot` to this
   snapshot is allowed (an ancestor of the current one) or only `set_current_snapshot` would
   do it, the times `rollback_to_timestamp` lands here for, the commits main would move past

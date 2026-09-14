@@ -1456,6 +1456,9 @@ class InspectorRenderTest {
         renderInspector(sweep, "snap_6454228146597789500", "snapshot-node-rollback", height = 3200, sectionCollapse = onlyExpanded("Rollback"))
         val branched = graphFor("branched")
         renderInspector(branched, "snap_1183816113347240589", "snapshot-node-rollback-refused", height = 3200, sectionCollapse = onlyExpanded("Rollback"))
+        // Cherry-pick: audit's tip publishes; wap's staged snapshot is a duplicate of the id its publish carried.
+        renderInspector(branched, "snap_1183816113347240589", "snapshot-node-cherry-pick", height = 2600, sectionCollapse = onlyExpanded("Cherry-Pick"))
+        renderInspector(graphFor("wap"), "snap_4204024477256586588", "snapshot-node-cherry-pick-duplicate", height = 2600, sectionCollapse = onlyExpanded("Cherry-Pick"))
     }
 
     /**
