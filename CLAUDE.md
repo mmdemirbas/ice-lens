@@ -679,6 +679,37 @@ intellij/src/main/kotlin/plugin/
   panel that scales with the data rather than the metadata, and on a remote table it is a subtree
   listing. A `Path` is an `Iterable<Path>` of its own segments, so the referenced set is built with
   `add`, never `+=`, which would append the segments and compile
+- **What `remove_orphan_files` would delete is planned over that walk, and the two procedures are
+  held to a run each.** Both decide a file by two things: whether they list its directory, and
+  whether it was modified before `older_than` — Iceberg's default `now - 3 days`
+  (`DeleteOrphanFilesSparkAction`, 1.8.1), Paimon's `now - 1 day` (`OrphanFilesClean`,
+  release-1.3.1). The walk decides the first (`UnreferencedFile.unlistedBecause`, with the model
+  in hand) and records the mtime; `model/OrphanRemovalPlan.kt` decides the second against a clock
+  and gives every file a fate — `REMOVED`, `TOO_YOUNG`, `UNLISTED` — because the question a
+  reader brings is "why did the call delete nothing", and the answer is almost always the age.
+  **Iceberg's reach is smaller than the walk's**: `validFileIdentDS` is the *current* metadata
+  file and its `metadata-log`, the version hint, its statistics files, and for the snapshots it
+  lists the manifest lists, manifests and **live** entries' files (`ReadManifest` iterates
+  `ManifestReader.iterator()`, which drops `DELETED`), so an older `metadata.json` the log has
+  dropped under `write.metadata.previous-versions-max`, an expired snapshot's list an expiry
+  left behind, or a data file whose only entry is the `DELETED` one a copy-on-write delete wrote
+  are orphans to the procedure and referenced to the walk — `UnreferencedFilesReport.unreachedFromCurrent`
+  lists them and the plan marks them. It lists the whole location through `HiddenPathFilter`
+  (a `_` or `.` name, a partition directory exempt), and its procedure refuses an `older_than`
+  inside 24 hours unless `spark.testing` is set. **Paimon's lists exactly**: the files inside
+  `manifest/`, `index/`, `statistics/`, every `bucket-*` at partition depth (`name=value`
+  directories only), the external paths, and per branch the files in `snapshot/` and
+  `changelog/` not named as the directory's own — used names come from every snapshot, tag and
+  long-lived changelog on every branch, every entry whatever its `_KIND`, joined by file *name*;
+  `older_than` must be in the past. `orph`/`orpha` (`docs/fixtures/orph.scala`) and `po`/`poa`
+  (`paimon-po.sql`) are each a table copied before the procedure ran on the original —
+  `orph` built with `previous-versions-max = 2`, an expiry under `cleanExpiredFiles(false)` and
+  three strays, `po` with a rollback's leftovers and six strays, one per rule — and
+  `OrphanRemovalPlanFixtureTest` requires the plan past the cutoff to name exactly the files the
+  second copy lacks (ten on Iceberg: v1..v3, three lists, a manifest, a data file, two strays,
+  the `_stray` kept; eleven on Paimon, `junk-at-root`, `p=x/stray-in-partition` and
+  `schema/junk` kept), and the sweep holds every other fixture to nothing unreached from the
+  current metadata. The section leads with the bare call's verdict and colours `REMOVED`
 - **The converse is asked from the metadata: what the retained snapshots need that is not there.**
   `model/MissingFiles.kt` is the question a `NoSuchFileException` at query time asks after the
   fact, and it is scoped to what a reader can still be asked for — every snapshot the newest
@@ -2591,7 +2622,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,364 tests across 185 files (1,076 in :core, 277 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,370 tests across 186 files (1,081 in :core, 278 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2715,6 +2746,7 @@ container invocation and the traps in it:
 | `default/sweep`, `swept`, `sweepb`, `sweptb` | `ExpiryFilePlanFixtureTest` | two tables copied on disk before `expire_snapshots` ran on the original — `swept` with one ref (incremental cleanup: a removed file and a rolled-back commit's file freed), `sweptb` with a branch (reachable: a manifest freed, no file) |
 | `default/avrofmt` | `DataFileFormatFixtureTest` | `write.format.default = avro` — two Avro data files and an Avro positional delete, read through `read_avro` without positions; the writer records no column metrics, so the delete has no `file_path` bounds and Iceberg's plan attaches it to both files |
 | `default/orcfmt` | `DataFileFormatFixtureTest` | the same table in ORC, which DuckDB cannot read — the fixture for what every reader says instead |
+| `default/orph`, `orpha` | `OrphanRemovalPlanFixtureTest` | one table copied before `remove_orphan_files` ran on it — `previous-versions-max = 2`, an expiry with `cleanExpiredFiles(false)`, three strays; the ten files the procedure deleted from `orpha`, and the hidden `_stray` it kept |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
 | `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest`, `PaimonFileBoundsFixtureTest`, `PaimonScanPruningTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
@@ -2753,6 +2785,7 @@ container invocation and the traps in it:
 | `paimon/db.db/sgm` | `PaimonMergeEngineFixtureTest` | `partial-update` with a sequence group of two fields, `fields.g1,g2.sequence-group = a`, and `remove-record-on-sequence-group = g2` — an insert with a null in the tuple ordered below the row's, and Paimon's read at every snapshot |
 | `paimon/db.db/sg`, `sgd` | `PaimonMergeEngineFixtureTest` | `partial-update` with two sequence groups — `sg` inserts only, a lower group value not overriding a higher; `sgd` with `remove-record-on-sequence-group = ga`, a DELETE writing a `-D` that removes the key and an insert bringing it back, Paimon's read at every snapshot |
 | `paimon/db.db/pcl`, `pcn` | `PaimonChangelogLifecycleFixtureTest` | `changelog.num-retained.max` above `snapshot.num-retained.max`, every expiry run at commit — `snapshot/` holds 7 and 8, `changelog/` holds 5 and 6; `pcl` under `changelog-producer = input`, its changelog lists and files kept and its base and delta lists gone; `pcn` with no producer, where the delta list is the change stream and the base and delta lists and every `APPEND` file stay — the five files the compaction removed still on disk |
+| `paimon/db.db/po`, `poa` | `OrphanRemovalPlanFixtureTest` | one partitioned primary-key table copied before `sys.remove_orphan_files` ran on it — a rollback's leftovers and six strays, one per directory rule; the eleven files the procedure deleted from `poa`, and the three it never lists |
 | `paimon/db.db/pbk`, `pbka` | `PaimonBucketCountFixtureTest` | a primary-key table whose `bucket` was raised from 1 to 2 after three writes, copied before the `INSERT OVERWRITE` that rescales it — three live files recording the old count, every write refused until the rescale; `pbka` after it, rescaled over two buckets and written to again |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 

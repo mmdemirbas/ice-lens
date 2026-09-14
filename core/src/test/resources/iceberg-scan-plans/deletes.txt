@@ -94,6 +94,12 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet ->
 -- orcfmt
 00000-0-b22a234d-8bad-4c71-aea8-980bc8f4c8f8-0-00001.orc -> 00000-3-14316332-7c2a-4df8-8869-712b5f4a8de2-00001-deletes.orc
 00000-1-eddf5e6f-b258-42b9-a2a3-e67f9e5c3d8b-0-00001.orc ->
+-- orph
+00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet ->
+00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet ->
+-- orpha
+00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet ->
+00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet ->
 -- parted
 00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00001.parquet ->
 00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00002.parquet ->

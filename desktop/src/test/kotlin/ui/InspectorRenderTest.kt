@@ -2395,6 +2395,35 @@ class InspectorRenderTest {
     }
 
     /**
+     * What `remove_orphan_files` would delete, on the two tables it ran on, with the clock four
+     * days past the files so the age rule lets everything listed go: `orph` shows the walk's three
+     * strays beside the eight files only an older metadata version names (v1..v3, three manifest
+     * lists, a manifest and a data file), one of them hidden to the procedure; `po` shows a
+     * rollback's leftovers and the three strays in places Paimon's never lists. A checkout keeps
+     * no modification times, so the clock is placed against the newest file rather than the day.
+     */
+    @Test
+    fun `a table plans what remove_orphan_files would delete`() {
+        fun capture(name: String, node: GraphNode.TableNode, height: Int) {
+            val newest = node.unreferencedFiles.value!!.let { r -> (r.unreferenced + r.unreachedFromCurrent).maxOf { it.modifiedMs } }
+            val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+            renderUntil(name, width = 1400, height = height, ready = settled::get) {
+                CompositionLocalProvider(LocalExpiryClock provides { newest + 4L * 24 * 3_600_000 }) {
+                    Column(Modifier.padding(16.dp)) {
+                        UnreferencedFilesSection(node, startRequested = true) { settled.set(true) }
+                    }
+                }
+            }
+        }
+        capture("orphan-removal-plan", graphFor("orph").nodes.filterIsInstance<GraphNode.TableNode>().single(), height = 1300)
+        val po = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/po").absolutePath)),
+            showRows = false,
+        )
+        capture("orphan-removal-plan-paimon", po.nodes.filterIsInstance<GraphNode.TableNode>().single(), height = 1300)
+    }
+
+    /**
      * The converse walk: what the retained snapshots need that is not there — captured on a copy
      * of `mor` with a live data file and the oldest manifest list deleted, each listed with the
      * snapshots that read it, and once against the table as checked in for the sentence a whole

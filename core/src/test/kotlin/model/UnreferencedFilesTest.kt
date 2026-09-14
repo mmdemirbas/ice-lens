@@ -31,8 +31,11 @@ class UnreferencedFilesTest {
     fun `every engine-written table with no orphan reports none`() {
         // `cl` and `tg` are the two tables written with an orphan on purpose, and have tests of their
         // own below; `prba` is a table rolled back, which leaves the rolled-back commits' files named
-        // by nothing — PaimonRollbackFixtureTest holds them to the rollback plan's leftovers.
-        val models: List<() -> FormatTableModel> = icebergFixtures.map { name -> { iceberg(name) } } + (FixtureCatalog.paimon - setOf("cl", "tg", "prba")).map { name -> { paimon(name) } }
+        // by nothing — PaimonRollbackFixtureTest holds them to the rollback plan's leftovers; `po`,
+        // `poa`, `orph` and `orpha` carry stray files by design, and OrphanRemovalPlanFixtureTest
+        // holds them to what remove_orphan_files deleted.
+        val models: List<() -> FormatTableModel> = (icebergFixtures - setOf("orph", "orpha")).map { name -> { iceberg(name) } } +
+            (FixtureCatalog.paimon - setOf("cl", "tg", "prba", "po", "poa")).map { name -> { paimon(name) } }
         assertTrue(models.size >= 50, models.size.toString())
         models.forEach { open ->
             val model = open()
@@ -45,6 +48,10 @@ class UnreferencedFilesTest {
                 "${model.name}: ${report.filesOnDisk} files on disk, ${report.referencedOnDisk} referenced",
             )
             assertEquals(report.filesOnDisk, report.referencedOnDisk)
+            // And nothing the walk counts as referenced is beyond what Iceberg's own procedure
+            // reaches: an engine-written table whose expiries ran to completion has no file named
+            // by an older metadata version alone. `orph` is the one built to have them.
+            assertEquals(emptyList(), report.unreachedFromCurrent.map { it.path.fileName.toString() }, "${model.name}: unreached from the current metadata")
         }
     }
 

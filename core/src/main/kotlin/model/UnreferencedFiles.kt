@@ -33,9 +33,20 @@ import java.nio.file.attribute.BasicFileAttributes
  * file and macOS writes `.DS_Store`, and neither is the table's. The walk is the whole table
  * directory, so it sits behind a click — on a remote table it is one subtree listing.
  */
-data class UnreferencedFile(val path: Path, val sizeBytes: Long)
+/**
+ * A file on disk the metadata does not name, with what deciding its removal takes: when it was
+ * last modified — the one thing `remove_orphan_files` ages a file by, on both formats — and, when
+ * the format's procedure would never list it, why ([unlistedBecause], null when it would).
+ */
+data class UnreferencedFile(
+    val path: Path,
+    val sizeBytes: Long,
+    val modifiedMs: Long,
+    val unlistedBecause: String? = null,
+)
 
 data class UnreferencedFilesReport(
+    val format: service.TableFormat,
     /** The table root the walk started from, so a listed path can be shown relative to it. */
     val root: Path,
     /** Every regular file the walk saw, hidden ones excluded. */
@@ -44,6 +55,13 @@ data class UnreferencedFilesReport(
     val referencedOnDisk: Int,
     /** The rest, in path order. */
     val unreferenced: List<UnreferencedFile>,
+    /**
+     * Iceberg only: files the walk counts as referenced that `remove_orphan_files` does not reach
+     * — named by an older metadata version the current one's log has dropped, or held by a
+     * `DELETED` entry alone — so a bare call deletes them while this report lists nothing. Empty
+     * on Paimon, whose procedure names what the walk names.
+     */
+    val unreachedFromCurrent: List<UnreferencedFile> = emptyList(),
     /** Where the walk could not go, in the filesystem's own words. */
     val problems: List<String> = emptyList(),
 ) {
@@ -64,17 +82,128 @@ fun findUnreferencedFiles(model: FormatTableModel): UnreferencedFilesReport {
     val referenced = referencedFiles(model)
     val problems = mutableListOf<String>()
     val onDisk = walkTableFiles(model.path, problems)
+    val root = model.path.toAbsolutePath().normalize()
+    val unlisted: (Path) -> String? = when (model) {
+        is UnifiedTableModel -> { path -> icebergUnlistedBecause(root, path) }
+        is PaimonUnifiedTableModel -> {
+            val keys = model.schemas.maxByOrNull { it.id ?: -1 }?.partitionKeys?.size ?: 0
+            val branchNames = model.branches.map { it.name }
+            ({ path -> paimonUnlistedBecause(root, path, keys, branchNames) })
+        }
+    }
+    fun fileOf(path: Path, facts: DiskFile) = UnreferencedFile(path, facts.sizeBytes, facts.modifiedMs, unlisted(path))
     val unreferenced = onDisk
         .filterKeys { it !in referenced }
-        .map { (path, size) -> UnreferencedFile(path, size) }
+        .map { (path, facts) -> fileOf(path, facts) }
+        .sortedBy { it.path.toString() }
+    val reachable = (model as? UnifiedTableModel)?.let { icebergReachableFromCurrent(it) }
+    val unreached = if (reachable == null) emptyList() else onDisk
+        .filterKeys { it in referenced && it !in reachable }
+        .map { (path, facts) -> fileOf(path, facts) }
         .sortedBy { it.path.toString() }
     return UnreferencedFilesReport(
+        format = model.format,
         root = model.path,
         filesOnDisk = onDisk.size,
         referencedOnDisk = onDisk.size - unreferenced.size,
         unreferenced = unreferenced,
+        unreachedFromCurrent = unreached,
         problems = problems,
     )
+}
+
+/**
+ * What Iceberg's `remove_orphan_files` reaches, which is less than [icebergReferencedFiles]:
+ * `DeleteOrphanFilesSparkAction.validFileIdentDS` at 1.8.1 is the **current** metadata file and
+ * the entries of its `metadata-log` (`ReachableFileUtil.metadataFileLocations(table, recursive =
+ * false)`), the version hint, the statistics and partition statistics files it names, and, for
+ * every snapshot it lists, the manifest list, every manifest, and the **live** entries' files —
+ * `ReadManifest` iterates `ManifestReader.iterator()`, which drops `DELETED` entries. So an older
+ * `metadata.json` the log has dropped (`write.metadata.previous-versions-max`), or a data file
+ * whose only remaining entry is the `DELETED` one a copy-on-write delete wrote, is an orphan to
+ * the procedure and a referenced file to the walk. `orph` is the fixture.
+ */
+private fun icebergReachableFromCurrent(model: UnifiedTableModel): Set<Path> {
+    val metadataDir = model.path.resolve("metadata")
+    val current = model.metadatas.lastOrNull() ?: return emptySet() // sorted oldest first; the newest is current
+    val paths = mutableListOf<Path>()
+    paths.add(metadataDir.resolve("version-hint.text"))
+    paths.add(current.path)
+    val dir = current.path.parent ?: metadataDir
+    current.metadata.metadataLog.forEach { entry ->
+        entry.metadataFile?.let { paths.add(resolveRecordedOrRelative(dir, it).first) }
+    }
+    current.metadata.statistics.forEach { file ->
+        file.statisticsPath?.let { paths.add(resolveRecordedOrRelative(dir, it).first) }
+    }
+    current.metadata.partitionStatistics.forEach { file ->
+        file.statisticsPath?.let { paths.add(resolveRecordedOrRelative(dir, it).first) }
+    }
+    current.snapshots.forEach { snapshot ->
+        paths.add(snapshot.path)
+        snapshot.manifests.forEach { manifest ->
+            paths.add(manifest.path)
+            manifest.dataFiles.filter { it.metadata.status != ManifestEntryStatus.DELETED }.forEach { paths.add(it.path) }
+        }
+    }
+    return paths.mapTo(mutableSetOf()) { it.toAbsolutePath().normalize() }
+}
+
+/**
+ * Iceberg's `remove_orphan_files` lists the whole table location through `HiddenPathFilter`: a
+ * name starting with `_` or `.` is hidden, and a hidden directory hides everything under it —
+ * Hadoop's `_SUCCESS` and `_temporary` are the reason. A partition directory of a field whose
+ * name starts so is exempt (`PartitionAwareHiddenPathFilter`); read here as any `name=value`
+ * segment. The walk already skips `.`; a `_` file it reports is one the procedure leaves alone.
+ */
+private fun icebergUnlistedBecause(root: Path, path: Path): String? {
+    val hidden = root.relativize(path).firstOrNull { seg ->
+        val n = seg.toString()
+        (n.startsWith("_") || n.startsWith(".")) && '=' !in n
+    } ?: return null
+    return "hidden to remove_orphan_files — `$hidden` starts with `_` or `.`"
+}
+
+private const val PAIMON_UNLISTED = "not in a directory remove_orphan_files lists (manifest/, index/, statistics/, " +
+    "a bucket directory, snapshot/, changelog/)"
+
+/**
+ * Paimon's `remove_orphan_files` lists exactly these (`OrphanFilesClean.listPaimonFileDirs` and
+ * `cleanBranchSnapshotDir` at release-1.3.1, shared by the local and the Spark cleaner): the files
+ * directly inside `manifest/`, `index/` and `statistics/`; every `bucket-*` directory found by
+ * descending exactly [partitionKeys] levels of `name=value` directories from the table root (and
+ * the external data paths, which lie outside the walk); and, per branch, the files in `snapshot/`
+ * not named `snapshot-*`, `EARLIEST` or `LATEST`, and in `changelog/` not `changelog-*`. A file
+ * anywhere else — the table root, `schema/`, `tag/`, `consumer/`, a partition directory above
+ * the buckets, a bucket directory at the wrong depth — is never a candidate, and a snapshot or
+ * changelog file is kept whatever names it. `po` is the fixture, one stray per rule.
+ */
+private fun paimonUnlistedBecause(root: Path, path: Path, partitionKeys: Int, branches: List<String>): String? {
+    val segs = root.relativize(path).map { it.toString() }
+    val name = segs.last()
+    val dirs = segs.dropLast(1)
+    val lineRoots = listOf(emptyList<String>()) + branches.map { listOf("branch", "branch-$it") }
+    for (line in lineRoots) {
+        if (dirs == line + "snapshot") {
+            return if (name.startsWith("snapshot-") || name == "EARLIEST" || name == "LATEST") {
+                "in snapshot/ under a snapshot file's name, which remove_orphan_files never deletes"
+            } else {
+                null
+            }
+        }
+        if (dirs == line + "changelog") {
+            return if (name.startsWith("changelog-") || name == "EARLIEST" || name == "LATEST") {
+                "in changelog/ under a changelog file's name, which remove_orphan_files never deletes"
+            } else {
+                null
+            }
+        }
+    }
+    if (dirs.size == 1 && dirs[0] in setOf("manifest", "index", "statistics")) return null
+    val bucketDir = dirs.size == partitionKeys + 1 &&
+        dirs.dropLast(1).all { '=' in it } &&
+        dirs.last().startsWith("bucket-")
+    return if (bucketDir) null else PAIMON_UNLISTED
 }
 
 private fun icebergReferencedFiles(model: UnifiedTableModel): List<Path> {
@@ -163,9 +292,12 @@ private fun paimonLineReferencedFiles(
     return paths
 }
 
-/** Every regular file under [root] that is not hidden, with its size; failures go to [problems]. */
-private fun walkTableFiles(root: Path, problems: MutableList<String>): Map<Path, Long> {
-    val files = linkedMapOf<Path, Long>()
+/** What the walk records per file. */
+private data class DiskFile(val sizeBytes: Long, val modifiedMs: Long)
+
+/** Every regular file under [root] that is not hidden, with its size and mtime; failures go to [problems]. */
+private fun walkTableFiles(root: Path, problems: MutableList<String>): Map<Path, DiskFile> {
+    val files = linkedMapOf<Path, DiskFile>()
     if (!Files.isDirectory(root)) {
         problems += "$root is not a directory"
         return files
@@ -181,7 +313,7 @@ private fun walkTableFiles(root: Path, problems: MutableList<String>): Map<Path,
 
             override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
                 if (attrs.isRegularFile && !file.isHidden()) {
-                    files[file.toAbsolutePath().normalize()] = attrs.size()
+                    files[file.toAbsolutePath().normalize()] = DiskFile(attrs.size(), attrs.lastModifiedTime().toMillis())
                 }
                 return FileVisitResult.CONTINUE
             }

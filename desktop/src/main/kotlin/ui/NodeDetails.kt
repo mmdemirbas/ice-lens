@@ -40,7 +40,9 @@ import model.DeletionVector
 import model.IcebergExportCheck
 import model.SchemaFieldRow
 import model.DeleteCandidate
+import model.OrphanFate
 import model.UnreferencedFilesReport
+import model.planOrphanRemoval
 import model.DeleteReachVerdict
 import model.deleteCandidatesFor
 import model.deleteKindOf
@@ -2303,13 +2305,15 @@ internal fun UnreferencedFilesSection(
     }
     val report = outcome?.getOrNull()
     val title = if (report != null) "Unreferenced Files (${formatCount(report.unreferenced.size)})" else "Unreferenced Files"
+    val nowMs = expiryClock()
 
     Section(title) {
         // The caveat about what "referenced" means goes under the answer, not above it: a reader
         // who has not clicked needs one sentence, and one who has needs the number first.
-        val caveat = "Referenced means named by any metadata version on disk, so Iceberg's " +
-            "remove_orphan_files, which reaches from the current one only, can delete more than is " +
-            "listed here. Paimon tags, branches and consumers are followed."
+        val caveat = "Referenced means named by any metadata version on disk. Iceberg's " +
+            "remove_orphan_files reaches from the current one only and can delete more than is " +
+            "listed here — such files are planned below as named by an older version. Paimon tags, " +
+            "branches and consumers are followed."
         when {
             !requested -> {
                 Text(
@@ -2345,21 +2349,72 @@ internal fun UnreferencedFilesSection(
                 report.problems.forEach { problem ->
                     Text("Could not read: $problem", fontSize = TypeScale.small, color = colors.error)
                 }
-                if (report.unreferenced.isNotEmpty()) {
+                val plan = planOrphanRemoval(report, nowMs)
+                if (plan.rows.isNotEmpty()) {
+                    // The procedure's own verdict leads: a reader who ran remove_orphan_files and
+                    // saw it delete nothing needs "younger than the cutoff" before the file name.
+                    val heldBack = listOfNotNull(
+                        plan.tooYoung.takeIf { it > 0 }?.let { "${formatCounted(it, "file")} younger than the cutoff" },
+                        plan.unlisted.takeIf { it > 0 }?.let { "${formatCounted(it, "file")} in a place it never lists" },
+                    )
+                    Text(
+                        "A bare remove_orphan_files now (older_than = ${plan.defaultIntervalText} ago, the default) would " +
+                            "delete ${formatCounted(plan.removed.size, "file")} (${formatBytes(plan.removedBytes)})" +
+                            (if (heldBack.isEmpty()) "." else "; held back: ${heldBack.joinToString(", ")}.") +
+                            (if (report.unreachedFromCurrent.isNotEmpty()) {
+                                " Among them are ${formatCounted(report.unreachedFromCurrent.size, "file")} the metadata names: " +
+                                    "only an older metadata version, or a DELETED entry, names them, and the procedure reads neither."
+                            } else {
+                                ""
+                            }),
+                        fontSize = TypeScale.small,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                    )
                     WideTable(
-                        headers = listOf("Size", "File"),
-                        columnWidths = listOf(90.dp, 700.dp),
-                        rows = report.unreferenced.take(MAX_UNREFERENCED_ROWS).map { file ->
-                            listOf(formatBytes(file.sizeBytes), report.relativePathOf(file))
+                        headers = listOf("Verdict", "File", "Size", "Modified", "Why"),
+                        columnWidths = listOf(110.dp, 520.dp, 90.dp, 170.dp, 560.dp),
+                        rows = plan.rows.take(MAX_UNREFERENCED_ROWS).map { row ->
+                            listOf(
+                                when (row.fate) {
+                                    OrphanFate.REMOVED -> "REMOVED"
+                                    OrphanFate.TOO_YOUNG -> "too young"
+                                    OrphanFate.UNLISTED -> "never listed"
+                                },
+                                row.relativePath,
+                                formatBytes(row.file.sizeBytes),
+                                formatAppTimestamp(row.file.modifiedMs),
+                                row.reason,
+                            )
+                        },
+                        leadCellColors = plan.rows.take(MAX_UNREFERENCED_ROWS).map { row ->
+                            when (row.fate) {
+                                OrphanFate.REMOVED -> colors.error
+                                OrphanFate.TOO_YOUNG -> null
+                                OrphanFate.UNLISTED -> verdictUnevaluatedColor()
+                            }
                         },
                     )
-                    if (report.unreferenced.size > MAX_UNREFERENCED_ROWS) {
+                    if (plan.rows.size > MAX_UNREFERENCED_ROWS) {
                         Text(
-                            "…and ${formatCount(report.unreferenced.size - MAX_UNREFERENCED_ROWS)} more.",
+                            "…and ${formatCount(plan.rows.size - MAX_UNREFERENCED_ROWS)} more.",
                             fontSize = TypeScale.small,
                             color = colors.onSurfaceVariant,
                         )
                     }
+                    Text(
+                        if (report.format == service.TableFormat.ICEBERG) {
+                            "The procedure refuses an older_than inside the last 24 hours, so the youngest files " +
+                                "a call can remove are a day old; it lists the whole table location and skips names " +
+                                "starting with _ or ."
+                        } else {
+                            "The procedure refuses an older_than in the future; it lists manifest/, index/, " +
+                                "statistics/, the bucket directories and the snapshot/ and changelog/ directories, " +
+                                "and nothing else."
+                        },
+                        fontSize = TypeScale.small,
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
                 Text(caveat, fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
             }

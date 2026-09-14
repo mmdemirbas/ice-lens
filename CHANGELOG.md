@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **What `remove_orphan_files` would delete** — the table panel's `Unreferenced Files` plans a
+  bare call over the walk: each file `REMOVED`, `too young` (Iceberg's default cutoff is three
+  days, Paimon's one) or `never listed` (Iceberg hides `_` and `.` names; Paimon lists only
+  `manifest/`, `index/`, `statistics/`, the bucket directories, `snapshot/` and `changelog/`),
+  with its modification time and the reason. On Iceberg the files only an older metadata
+  version or a `DELETED` entry names are planned too — the procedure reaches from the current
+  metadata alone and deletes them while the walk counts them referenced. Fixtures `orph`/`orpha`
+  and `po`/`poa`, each a table copied before the procedure ran.
 - **A Paimon file's bucket count checked against the table's** — every manifest entry records
   `_TOTAL_BUCKETS`, and a write to a bucket whose files record a count other than the `bucket`
   option is refused until an `INSERT OVERWRITE` rescales the table. The integrity check lists
