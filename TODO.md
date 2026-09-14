@@ -126,13 +126,17 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   on `file_row_number`, which DuckDB assigns in Parquet only — an Avro data-evolution table
   reports the split as unreadable rather than reading its files apart.
 
-- **ORC data files cannot be read, and a Paimon Avro table on its default codec cannot either.**
-  DuckDB 1.4.4 has no ORC table function, core or community, and its Avro reader refuses
-  `zstandard` — Paimon's `file.compression` default. Every reader says which of the two it hit
-  (`orcfmt`, `paz`); nothing reads the rows. An ORC reader would be a second engine on the
-  classpath (the ORC core jar with its Hadoop tail), and a zstd Avro file would need the rows
-  decoded in this process through the Avro library already here, which is a second row reader
-  beside DuckDB's — both real work, neither started.
+- **ORC data files cannot be read, and a Paimon Avro table on its default codec is read for
+  its row cards only.** DuckDB 1.4.4 has no ORC table function, core or community, and its Avro
+  reader refuses `zstandard` — Paimon's `file.compression` default. The row cards of a zstd Avro
+  file are read in this process now (`service/AvroRows.kt`, a sample being the file's first
+  block); the lookup, the merged count, the live count and the statistics sweep run SQL over the
+  whole file through DuckDB and still say the codec (`paz`). The way through for those would be
+  transcoding the file once per session into a temp copy under a codec DuckDB reads
+  (`DataFileWriter.appendAllFrom(reader, recompress = true)`) — a full read and write per file,
+  which is about one extra scan for readers that scan anyway, and a cache to bound. An ORC
+  reader would be a second engine on the classpath (the ORC core jar with its Hadoop tail).
+  Neither started.
 
 - **The whole-table integrity check reads the statistics files behind its second click, and
   stops its closure walks at fifty snapshots.** `model/Integrity.kt` runs the metadata-only

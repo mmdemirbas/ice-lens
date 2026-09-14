@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A Paimon Avro table on its default codec draws its rows.** DuckDB's Avro reader refuses
+  `zstandard`, so the row cards of every data file of such a table said so; a sample is the
+  file's first block, and it is read in this process through the Avro library now, logical
+  types applied. The readers that run SQL over the whole file still name the codec
 - **A row's history: the lookup run at every retained snapshot on `main`.** Under the row
   lookup's result a second click traces the matching rows through the last 20 snapshots on
   `main` and names what each commit did to them — appeared, changed, gone — against the commit

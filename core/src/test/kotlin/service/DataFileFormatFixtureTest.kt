@@ -104,18 +104,25 @@ class DataFileFormatFixtureTest {
 
     /**
      * Paimon's default `file.compression` is zstd, and DuckDB's Avro reader answers "File header
-     * contains an unknown codec" to a `zstandard` file — a line that does not name the codec. So
-     * the header is read first and the refusal names it, on the row cards, the merged count and
-     * the statistics sweep alike.
+     * contains an unknown codec" to a `zstandard` file — a line that does not name the codec. The
+     * row cards read the file in this process instead ([AvroRows]) — the script's two rows, their
+     * `_VALUE_KIND` and their key columns, the shape `read_avro` gives `pav`'s — and the readers
+     * that run SQL over the file read the header first and refuse by the codec's name: the merged
+     * count, the statistics sweep and the lookup alike.
      */
     @Test
-    fun `a Paimon Avro table on the default codec is refused by the codec's name everywhere`() {
+    fun `a Paimon Avro table on the default codec draws its rows in process, and the SQL readers refuse by the codec's name`() {
         val rows = rowNodes("paz", paimon = true)
         assertEquals(2, rows.size)
         rows.forEach { row ->
-            val error = assertNotNull(row.readError, row.resolvedData.toString())
-            assertTrue(error.startsWith("DuckDB's Avro reader does not read the zstandard codec"), error)
+            assertNull(row.readError, row.resolvedData.toString())
+            assertNull(row.filePosition, "Avro has no file_row_number: ${row.resolvedData}")
+            assertEquals(0, row.paimonRowKind, row.resolvedData.toString())
         }
+        assertEquals(listOf("1" to "alpha", "2" to "bravo"), rows.map { it.resolvedData["k"].toString() to it.resolvedData["v"].toString() }.sortedBy { it.first })
+        assertEquals(listOf("1", "2"), rows.map { it.resolvedData["_KEY_k"].toString() }.sorted())
+        val pav = rowNodes("pav", paimon = true)
+        assertEquals(pav.map { it.resolvedData.keys }.toSet(), rows.map { it.resolvedData.keys }.toSet(), "one shape of row under either reader")
         val model = FixtureCatalog.paimonModel("paz")
         val count = PaimonMergedCount.count(assertNotNull(model.paimonRowLookupInput()))
         assertTrue(count.buckets.single().error.orEmpty().contains("zstandard codec"), "$count")

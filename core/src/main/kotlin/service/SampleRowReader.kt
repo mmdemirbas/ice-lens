@@ -101,6 +101,13 @@ object SampleRowReader {
      * *is* still checked is the extension, because it decides which query is built.
      */
     internal fun resolveForQuery(filePath: String): Pair<String, String> {
+        val (path, ext) = resolveDataFile(filePath)
+        if (ext == "avro" && !StorageLocation.isRemote(path)) requireReadableCodec(path, path.substringAfterLast('/'))
+        return path to ext
+    }
+
+    /** [resolveForQuery] without the codec check — for a read that has its own way through a codec DuckDB refuses ([AvroRows]). */
+    private fun resolveDataFile(filePath: String): Pair<String, String> {
         if (StorageLocation.isRemote(filePath)) {
             val name = filePath.substringAfterLast('/')
             val ext = name.substringAfterLast('.', "").lowercase()
@@ -111,7 +118,6 @@ object SampleRowReader {
         require(canonicalFile.isFile) { "Not a regular file: $canonicalFile" }
         val ext = canonicalFile.extension.lowercase()
         requireReadable(ext, canonicalFile.name)
-        if (ext == "avro") requireReadableCodec(canonicalFile.path, canonicalFile.name)
         return canonicalFile.path.replace("\\", "/") to ext
     }
 
@@ -119,6 +125,10 @@ object SampleRowReader {
         val codec = runCatching { AvroReader.codecOf(path) }.getOrNull() ?: return
         require(codec !in AVRO_CODECS_REFUSED) { avroCodecUnreadable(codec, name) }
     }
+
+    /** Whether an Avro file's header names a codec DuckDB refuses — the case [AvroRows] exists for. */
+    private fun avroCodecRefused(path: String): Boolean =
+        runCatching { AvroReader.codecOf(path) }.getOrNull() in AVRO_CODECS_REFUSED
 
     /** The one sentence every reader gives for an Avro file DuckDB cannot decompress. */
     internal fun avroCodecUnreadable(codec: String, name: String): String =
@@ -140,7 +150,7 @@ object SampleRowReader {
      * card has to draw without it.
      */
     fun fileColumnsOf(filePath: String): Map<String, Int?> = runCatching {
-        val (safePath, ext) = resolveForQuery(filePath)
+        val (safePath, ext) = resolveDataFile(filePath)
         when (ext) {
             "avro" -> AvroReader.fileColumnsOf(safePath)
             else -> DuckDb.withConnection { conn ->
@@ -209,7 +219,10 @@ object SampleRowReader {
      * @throws IllegalArgumentException if the file doesn't exist or has an unsupported extension
      */
     fun querySampleRows(filePath: String): List<Map<String, Any>> {
-        val (safePath, ext) = resolveForQuery(filePath)
+        val (safePath, ext) = resolveDataFile(filePath)
+        // A sample is the file's first block, which the Avro library reads in this process
+        // whatever the codec; DuckDB's refusal is left to the readers that need SQL over the file.
+        if (ext == "avro" && avroCodecRefused(safePath)) return AvroRows.readSampleRows(safePath, GraphLayoutService.MAX_PARQUET_SAMPLE_ROWS)
 
         return DuckDb.withConnection { conn ->
             // Parquet gets `file_row_number`, which is the row's physical position in the file

@@ -159,7 +159,7 @@ class SampleRowReaderTest {
     }
 
     @Test
-    fun `querySampleRows reads an Avro file through read_avro, and refuses a codec DuckDB cannot read by name`() {
+    fun `querySampleRows reads an Avro file through read_avro, and one under a codec DuckDB cannot read in this process`() {
         val schema = org.apache.avro.Schema.Parser().parse(
             """{"type":"record","name":"r","fields":[{"name":"k","type":"int"},{"name":"v","type":["null","string"],"default":null}]}""",
         )
@@ -179,8 +179,46 @@ class SampleRowReaderTest {
         assertTrue(rows.none { SampleRowReader.FILE_ROW_NUMBER in it }, "read_avro has no file_row_number: ${rows.first().keys}")
 
         val zstd = write("zstd.avro", org.apache.avro.file.CodecFactory.zstandardCodec(3))
-        val e = assertFailsWith<IllegalArgumentException> { SampleRowReader.querySampleRows(zstd.absolutePath) }
+        // The same rows, the same spelling of null, from the Avro library rather than DuckDB.
+        assertEquals(rows, SampleRowReader.querySampleRows(zstd.absolutePath))
+        // The SQL readers have no such way through: the path they resolve refuses the codec by name.
+        val e = assertFailsWith<IllegalArgumentException> { SampleRowReader.resolveForQuery(zstd.absolutePath) }
         assertTrue(e.message!!.startsWith("DuckDB's Avro reader does not read the zstandard codec"), e.message)
+    }
+
+    @Test
+    fun `the in-process Avro reader applies the file's logical types and keeps a nested value readable`() {
+        val schema = org.apache.avro.Schema.Parser().parse(
+            """{"type":"record","name":"r","fields":[
+              {"name":"d","type":{"type":"int","logicalType":"date"}},
+              {"name":"ts","type":{"type":"long","logicalType":"timestamp-millis"}},
+              {"name":"amount","type":{"type":"bytes","logicalType":"decimal","precision":9,"scale":2}},
+              {"name":"tags","type":{"type":"array","items":"string"}},
+              {"name":"addr","type":{"type":"record","name":"a","fields":[{"name":"zip","type":"string"}]}}
+            ]}""",
+        )
+        val f = File(tmpDir, "typed.avro")
+        val data = org.apache.avro.generic.GenericData().apply {
+            addLogicalTypeConversion(org.apache.avro.Conversions.DecimalConversion())
+            addLogicalTypeConversion(org.apache.avro.data.TimeConversions.DateConversion())
+            addLogicalTypeConversion(org.apache.avro.data.TimeConversions.TimestampMillisConversion())
+        }
+        org.apache.avro.file.DataFileWriter(org.apache.avro.generic.GenericDatumWriter<org.apache.avro.generic.GenericData.Record>(schema, data))
+            .setCodec(org.apache.avro.file.CodecFactory.zstandardCodec(3)).create(schema, f).use { w ->
+                w.append(org.apache.avro.generic.GenericData.Record(schema).apply {
+                    put("d", java.time.LocalDate.of(2024, 3, 5))
+                    put("ts", java.time.Instant.parse("2024-03-05T10:00:00Z"))
+                    put("amount", java.math.BigDecimal("12.34"))
+                    put("tags", listOf("x", "y"))
+                    put("addr", org.apache.avro.generic.GenericData.Record(schema.getField("addr").schema()).apply { put("zip", "06800") })
+                })
+            }
+        val row = SampleRowReader.querySampleRows(f.absolutePath).single()
+        assertEquals(java.time.LocalDate.of(2024, 3, 5), row["d"])
+        assertEquals(java.time.Instant.parse("2024-03-05T10:00:00Z"), row["ts"])
+        assertEquals(java.math.BigDecimal("12.34"), row["amount"])
+        assertEquals(listOf("x", "y"), row["tags"])
+        assertEquals(mapOf("zip" to "06800"), row["addr"])
     }
 
     // ═══════════════════════════════════════════════════════════════
