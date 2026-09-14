@@ -18,9 +18,15 @@ enum class TableFormat {
 /**
  * Detects the table format of a directory by examining its structure.
  *
- * - **Iceberg**: has a `metadata/` subdirectory containing at least one `*.metadata.json` file
  * - **Paimon**: has both `snapshot/` and `schema/` subdirectories
+ * - **Iceberg**: has a `metadata/` subdirectory containing at least one `*.metadata.json` file
  * - **Unknown**: none of the above markers found
+ *
+ * Paimon is asked first because a Paimon table can carry both markers: under
+ * `metadata.iceberg.storage = table-location` every commit also writes Iceberg metadata to
+ * `<table>/metadata/` so an Iceberg reader can open the data files (`pic`). That directory is
+ * the table's *export*, and the table is Paimon — opened as Iceberg, its snapshots, levels and
+ * merge engine are invisible and its own `snapshot/`, `schema/` and `manifest/` read as orphans.
  */
 object TableFormatDetector {
 
@@ -28,8 +34,8 @@ object TableFormatDetector {
     fun detect(dir: Path): TableFormat {
         if (!Files.isDirectory(dir)) return TableFormat.UNKNOWN
         val format = when {
-            isIcebergTable(dir) -> TableFormat.ICEBERG
             isPaimonTable(dir) -> TableFormat.PAIMON
+            isIcebergTable(dir) -> TableFormat.ICEBERG
             else -> TableFormat.UNKNOWN
         }
         if (format != TableFormat.UNKNOWN) {

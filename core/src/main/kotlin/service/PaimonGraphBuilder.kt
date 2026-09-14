@@ -54,6 +54,8 @@ object PaimonGraphBuilder {
             paimonRowLookup = DeferredRead.of { tableModel.paimonRowLookupInput() },
             rowHistory = DeferredRead.of { tableModel.rowHistoryInputs() },
             schemaEvolution = schemaSteps,
+            // A listing of `metadata/` at build, so the section is drawn only on a table that carries the export; the read itself waits for the click.
+            icebergExport = if (TableFormatDetector.isIcebergTable(tableModel.path)) DeferredRead.of { tableModel.checkIcebergExport() } else DeferredRead.none(),
             // Read after the traversal fills `logicalNodes`, so the latest snapshot's node is
             // found whether or not aggregation goes on to draw it.
             maintenance = DeferredRead.of {

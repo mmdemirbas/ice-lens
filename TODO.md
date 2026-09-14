@@ -131,6 +131,20 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   on `file_row_number`, which DuckDB assigns in Parquet only — an Avro data-evolution table
   reports the split as unreadable rather than reading its files apart.
 
+- **A Paimon table's Iceberg export is read and checked; what it does not draw is the export's
+  own history.** `metadata.iceberg.storage = table-location` writes Iceberg metadata under
+  `<table>/metadata/` on every commit, the detector opens such a directory as the Paimon table,
+  the export's files are referenced files, and the table panel puts the export's current
+  snapshot and live files against the table's own with the rule that explains each absence
+  (`model/IcebergExport.kt`, `pic`). What is left: the export is checked at its current snapshot
+  only and never drawn — its snapshots, manifests and files are a second graph, and a node for
+  them would have to say which table they belong to. `metadata.iceberg.storage =
+  hadoop-catalog` and `hive-catalog` write the same metadata to a catalog directory *beside* the
+  warehouse, which this does not look for: the export would be a table of its own in the
+  workspace, correctly read as Iceberg, with nothing saying it is Paimon's. No fixture reaches a
+  compacted table's export either, where the level rule lists a level-5 file rather than
+  explaining an absence.
+
 - **ORC data files cannot be read.** DuckDB 1.4.4 has no ORC table function, core or community;
   every reader says so (`orcfmt`). An ORC reader would be a second engine on the classpath (the
   ORC core jar with its Hadoop tail), not started. A Paimon Avro table on its default zstd codec,

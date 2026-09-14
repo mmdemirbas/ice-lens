@@ -1,0 +1,59 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "df37e981-21d0-4886-9221-f15bbc9a0d9e",
+  "location" : "/wh/db.db/pic",
+  "last-sequence-number" : 2,
+  "last-updated-ms" : 1789367925520,
+  "last-column-id" : 1,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 0,
+      "name" : "k",
+      "required" : true,
+      "type" : "int",
+      "doc" : null
+    }, {
+      "id" : 1,
+      "name" : "v",
+      "required" : false,
+      "type" : "string",
+      "doc" : null
+    } ]
+  } ],
+  "current-schema-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "default-spec-id" : 0,
+  "last-partition-id" : 999,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "default-sort-order-id" : 0,
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 1,
+    "timestamp-ms" : 1789367925352,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pic/metadata/snap-1-606af31f-b5f0-4688-aa23-5b4c451a7e5e.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 2,
+    "snapshot-id" : 2,
+    "timestamp-ms" : 1789367925519,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pic/metadata/snap-1-a273951c-0970-4778-b0c4-de9ec58285e4.avro",
+    "schema-id" : 0
+  } ],
+  "current-snapshot-id" : 2,
+  "properties" : { },
+  "refs" : { }
+}

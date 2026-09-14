@@ -111,7 +111,11 @@ private fun icebergReferencedFiles(model: UnifiedTableModel): List<Path> {
 private fun paimonReferencedFiles(model: PaimonUnifiedTableModel): List<Path> =
     paimonLineReferencedFiles(model.path, model.path, model.schemas, model.snapshots, model.tags) +
         model.branches.flatMap { paimonLineReferencedFiles(model.path, it.path, it.schemas, it.snapshots, it.tags) } +
-        model.consumers.map { it.path }
+        model.consumers.map { it.path } +
+        // The Iceberg export under `metadata/` names its own manifest lists and manifests, and
+        // the data files it lists are the table's; without this every file of the export is a
+        // false orphan in the direction that gets a file deleted (`pic`).
+        model.icebergExport?.let(::icebergReferencedFiles).orEmpty()
 
 /**
  * What one line of commits names: its own snapshot, schema and tag files under [metadataRoot],

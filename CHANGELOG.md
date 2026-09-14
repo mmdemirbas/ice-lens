@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **A Paimon table that writes Iceberg metadata beside its own says what an Iceberg reader
+  sees.** Under `metadata.iceberg.storage = table-location` every commit also writes Iceberg
+  metadata under `metadata/`; the table panel reads it and puts the export's current snapshot
+  and its live files against the table's own, naming the files the export leaves out by the
+  rule that leaves them out. `pic` is the fixture
+
 ### Fixed
+- **A directory carrying both formats' markers opens as the Paimon table.** Such a directory is
+  a Paimon table whose Iceberg metadata is its export, and opened as Iceberg its `snapshot/`,
+  `schema/` and `manifest/` read as orphans and its snapshots, levels and merge engine are
+  invisible. The detector asks Paimon first now, and the export's files are referenced files
 - **A catalog table's metadata versions are numbered.** A Hive, Glue or REST catalog names a
   version `00147-<uuid>.metadata.json`; the number is read off that name now, as off
   `v147.metadata.json`, so the cards say `METADATA 147` and the versions order by it

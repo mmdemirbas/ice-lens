@@ -86,6 +86,7 @@ core/src/main/kotlin/
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
 │   ├── SchemaFieldRows.kt     # A schema as one row per field, nested fields under their path with the ids the format evolves them by — both schema panels' table
+│   ├── IcebergExport.kt       # The Iceberg metadata a Paimon table writes beside its own, against the table it exports — which of its live files an Iceberg reader sees
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
 │   ├── PartitionSummaryTally.kt # manifest_file's partition summaries — the bounds a scan prunes on — against the entries' decoded partitions
@@ -124,7 +125,7 @@ core/src/main/kotlin/
 │   ├── SnapshotTracks.kt      # Which column each snapshot draws in, and which branch names it
 │   ├── GraphLayoutAlgorithm.kt # The four shapes on offer, and which one gets the refinements
 │   ├── GraphLayoutService.kt  # Format-agnostic ELK layout + post-processing (ordering, alignment, overlap prevention)
-│   └── TableFormatDetector.kt # Directory-based table format detection (Iceberg / Paimon / Unknown)
+│   └── TableFormatDetector.kt # Directory-based table format detection — Paimon asked first, since a Paimon table can carry both markers
 
 desktop/src/main/kotlin/
 ├── Main.kt                    # Entry point, window state persistence (multi-monitor aware)
@@ -2171,7 +2172,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,252 tests across 168 files (982 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,256 tests across 170 files (985 in :core, 262 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2309,6 +2310,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pkr` | `PaimonRowLookupFixtureTest`, `PaimonMergedCountFixtureTest` | a primary key renamed between writes — `_KEY_k` in the first file, `_KEY_id` in the two after, key 1 written again after the rename; Paimon's read `1 A / 2 b / 3 c` is printed by the script |
 | `paimon/db.db/pse` | `PaimonReadProjectionFixtureTest` | an append table evolved after its first file — `ADD COLUMN w`, `RENAME COLUMN v TO label`, `ALTER COLUMN w SET DEFAULT 7` — with Paimon's own read printed in the script: the old file's `v` as `label`, its `w` as null, and the default a later write stored for a row that omitted `w` |
 | `paimon/db.db/pne` | `PaimonNestedEvolutionFixtureTest` | `pse` one level down — a struct and a list of structs, a rename and an add inside the struct and a rename inside the list's element between two writes; the nested type object every schema of such a table carries, and Paimon's read of the old file under the new names |
+| `paimon/db.db/pic` | `PaimonIcebergExportFixtureTest` | `metadata.iceberg.storage = table-location` — a primary-key table writing Iceberg metadata under its own `metadata/` on every commit, so the directory carries both formats' markers; two appends, neither compacted, and the export lists one of the two live files: snapshot 1 rebuilt it from the snapshot and snapshot 2 went through the level rule |
 | `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest`, `PaimonRowLookupFixtureTest`, `PaimonScanPruningTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted; the stitched read `(1, 11, 1)` the lookup is held to, and the file bounds pruning must not consult |
 | `paimon/db.db/lk` | `PaimonRowKindTest` | `changelog-producer = lookup` — the `-U` / `+U` pair a re-inserted key produces, carried by the COMPACT snapshot the lookup ran in, and a `-D` with the value it removed |
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |
@@ -2359,7 +2361,7 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
 - Model: `UnifiedTableModel` → `IcebergGraphBuilder` → `GraphLayoutService`
 
 ### Paimon
-- Detection: `snapshot/` + `schema/` directories
+- Detection: `snapshot/` + `schema/` directories, asked **before** Iceberg's — a Paimon table can carry both markers
 - Reader: `PaimonReader` (JSON snapshots/schemas + Avro manifest lists/manifests via `AvroReader`)
 - Model: `PaimonUnifiedTableModel` → `PaimonGraphBuilder` → `GraphLayoutService`
 - Key differences from Iceberg: manifest lists split into base (accumulated) and delta (new changes); LSM tree levels on data files; commitKind (APPEND/COMPACT/OVERWRITE/ANALYZE)
@@ -2548,6 +2550,31 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   stated definition; and **an overwrite writes a changelog file and does not commit it** — Paimon
   logs "Overwrite mode currently does not commit any changelog" and leaves the file in the bucket
   unlisted, so the table has four `changelog-` files on disk and three in any manifest
+- **A Paimon table can carry an Iceberg export, and which of its files that export lists is
+  decided by which path the commit callback took — not by the level rule alone.** Under
+  `metadata.iceberg.storage = table-location` every commit also writes Iceberg metadata to
+  `<table>/metadata/` (`IcebergCommitCallback` at 1.3.1), so the directory carries both formats'
+  markers. **The table is the Paimon one**: `TableFormatDetector` asks Paimon first, because
+  opened as Iceberg its own `snapshot/`, `schema/` and `manifest/` are orphans and its snapshots,
+  levels and merge engine are invisible — and `paimonReferencedFiles` adds the export's files, or
+  every one of them is a false orphan in the direction that gets a file deleted.
+  `PaimonUnifiedTableModel.icebergExport` is the export read as a `UnifiedTableModel`, and
+  `model/IcebergExport.kt` puts its current snapshot and live files against the table's own.
+  `createMetadata` has two paths and they list different things: **incremental**
+  (`createMetadataWithBase`, taken when the metadata for `snapshotId - 1` is there) runs the
+  commit's delta entries through `shouldAddFileToIceberg` — every file on an append table, and on
+  a primary-key table only a file at `num-levels - 1`, or at any level above 0 under deletion
+  vectors, since an Iceberg reader merges nothing and a lower level's records may be shadowed —
+  while **rebuild** (`createMetadataWithoutBase`, taken on the first snapshot, a format-version
+  change, or a base the export's own expiry removed) reads the snapshot and lists every file of
+  every **raw-convertible** split whatever its level. `pic` holds both: two appends into one
+  bucket of an uncompacted primary-key table, and the export lists the first commit's level-0
+  file (rebuilt, its split raw convertible) and not the second's (incremental, below level 5).
+  So an Iceberg reader sees one of the table's two live files and neither half is a
+  disagreement — `belowExportedLevel` and `exportedBelowLevel` name each with its rule, leaving
+  `missingFromIceberg` and `extraInIceberg` for what no rule explains. The section rides
+  `TableNode.icebergExport`, a `DeferredRead` behind a click for the reason
+  `UnreferencedFilesSection` is: it reads another table's metadata tree
 - **A tag is a snapshot file under `tag/`, read as one, and it is what keeps files on disk after
   the snapshot is gone.** `PaimonUnifiedTableModel.tags` reads `tag/tag-<name>` through the same
   reader and manifest cache as `snapshot/`; `tagOnlySnapshots` is the tagged snapshots `snapshot/`

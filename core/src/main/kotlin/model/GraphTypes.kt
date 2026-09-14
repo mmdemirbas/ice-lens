@@ -389,6 +389,8 @@ sealed class GraphNode(
         val rowHistory: DeferredRead<RowHistoryInputs> = DeferredRead.none(),
         /** Each schema against the one before it, with the first snapshot written under it — see [schemaEvolution]; both formats, from the model. */
         val schemaEvolution: List<SchemaStep> = emptyList(),
+        /** The Iceberg metadata a Paimon table writes beside its own, checked against the table — see [IcebergExportCheck]; only where `metadata/` holds one. */
+        val icebergExport: DeferredRead<IcebergExportCheck> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 240.0, 96.0)

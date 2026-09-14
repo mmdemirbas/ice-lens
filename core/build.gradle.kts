@@ -14,6 +14,7 @@ dependencies {
     implementation(libs.avro4k.core)
     implementation(libs.avro)
     implementation(libs.zstd.jni)
+    implementation(libs.snappy.java)
 
     implementation(libs.elk.core)
     implementation(libs.elk.layered)

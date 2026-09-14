@@ -36,6 +36,7 @@ import kotlinx.coroutines.withContext
 import service.PositionalDeleteTally
 import service.SampleRowReader
 import model.DeletionVector
+import model.IcebergExportCheck
 import model.SchemaFieldRow
 import model.DeleteCandidate
 import model.UnreferencedFilesReport
@@ -2012,6 +2013,106 @@ internal fun PaimonIndexFilesSection(node: GraphNode.PaimonSnapshotNode) {
 
 /** Rows the unreferenced-file table lists before it says how many more there are — same cap as the diff. */
 private const val MAX_UNREFERENCED_ROWS = 500
+
+/**
+ * The Iceberg metadata a Paimon table writes beside its own, against the table — see
+ * [IcebergExportCheck]. Behind a click for the same reason the orphan walk is: it is a second
+ * table's read. The headline says whether an Iceberg reader is looking at the latest commit,
+ * and how many of the live files it sees; on a primary-key table the level rule is stated
+ * rather than left as a count that disagrees, since between compactions it leaves most files
+ * out by design.
+ */
+@Composable
+internal fun IcebergExportSection(
+    node: GraphNode.TableNode,
+    startRequested: Boolean = false,
+    onSettled: () -> Unit = {},
+) {
+    val colors = MaterialTheme.colorScheme
+    if (!node.icebergExport.isPresent) return
+
+    var requested by remember(node.id) { mutableStateOf(startRequested) }
+    val outcome by produceState<Result<IcebergExportCheck>?>(null, node.id, requested) {
+        value = null
+        if (requested) {
+            value = withContext(Dispatchers.IO) {
+                runCatching { requireNotNull(node.icebergExport.value) { "no Iceberg metadata under metadata/" } }
+            }
+            onSettled()
+        }
+    }
+    val check = outcome?.getOrNull()
+    val agrees = check != null && check.current && check.missingFromIceberg.isEmpty() && check.extraInIceberg.isEmpty() && check.readErrors.isEmpty()
+    val title = "Iceberg Metadata" + when {
+        check == null -> ""
+        agrees -> " — current"
+        else -> " — disagrees"
+    }
+
+    Section(title) {
+        // The number leads once it exists and the explanation follows it, the
+        // `UnreferencedFilesSection` rule: a reader who has not clicked needs the sentence, and one
+        // who has needs the answer first.
+        val intro = "metadata.iceberg.storage = table-location: every commit also writes Iceberg metadata " +
+            "under metadata/, so an Iceberg reader opens this table's data files as an Iceberg table. What " +
+            "that reader sees is what the export says, checked here against the table itself."
+        when {
+            !requested -> {
+                Text(intro, fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+                OutlinedButton(onClick = { requested = true }) { Text("Read the Iceberg metadata") }
+            }
+            outcome == null -> Text("Reading the Iceberg metadata…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            check == null -> Text(
+                "Could not read: ${outcome?.exceptionOrNull()?.message ?: "unknown error"}",
+                fontSize = TypeScale.small,
+                color = colors.error,
+            )
+            else -> {
+                val seen = check.paimonFiles.keys.count { it in check.icebergFiles }
+                Text(
+                    (if (check.current) "Current: the export's snapshot ${check.currentIcebergSnapshotId} is the table's latest" else
+                        "Behind: the export's snapshot is ${check.currentIcebergSnapshotId ?: "none"}, the table's latest ${check.latestPaimonSnapshotId ?: "none"}") +
+                        "; ${formatCount(check.versions)} ${if (check.versions == 1) "metadata version" else "metadata versions"} under metadata/. " +
+                        "An Iceberg reader sees ${formatCount(seen)} of the table's ${formatCounted(check.paimonFiles.size, "live file")}.",
+                    fontSize = TypeScale.small,
+                    fontWeight = FontWeight.Bold,
+                    color = if (agrees) colors.onSurface else colors.error,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                if (check.belowExportedLevel.isNotEmpty()) {
+                    Text(
+                        "${formatCounted(check.belowExportedLevel.size, "live file")} ${if (check.belowExportedLevel.size == 1) "is" else "are"} not exported by rule: a primary-key table's export lists " +
+                            (if (check.aboveLevelZero) "files above level 0 only, with the deletion vectors as Iceberg's" else "files at the highest level (${check.exportedLevel}) only") +
+                            ", since an Iceberg reader merges nothing — a full compaction moves them there.",
+                        fontSize = TypeScale.small,
+                        color = verdictUnevaluatedColor(),
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+                if (check.exportedBelowLevel.isNotEmpty()) {
+                    Text(
+                        "${formatCounted(check.exportedBelowLevel.size, "live file")} below that level " +
+                            "${if (check.exportedBelowLevel.size == 1) "is" else "are"} in the export all the same: a commit " +
+                            "that finds no metadata for the snapshot before it rebuilds the export from the snapshot, " +
+                            "listing every file a read returns without merging.",
+                        fontSize = TypeScale.small,
+                        color = verdictUnevaluatedColor(),
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+                check.readErrors.forEach { Text("Could not read ${fileNameFromPath(it.path)}: ${it.message}", fontSize = TypeScale.small, color = colors.error) }
+                check.missingFromIceberg.take(MAX_EXPORT_ROWS).forEach { Text("Live here, not in the export: $it", fontSize = TypeScale.small, color = colors.error) }
+                check.extraInIceberg.take(MAX_EXPORT_ROWS).forEach { Text("In the export, not live here: $it", fontSize = TypeScale.small, color = colors.error) }
+                val more = (check.missingFromIceberg.size - MAX_EXPORT_ROWS).coerceAtLeast(0) + (check.extraInIceberg.size - MAX_EXPORT_ROWS).coerceAtLeast(0)
+                if (more > 0) Text("…and ${formatCount(more)} more.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+                Text(intro, fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
+    }
+}
+
+/** Disagreeing files named before the rest are counted. */
+private const val MAX_EXPORT_ROWS = 20
 
 /**
  * What is under the table root that no metadata names — [findUnreferencedFiles], behind a click.

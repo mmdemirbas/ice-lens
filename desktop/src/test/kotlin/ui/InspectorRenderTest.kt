@@ -2130,6 +2130,30 @@ class InspectorRenderTest {
     }
 
     /**
+     * The Iceberg metadata a Paimon table writes beside its own, on `pic`.
+     *
+     * The section has three things to say at once and this is the table that says all three: the
+     * export is current, one live file is in it, and the other is not — one by the rebuild path
+     * that ignores the level rule, one by the level rule itself. A capture where the two lines
+     * read as the same kind of absence would be the defect, so it is rendered rather than only
+     * asserted. Waits for the read the way the delete-file sections do.
+     */
+    @Test
+    fun `a Paimon table's Iceberg export is drawn against the table it exports`() {
+        val pic = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pic").absolutePath)),
+            showRows = false,
+        )
+        val picTable = pic.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-iceberg-export", width = 1400, height = 660, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                IcebergExportSection(picTable, startRequested = true) { settled.set(true) }
+            }
+        }
+    }
+
+    /**
      * Rows looked up on `eqdel` under `id >= 1`: seven rows across two files, one deleted by
      * position, two by equality, four live — every fate the lookup decides in one column, which
      * is what a verdict column has to be judged against. Waits for the read like the others.

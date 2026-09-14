@@ -91,8 +91,16 @@ class TableFormatDetectorTest {
         }
     }
 
+    /**
+     * Both markers is a real shape, not a corner case: under
+     * `metadata.iceberg.storage = table-location` every Paimon commit also writes Iceberg metadata
+     * under `<table>/metadata/` for an Iceberg reader to open the data files with — the `pic`
+     * fixture. The table is the Paimon one and the Iceberg metadata is its export, so Paimon is
+     * asked first. Read the other way round, the table's own `snapshot/`, `schema/` and
+     * `manifest/` are orphans and its snapshots, levels and merge engine are invisible.
+     */
     @Test
-    fun `Iceberg takes precedence over Paimon when both markers exist`() {
+    fun `Paimon takes precedence over Iceberg when both markers exist`() {
         val dir = createTempDirectory("both").toFile()
         val metaDir = File(dir, "metadata")
         metaDir.mkdirs()
@@ -100,7 +108,7 @@ class TableFormatDetectorTest {
         File(dir, "snapshot").mkdirs()
         File(dir, "schema").mkdirs()
         try {
-            assertEquals(TableFormat.ICEBERG, TableFormatDetector.detect(dir.toPath()))
+            assertEquals(TableFormat.PAIMON, TableFormatDetector.detect(dir.toPath()))
         } finally {
             dir.deleteRecursively()
         }

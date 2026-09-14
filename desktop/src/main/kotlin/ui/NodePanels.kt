@@ -183,6 +183,7 @@ internal fun ColumnScope.TablePanel(
         // The panel's other controls, kept beside the first for the same reason.
         IntegritySection(node)
         UnreferencedFilesSection(node)
+        IcebergExportSection(node)
 
         // Folded, and out of the identity table above, because none of the three
         // is identity and together they were the largest thing on the panel: each
