@@ -104,6 +104,16 @@ class PaimonScanPruningTest {
      * The property that must hold whatever the predicate: a file holding a matching row is read.
      * Every key the script wrote, as an equality, against the file that holds it.
      */
+    /** A timestamp bound prunes once it decodes: `ft`'s one file spans 2024-03-05 10:00 to 03-07, so a day before is a skip and a value inside a read. */
+    @Test
+    fun `a timestamp predicate prunes a file by its decoded bounds`() {
+        val ft = GraphLayoutService.layoutGraph(PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/ft").absolutePath)), showRows = false)
+        val file = ft.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>().single()
+        assertEquals(FileFate.SKIPPED, evaluateScan(ft, listOf(ScanPredicate("ts", PredicateOp.LT, "2024-03-05 00:00:00"))).files.getValue(file.id).fate)
+        assertEquals(FileFate.SKIPPED, evaluateScan(ft, listOf(ScanPredicate("lz", PredicateOp.GT, "2024-03-08 00:00:00"))).files.getValue(file.id).fate)
+        assertEquals(FileFate.WOULD_BE_READ, evaluateScan(ft, listOf(ScanPredicate("ts", PredicateOp.EQ, "2024-03-06 11:30:00"))).files.getValue(file.id).fate)
+    }
+
     @Test
     fun `no file holding a matching key is ever pruned`() {
         (1..10).forEach { k ->

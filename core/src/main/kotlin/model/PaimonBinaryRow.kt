@@ -207,17 +207,21 @@ private fun decodeField(row: ByteBuffer, slot: Int, type: String): Any? {
         }
         "TIMESTAMP" -> {
             val precision = p1 ?: 6
-            // Compact at millisecond precision or below: epoch millis in the slot. Above, twelve
-            // bytes in the tail — epoch millis and the nanos within that millisecond.
+            // Compact at millisecond precision or below: epoch millis in the slot. Above, the
+            // slot is the tail offset in its high 32 bits and the nanos within the millisecond in
+            // its low 32 — `AbstractBinaryWriter.writeTimestamp` puts the nanos where a
+            // variable-width field keeps its length — and the tail holds the eight-byte millis
+            // (`MemorySegmentUtils.readTimestampData`). Read as a length, the nanos put every
+            // TIMESTAMP(6) bound out of reach, and the corpus's timestamp columns pruned on nothing.
             if (precision <= 3) {
                 val millis = row.getLong(slot)
                 LocalDateTime.ofEpochSecond(Math.floorDiv(millis, 1000L), Math.floorMod(millis, 1000L).toInt() * 1_000_000, ZoneOffset.UTC)
             } else {
-                val bytes = variableBytes(row, slot) ?: return null
-                if (bytes.size < 12) return null
-                val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-                val millis = buf.getLong(0)
-                val nanosOfMilli = buf.getInt(8)
+                val offsetAndNanos = row.getLong(slot)
+                val offset = (offsetAndNanos ushr 32).toInt()
+                val nanosOfMilli = offsetAndNanos.toInt()
+                if (offset < 0 || offset + 8 > row.limit() || nanosOfMilli !in 0 until 1_000_000) return null
+                val millis = row.getLong(offset)
                 LocalDateTime.ofEpochSecond(Math.floorDiv(millis, 1000L), Math.floorMod(millis, 1000L).toInt() * 1_000_000 + nanosOfMilli, ZoneOffset.UTC)
             }
         }

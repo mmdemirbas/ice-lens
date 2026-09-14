@@ -114,6 +114,31 @@ class PaimonFileBoundsFixtureTest {
         assertTrue(marked.all { it.fileSource == PaimonFileSource.APPEND }, "an upgraded file keeps its source")
     }
 
+    /**
+     * A `TIMESTAMP(6)` bound is not compact: its slot is the tail offset in the high 32 bits and
+     * the nanos within the millisecond in the low 32, the tail holding the millis. Read as a
+     * variable-width field it decoded to nothing, and `ft`'s timestamp columns pruned on nothing.
+     */
+    @Test
+    fun `timestamp bounds above millisecond precision decode to the script's values`() {
+        val ft = model("ft")
+        val file = ft.snapshots.last().let { it.baseManifests + it.deltaManifests }.flatMap { it.entries }.single()
+        val ts = file.bound("ts")
+        assertTrue(ts.decoded, "$ts")
+        assertEquals(java.time.LocalDateTime.of(2024, 3, 5, 10, 0, 0, 123_456_000), ts.min)
+        assertEquals(java.time.LocalDateTime.of(2024, 3, 7, 0, 0, 0, 1_000), ts.max)
+        val lz = file.bound("lz")
+        assertEquals(ts.min to ts.max, lz.min to lz.max, "the same instants, read at UTC")
+        // Every timestamp bound in the corpus decodes, whatever its precision.
+        FixtureCatalog.paimon.forEach { name ->
+            model(name).snapshots.flatMap { it.baseManifests + it.deltaManifests }.flatMap { it.entries }.forEach { e ->
+                e.columnBounds.orEmpty().filter { it.type.uppercase().startsWith("TIMESTAMP") }.forEach { b ->
+                    assertTrue(b.decoded, "$name/${e.metadata.file?.fileName} ${b.name} ${b.type}")
+                }
+            }
+        }
+    }
+
     /** The key statistics say the same as the key bounds where the key is one column, on every fixture. */
     @Test
     fun `key statistics agree with the key bounds on every checked-in table`() {

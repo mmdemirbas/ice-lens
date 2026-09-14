@@ -726,8 +726,8 @@ intellij/src/main/kotlin/plugin/
   corpus showed first (`ParquetSimpleStatsExtractor.toFieldStats`): a nested column records
   nothing under any mode, the Parquet statistics being keyed by leaf path and none found under
   its name (`pne`'s `addr`, `items`); a timestamp past precision 6 records the null count and no
-  bounds. A bound of a type this does not decode (`PaimonColumnBounds.decoded = false` — a
-  `TIMESTAMP(6)`, still) counts as recorded, and an empty `_VALUE_STATS_COLS` is a statistics
+  bounds. A bound of a type this does not decode (`PaimonColumnBounds.decoded = false`)
+  counts as recorded, and an empty `_VALUE_STATS_COLS` is a statistics
   row with nothing in it, not one that could not be placed. The Paimon file panel's `Stats
   Modes`, the integrity check's `METRICS_MODES`, the IDE `Checks` row; `PaimonStatsModeTest`
   sweeps every Paimon fixture and plants each disagreement
@@ -2410,7 +2410,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,311 tests across 178 files (1,032 in :core, 268 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,313 tests across 176 files (1,034 in :core, 268 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2658,7 +2658,15 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   big-endian arity: a null-bit region whose first eight bits are the row kind, one 8-byte slot per
   field, then a variable-length tail; a string of seven bytes or fewer sits *inline* in its slot
   with the length in the last byte's low seven bits and that byte's top bit set, a longer one sits
-  in the tail behind `(offset shl 32) or length`. The `pt` fixture carries both (`eu`,
+  in the tail behind `(offset shl 32) or length`. **A `TIMESTAMP(p)` past precision 3 is not
+  compact either** (`AbstractBinaryWriter.writeTimestamp`, `MemorySegmentUtils.readTimestampData`
+  at 1.3.1): its slot is `(offset shl 32) or nanoOfMillisecond` and the tail holds the
+  milliseconds as eight bytes — read as a variable-width field it decoded to nothing, so `ft`'s
+  `TIMESTAMP(6)` and `WITH LOCAL TIME ZONE` bounds were `decoded = false` and a filter on either
+  pruned on nothing; `PaimonFileBoundsFixtureTest` holds them to the script's microseconds
+  (`10:00:00.123456` .. `00:00:00.000001`, the same instants at UTC) and every timestamp bound in
+  the corpus to decoded, and `PaimonScanPruningTest` to a day before the range being a skip.
+  The `pt` fixture carries both string encodings (`eu`,
   `north-america`) and a date, and **the directory layout is the oracle**: the partition decoded
   from each entry has to be the directory its file is in. It is decoded against the schema the
   manifest's `_SCHEMA_ID` names, the same rule as an Iceberg manifest and its spec. Two things

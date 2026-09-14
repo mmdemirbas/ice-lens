@@ -117,6 +117,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Paimon table the location is, when it is one
 
 ### Fixed
+- **A Paimon `TIMESTAMP` bound past millisecond precision decodes.** Its `BinaryRow` slot is
+  the tail offset in the high 32 bits and the nanos within the millisecond in the low 32, the
+  tail holding the millis — read as a variable-width field it decoded to nothing, so a
+  `TIMESTAMP(6)` or `WITH LOCAL TIME ZONE` column's bounds were shown undecoded and a filter on
+  one pruned no file. `ft`'s bounds now read to the microsecond and agree with DuckDB's values.
 - **Two deletion vectors in one Puffin container are two delete files.** A writer puts one
   blob per data file into a container, so vectors share a `file_path`; keyed by path alone the
   second was a duplicate to the table's figures, paired with nothing by the delete pairing, and
