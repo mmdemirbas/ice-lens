@@ -27,6 +27,7 @@ import model.RowLookupInput
 import model.RowFate
 import model.RowHistory
 import model.PaimonChangelog
+import model.ChangelogRecord
 import model.PaimonRowKind
 import service.PaimonChangelogTrace
 import model.RowLookupResult
@@ -78,8 +79,12 @@ internal fun RowLookupSection(
         read = { if (paimon) node.paimonRowLookup.value else node.rowLookup.value },
         startRequested = startRequested, pageSize = pageSize, onSettled = onSettled,
     ) { ruledOut ->
-        if (node.rowHistory.isPresent) RowHistoryStage(node, filter, ruledOut, paimon, historyRequested, onHistorySettled)
-        if (node.paimonChangelog.isPresent) ChangelogStage(node, filter, changelogRequested, onChangelogSettled)
+        // The changelog, once read, is joined onto the history's rows by snapshot — what each
+        // commit published beside what each snapshot returns — so the reader pairs "changed at
+        // the APPEND" with "-U/+U at the COMPACT" in one table rather than across two.
+        var changelog by remember(node.id, filter) { mutableStateOf<PaimonChangelog?>(null) }
+        if (node.rowHistory.isPresent) RowHistoryStage(node, filter, ruledOut, paimon, historyRequested, onHistorySettled, published = changelog?.let { c -> c.records.groupBy { it.snapshotId } })
+        if (node.paimonChangelog.isPresent) ChangelogStage(node, filter, changelogRequested, onChangelogSettled, onRead = { changelog = it })
     }
 }
 
@@ -241,15 +246,19 @@ private fun ChangelogStage(
     filter: ScanFilter,
     startRequested: Boolean,
     onSettled: () -> Unit,
+    /** The changelog once read, for the history's `Published` column. */
+    onRead: (PaimonChangelog?) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     var requested by remember(node.id, filter) { mutableStateOf(startRequested) }
     val outcome by produceState<Result<PaimonChangelog>?>(null, node.id, filter, requested) {
         value = null
+        onRead(null)
         if (requested) {
             value = withContext(Dispatchers.IO) {
                 runCatching { PaimonChangelogTrace.trace(requireNotNull(node.paimonChangelog.value) { "no changelog to read" }, filter) }
             }
+            onRead(value?.getOrNull())
             onSettled()
         }
     }
@@ -327,6 +336,8 @@ private fun RowHistoryStage(
     paimon: Boolean,
     startRequested: Boolean,
     onSettled: () -> Unit,
+    /** The changelog's records by snapshot, once the stage below has read them; null until then. */
+    published: Map<Long, List<ChangelogRecord>>? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     var requested by remember(node.id, filter) { mutableStateOf(startRequested) }
@@ -352,12 +363,12 @@ private fun RowHistoryStage(
         }
         outcome == null -> Text("Reading each snapshot…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
         history == null -> Text("Could not trace: ${outcome?.exceptionOrNull()?.message ?: "unknown error"}", fontSize = TypeScale.small, color = colors.error)
-        else -> HistoryBody(history, paimon)
+        else -> HistoryBody(history, paimon, published)
     }
 }
 
 @Composable
-private fun HistoryBody(history: RowHistory, paimon: Boolean) {
+private fun HistoryBody(history: RowHistory, paimon: Boolean, published: Map<Long, List<ChangelogRecord>>? = null) {
     val colors = MaterialTheme.colorScheme
     val changed = history.changedSteps
     val traced = history.steps.size
@@ -372,20 +383,22 @@ private fun HistoryBody(history: RowHistory, paimon: Boolean) {
     Text(
         (if (paimon) "Each snapshot is read under its own schema; " else "Every snapshot is read under the current schema; ") +
             "a step compares the live rows a read returns with the snapshot before it, on the row's own columns" +
-            (if (history.capped) ". Older snapshots are not traced." else "."),
+            (if (history.capped) ". Older snapshots are not traced." else ".") +
+            (if (published != null) " Published is what the snapshot's changelog carries for these rows, from the stage below — under a lookup producer the change a snapshot made is published by the COMPACT after it." else ""),
         fontSize = TypeScale.small,
         color = colors.onSurfaceVariant,
         modifier = Modifier.padding(bottom = 4.dp),
     )
     WideTable(
-        headers = listOf("Change", "Snapshot", "Operation", "When", "Live", if (paimon) "Not live" else "Deleted", "Rows"),
-        columnWidths = listOf(120.dp, 190.dp, 110.dp, 190.dp, 60.dp, 80.dp, 600.dp),
+        headers = listOf("Change", "Snapshot", "Operation") + (if (published != null) listOf("Published") else emptyList()) + listOf("When", "Live", if (paimon) "Not live" else "Deleted", "Rows"),
+        columnWidths = listOf(120.dp, 190.dp, 110.dp) + (if (published != null) listOf(160.dp) else emptyList()) + listOf(190.dp, 60.dp, 80.dp, 600.dp),
         rows = history.steps.mapIndexed { i, step ->
             val result = step.result
             listOf(
                 history.changes[i]?.label ?: "—",
                 step.snapshot.snapshotId.toString(),
                 step.snapshot.operation ?: "—",
+            ) + (if (published != null) listOf(published[step.snapshot.snapshotId]?.joinToString(", ") { r -> r.kind?.let(PaimonRowKind::symbol) ?: "?" }?.ifEmpty { "—" } ?: "—") else emptyList()) + listOf(
                 step.snapshot.timestampMs?.let(::formatAppTimestamp) ?: "—",
                 result.live.toString(),
                 result.deleted.toString() + (result.undecided.takeIf { it > 0 }?.let { " ($it not decided)" } ?: ""),

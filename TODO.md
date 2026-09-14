@@ -128,9 +128,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   the history's what each snapshot returns.** `model/PaimonChangelog.kt` and
   `service/PaimonChangelogTrace.kt`, held to `lk` (`lookup`) and `cl` (`input`). What is left:
   a tag-only snapshot's changelog is not traced (its list is what an expiry deletes, `tg`), a
-  branch's changelog is not read, and the two stages are shown one under the other rather than
-  joined on the snapshot — the reader pairs "changed at the APPEND" with "-U/+U at the COMPACT"
-  by eye.
+  branch's changelog is not read. The two stages are joined on the snapshot once both are read —
+  the history table's `Published` column lists each snapshot's changelog kinds for the rows, so
+  "changed at the APPEND" sits beside "-U, +U at the COMPACT".
 
 - **The Paimon merge rules are applied on every shape a fixture has been written for.**
   `deduplicate`, `first-row`, `partial-update` and `aggregation` are applied by the merged count

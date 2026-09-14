@@ -2649,13 +2649,19 @@ class InspectorRenderTest {
         }
         // And the changelog for one key: under `lookup` the change is published by the COMPACT
         // after the append — `+I`, then the `-U` / `+U` pair, the retraction coloured — which is
-        // the other side of the history's "changed at the APPEND".
+        // the other side of the history's "changed at the APPEND", and the history's `Published`
+        // column puts the two side by side once both are read.
         val two = ScanFilter.Term(model.ScanPredicate("k", model.PredicateOp.EQ, "2"))
         val changelogSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        val historySettled = java.util.concurrent.atomic.AtomicBoolean(false)
         val lookupSettled = java.util.concurrent.atomic.AtomicBoolean(false)
-        renderUntil("paimon-row-changelog", width = 1400, height = 1700, ready = { lookupSettled.get() && changelogSettled.get() }) {
+        renderUntil("paimon-row-changelog", width = 1400, height = 2400, ready = { lookupSettled.get() && changelogSettled.get() && historySettled.get() }) {
             Column(Modifier.padding(16.dp)) {
-                RowLookupSection(table, lk, two, startRequested = true, changelogRequested = true, onChangelogSettled = { changelogSettled.set(true) }) { lookupSettled.set(true) }
+                RowLookupSection(
+                    table, lk, two, startRequested = true,
+                    historyRequested = true, onHistorySettled = { historySettled.set(true) },
+                    changelogRequested = true, onChangelogSettled = { changelogSettled.set(true) },
+                ) { lookupSettled.set(true) }
             }
         }
         // And on `pu`, partial-update: records folded into one row, a key removed by a -D and

@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The row history's `Published` column** — once the changelog stage under it is read, each
+  history row lists what that snapshot's changelog carries for the rows (`+I`, `-U, +U`, `-D`),
+  so a change at an APPEND and its publication by the COMPACT after it read on adjacent rows.
 - **A Paimon snapshot's `commitIdentifier` and `watermark` are said for what they are** —
   `Long.MAX_VALUE` is every batch write's identifier (`BatchWriteBuilder.COMMIT_IDENTIFIER`;
   a streaming sink writes its checkpoint id, the deduplication key), and a `Long.MIN_VALUE`

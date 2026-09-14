@@ -398,6 +398,15 @@ object PaimonRowKind {
         else -> "$code (not a RowKind this reads)"
     }
 
+    /** The two-character spelling alone — `+I`, `-U`, `+U`, `-D` — for a cell that lists several. */
+    fun symbol(code: Int): String = when (code) {
+        INSERT -> "+I"
+        UPDATE_BEFORE -> "-U"
+        UPDATE_AFTER -> "+U"
+        DELETE -> "-D"
+        else -> "$code?"
+    }
+
     /** A retraction — a row that removes rather than states: `-U` and `-D`. */
     fun isRetraction(code: Int): Boolean = code == UPDATE_BEFORE || code == DELETE
 }
