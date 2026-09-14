@@ -55,6 +55,7 @@ enum class PaimonExpiryFileReason(val label: String) {
     EXPIRED_SNAPSHOT("its snapshot expires"),
     TAG_ALONE("held by the removed tag and by neither neighbour"),
     TAG_FILE("the tag itself"),
+    ROLLED_BACK("written by a rolled-back commit and named by nothing kept"),
 }
 
 data class PaimonExpiryFile(

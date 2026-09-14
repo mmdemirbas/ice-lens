@@ -50,6 +50,8 @@ import model.PaimonExpiryOptions
 import model.planChangelogExpiry
 import model.planPartitionExpiry
 import model.planTagExpiry
+import model.planRollback
+import model.rollbackLeftovers
 import model.planTagDeletion
 import model.formatPaimonDurationMs
 import model.PaimonPartitionExpireStrategy
@@ -784,6 +786,68 @@ internal fun PaimonTagExpirySection(node: GraphNode.TableNode, input: PaimonExpi
             },
             leadCellColors = bare.tags.map { if (it.expired) colors.error else null },
         )
+    }
+}
+
+/**
+ * What rolling the table back to this snapshot removes, and what it leaves on disk — see
+ * [planRollback] and [rollbackLeftovers]. On `main`'s retained snapshots only: a branch rolls back
+ * on its own ids, and a tag-only or changelog-only snapshot is not in `snapshot/` to roll back to
+ * (rolling back to a *tag* writes the snapshot file back, which is the same plan from its id).
+ */
+@Composable
+internal fun PaimonRollbackSection(node: GraphNode.PaimonSnapshotNode, graph: GraphModel) {
+    val colors = MaterialTheme.colorScheme
+    if (node.branch != null || node.retainedByTagOnly || node.retainedByChangelogOnly) return
+    val id = node.data.id ?: return
+    val table = graph.nodes.filterIsInstance<GraphNode.TableNode>().firstOrNull() ?: return
+    val input = table.summary.paimonExpiry ?: return
+    val plan = input.planRollback(id) ?: return
+    val leftovers = if (plan.removesAnything) table.paimonExpiryFiles.value?.rollbackLeftovers(id) else emptyList()
+    val title = "Rollback" + if (plan.removesAnything) " — ${formatCounted(plan.removedSnapshots.size, "snapshot")} would go" else ""
+    Section(title) {
+        Text(
+            "What rollback(snapshot => $id) removes, the way RollbackHelper.cleanLargerThan does it: the snapshot " +
+                "files above this one, with LATEST moved here; the long-lived changelog files above it; and every tag " +
+                "whose snapshot is above it — and nothing else. The data files, manifests and manifest lists those " +
+                "commits wrote stay on disk, named by nothing, until remove_orphan_files; Iceberg's rollback keeps " +
+                "the abandoned commit for an expiry to remove, Paimon's forgets it at once.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (!plan.removesAnything) {
+            Text("This is the latest snapshot: a rollback to it removes nothing.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            return@Section
+        }
+        Text(
+            "Removes snapshot${if (plan.removedSnapshots.size == 1) "" else "s"} ${plan.removedSnapshots.sorted().joinToString(", ")}" +
+                (if (plan.removedChangelogs.isNotEmpty()) ", changelog${if (plan.removedChangelogs.size == 1) "" else "s"} ${plan.removedChangelogs.sorted().joinToString(", ")}" else "") +
+                (if (plan.removedTags.isNotEmpty()) ", and tag${if (plan.removedTags.size == 1) "" else "s"} ${plan.removedTags.joinToString(", ")}" else "; no tag") +
+                (if (plan.keptTags.isNotEmpty()) " (${plan.keptTags.joinToString(", ")} kept)" else "") + ".",
+            fontSize = TypeScale.small,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        when {
+            leftovers == null -> Text("What it leaves on disk is not readable here: the manifests could not be read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            leftovers.isEmpty() -> Text("It leaves nothing behind: every file those commits name is also named by what stays.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            else -> {
+                val byKind = PaimonExpiryFileKind.entries.mapNotNull { k -> leftovers.count { it.kind == k }.takeIf { it > 0 }?.let { "$it ${k.label}${if (it == 1) "" else "s"}" } }
+                Text(
+                    "Left on disk, named by nothing: ${byKind.joinToString(", ")}, ${formatBytes(leftovers.sumOf { it.sizeBytes ?: 0L })} the metadata can account for.",
+                    fontSize = TypeScale.small,
+                    color = verdictUnevaluatedColor(),
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                WideTable(
+                    headers = listOf("Kind", "File", "Bytes", "Written By"),
+                    columnWidths = listOf(120.dp, 520.dp, 100.dp, 90.dp),
+                    rows = leftovers.take(MAX_EXPIRY_FILE_ROWS).map { f -> listOf(f.kind.label, f.path ?: f.name, f.sizeBytes?.let(::formatBytes) ?: "—", f.snapshotId?.let { "snapshot $it" } ?: "—") },
+                )
+                if (leftovers.size > MAX_EXPIRY_FILE_ROWS) Text("${leftovers.size - MAX_EXPIRY_FILE_ROWS} more not listed.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            }
+        }
     }
 }
 

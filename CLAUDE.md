@@ -1766,6 +1766,24 @@ intellij/src/main/kotlin/plugin/
   deletion to the tag file alone, and `tg`'s `first` to one data file no retained snapshot lists.
   The table panel's `Tag Expiry` section is also its list of tags, with both verdicts and what
   each removal frees; `Maintenance` carries an `expire_tags` line
+- **A Paimon rollback deletes the snapshot files, the long-lived changelogs and the tags above
+  the target, and nothing else.** `model/PaimonRollbackPlan.kt` reads `RollbackHelper.cleanLargerThan`
+  at release-1.3.1: `snapshot/snapshot-<id>` above the target deleted highest first with `LATEST`
+  moved to the target, `changelog/changelog-<id>` above it deleted, every tag whose snapshot is
+  above it deleted — and the data files, manifests and manifest lists those commits wrote left on
+  disk, named by nothing, for `remove_orphan_files`; where Iceberg's `rollback_to_snapshot` keeps
+  the abandoned commit in `snapshots` for an expiry to remove, Paimon's forgets it at once
+  (`rollbackTo(tagName)` writes the snapshot file back from a tag whose snapshot has expired).
+  `PaimonExpiryInput.planRollback(id)` names what goes and `PaimonExpiryFileInput.rollbackLeftovers(id)`
+  what stays — every file the snapshots above the target name, less every file the snapshots at
+  or below it and the surviving tags name. `docs/fixtures/paimon-prb.sql` is the oracle, the
+  `pe`/`pea` shape: four inserts, tags `two` and `three`, `prb` before and `prba` after
+  `rollback(version => '2')` — snapshots 3 and 4 and `tag-three` gone, all four data files and
+  twelve manifest files still there. `PaimonRollbackFixtureTest` holds the plan to what `prba`
+  lost and **the leftovers to what the orphan check reports on `prba`**, two readings of one set
+  (`UnreferencedFilesTest`'s no-orphan sweep leaves `prba` out for that reason), and every
+  fixture's latest snapshot to a rollback that removes nothing. The Paimon snapshot panel's
+  `Rollback` section draws it on `main`'s retained snapshots
 - **A Paimon bucket is drawn as the LSM tree its writer restores, and the next flush's compaction
   is planned the way `UniversalCompaction.pick()` plans it.** `model/PaimonCompaction.kt`:
   `paimonBucketLsms` groups a snapshot's live files by partition and bucket into sorted runs —
@@ -2553,7 +2571,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,356 tests across 182 files (1,069 in :core, 276 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,360 tests across 183 files (1,072 in :core, 277 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2705,6 +2723,7 @@ container invocation and the traps in it:
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |
 | `paimon/db.db/px`, `pxa` | `PaimonExpiryFixtureTest` | one table written twice — six commits, a tag on 2, a consumer at 4; `px` as it is, `pxa` after `expire_snapshots(retain_max = 2, retain_min = 1)` — the survivors the plan for `px` is checked against |
 | `paimon/db.db/pe`, `pea` | `PaimonExpiryFilePlanFixtureTest` | one table copied on disk before `expire_snapshots(retain_max => 2, retain_min => 1)` ran on the original — a changelog, a compaction, a tag on 3; the files the expiry freed, and the three the tag held |
+| `paimon/db.db/prb`, `prba` | `PaimonRollbackFixtureTest` | a primary-key table with four inserts and tags on 2 and 3, copied on disk before `rollback(version => '2')` — snapshots 3 and 4 and the tag above the target gone, every data file and manifest still there, named by nothing |
 | `paimon/db.db/ptt`, `ptta` | `PaimonTagExpiryFixtureTest` | a primary-key table with three tags — `time_retained => '1 s'`, `'1 d'`, and none — copied on disk before a bare `expire_tags` removed the first; the tag JSON's create-time array and seconds duration, and the file-modification rule for a tag recording neither |
 | `paimon/db.db/ppx`, `ppxa` | `PaimonPartitionExpiryFixtureTest` | an append table partitioned by `(region, dt)`, both strings, with `partition.expiration-time = 1 d` and `partition.timestamp-pattern = $dt`, copied on disk before a bare `expire_partitions` ran on the original — two `eu` partitions dropped as one `OVERWRITE`, `2099-12-31` kept, `n-a` kept as unreadable, `update-time` dropping nothing |
 | `paimon/db.db/pc` | `PaimonCompactionFixtureTest` | a primary-key table on every default, seven one-row inserts — the fifth flush is the one the writer compacted, by size amplification into level 5, and the COMPACT after it is the oracle |

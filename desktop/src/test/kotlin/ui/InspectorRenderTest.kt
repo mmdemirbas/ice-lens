@@ -1429,6 +1429,16 @@ class InspectorRenderTest {
         renderInspector(graph, "table_root", "paimon-table-partition-expiry", height = 3000, sectionCollapse = onlyExpanded("Partition Expiry", "Maintenance"))
     }
 
+    /** `prb`'s snapshot 2: a rollback to it removes two snapshots and a tag and leaves their files behind, listed. */
+    @Test
+    fun `a paimon snapshot plans what rolling back to it removes and leaves`() {
+        val prb = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/prb").absolutePath)),
+            showRows = false,
+        )
+        renderInspector(prb, "psnap_2", "paimon-snapshot-rollback", height = 2400, sectionCollapse = onlyExpanded("Rollback"))
+    }
+
     /** `ptt`'s table panel: three tags, one whose retention ran out, and the maintenance line; then `tg`, whose one tag holds an expired snapshot's file. */
     @Test
     fun `a paimon table with tags plans which expire_tags removes and what that frees`() {

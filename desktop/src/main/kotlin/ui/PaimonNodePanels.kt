@@ -77,6 +77,7 @@ internal fun ColumnScope.PaimonSnapshotPanel(
         SnapshotRowLookupSection(node.id, node.readInput, paimon = true, currentGraph, scanFilter)
         PartitionsSection(node)
         PaimonCompactionSection(node)
+        PaimonRollbackSection(node, currentGraph)
         PaimonIndexFilesSection(node)
         PaimonStatisticsSection(node)
         RecursiveDataTableSection(node = node, graphModel = currentGraph)

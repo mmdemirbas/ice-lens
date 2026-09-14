@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A Paimon rollback planned** — the snapshot panel's `Rollback`: what `rollback_to` this
+  snapshot removes (the snapshot files, long-lived changelogs and tags above it) and what it
+  leaves on disk named by nothing — the rolled-back commits' data files, manifests and lists,
+  which Paimon's rollback does not delete. Fixtures `prb` and `prba`, whose leftovers are what
+  the orphan check reports afterwards.
 - **`expire_tags` planned** — the table panel's `Tag Expiry`, the way `TagTimeExpire` decides
   it: a tag's recorded create time and retention (written only when created with one), a bare
   call against `older_than = now`, and what removing each tag frees — the tag file alone while

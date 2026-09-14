@@ -29,8 +29,10 @@ class UnreferencedFilesTest {
 
     @Test
     fun `every engine-written table with no orphan reports none`() {
-        // `cl` and `tg` are the two tables written with an orphan on purpose, and have tests of their own below.
-        val models: List<() -> FormatTableModel> = icebergFixtures.map { name -> { iceberg(name) } } + (FixtureCatalog.paimon - setOf("cl", "tg")).map { name -> { paimon(name) } }
+        // `cl` and `tg` are the two tables written with an orphan on purpose, and have tests of their
+        // own below; `prba` is a table rolled back, which leaves the rolled-back commits' files named
+        // by nothing — PaimonRollbackFixtureTest holds them to the rollback plan's leftovers.
+        val models: List<() -> FormatTableModel> = icebergFixtures.map { name -> { iceberg(name) } } + (FixtureCatalog.paimon - setOf("cl", "tg", "prba")).map { name -> { paimon(name) } }
         assertTrue(models.size >= 50, models.size.toString())
         models.forEach { open ->
             val model = open()
