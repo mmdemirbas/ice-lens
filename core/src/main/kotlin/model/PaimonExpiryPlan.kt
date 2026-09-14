@@ -100,6 +100,8 @@ data class PaimonExpiryInput(
     val changelogTimes: Map<Long, Long?> = emptyMap(),
     /** The latest snapshot's partitions as `readPartitionEntries` folds them — what a partition expiry decides over; see [planPaimonPartitionExpiry]. */
     val partitions: List<PaimonPartitionEntry> = emptyList(),
+    /** `tag/`, each with what `expire_tags` reads of it — see [planTagExpiry]. In name order. */
+    val tags: List<PaimonTagInput> = emptyList(),
 )
 
 fun PaimonUnifiedTableModel.expiryInput(): PaimonExpiryInput = PaimonExpiryInput(
@@ -109,6 +111,16 @@ fun PaimonUnifiedTableModel.expiryInput(): PaimonExpiryInput = PaimonExpiryInput
     tableOptions = schemas.maxByOrNull { it.id ?: -1 }?.options.orEmpty(),
     changelogTimes = changelogs.mapNotNull { c -> c.metadata.id?.let { it to c.metadata.timeMillis } }.toMap(),
     partitions = snapshots.maxByOrNull { it.metadata.id ?: -1 }?.let(::paimonPartitionEntriesOf).orEmpty(),
+    tags = tags.map { tag ->
+        PaimonTagInput(
+            name = tag.name,
+            snapshotId = tag.snapshot.metadata.id,
+            createTime = tag.snapshot.metadata.tagCreateTime(),
+            timeRetainedMs = tag.snapshot.metadata.tagTimeRetainedMs(),
+            fileModifiedMs = runCatching { java.nio.file.Files.getLastModifiedTime(tag.path).toMillis() }.getOrNull(),
+            snapshotRetained = snapshots.any { it.metadata.id == tag.snapshot.metadata.id },
+        )
+    },
 )
 
 /** The partition expiry under the table's own options — see [planPaimonPartitionExpiry]. */

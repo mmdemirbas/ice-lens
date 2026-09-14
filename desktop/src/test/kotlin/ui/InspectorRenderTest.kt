@@ -1429,6 +1429,21 @@ class InspectorRenderTest {
         renderInspector(graph, "table_root", "paimon-table-partition-expiry", height = 3000, sectionCollapse = onlyExpanded("Partition Expiry", "Maintenance"))
     }
 
+    /** `ptt`'s table panel: three tags, one whose retention ran out, and the maintenance line; then `tg`, whose one tag holds an expired snapshot's file. */
+    @Test
+    fun `a paimon table with tags plans which expire_tags removes and what that frees`() {
+        val ptt = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/ptt").absolutePath)),
+            showRows = false,
+        )
+        renderInspector(ptt, "table_root", "paimon-table-tag-expiry", height = 3000, sectionCollapse = onlyExpanded("Tag Expiry", "Maintenance"))
+        val tg = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/tg").absolutePath)),
+            showRows = false,
+        )
+        renderInspector(tg, "table_root", "paimon-table-tag-expiry-frees", height = 2200, sectionCollapse = onlyExpanded("Tag Expiry"))
+    }
+
     @Test
     fun `a paimon snapshot lists its index files`() {
         val graph = GraphLayoutService.layoutGraph(

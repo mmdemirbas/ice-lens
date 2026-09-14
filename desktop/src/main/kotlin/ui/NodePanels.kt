@@ -178,6 +178,7 @@ internal fun ColumnScope.TablePanel(
         summary.paimonExpiry?.let { PaimonExpiryFilesSection(node, it, nowMs = expiryClock()) }
         summary.paimonExpiry?.let { PaimonChangelogExpirySection(it, nowMs = expiryClock()) }
         summary.paimonExpiry?.let { PaimonPartitionExpirySection(it, nowMs = expiryClock()) }
+        summary.paimonExpiry?.let { PaimonTagExpirySection(node, it, nowMs = expiryClock()) }
         summary.paimonExpiry?.let { input ->
             TimeTravelSection(
                 intro = "Which snapshot scan.timestamp-millis lands on: the latest snapshot whose commit time " +

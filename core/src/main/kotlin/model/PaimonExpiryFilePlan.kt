@@ -45,6 +45,7 @@ enum class PaimonExpiryFileKind(val label: String) {
     INDEX_MANIFEST("index manifest"),
     MANIFEST_LIST("manifest list"),
     SNAPSHOT("snapshot file"),
+    TAG("tag file"),
 }
 
 enum class PaimonExpiryFileReason(val label: String) {
@@ -52,6 +53,8 @@ enum class PaimonExpiryFileReason(val label: String) {
     CHANGE_STREAM("the change stream of an expired snapshot"),
     UNNAMED("named by no tag in the range and not by the first retained snapshot"),
     EXPIRED_SNAPSHOT("its snapshot expires"),
+    TAG_ALONE("held by the removed tag and by neither neighbour"),
+    TAG_FILE("the tag itself"),
 }
 
 data class PaimonExpiryFile(
@@ -120,6 +123,24 @@ fun PaimonUnifiedTableModel.expiryFileInput(): PaimonExpiryFileInput = PaimonExp
     tableOptions = schemas.lastOrNull()?.options.orEmpty(),
 )
 
+internal fun paimonEntryFileName(f: PaimonUnifiedDataFile) = f.metadata.file?.fileName ?: f.path.fileName.toString()
+
+/** `readMergedDataFiles`: the base and delta manifests folded, ADD minus DELETE — one replay — by file name. */
+internal fun PaimonExpirySnapshotView.mergedFiles(): Map<String, PaimonUnifiedDataFile> {
+    val live = linkedMapOf<String, PaimonUnifiedDataFile>()
+    (base + delta).forEach { m -> m.entries.forEach { e -> if (e.metadata.kind == PaimonEntryKind.DELETE) live.remove(paimonEntryFileName(e)) else live[paimonEntryFileName(e)] = e } }
+    return live
+}
+
+/** `manifestSkippingSet` for one snapshot: its lists, data manifests, index manifest and files, and statistics. */
+internal fun PaimonExpirySnapshotView.metadataNames(): Set<String> = buildSet {
+    metadata.baseManifestList?.let(::add)
+    metadata.deltaManifestList?.let(::add)
+    (base + delta).forEach { add(it.name) }
+    metadata.indexManifest?.let { add(it); indexFiles.mapNotNull { f -> f.fileName }.forEach(::add) }
+    metadata.statistics?.let(::add)
+}
+
 /** The plan for removing every snapshot in [removed] — the ids [planExpiry] would drop, a contiguous range from the earliest. */
 fun PaimonExpiryFileInput.planExpiryFiles(removed: Set<Long>): PaimonExpiryFilePlan {
     val decoupled = paimonChangelogLifecycleDecoupled(tableOptions)
@@ -136,23 +157,16 @@ fun PaimonExpiryFileInput.planExpiryFiles(removed: Set<Long>): PaimonExpiryFileP
     fun add(kind: PaimonExpiryFileKind, name: String, path: String?, size: Long?, reason: PaimonExpiryFileReason, snapshotId: Long?) {
         if (seen.add(name)) files.add(PaimonExpiryFile(kind, name, path, size, reason, snapshotId))
     }
-    fun nameOf(f: PaimonUnifiedDataFile) = f.metadata.file?.fileName ?: f.path.fileName.toString()
-
     // 1. Data files: the deltas of (begin, end], each against the nearest earlier tag.
     val protectedByTag = mutableListOf<PaimonExpiryProtected>()
     val tagFiles = mutableMapOf<Long, Set<String>>()
-    fun mergedNames(s: PaimonExpirySnapshotView): Set<String> {
-        // `readMergedDataFiles`: the base and delta manifests folded, ADD minus DELETE — one replay.
-        val live = mutableMapOf<String, PaimonUnifiedDataFile>()
-        (s.base + s.delta).forEach { m -> m.entries.forEach { e -> if (e.metadata.kind == PaimonEntryKind.DELETE) live.remove(nameOf(e)) else live[nameOf(e)] = e } }
-        return live.keys
-    }
+    fun mergedNames(s: PaimonExpirySnapshotView): Set<String> = s.mergedFiles().keys
     for (id in ids.filter { it in (begin + 1)..end }) {
         val s = snapshots[id] ?: continue
         val toDelete = linkedMapOf<String, PaimonUnifiedDataFile>()
         s.delta.forEach { m ->
             m.entries.forEach { e ->
-                val name = nameOf(e)
+                val name = paimonEntryFileName(e)
                 if (e.metadata.kind == PaimonEntryKind.DELETE) toDelete[name] = e else toDelete.remove(name)
             }
         }
@@ -176,7 +190,7 @@ fun PaimonExpiryFileInput.planExpiryFiles(removed: Set<Long>): PaimonExpiryFileP
         range.forEach { id ->
             snapshots[id]?.changelog?.forEach { m ->
                 m.entries.filter { it.metadata.kind == PaimonEntryKind.ADD }.forEach { e ->
-                    add(PaimonExpiryFileKind.CHANGELOG_FILE, nameOf(e), e.path.toString(), e.metadata.file?.fileSize, PaimonExpiryFileReason.CHANGE_STREAM, id)
+                    add(PaimonExpiryFileKind.CHANGELOG_FILE, paimonEntryFileName(e), e.path.toString(), e.metadata.file?.fileSize, PaimonExpiryFileReason.CHANGE_STREAM, id)
                 }
             }
         }
@@ -184,13 +198,7 @@ fun PaimonExpiryFileInput.planExpiryFiles(removed: Set<Long>): PaimonExpiryFileP
 
     // 3. Manifests, against what the tags in the range and snapshot `end` still name.
     val skipping = mutableSetOf<String>()
-    fun skip(s: PaimonExpirySnapshotView) {
-        s.metadata.baseManifestList?.let(skipping::add)
-        s.metadata.deltaManifestList?.let(skipping::add)
-        (s.base + s.delta).forEach { skipping.add(it.name) }
-        s.metadata.indexManifest?.let { skipping.add(it); s.indexFiles.mapNotNull { f -> f.fileName }.forEach(skipping::add) }
-        s.metadata.statistics?.let(skipping::add)
-    }
+    fun skip(s: PaimonExpirySnapshotView) = skipping.addAll(s.metadataNames())
     // `findSkippingTags`: from the last tag at or below `begin` (else the first) to the last below `end`.
     val right = tags.indexOfLast { (it.snapshot.id ?: Long.MAX_VALUE) < end }
     if (right >= 0) {

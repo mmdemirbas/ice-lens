@@ -1738,6 +1738,34 @@ intellij/src/main/kotlin/plugin/
   extractor's default formatters, the pattern, a null and the cap in isolation. The table panel's
   `Partition Expiry` section draws it on a partitioned table, and `Maintenance` carries an
   `expire_partitions` line
+- **Which tags `expire_tags` removes is planned from `TagTimeExpire.expire`, and a tag records a
+  create time only when created with a retention.** `model/PaimonTagExpiryPlan.kt`, at
+  release-1.3.1: `TagManager.createOrReplaceTag` writes `Tag` JSON — the snapshot's fields plus
+  `tagCreateTime` and `tagTimeRetained` — only with a `time_retained` (or the table's
+  `tag.default-time-retained`), and the snapshot's JSON verbatim otherwise, so readers at 0.7 and
+  below still open it; Jackson spells the create time as an array `[y, M, d, H, m, s, nanos]` and
+  the duration as seconds (`86400.0`), which `PaimonSnapshot.tagCreateTime()` /
+  `.tagTimeRetainedMs()` read (`ptt`'s `tag-short` is the oracle for both). A bare call removes a
+  tag whose create time plus retention is before `LocalDateTime.now()` and never one recording
+  neither; `older_than` removes any tag created before it, a tag recording no create time going
+  by its file's modification time (`PaimonTagInput.fileModifiedMs`). The create time carries no
+  zone, so the plan compares it in this machine's zone, as the procedure run here would, and the
+  section says so. **What removing a tag frees is `TagManager.deleteTag`**
+  (`PaimonExpiryFileInput.planTagDeletion`): the tag file alone while its snapshot is retained or
+  another tag names the snapshot; otherwise its merged data files not in the skip set and its
+  lists, manifests, index manifest and files and statistics the skip set does not name — the tag
+  before it and the nearer of the earliest snapshot and the tag after it (`doClean`), which is
+  the expiry-file plan's nearest-tag rule from the other side, and the two share
+  `PaimonExpirySnapshotView.mergedFiles()` / `.metadataNames()`. `docs/fixtures/paimon-ptt.sql`
+  is the oracle, the `pe`/`pea` shape: `short` (`'1 s'`), `long` (`'1 d'`) and `plain` (none) on
+  snapshots 1..3, `ptt` before and `ptta` after a bare call that removed `short` alone; the header
+  records two scratch runs — `older_than => '2099-01-01 00:00:00'` removed `long` and `plain`
+  both, and on a copy of `tg` removed `first` and deleted the data file only it held, two of
+  three parquet files left. `PaimonTagExpiryFixtureTest` holds the bare plan from `ptt` to `short`,
+  the `older_than` plan to all three and to `short` alone at 0, every retained-snapshot tag's
+  deletion to the tag file alone, and `tg`'s `first` to one data file no retained snapshot lists.
+  The table panel's `Tag Expiry` section is also its list of tags, with both verdicts and what
+  each removal frees; `Maintenance` carries an `expire_tags` line
 - **A Paimon bucket is drawn as the LSM tree its writer restores, and the next flush's compaction
   is planned the way `UniversalCompaction.pick()` plans it.** `model/PaimonCompaction.kt`:
   `paimonBucketLsms` groups a snapshot's live files by partition and bucket into sorted runs —
@@ -2525,7 +2553,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,349 tests across 181 files (1,063 in :core, 275 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,356 tests across 182 files (1,069 in :core, 276 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2677,6 +2705,7 @@ container invocation and the traps in it:
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |
 | `paimon/db.db/px`, `pxa` | `PaimonExpiryFixtureTest` | one table written twice — six commits, a tag on 2, a consumer at 4; `px` as it is, `pxa` after `expire_snapshots(retain_max = 2, retain_min = 1)` — the survivors the plan for `px` is checked against |
 | `paimon/db.db/pe`, `pea` | `PaimonExpiryFilePlanFixtureTest` | one table copied on disk before `expire_snapshots(retain_max => 2, retain_min => 1)` ran on the original — a changelog, a compaction, a tag on 3; the files the expiry freed, and the three the tag held |
+| `paimon/db.db/ptt`, `ptta` | `PaimonTagExpiryFixtureTest` | a primary-key table with three tags — `time_retained => '1 s'`, `'1 d'`, and none — copied on disk before a bare `expire_tags` removed the first; the tag JSON's create-time array and seconds duration, and the file-modification rule for a tag recording neither |
 | `paimon/db.db/ppx`, `ppxa` | `PaimonPartitionExpiryFixtureTest` | an append table partitioned by `(region, dt)`, both strings, with `partition.expiration-time = 1 d` and `partition.timestamp-pattern = $dt`, copied on disk before a bare `expire_partitions` ran on the original — two `eu` partitions dropped as one `OVERWRITE`, `2099-12-31` kept, `n-a` kept as unreadable, `update-time` dropping nothing |
 | `paimon/db.db/pc` | `PaimonCompactionFixtureTest` | a primary-key table on every default, seven one-row inserts — the fifth flush is the one the writer compacted, by size amplification into level 5, and the COMPACT after it is the oracle |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |

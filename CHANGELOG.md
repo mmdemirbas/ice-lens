@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`expire_tags` planned** — the table panel's `Tag Expiry`, the way `TagTimeExpire` decides
+  it: a tag's recorded create time and retention (written only when created with one), a bare
+  call against `older_than = now`, and what removing each tag frees — the tag file alone while
+  its snapshot is retained, else the files it alone held against its neighbours. The section is
+  also the panel's list of tags. Fixtures `ptt` and `ptta`; a `Maintenance` line.
 - **`expire_partitions` planned** — the table panel's `Partition Expiry` on a partitioned Paimon
   table, the way `PartitionExpire.doExpire` decides it under the table's options: the latest
   snapshot's partitions folded from every manifest entry, `values-time` through the pattern and

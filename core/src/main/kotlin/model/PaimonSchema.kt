@@ -44,7 +44,36 @@ data class PaimonSnapshot(
     val baseManifestListSize: Long? = null,
     val deltaManifestListSize: Long? = null,
     val changelogManifestListSize: Long? = null,
-)
+    /**
+     * A tag's own two fields (`Tag extends Snapshot`), written only when the tag was created with
+     * a retention: `tagCreateTime` as Jackson's `LocalDateTime` array `[y, M, d, H, m, s, nanos]`
+     * and `tagTimeRetained` as a `Duration` in seconds (`86400.0`). A tag created without one is
+     * the snapshot's JSON verbatim, so readers at 0.7 and below can still open it. Kept as JSON
+     * here; [tagCreateTime] and [tagTimeRetainedMs] read them.
+     */
+    val tagCreateTime: JsonElement? = null,
+    val tagTimeRetained: JsonElement? = null,
+) {
+    /** `tagCreateTime` as the local time the writer recorded — the array form, or an ISO string. */
+    fun tagCreateTime(): java.time.LocalDateTime? = when (val e = tagCreateTime) {
+        null -> null
+        is kotlinx.serialization.json.JsonArray -> runCatching {
+            val n = e.map { (it as JsonPrimitive).content.toInt() }
+            java.time.LocalDateTime.of(n[0], n[1], n[2], n.getOrElse(3) { 0 }, n.getOrElse(4) { 0 }, n.getOrElse(5) { 0 }, n.getOrElse(6) { 0 })
+        }.getOrNull()
+        is JsonPrimitive -> e.contentOrNull?.let { runCatching { java.time.LocalDateTime.parse(it) }.getOrNull() }
+        else -> null
+    }
+
+    /** `tagTimeRetained` in milliseconds — seconds as a number, or an ISO duration string. */
+    fun tagTimeRetainedMs(): Long? = when (val e = tagTimeRetained) {
+        null -> null
+        is JsonPrimitive -> e.contentOrNull?.let { text ->
+            text.toDoubleOrNull()?.let { (it * 1000).toLong() } ?: runCatching { java.time.Duration.parse(text).toMillis() }.getOrNull()
+        }
+        else -> null
+    }
+}
 
 /**
  * What an `ANALYZE TABLE` commit writes under `statistics/`, as Paimon's `Statistics` serialises it.

@@ -49,6 +49,9 @@ import model.planCompaction
 import model.PaimonExpiryOptions
 import model.planChangelogExpiry
 import model.planPartitionExpiry
+import model.planTagExpiry
+import model.planTagDeletion
+import model.formatPaimonDurationMs
 import model.PaimonPartitionExpireStrategy
 import model.paimonChangelogLifecycleDecoupled
 import model.TableMetadata
@@ -386,6 +389,15 @@ internal fun MaintenanceSection(node: GraphNode.TableNode) {
                 else -> Row("nothing expires", "expire_partitions", "${formatCounted(partitions.partitions.size, "partition")}, none past the cutoff under ${partitions.strategySpelled}", "table → Partition Expiry", null)
             }
         }
+        if (paimonExpiry.tags.isNotEmpty()) {
+            val bareTags = paimonExpiry.planTagExpiry(nowMs)
+            val byAgeTags = paimonExpiry.planTagExpiry(nowMs, olderThanMs = nowMs)
+            val freed = bareTags.removed.sumOf { v -> node.paimonExpiryFiles.value?.planTagDeletion(v.tag.name)?.dataFiles?.size ?: 0 }
+            rows += when {
+                bareTags.removed.isNotEmpty() -> Row("would remove ${formatCounted(bareTags.removed.size, "tag")}", "expire_tags", "a bare call removes ${bareTags.removed.size} of ${paimonExpiry.tags.size}, whose retention ran out" + (if (freed > 0) ", freeing ${formatCounted(freed, "data file")}" else "") + "; older_than = now removes ${byAgeTags.removed.size}", "table → Tag Expiry", verdictSkippedColor())
+                else -> Row("nothing on a bare call", "expire_tags", "${formatCounted(paimonExpiry.tags.size, "tag")}, ${paimonExpiry.tags.count { it.timeRetainedMs != null }} with a retention, none run out; older_than = now removes ${byAgeTags.removed.size}", "table → Tag Expiry", null)
+            }
+        }
     }
     if (rows.isEmpty()) return
     val acting = rows.count { it.color != null }
@@ -720,6 +732,57 @@ internal fun PaimonPartitionExpirySection(input: PaimonExpiryInput, nowMs: Long)
                 )
             },
             leadCellColors = rows.map { if (it.entry.partition.path in droppedPaths) colors.error else null },
+        )
+    }
+}
+
+/**
+ * Which tags `expire_tags` removes, under a bare call and under `older_than = now`, and what
+ * removing each would free — see [planTagExpiry] and [planTagDeletion]. Drawn where the table
+ * has tags; it is also the panel's list of them, since a tag otherwise appears only as a chip on
+ * its snapshot.
+ */
+@Composable
+internal fun PaimonTagExpirySection(node: GraphNode.TableNode, input: PaimonExpiryInput, nowMs: Long) {
+    val colors = MaterialTheme.colorScheme
+    if (input.tags.isEmpty()) return
+    val bare = input.planTagExpiry(nowMs)
+    val byAge = input.planTagExpiry(nowMs, olderThanMs = nowMs)
+    val deletions = input.tags.associate { it.name to node.paimonExpiryFiles.value?.planTagDeletion(it.name) }
+    val title = "Tag Expiry" + if (bare.removed.isNotEmpty()) " — ${bare.removed.size} would go" else ""
+    CountedSection(title, input.tags.size, "tags") {
+        Text(
+            "What expire_tags would remove, the way TagTimeExpire decides it: a tag records a create time and a " +
+                "retention only when created with one (time_retained, or tag.default-time-retained), and a bare call " +
+                "removes a tag whose create time plus retention is before now — never one recording neither; " +
+                "older_than removes any tag created before it, a tag recording no create time going by its file's " +
+                "modification time — the create time is a local time with no zone recorded, compared in this " +
+                "machine's zone as the procedure run here would. The same check runs at every commit. Removing a tag whose snapshot is still " +
+                "retained deletes the tag file alone; one whose snapshot has expired also frees what the tag alone " +
+                "held, against the tag before it and the nearer of the earliest snapshot and the tag after it.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        val byAgeByName = byAge.tags.associateBy { it.tag.name }
+        fun verdict(v: model.PaimonTagExpiryVerdict): String = if (v.expired) "REMOVED — " + v.reason else "kept — " + v.reason
+        WideTable(
+            headers = listOf("Under a bare call", "Tag", "Snapshot", "Created", "Retained", "Expires", "With older_than = now", "Removal Frees"),
+            columnWidths = listOf(230.dp, 120.dp, 80.dp, 170.dp, 90.dp, 170.dp, 300.dp, 360.dp),
+            rows = bare.tags.map { v ->
+                val deletion = deletions[v.tag.name]
+                listOf(
+                    verdict(v),
+                    v.tag.name,
+                    v.tag.snapshotId?.toString() ?: "—",
+                    v.createdMs?.let(::formatAppTimestamp) ?: "not recorded",
+                    v.tag.timeRetainedMs?.let(::formatPaimonDurationMs) ?: "none",
+                    v.expiresAtMs?.let(::formatAppTimestamp) ?: "—",
+                    verdict(byAgeByName.getValue(v.tag.name)),
+                    deletion?.let { d -> d.describe + " — " + d.note } ?: "not readable",
+                )
+            },
+            leadCellColors = bare.tags.map { if (it.expired) colors.error else null },
         )
     }
 }
