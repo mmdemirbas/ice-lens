@@ -24,6 +24,8 @@ enum class IntegrityCheck(val label: String) {
     COMMIT_SUMMARY("commit summary"),
     SNAPSHOT_TOTALS("snapshot totals"),
     RECORD_COUNTS("record counts"),
+    /** A data file's recorded column bounds and counts against its rows — the file read, see [sweepFileStats]. */
+    FILE_STATISTICS("file statistics"),
 }
 
 data class IntegrityFinding(

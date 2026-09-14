@@ -70,7 +70,8 @@ core/src/main/kotlin/
 │   ├── MaintenanceInput.kt    # The newest metadata and the current snapshot's node, carried on the table node for the planners — never read off the drawn graph
 │   ├── FileHistory.kt         # One file across the retained snapshots — added by, removed by, still listed live by — on either format
 │   ├── Integrity.kt           # Every recorded figure against the same figure counted, over the whole table at once — the panels' checks, run everywhere
-│   ├── StatsCheck.kt          # A data file's recorded column bounds and counts against the same figures counted from its rows — the one check Integrity leaves out, being a file read
+│   ├── StatsCheck.kt          # A data file's recorded column bounds and counts against the same figures counted from its rows — a file read, behind its own click
+│   ├── FileStatsSweep.kt      # The same over the current snapshot's live files from the model, capped — the table panel's second click under Integrity
 │   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
 │   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing — and the fates a hit can have, both formats
 │   ├── PaimonRowLookup.kt     # What reading a Paimon snapshot takes: the live files by bucket, the index manifest's vectors, the merge rule — for the row lookup and the merged count
@@ -537,7 +538,19 @@ intellij/src/main/kotlin/plugin/
   fixture — 100-odd Iceberg files and 129 Paimon ones, every type the corpus carries, nothing
   left "not checked" but a column a rewritten manifest records for a file that never had it —
   and moves one bound past a row to see the disagreement named, since a check that never
-  disagrees may not be looking
+  disagrees may not be looking. **The same check runs over the table behind a second click
+  under `Integrity`.** `model/FileStatsSweep.kt` takes the current snapshot's live files from
+  the **model** (`TableNode.fileStats`, filled by both builders like `integrity`; a deletion
+  vector left out, its Puffin container having no rows), reads up to `MAX_FILE_STATS_CHECKS`
+  (64) of them through `StatsCheckReader`, and turns each disagreement into an
+  `IntegrityFinding` under `FILE_STATISTICS`, one per figure — `StatsProblem` is the structured
+  form the per-column `reason` sentence is joined from, so the table lists `id lower bound:
+  5 / a smaller 4` on the file rather than a sentence — listed in the same table as the metadata
+  findings and folded into the section's title. A file that could not be read is named with the
+  reason, never counted as agreeing. `FileStatsSweepTest` holds every fixture's targets to
+  exactly the live set (a page size of one shows the graph draws fewer than the sweep reads)
+  and every target to no finding through DuckDB, and folds injected reads to see a throwing
+  read become one unreadable file, a moved bound one finding, and the cap stated
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
@@ -912,7 +925,8 @@ intellij/src/main/kotlin/plugin/
   node's panel would not. `checked` counts only pairs with both sides; a figure a writer did not
   record is not a comparison. The two checks that walk a closure per snapshot stop after
   `MAX_CLOSURE_CHECKS` (50), newest first, and the report says how far they got; the statistics
-  files stay on their own panels, being file reads. It rides `TableNode.integrity` behind a
+  files stay on their own panels, being file reads, and the data files are a second click under
+  the report (`FileStatsSweep.kt`, below). It rides `TableNode.integrity` behind a
   click, the `UnreferencedFilesSection` shape. `IntegrityFixtureTest` holds every engine-written
   table to no findings but the two the format wrote — `tg` and `pea` each keep a tag on a
   snapshot whose changelog list the expiry deleted, so the tag's `changelogRecordCount` stands
@@ -1810,7 +1824,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,185 tests across 156 files (914 in :core, 263 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,190 tests across 157 files (918 in :core, 264 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

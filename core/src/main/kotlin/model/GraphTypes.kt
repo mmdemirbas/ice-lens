@@ -371,6 +371,12 @@ sealed class GraphNode(
          * [IntegrityReport]. Behind a click, because two of its checks walk a closure per snapshot.
          */
         val integrity: DeferredRead<IntegrityReport> = DeferredRead.none(),
+        /**
+         * The current snapshot's live files with what the manifests record about their columns —
+         * see [FileStatsTarget] — for the sweep that reads them behind [integrity]'s report. From
+         * the model, since aggregation folds files out of the graph and those are files all the same.
+         */
+        val fileStats: DeferredRead<List<FileStatsTarget>> = DeferredRead.none(),
         /** What finding a row in the current snapshot takes — see [RowLookupInput]. Nothing on Paimon. */
         val rowLookup: DeferredRead<RowLookupInput> = DeferredRead.none(),
         /** The same for a Paimon table's latest snapshot — see [PaimonReadInput]. Nothing on Iceberg. */

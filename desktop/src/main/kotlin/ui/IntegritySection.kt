@@ -15,9 +15,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import model.FileStatsSweep
 import model.GraphNode
 import model.IntegrityReport
 import model.MAX_CLOSURE_CHECKS
+import model.MAX_FILE_STATS_CHECKS
+import model.sweepFileStats
+import service.StatsCheckReader
 
 /** Findings the table lists before it says how many more there are. */
 internal const val MAX_INTEGRITY_ROWS = 500
@@ -30,11 +34,18 @@ internal const val MAX_INTEGRITY_ROWS = 500
  * two of the checks walk a closure per snapshot, and [startRequested] / [onSettled] let a capture
  * wait for the run the same way. The report is read through the node's `DeferredRead`, so a
  * second look does not run it again.
+ *
+ * The data files are a second click under the report: the metadata check opens none, and
+ * [sweepFileStats] reads up to [MAX_FILE_STATS_CHECKS] of the current snapshot's live files
+ * through [StatsCheckReader] — the file panel's own check, run over the table — and lists what
+ * disagrees in the same table. [readFilesRequested] is that click for a capture, and
+ * [onSettled] then waits for the sweep rather than the report.
  */
 @Composable
 internal fun IntegritySection(
     node: GraphNode.TableNode,
     startRequested: Boolean = false,
+    readFilesRequested: Boolean = false,
     onSettled: () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
@@ -47,14 +58,28 @@ internal fun IntegritySection(
             value = withContext(Dispatchers.IO) {
                 runCatching { requireNotNull(node.integrity.value) { "no report" } }
             }
-            onSettled()
+            if (!readFilesRequested) onSettled()
+        }
+    }
+    var filesRequested by remember(node.id) { mutableStateOf(readFilesRequested) }
+    val sweep by produceState<Result<FileStatsSweep>?>(null, node.id, filesRequested) {
+        value = null
+        if (filesRequested) {
+            value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val targets = requireNotNull(node.fileStats.value) { "no files to read" }
+                    sweepFileStats(targets) { StatsCheckReader.check(it.localPath, it.recorded, it.recordedRows) }
+                }
+            }
+            if (readFilesRequested) onSettled()
         }
     }
     val report = outcome?.getOrNull()
+    val disagreements = (report?.findings?.size ?: 0) + (sweep?.getOrNull()?.findings?.size ?: 0)
     val title = "Integrity" + when {
         report == null -> ""
-        report.findings.isEmpty() -> " — agrees"
-        else -> " — ${formatCounted(report.findings.size, "disagreement")}"
+        disagreements == 0 -> " — agrees"
+        else -> " — ${formatCounted(disagreements, "disagreement")}"
     }
 
     Section(title) {
@@ -108,7 +133,68 @@ internal fun IntegritySection(
                     }
                 }
                 Text(scope, fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                if (node.fileStats.isPresent) FileStatsStage(filesRequested, sweep, onRequest = { filesRequested = true })
             }
         }
     }
 }
+
+/** The second click: the current snapshot's data files read, their recorded bounds and counts against their rows. */
+@Composable
+private fun FileStatsStage(requested: Boolean, outcome: Result<FileStatsSweep>?, onRequest: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val sweep = outcome?.getOrNull()
+    when {
+        !requested -> {
+            Text(
+                "None of that opens a data file. Reading them puts each file's recorded bounds and counts — " +
+                    "what a scan prunes on — against its rows, the file panel's own check run over the current " +
+                    "snapshot's live files, at most $MAX_FILE_STATS_CHECKS of them.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
+            )
+            OutlinedButton(onClick = onRequest) {
+                Text("Also read the data files (up to $MAX_FILE_STATS_CHECKS)")
+            }
+        }
+        outcome == null -> Text("Reading the files…", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
+        sweep == null -> Text(
+            "Could not read the files: ${outcome.exceptionOrNull()?.message ?: "unknown error"}",
+            fontSize = TypeScale.small,
+            color = colors.error,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        else -> {
+            Text(
+                "Data files: " + sweep.describe +
+                    (if (sweep.unreadable.isNotEmpty()) "; ${formatCounted(sweep.unreadable.size, "file")} could not be read" else "") + ".",
+                fontSize = TypeScale.small,
+                fontWeight = FontWeight.Bold,
+                color = if (sweep.findings.isEmpty() && sweep.unreadable.isEmpty()) colors.onSurface else colors.error,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+            )
+            if (sweep.findings.isNotEmpty()) {
+                val shown = sweep.findings.take(MAX_INTEGRITY_ROWS)
+                WideTable(
+                    headers = listOf("Figure", "Recorded", "Counted", "Where", "Check"),
+                    columnWidths = listOf(190.dp, 120.dp, 120.dp, 320.dp, 150.dp),
+                    rows = shown.map { listOf(it.figure, it.recorded, it.counted, it.where, it.check.label) },
+                    leadCellColors = shown.map { colors.error },
+                )
+                if (sweep.findings.size > shown.size) {
+                    Text("…and ${formatCount(sweep.findings.size - shown.size)} more.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+                }
+            }
+            for ((name, why) in sweep.unreadable.take(MAX_UNREADABLE_ROWS)) {
+                Text("Could not read $name: $why", fontSize = TypeScale.small, color = colors.error)
+            }
+            if (sweep.unreadable.size > MAX_UNREADABLE_ROWS) {
+                Text("…and ${formatCount(sweep.unreadable.size - MAX_UNREADABLE_ROWS)} more could not be read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** Unreadable files named before the rest are counted. */
+private const val MAX_UNREADABLE_ROWS = 20

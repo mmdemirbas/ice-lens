@@ -44,7 +44,16 @@ data class ColumnStatsCheck(
     val actualNulls: Long?,
     val verdict: StatsVerdict,
     val reason: String,
+    /** The disagreements, one per figure — empty unless [verdict] is [StatsVerdict.DISAGREES]. */
+    val problems: List<StatsProblem> = emptyList(),
+    /** Figures compared with both sides — nulls, values, NaNs, each bound — none when not checked. */
+    val compared: Int = 0,
 )
+
+/** One recorded figure the file contradicts: what was recorded, and what counting the rows gave. */
+data class StatsProblem(val figure: String, val recorded: String, val counted: String) {
+    val sentence: String get() = "$figure: records $recorded, the file holds $counted"
+}
 
 data class StatsCheckResult(
     /** Rows counted in the file. */
@@ -56,56 +65,65 @@ data class StatsCheckResult(
     val rowsAgree: Boolean? get() = recordedRows?.let { it == rows }
     val disagreements: Int get() = columns.count { it.verdict == StatsVerdict.DISAGREES } + (if (rowsAgree == false) 1 else 0)
     val checked: Int get() = columns.count { it.verdict != StatsVerdict.NOT_CHECKED } + (if (rowsAgree != null) 1 else 0)
+    /** Figures compared, over every column and the row count — what [problems] is a share of. */
+    val figures: Int get() = columns.sumOf { it.compared } + (if (rowsAgree != null) 1 else 0)
+
+    /** Every disagreement, the row count first, each column's figure named with its column. */
+    val problems: List<StatsProblem>
+        get() = buildList {
+            if (rowsAgree == false) add(StatsProblem("row count", "$recordedRows", "$rows"))
+            for (c in columns) for (p in c.problems) add(StatsProblem("${c.column} ${p.figure}", p.recorded, p.counted))
+        }
 }
 
 /** One column's recorded figures against the counted ones, or why they could not be compared. */
 fun checkColumnStats(recorded: RecordedColumnStats, actual: ActualColumnStats?, rows: Long): ColumnStatsCheck {
-    fun result(verdict: StatsVerdict, reason: String) = ColumnStatsCheck(
+    fun result(verdict: StatsVerdict, reason: String, problems: List<StatsProblem> = emptyList(), compared: Int = 0) = ColumnStatsCheck(
         column = recorded.name,
         recordedLower = recorded.lowerShown, actualMin = actual?.min?.let(::showValue),
         recordedUpper = recorded.upperShown, actualMax = actual?.max?.let(::showValue),
         recordedNulls = recorded.nullCount, actualNulls = actual?.nullCount,
-        verdict = verdict, reason = reason,
+        verdict = verdict, reason = reason, problems = problems, compared = compared,
     )
     if (actual == null) return result(StatsVerdict.NOT_CHECKED, "the file has no column named ${recorded.name}")
     if (recorded.lower == null && recorded.upper == null && recorded.nullCount == null && recorded.valueCount == null) {
         return result(StatsVerdict.NOT_CHECKED, "no statistic recorded for ${recorded.name}")
     }
-    val problems = mutableListOf<String>()
+    val problems = mutableListOf<StatsProblem>()
     var compared = 0
     if (recorded.nullCount != null) {
         compared++
-        if (recorded.nullCount != actual.nullCount) problems += "records ${recorded.nullCount} nulls, the file holds ${actual.nullCount}"
+        if (recorded.nullCount != actual.nullCount) problems += StatsProblem("nulls", "${recorded.nullCount}", "${actual.nullCount}")
     }
     if (recorded.valueCount != null) {
         compared++
-        if (recorded.valueCount != rows) problems += "records ${recorded.valueCount} values, the file holds $rows rows"
+        if (recorded.valueCount != rows) problems += StatsProblem("values", "${recorded.valueCount}", "$rows")
     }
     if (recorded.nanCount != null && actual.nanCount != null) {
         compared++
-        if (recorded.nanCount != actual.nanCount) problems += "records ${recorded.nanCount} NaNs, the file holds ${actual.nanCount}"
+        if (recorded.nanCount != actual.nanCount) problems += StatsProblem("NaNs", "${recorded.nanCount}", "${actual.nanCount}")
     }
     val nonNull = rows - actual.nullCount - (actual.nanCount ?: 0L)
     val min = actual.min
     val max = actual.max
     if (recorded.lower != null) {
-        if (nonNull == 0L) problems += "records a lower bound where no value is there to bound"
+        if (nonNull == 0L) problems += StatsProblem("lower bound", recorded.lowerShown ?: "a bound", "no value to bound")
         else when (val c = compareValues(recorded.lower, min)) {
             null -> return result(StatsVerdict.NOT_CHECKED, "a ${recorded.lower.javaClass.simpleName} bound and a ${min?.javaClass?.simpleName} value cannot be compared")
-            else -> { compared++; if (c > 0) problems += "lower bound ${recorded.lowerShown} is above the smallest value ${showValue(min)}" }
+            else -> { compared++; if (c > 0) problems += StatsProblem("lower bound", "${recorded.lowerShown}", "a smaller ${showValue(min)}") }
         }
     }
     if (recorded.upper != null) {
-        if (nonNull == 0L) { if (recorded.lower == null) problems += "records an upper bound where no value is there to bound" }
+        if (nonNull == 0L) { if (recorded.lower == null) problems += StatsProblem("upper bound", recorded.upperShown ?: "a bound", "no value to bound") }
         else when (val c = compareValues(recorded.upper, max)) {
             null -> return result(StatsVerdict.NOT_CHECKED, "a ${recorded.upper.javaClass.simpleName} bound and a ${actual.max?.javaClass?.simpleName} value cannot be compared")
-            else -> { compared++; if (c < 0) problems += "upper bound ${recorded.upperShown} is below the largest value ${showValue(max)}" }
+            else -> { compared++; if (c < 0) problems += StatsProblem("upper bound", "${recorded.upperShown}", "a larger ${showValue(max)}") }
         }
     }
     return when {
-        problems.isNotEmpty() -> result(StatsVerdict.DISAGREES, problems.joinToString("; "))
+        problems.isNotEmpty() -> result(StatsVerdict.DISAGREES, problems.joinToString("; ") { it.sentence }, problems, compared)
         compared == 0 -> result(StatsVerdict.NOT_CHECKED, "nothing comparable recorded for ${recorded.name}")
-        else -> result(StatsVerdict.AGREES, "the rows lie within the bounds and the counts agree")
+        else -> result(StatsVerdict.AGREES, "the rows lie within the bounds and the counts agree", compared = compared)
     }
 }
 
@@ -128,7 +146,10 @@ const val DELETE_POS_FIELD_ID = 2147483545
  * bounds are decoded here by the types the spec fixes for them — `file_path` a string, `pos` a
  * long — and named as the file names them.
  */
-fun GraphNode.FileNode.recordedColumnStats(): List<RecordedColumnStats> = columnStats.map { s ->
+fun GraphNode.FileNode.recordedColumnStats(): List<RecordedColumnStats> = recordedColumnStatsOf(columnStats, data)
+
+/** The same off a file's decoded statistics and its entry — what the table-wide sweep has without a node. */
+fun recordedColumnStatsOf(columnStats: List<ColumnStats>, data: DataFile): List<RecordedColumnStats> = columnStats.map { s ->
     val reserved = when (s.fieldId) {
         DELETE_FILE_PATH_FIELD_ID -> "file_path" to IcebergType.StringType
         DELETE_POS_FIELD_ID -> "pos" to IcebergType.LongType
@@ -160,7 +181,10 @@ fun GraphNode.FileNode.recordedColumnStats(): List<RecordedColumnStats> = column
  * value count per column and every row holds one value per column, so none is put beside the
  * row count; the row count is compared on its own.
  */
-fun GraphNode.PaimonDataFileNode.recordedColumnStats(): List<RecordedColumnStats> {
+fun GraphNode.PaimonDataFileNode.recordedColumnStats(): List<RecordedColumnStats> = paimonRecordedColumnStats(keyBounds, columnBounds)
+
+/** [GraphNode.PaimonDataFileNode.recordedColumnStats] over the pieces, for a file the graph does not draw. */
+fun paimonRecordedColumnStats(keyBounds: List<PaimonColumnBounds>?, columnBounds: List<PaimonColumnBounds>?): List<RecordedColumnStats> {
     fun of(b: PaimonColumnBounds, name: String) = RecordedColumnStats(
         fieldId = null, name = name,
         lower = b.min.takeIf { b.decoded }, upper = b.max.takeIf { b.decoded },

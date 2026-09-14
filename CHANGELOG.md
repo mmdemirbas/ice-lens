@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The table panel reads the data files behind a second click under `Integrity`.** The
+  metadata check opens no data file; the new button reads up to 64 of the current snapshot's
+  live files — from the model, so files the graph folded away are read too — and lists each
+  recorded bound or count the file's rows contradict beside the metadata findings, with the
+  file that could not be read named rather than counted as agreeing. The file panel's own
+  headline now counts figures rather than columns.
 - **A sampled Iceberg row says whether a positional or equality delete removes it.** The row
   panel's `Delete Files` section asks the delete files a scan pairs with the row's file, behind
   a click — the panel's `Deleted` row could only answer for a v3 vector, and said *not by a

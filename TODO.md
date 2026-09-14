@@ -113,13 +113,15 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   on `file_row_number`, which DuckDB assigns in Parquet only — an ORC data-evolution table
   reports the split as unreadable rather than reading its files apart.
 
-- **The whole-table integrity check leaves the file reads out.** `model/Integrity.kt` runs the
-  metadata-only comparisons everywhere; the statistics and partition-statistics files stay on the
-  metadata panel because each is a file open (Puffin footer, DuckDB), and the two closure-walking
-  checks stop at fifty snapshots. The manifest list's `partitions` summaries are compared now
-  (`model/PartitionSummaryTally.kt`); a data file's own column bounds against its rows are
-  checked on the file panel behind a click (`model/StatsCheck.kt`), one file at a time, since
-  that is a file read per entry and cannot come from the metadata.
+- **The whole-table integrity check leaves the statistics-file reads out.** `model/Integrity.kt`
+  runs the metadata-only comparisons everywhere; the statistics and partition-statistics files
+  stay on the metadata panel because each is a file open (Puffin footer, DuckDB), and the two
+  closure-walking checks stop at fifty snapshots. The manifest list's `partitions` summaries are
+  compared now (`model/PartitionSummaryTally.kt`); a data file's own column bounds against its
+  rows are checked on the file panel behind a click (`model/StatsCheck.kt`) and over the current
+  snapshot's live files behind a second click under `Integrity` (`model/FileStatsSweep.kt`),
+  capped at 64 files and said so — a table past the cap reads its first 64 in manifest order,
+  and there is no way yet to read the next 64.
 
 - **A statistics blob's sketch is never decoded.** The `.stats` container is opened now and its
   footer shown against what `metadata.json` records (`model/TableStatistics.kt`), so a stale record

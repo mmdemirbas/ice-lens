@@ -67,11 +67,11 @@ internal fun StatsCheckSection(
             outcome == null -> Text("Reading ${fileNameFromPath(path)}…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
             else -> outcome?.fold(
                 onSuccess = { result ->
-                    val bad = result.disagreements
+                    val bad = result.problems.size
                     Text(
                         when {
-                            bad > 0 -> "$bad of ${formatCount(result.checked.toLong())} figures disagree with the file's rows."
-                            else -> "All ${formatCount(result.checked.toLong())} figures agree with the file's ${formatCount(result.rows)} rows."
+                            bad > 0 -> "$bad of ${formatCount(result.figures.toLong())} figures disagree with the file's rows."
+                            else -> "All ${formatCount(result.figures.toLong())} figures agree with the file's ${formatCount(result.rows)} rows."
                         },
                         fontSize = TypeScale.body,
                         fontWeight = FontWeight.Medium,

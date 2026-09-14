@@ -42,6 +42,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import model.GraphModel
 import model.GraphSearch
+import model.DeferredRead
 import model.GraphNode
 import model.partitionBreakdown
 import model.stepComparableSnapshot
@@ -2211,6 +2212,41 @@ class InspectorRenderTest {
         renderUntil("integrity-agrees", width = 1400, height = 300, ready = cleanSettled::get) {
             Column(Modifier.padding(16.dp)) {
                 IntegritySection(morTable, startRequested = true) { cleanSettled.set(true) }
+            }
+        }
+    }
+
+    /**
+     * The second click under the report: the data files read. `mor` agrees on every file; the
+     * disagreeing capture hands `parted`'s table node targets with one file's `id` lower bound
+     * moved past its smallest row and its row count off by one, so the findings table is seen
+     * with rows in it — nothing checked in disagrees with itself.
+     */
+    @Test
+    fun `a table reads its data files behind a second click`() {
+        val morTable = graphFor("mor").nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("integrity-files", width = 1400, height = 480, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                IntegritySection(morTable, startRequested = true, readFilesRequested = true) { settled.set(true) }
+            }
+        }
+
+        val partedTable = graphFor("parted").nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val targets = requireNotNull(partedTable.fileStats.value)
+        val moved = targets.mapIndexed { i, t ->
+            if (i != 0) t else t.copy(
+                recorded = t.recorded.map { s ->
+                    if (s.name != "id") s else s.copy(lower = (s.lower as Number).toLong() + 1, lowerShown = "${(s.lower as Number).toLong() + 1}")
+                },
+                recordedRows = (t.recordedRows ?: 0L) + 1,
+            )
+        }
+        val planted = partedTable.copy(fileStats = DeferredRead.of { moved })
+        val plantedSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("integrity-files-disagreeing", width = 1400, height = 820, ready = plantedSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                IntegritySection(planted, startRequested = true, readFilesRequested = true) { plantedSettled.set(true) }
             }
         }
     }
