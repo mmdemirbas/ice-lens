@@ -43,7 +43,7 @@ object RowLookup {
     fun lookup(input: RowLookupInput, filter: ScanFilter, ruledOut: Set<String>): RowLookupResult {
         val candidates = input.dataFiles.filter { normalizeFilePath(it.recordedPath) !in ruledOut }
         val toRead = candidates.take(MAX_FILES)
-        val predicate = filter.toSql { column -> input.schema?.struct?.fields?.firstOrNull { it.name == column }?.type }
+        val predicate = filter.toSql { column -> input.schema?.let { s -> s.idOfPath(column)?.let(s::typeOf) } }
         val vectors = mutableMapOf<String, DeletionVector?>()
         val outcomes = mutableListOf<LookupFileOutcome>()
         val hits = mutableListOf<RowHit>()

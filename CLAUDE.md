@@ -859,9 +859,11 @@ intellij/src/main/kotlin/plugin/
   schema lacks — its schema, not its `stats-mode`, so `sm` stays unevaluated. Paimon's
   partition summaries bind by id too (`PaimonPartitionValue.fieldId`, carried out of
   `decodePaimonRow`). Both oracles were rerun: `eqren` and `deep` on the Iceberg side (48 cases),
-  `pse` and `pkr` on the Paimon side, every case agreeing file for file. What a nested column
-  still cannot do is be *read*: the row lookup addresses a column by one quoted name, and the
-  projection renames at the top level only, so a filter on `addr.town` errors on the old file
+  `pse` and `pkr` on the Paimon side, every case agreeing file for file. The row lookup reads a
+  nested leaf as struct access (`quoteSqlColumnPath`: `"addr"."zip"`, the type through
+  `idOfPath`), so a filter on a leaf every file holds answers; what it still cannot do is
+  rename *inside* a struct — the projection renames top-level columns only, so `addr.town` on
+  the file written when it was `city` reports DuckDB's error rather than the row, said per file
 - **A filter is a boolean expression, and `NOT` is removed before anything is evaluated.**
   `model/ScanFilter.kt` holds `Term`/`And`/`Or`/`Not`; `evaluateScan`, `evaluatePruning` and
   `evaluateFilePruning` each take one, and the list form every existing caller passes is wrapped
@@ -1990,7 +1992,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,217 tests across 162 files (943 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,218 tests across 162 files (944 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

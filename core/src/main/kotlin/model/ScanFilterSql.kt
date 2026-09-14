@@ -28,6 +28,13 @@ fun duckDbTypeOf(type: IcebergType): String? = when (type) {
 fun quoteSqlIdentifier(name: String): String = "\"" + name.replace("\"", "\"\"") + "\""
 
 /**
+ * A column reference for DuckDB: a nested leaf named by its path (`addr.town`) is the struct
+ * column and then the field, each quoted on its own — quoted whole, the dotted name is one
+ * identifier no file has.
+ */
+fun quoteSqlColumnPath(path: String): String = path.split('.').joinToString(".", transform = ::quoteSqlIdentifier)
+
+/**
  * Renders the filter for DuckDB. A literal is bound as text and cast to the column's type
  * where [typeOf] knows it — DuckDB compares a typed column with a text parameter only through
  * a cast, and `'2024-03-05'` is a date to one column and a string to another, which is the
@@ -37,7 +44,7 @@ fun quoteSqlIdentifier(name: String): String = "\"" + name.replace("\"", "\"\"")
 fun ScanFilter.toSql(typeOf: (String) -> IcebergType?): SqlPredicate {
     val params = mutableListOf<String>()
     fun leaf(p: ScanPredicate): String {
-        val column = quoteSqlIdentifier(p.column)
+        val column = quoteSqlColumnPath(p.column)
         val cast = typeOf(p.column)?.let(::duckDbTypeOf)
         fun bound(): String {
             params += p.literal

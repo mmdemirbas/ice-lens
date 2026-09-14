@@ -1,6 +1,7 @@
 package model
 
 import service.GraphLayoutService
+import service.RowLookup
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -76,5 +77,24 @@ class DeepFixtureTest {
         val unknown = evaluateScan(graph, ScanFilter.Term(ScanPredicate("addr.city", PredicateOp.EQ, "Ankara")))
         assertEquals(FileFate.UNEVALUATED, unknown.files.getValue(fileNamed("00000-0-").id).fate, "the old name is not a column of the table")
         assertTrue(unknown.files.getValue(fileNamed("00000-0-").id).outcomes.single().reason.contains("no column called 'addr.city'"))
+    }
+
+    /**
+     * The lookup reads a nested leaf as struct access — `"addr"."zip"` — under the current
+     * names, so a filter on a leaf the files all hold answers; a leaf renamed inside the struct
+     * after a file was written is still the old name inside that file's struct, and the file
+     * reports DuckDB's error rather than a wrong answer — the projection renames top-level
+     * columns only, which TODO.md records.
+     */
+    @Test
+    fun `the lookup reads a nested leaf by path, and says so where a rename inside the struct leaves the old file unreadable`() {
+        val input = assertNotNull(model.rowLookupInput())
+        val zips = RowLookup.lookup(input, ScanFilter.Term(ScanPredicate("addr.zip", PredicateOp.LT, "7000")), emptySet())
+        assertTrue(zips.filesRead.all { it.error == null }, zips.filesRead.toString())
+        assertEquals(mapOf("1" to RowFate.LIVE, "3" to RowFate.LIVE), zips.hits.associate { it.cells["id"].toString() to it.fate })
+        val towns = RowLookup.lookup(input, ScanFilter.Term(ScanPredicate("addr.town", PredicateOp.EQ, "Izmir")), emptySet())
+        assertEquals(listOf("4"), towns.hits.map { it.cells["id"].toString() })
+        val old = towns.filesRead.single { it.filePath.substringAfterLast('/').startsWith("00000-0-") }
+        assertTrue(old.error?.contains("town") == true, "the old file's struct has no town: ${old.error}")
     }
 }
