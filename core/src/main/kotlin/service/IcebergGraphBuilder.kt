@@ -59,6 +59,8 @@ object IcebergGraphBuilder {
         // Every field the table has ever defined, the newest definition of each id winning — so a
         // bound for a column dropped before its manifest was rewritten still has a name and a type.
         val tableFieldsById = newestMetadata?.fieldsEverDefined().orEmpty()
+        // The metrics configuration each file was written under — the version that committed its snapshot.
+        val metricsHistory = MetricsConfigHistory(tableModel.metadatas.map { it.metadata })
         logicalNodes[tableNodeId] = GraphNode.TableNode(
             tableNodeId,
             tableSummary,
@@ -315,6 +317,8 @@ object IcebergGraphBuilder {
                                         defaultSortOrder = defaultSortOrder,
                                         tableFieldsById = tableFieldsById,
                                         manifestSequenceNumber = unifiedManifest.metadata.sequenceNumber,
+                                        // A DELETED entry's snapshot_id names the commit that removed the file, not the one that wrote it.
+                                        metricsConfig = if (entry.status == ManifestEntryStatus.DELETED) null else metricsHistory.at(entry.snapshotId ?: unifiedManifest.metadata.addedSnapshotId),
                                         firstRowId = unifiedDataFile.firstRowId,
                                         firstRowIdInherited = unifiedDataFile.firstRowIdInherited,
                                         deletionVectorLoader = deletionVectorLoader(dataFile, unifiedDataFile.path),

@@ -56,6 +56,7 @@ so and the inspector lists all of them.
 - Both directions of the orphan question, behind a click on the table panel: what is under the table that no metadata names, and what the retained snapshots need that is not there — each missing file with the snapshots that read it
 - Per-snapshot partition breakdown, largest first; per-partition and table statistics files opened and shown against their records
 - A data file's recorded bounds, counts, size and split offsets checked against the file itself — its rows, its size on disk and its Parquet row groups — behind a click on the file, and over every live file under the integrity check
+- Why a column has the statistics it has: each column's `write.metadata.metrics.*` mode with the rule that set it — the default, a per-column override, the sort-column promotion, or the hundred-column limit nobody set — and whether the file records that shape
 - Which snapshot a read as of a time lands on, the way each engine resolves it — including the abandoned commit a rolled-back table's log still points a time at
 - What `expire_snapshots` would remove and what keeps the rest — a ref on Iceberg, a consumer or the retention bounds on Paimon — and which files that frees: by which cleanup on Iceberg, and past which tag on Paimon; rollbacks read off the snapshot log
 - A Paimon bucket as its LSM tree — sorted runs against the compaction trigger — and what the next flush would compact, the way `UniversalCompaction` picks it

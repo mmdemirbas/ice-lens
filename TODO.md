@@ -48,6 +48,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   `IS NOT NULL`), and the `bsi` index as the slices it is (`fbs`: every comparison per row,
   the terms' rows met across the filter as `FileIndexPredicate` meets them). What is left of
   the index is `range-bitmap`, release-1.3.1's fourth, named and not read.
+  On Iceberg a column that records no bounds is explained rather than only reported: the file
+  panel's `Metrics Modes` names the `write.metadata.metrics.*` rule behind each column and the
+  pruning reason says so (`model/MetricsConfig.kt`, `metrics` and `metricsw`).
 
 - **Iceberg v3 is modelled up to what Spark 3.5 can write.** A deletion vector's Puffin blob is
   opened and its positions decoded (`service/PuffinReader.kt`), so the inspector answers which

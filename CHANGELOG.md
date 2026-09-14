@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Each column's metrics mode on the file panel, with the rule that set it** —
+  `write.metadata.metrics.*` read the way Iceberg reads it, the inferred limit past a hundred
+  columns and the sort-column promotion included — and whether the file records that shape,
+  judged under the configuration in force when it was written. In the integrity check as
+  `metrics modes`, on the IDE strip's `Checks` row, and in a scan-pruning reason where a
+  column's mode is why nothing could be evaluated. Fixtures `metrics` and `metricsw`.
 - **`min_sequence_number` checked on every manifest** — against the lowest data sequence
   number among the manifest's live entries, on the manifest panel's tallies, in the integrity
   check and on the IDE strip's `Checks` row. It is the figure the next commit drops delete

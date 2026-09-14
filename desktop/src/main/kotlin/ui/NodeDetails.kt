@@ -71,6 +71,7 @@ import model.FileChange
 import model.manifestTallies
 import model.MetadataTally
 import model.MissingFilesReport
+import model.METRICS_MAX_INFERRED_DEFAULT
 import model.PartitionFieldCheck
 import model.PartitionFieldVerdict
 import model.partialRows
@@ -2832,6 +2833,52 @@ internal fun PropertiesEvolutionSection(versions: List<MetadataVersionInfo>) {
  * opens. Metadata only, drawn at once under the partition on both file panels; a
  * disagreement is the file a partition filter skips for the value its rows hold.
  */
+@Composable
+internal fun MetricsModesSection(node: GraphNode.FileNode) {
+    val colors = MaterialTheme.colorScheme
+    val checks = node.metricsModes
+    val at = node.metricsConfig ?: return
+    if (checks.isEmpty()) return
+    val differing = checks.count { it.agrees == false }
+    Section("Metrics Modes" + if (differing > 0) " — $differing differ" else "") {
+        Text(
+            "Which statistics the writer records for a column is `write.metadata.metrics.*`, read " +
+                "here as of ${at.source}: the default is truncate(16) on every column, a table past " +
+                "${METRICS_MAX_INFERRED_DEFAULT} columns records nothing for the rest unless told to, " +
+                "and a column with no bounds is one no filter can skip this file on. Each column's " +
+                "mode, what set it, and whether the file records that shape.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            headers = listOf("Agrees", "Column", "Mode", "Recorded", "Set By", "Why"),
+            columnWidths = listOf(100.dp, 170.dp, 110.dp, 150.dp, 420.dp, 420.dp),
+            leadCellColors = checks.map {
+                when (it.agrees) {
+                    false -> colors.error
+                    null -> verdictUnevaluatedColor()
+                    true -> null
+                }
+            },
+            rows = checks.map { c ->
+                listOf(
+                    when (c.agrees) {
+                        true -> "yes"
+                        false -> "NO"
+                        null -> "not judged"
+                    },
+                    c.column,
+                    c.configured.mode.spelled,
+                    c.recorded,
+                    c.configured.setBy,
+                    c.reason,
+                )
+            },
+        )
+    }
+}
+
 @Composable
 internal fun PartitionBoundsSection(checks: List<PartitionFieldCheck>) {
     val colors = MaterialTheme.colorScheme

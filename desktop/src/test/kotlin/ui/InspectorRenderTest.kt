@@ -1868,6 +1868,24 @@ class InspectorRenderTest {
     }
 
     /**
+     * The metrics-mode section on `metrics`' first file — a column per rule, every one as
+     * configured — and once more with the file judged under a `none` default, every column with
+     * counts recorded now the exception. The rest of the panel is folded: the section sits under
+     * the column statistics and the read-behind-a-click, a screen down.
+     */
+    @Test
+    fun `the metrics-modes section renders every rule, and a file judged under another configuration`() {
+        val graph = graphFor("metrics")
+        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().minBy { it.data.filePath.orEmpty() }
+        assertTrue(file.metricsModes.size == 7 && file.metricsModes.all { it.agrees == true }, file.metricsModes.toString())
+        renderInspector(graph, file.id, "metrics-modes", height = 2700, sectionCollapse = onlyExpanded("Metrics Modes"))
+        val reconfigured = file.copy(metricsConfig = file.metricsConfig!!.copy(config = model.metricsConfigOf(mapOf(model.METRICS_DEFAULT_PROPERTY to "none"), file.metricsConfig!!.schema, null)))
+        renderScene("metrics-modes-differing", width = 1400, height = 1000) {
+            Column(Modifier.padding(16.dp)) { MetricsModesSection(reconfigured) }
+        }
+    }
+
+    /**
      * The same section on the one file with several row groups — `rgs`'s 5,000 rows in
      * thirteen — where the row-groups line has thirteen offsets to put beside the thirteen
      * recorded, and once more with the recorded size off by one and one offset moved, the two

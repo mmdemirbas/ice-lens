@@ -34,6 +34,8 @@ enum class IntegrityCheck(val label: String) {
     FILE_PARTITIONS("file partitions"),
     /** The metadata file's own figures against its contents — the ids the next DDL allocates from, what a reader refuses on — see [metadataTallies]. */
     METADATA_FIGURES("metadata figures"),
+    /** A data file's recorded statistics against the shape `write.metadata.metrics.*` says for each column — see [metricsModeChecks]. */
+    METRICS_MODES("metrics modes"),
 }
 
 data class IntegrityFinding(
@@ -91,6 +93,7 @@ fun UnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_CHECKS
         metadataTallies(newest.metadata).forEach { t.count(IntegrityCheck.METADATA_FIGURES, newest.path.fileName.toString(), it.label, it.recorded, it.counted, it.agrees) }
     }
     val seenManifests = mutableSetOf<String>()
+    val metricsHistory = MetricsConfigHistory(metadatas.map { it.metadata })
     retained.forEach { s ->
         s.manifests.forEach { m ->
             val path = m.metadata.manifestPath ?: return@forEach
@@ -103,10 +106,21 @@ fun UnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_CHECKS
             }
             // Each entry's partition against its own bounds — per entry, since a rewritten manifest carries its own copy of both.
             m.dataFiles.forEach { file ->
-                val partition = file.partition?.takeIf { !it.isUnpartitioned } ?: return@forEach
                 val data = file.metadata.dataFile ?: return@forEach
-                partitionBoundsChecks(partition, columnStatsFor(data, m.schema, tableFieldsById)).forEach {
-                    t.count(IntegrityCheck.FILE_PARTITIONS, data.filePath?.substringAfterLast('/') ?: path.substringAfterLast('/'), "partition ${it.field}", it.recorded, it.fromBounds ?: it.reason, it.agrees)
+                val fileName = data.filePath?.substringAfterLast('/') ?: path.substringAfterLast('/')
+                val columnStats = columnStatsFor(data, m.schema, tableFieldsById)
+                file.partition?.takeIf { !it.isUnpartitioned }?.let { partition ->
+                    partitionBoundsChecks(partition, columnStats).forEach {
+                        t.count(IntegrityCheck.FILE_PARTITIONS, fileName, "partition ${it.field}", it.recorded, it.fromBounds ?: it.reason, it.agrees)
+                    }
+                }
+                // Each column's statistics against the metrics configuration the file was written under —
+                // not for a DELETED entry, whose snapshot_id names the commit that removed the file.
+                if (file.metadata.status == ManifestEntryStatus.DELETED) return@forEach
+                metricsHistory.at(file.metadata.snapshotId ?: m.metadata.addedSnapshotId)?.let { at ->
+                    metricsModeChecks(columnStats, at.schema ?: m.schema, at.config, data).forEach {
+                        t.count(IntegrityCheck.METRICS_MODES, fileName, "${it.column}: metrics", it.configured.mode.spelled, it.recorded, it.agrees)
+                    }
                 }
             }
         }

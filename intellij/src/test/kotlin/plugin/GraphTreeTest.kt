@@ -204,9 +204,16 @@ class GraphTreeTest {
         assertTrue(lines.all { it.startsWith("all ") && it.contains(" figures agree") }, lines.toString())
         // A manifest's line folds the six counts, the min sequence number, the length and four figures for each of eight partition fields; a file's the eight partition fields.
         assertTrue(parted.filterIsInstance<GraphNode.ManifestNode>().all { n -> GraphTree.details(n).first { it.first == GraphTree.CHECKS }.second.startsWith("all 40 figures agree") }, lines.toString())
-        assertTrue(parted.filterIsInstance<GraphNode.FileNode>().any { n -> GraphTree.details(n).first { it.first == GraphTree.CHECKS }.second == "all 8 figures agree" }, lines.toString())
-        // An unpartitioned file lists no row — there is nothing to hold its partition to.
-        assertTrue(flatten(GraphTree.build(graphOf("test"))).filterIsInstance<GraphNode.FileNode>().none { n -> GraphTree.details(n).any { it.first == GraphTree.CHECKS } })
+        // A file's folds the eight partition fields and a metrics-mode figure per column of the schema it was written under.
+        val fileLines = parted.filterIsInstance<GraphNode.FileNode>().map { n -> GraphTree.details(n).first { it.first == GraphTree.CHECKS }.second }
+        assertTrue(fileLines.all { it.startsWith("all ") && it.removePrefix("all ").substringBefore(' ').toInt() > 8 }, fileLines.toString())
+        // An unpartitioned file has no partition to hold, and still its columns' metrics modes.
+        val plain = flatten(GraphTree.build(graphOf("test"))).filterIsInstance<GraphNode.FileNode>().map { n -> GraphTree.details(n).first { it.first == GraphTree.CHECKS }.second }
+        assertTrue(plain.isNotEmpty() && plain.all { it.startsWith("all ") }, plain.toString())
+        val metricsFile = flatten(GraphTree.build(graphOf("metrics"))).filterIsInstance<GraphNode.FileNode>().first()
+        val reconfigured = metricsFile.copy(metricsConfig = metricsFile.metricsConfig!!.copy(config = model.metricsConfigOf(mapOf(model.METRICS_DEFAULT_PROPERTY to "none"), metricsFile.metricsConfig!!.schema, null)))
+        val metricsLine = GraphTree.details(reconfigured).first { it.first == GraphTree.CHECKS }.second
+        assertTrue(metricsLine.contains("DIFFER — ") && metricsLine.contains("metrics: counts recorded under none"), metricsLine)
 
         val metadata = parted.filterIsInstance<GraphNode.MetadataNode>().maxBy { it.data.lastColumnId ?: 0 }
         val moved = metadata.copy(data = metadata.data.copy(lastColumnId = 1))

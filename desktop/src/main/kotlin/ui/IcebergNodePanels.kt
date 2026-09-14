@@ -1290,6 +1290,9 @@ internal fun ColumnScope.FilePanel(
             val nameMapping = currentGraph.newestIcebergMetadata()?.nameMapping()
             StatsCheckSection(node.id, node.localPath, node.recordedColumnStats(), node.data.recordCount, nameMapping = nameMapping, recordedSize = node.data.fileSizeInBytes, recordedSplitOffsets = node.data.splitOffsets)
         }
+        // Why a column has the statistics it has — drawn whether or not any were recorded, since
+        // a file with none is the one the question is asked of.
+        MetricsModesSection(node)
 
         RecursiveDataTableSection(node = node, graphModel = currentGraph)
 }

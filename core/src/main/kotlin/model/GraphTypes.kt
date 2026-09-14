@@ -620,6 +620,12 @@ sealed class GraphNode(
          */
         val manifestSequenceNumber: Long? = null,
         /**
+         * The `write.metadata.metrics.*` configuration this file was written under — the
+         * metadata version that committed its snapshot — and where it came from; null on a
+         * table with no metadata read. See [metricsModeChecks].
+         */
+        val metricsConfig: MetricsConfigAt? = null,
+        /**
          * v3 row lineage: the `_row_id` of this file's first row, and whether it was inherited
          * from the manifest rather than recorded — see [UnifiedDataFile.firstRowId]. A row's id
          * is this plus its position unless the file carries a `_row_id` column.
@@ -672,6 +678,9 @@ sealed class GraphNode(
 
         /** Per-column statistics with bounds decoded against [schema]. */
         val columnStats: List<ColumnStats> by lazy { columnStatsFor(data, schema, tableFieldsById) }
+
+        /** Each column's configured metrics mode against the shape the file records — empty without a [metricsConfig]. */
+        val metricsModes: List<MetricsModeCheck> by lazy { metricsConfig?.let { metricsModeChecks(columnStats, it.schema ?: schema, it.config, data) }.orEmpty() }
 
         /**
          * True when this delete file is a v3 deletion vector rather than a v2 delete file.

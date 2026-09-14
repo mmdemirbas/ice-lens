@@ -1106,6 +1106,7 @@ fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
                 else -> return@mapNotNull null
             }
             var own = if (stats != null) evaluateFilePruning(stats, filter, binder) else unevaluatedFile(filter, withheld.orEmpty())
+            if (node is GraphNode.FileNode) own = explainMetricsModes(own, node)
             if (node is GraphNode.PaimonDataFileNode && stats != null) own = paimonAllNullNegations(own, filter, stats)
             // An append table's file index: the embedded one is tested when the scan plans, the
             // `.index` file beside the data file when the read opens it — see [FileIndexUse].
@@ -1118,6 +1119,26 @@ fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
         .toMap()
 
     return ScanPlan(manifests, files, withheld, primaryKeyRule?.describe(), paimonFileIndexRule(graph, primaryKeyRule))
+}
+
+/**
+ * A term the file's statistics could not evaluate, where the column's metrics mode is why: a
+ * column under `none` records nothing and one under `counts` no bounds, by configuration rather
+ * than by accident, and the reason says so with the property that set it.
+ */
+private fun explainMetricsModes(result: FilePruneResult, node: GraphNode.FileNode): FilePruneResult {
+    val modes = node.metricsModes.takeIf { it.isNotEmpty() } ?: return result
+    return result.copy(
+        outcomes = result.outcomes.map { outcome ->
+            if (outcome.effect != TermEffect.NOT_EVALUATED) return@map outcome
+            val check = modes.firstOrNull { it.column.equals(outcome.predicate.column.trim(), ignoreCase = true) } ?: return@map outcome
+            if (check.configured.mode.recordsBounds) return@map outcome
+            outcome.copy(
+                reason = outcome.reason + " — its metrics mode is ${check.configured.mode.spelled} (${check.configured.setBy}), so " +
+                    (if (check.configured.mode.recordsCounts) "no bound is recorded for it" else "nothing is recorded for it"),
+            )
+        },
+    )
 }
 
 /** Every predicate not evaluated against the file, for one [reason] that is about the table rather than the file. */

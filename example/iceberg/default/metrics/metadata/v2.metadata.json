@@ -1,0 +1,96 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "70bc2397-211b-4fe3-8bab-a503befe11cd",
+  "location" : "/wh/default/metrics",
+  "last-sequence-number" : 0,
+  "last-updated-ms" : 1789398099478,
+  "last-column-id" : 8,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "note",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 4,
+      "name" : "tag",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 5,
+      "name" : "score",
+      "required" : false,
+      "type" : "double"
+    }, {
+      "id" : 6,
+      "name" : "addr",
+      "required" : false,
+      "type" : {
+        "type" : "struct",
+        "fields" : [ {
+          "id" : 7,
+          "name" : "city",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "id" : 8,
+          "name" : "zip",
+          "required" : false,
+          "type" : "int"
+        } ]
+      }
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 1,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  }, {
+    "order-id" : 1,
+    "fields" : [ {
+      "transform" : "identity",
+      "source-id" : 5,
+      "direction" : "asc",
+      "null-order" : "nulls-first"
+    } ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.metadata.metrics.column.note" : "full",
+    "write.metadata.metrics.column.tag" : "none",
+    "write.metadata.metrics.column.addr.zip" : "full",
+    "write.metadata.metrics.column.name" : "truncate(4)",
+    "write.parquet.compression-codec" : "zstd",
+    "write.distribution-mode" : "range",
+    "write.metadata.metrics.default" : "counts"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1789398099196,
+    "metadata-file" : "/wh/default/metrics/metadata/v1.metadata.json"
+  } ]
+}

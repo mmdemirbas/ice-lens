@@ -1,0 +1,80 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "75f4c6f4-5a70-4dd3-aae9-210b7909302e",
+  "location" : "/wh/default/metricsw",
+  "last-sequence-number" : 0,
+  "last-updated-ms" : 1789398101731,
+  "last-column-id" : 8,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "c1",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "c2",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "c3",
+      "required" : false,
+      "type" : {
+        "type" : "struct",
+        "fields" : [ {
+          "id" : 7,
+          "name" : "a",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "id" : 8,
+          "name" : "b",
+          "required" : false,
+          "type" : "int"
+        } ]
+      }
+    }, {
+      "id" : 4,
+      "name" : "c4",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 5,
+      "name" : "c5",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 6,
+      "name" : "c6",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.metadata.metrics.max-inferred-column-defaults" : "3",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ ]
+}

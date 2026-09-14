@@ -75,6 +75,7 @@ core/src/main/kotlin/
 │   ├── UnreferencedFiles.kt   # What is under the table root that no metadata version names — the orphan question, asked from the directory
 │   ├── MissingFiles.kt        # The converse: what the retained snapshots need that is not there — a stat per needed file, both formats
 │   ├── StatsCheck.kt          # A data file's recorded column bounds and counts against the same figures counted from its rows — a file read, behind its own click
+│   ├── MetricsConfig.kt       # `write.metadata.metrics.*` read as MetricsConfig.from reads it — each column's mode and the rule that set it — and whether a file records that shape
 │   ├── FileStatsSweep.kt      # The same over the current snapshot's live files from the model, capped — the table panel's second click under Integrity
 │   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
 │   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing — and the fates a hit can have, both formats
@@ -678,6 +679,37 @@ intellij/src/main/kotlin/plugin/
   holds every checked-in table to nothing missing and deletes a data file, a manifest, a manifest
   list, a tag-only Paimon data file and a schema file from copies to see each named with its
   readers
+- **Which statistics a column has is a configuration, and the file panel names the rule that
+  gave each column its mode.** `model/MetricsConfig.kt` reads `write.metadata.metrics.*` the
+  way `MetricsConfig.from` reads it at 1.8.1 — the configured default, else `truncate(16)`, or
+  past `write.metadata.metrics.max-inferred-column-defaults` (100) top-level columns
+  `truncate(16)` for the first that many (nested leaves included) and `none` for the rest, a
+  property nobody sets and the reason a wide table's later columns prune on nothing; a sort
+  column promoted to `truncate(16)` where the default is `none` or `counts`; then
+  `write.metadata.metrics.column.<dotted name>`, an invalid spelling falling back with a
+  warning only the writer's log sees — and `metricsModeChecks` puts each column's recorded
+  shape (nothing, counts, counts and bounds; a string bound's length under `truncate(N)`)
+  beside its mode. **A file is judged under the configuration and schema of the version that
+  committed its snapshot** (`MetricsConfigHistory`, the lowest version listing the id), since a
+  file written before a property change keeps the older shape and a column added later has
+  nothing to record — never a DELETED entry, whose `snapshot_id` names the commit that removed
+  the file. Three rules sit beside the modes, each seen on the corpus before it was read:
+  **a leaf under a list or map records counts and never bounds** (`ParquetUtil.shouldStoreBounds`
+  keeps bounds only for a column reached through structs — `deep`'s `tags.element`,
+  `props.key`, `props.value`); **a positional delete's `file_path` and `pos` record bounds or
+  nothing, never counts** (`MetricsConfig.forPositionDelete` makes them `full` and
+  `PositionDeleteWriter.metrics` strips the counts, and the bounds too when the file references
+  several data files — which is the pairing's `mayReach` shape); and an equality delete holds
+  its equality columns alone. The Avro writer records no metrics under any mode, so an Avro
+  file is not judged. `metrics` and `metricsw` are the fixtures, one column per rule, with the
+  writer's `readable_metrics` printed in the script; `MetricsConfigTest` sweeps every
+  engine-written file to its configuration (400-odd columns agreeing, every mode met) and
+  plants bounds under `counts`, a five-character bound under `truncate(4)`, nothing under
+  `counts`, and an all-null column, which is not judged. The file panel's `Metrics Modes`
+  section draws it under the statistics check, the integrity check counts it under
+  `METRICS_MODES`, the IDE strip folds it into the file's `Checks` row, and the scan-pruning
+  table's "not evaluated" names the mode where the mode is why (`explainMetricsModes`: `tag`
+  under `none` records nothing, `id` under `counts` no bound)
 - **A data file's own statistics are the last recorded figures, and they are checked behind a
   click.** `model/StatsCheck.kt` puts each column's recorded lower and upper bound, null count
   and (Iceberg) value and NaN count beside the same figures `service/StatsCheckReader.kt` counts
@@ -2357,7 +2389,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,297 tests across 176 files (1,020 in :core, 266 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,305 tests across 177 files (1,027 in :core, 267 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2460,6 +2492,7 @@ container invocation and the traps in it:
 | `default/respec` | `PartitionSpecEvolutionTest` | two partition specs — dropped, rebucketed, `days`→`months` |
 | `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
+| `default/metrics`, `metricsw` | `MetricsConfigTest` | `write.metadata.metrics.*` on every rule `MetricsConfig.from` applies — a `counts` default, `truncate(4)`, `full`, `none` per column, a dotted override inside a struct, a sort column promoted, a `none` changed to `counts` between two inserts; and `max-inferred-column-defaults = 3` on six columns, the first three recording bounds and the rest nothing |
 | `default/rgs` | `FileLayoutCheckFixtureTest` | a 5,000-row file of thirteen Parquet row groups under `write.parquet.row-group-size-bytes = 8192`, each opening with a dictionary page, and a one-row file beside it — the one table whose `split_offsets` is more than `[4]`, checked against the footer's row-group starts |
 | `default/ndv` | `ThetaSketchFixtureTest` | the four shapes a compact theta sketch is serialised in — 20,000 distinct ids past the 4,096 nominal entries (an estimate, `ndv 20158`), seven exact, a single value, an all-null column — each blob's `ndv` the oracle for the decoded estimate |
 | `default/pstats` | `PartitionStatsFixtureTest` | a partition statistics file, written by Iceberg 1.10 — three partitions, one with a positional delete, checked against the writer's `.partitions` and this app's own live-file walk |

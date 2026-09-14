@@ -72,6 +72,11 @@
 00000-10-46789686-0114-4c56-ab4f-0422fdb5c686-0-00001.parquet ->
 00000-11-ac580287-8e10-473d-874e-1bfbfcc12e4e-0-00001.parquet ->
 00000-13-8a0e118b-a86b-4a2f-91ab-69273559ee9b-0-00001.parquet ->
+-- metrics
+00000-2-b56e718f-9798-4df2-a9e2-ce9c7235b07a-0-00001.parquet ->
+00000-5-b9e081ed-542e-45b8-b7f0-a27f6691ec59-0-00001.parquet ->
+-- metricsw
+00000-6-c28b1bda-a23e-49e9-8637-7ada61dbefdc-0-00001.parquet ->
 -- migdeep
 00000-403-9d113518-4df6-40bc-91ed-a6e396ebf56b-0-00001.parquet ->
 part-00000-86a2746a-0f28-42ac-b115-3c9e7ae9f37d-c000.snappy.parquet ->

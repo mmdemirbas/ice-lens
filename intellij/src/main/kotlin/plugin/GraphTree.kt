@@ -216,10 +216,12 @@ object GraphTree {
                 val records = node.data.recordCount ?: 0L
                 "Row ids" to if (records > 0) "$first..${first + records - 1}" else first.toString()
             },
-            // The partition against the file's own bounds, on a partitioned file only.
-            node.partition?.takeIf { !it.isUnpartitioned }?.let { partition ->
-                CHECKS to checksLine(partitionBoundsChecks(partition, node.columnStats).map { Triple("partition ${it.field}", it.agrees, "${it.recorded} recorded, ${it.fromBounds ?: it.reason} from the bounds") })
-            },
+            // The partition against the file's own bounds, on a partitioned file only, and each
+            // column's statistics against the metrics configuration the file was written under.
+            (node.partition?.takeIf { !it.isUnpartitioned }?.let { partition ->
+                partitionBoundsChecks(partition, node.columnStats).map { Triple("partition ${it.field}", it.agrees, "${it.recorded} recorded, ${it.fromBounds ?: it.reason} from the bounds") }
+            }.orEmpty() + node.metricsModes.map { Triple("${it.column} metrics", it.agrees, "${it.recorded} recorded under ${it.configured.mode.spelled}: ${it.reason}") })
+                .takeIf { it.isNotEmpty() }?.let { CHECKS to checksLine(it) },
         )
         is GraphNode.RowNode -> node.resolvedData.entries.map { (key, value) ->
             when (key) {
