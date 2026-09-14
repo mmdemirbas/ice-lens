@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`rewrite_manifests` planned** — the snapshot panel's `Manifest Rewrite`: per content kind,
+  the manifests under the output spec rewritten into their length over
+  `commit.manifest.target-size-bytes`, a kind of one manifest within the target left alone,
+  another spec's manifests kept, and the `manifests-created` / `kept` / `replaced` figures the
+  commit would record, which `maint`'s own rewrite holds. A line on the table panel's
+  maintenance summary.
 - **`rewrite_position_delete_files` planned, and what it would drop read** — the snapshot
   panel's `Position Delete Rewrite`: the live positional delete files grouped and sized the way
   `SizeBasedPositionDeletesRewriter` plans them, a bare call beside `rewrite-all`, the v3 refusal

@@ -350,6 +350,25 @@ class InspectorRenderTest {
     }
 
     /**
+     * The manifest rewrite planned on the snapshot before `maint` ran it: two data and two delete
+     * manifests into one each, created 2 / kept 0 / replaced 4 — the summary the next commit
+     * recorded; and on the commit after it, nothing to do.
+     */
+    @Test
+    fun `the manifest rewrite plans what maint's own rewrite recorded`() {
+        val graph = graphFor("maint")
+        val snapshots = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().sortedBy { it.data.sequenceNumber }
+        val rewrite = snapshots.indexOfFirst { it.change?.tallies?.any { t -> t.label == "Manifests written" && t.recorded != null } == true }
+        assertTrue(rewrite > 0, "maint should carry the manifest rewrite after its first commits")
+        renderScene("manifest-rewrite", width = 1400, height = 1300) {
+            Column(Modifier.padding(16.dp)) {
+                ManifestRewriteSection(snapshots[rewrite - 1], graph)
+                ManifestRewriteSection(snapshots[rewrite], graph)
+            }
+        }
+    }
+
+    /**
      * A partitioned Paimon table's data file: the partition decoded from the entry beside the
      * directory text Paimon wrote, which for a date is its epoch day rather than the date.
      */

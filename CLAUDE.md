@@ -1607,6 +1607,24 @@ intellij/src/main/kotlin/plugin/
   the pairing's file by file. The snapshot panel's `Position Delete Rewrite` draws the bare
   call and `rewrite-all` as two plans, the read behind a button under them; the table panel's
   maintenance summary carries the line
+- **`rewrite_manifests` is planned from `RewriteManifestsSparkAction`, and the three figures it
+  records are the plan's.** `model/ManifestRewritePlan.kt`: per content kind, data then deletes,
+  the current snapshot's manifests under the output spec (`spec-id`, else the table's current
+  spec) are rewritten whole into their total `manifest_length` over
+  `commit.manifest.target-size-bytes` (8 MB) rounded up — **unless the kind is one manifest
+  that fits one target**, the only skip — and a manifest under another spec is never matched
+  and is kept; a matching manifest without file counts refuses the kind (`No file counts in
+  manifest`). `BaseRewriteManifests.apply` records `manifests-created` (the manifests added),
+  `manifests-kept` (the list's manifests neither rewritten nor deleted) and `manifests-replaced`
+  (the rewritten ones), and `ManifestRewriteFixtureTest` holds the plan on the snapshot before
+  `maint`'s rewrite to that commit's own summary — two data and two delete manifests into one
+  each: created 2, kept 0, replaced 4 — and the plan on the rewrite itself to nothing to do;
+  the script header's first run (one kind of two, one of one: created 1, kept 1) is planted,
+  with a manifest past the target splitting into three and a spec-0 manifest under an output
+  spec of 1 kept whatever its size. The snapshot panel's `Manifest Rewrite` leads with the
+  three figures and draws a row per kind; the table panel's maintenance summary carries the
+  line, so every procedure `maint` ran — data rewrite, position-delete rewrite, manifest
+  rewrite, expiry — and the merge every commit runs are planned there
 - **What the next commit does to the manifest list is planned the way `ManifestMergeManager`
   does it, and it runs on every batch write.** `model/ManifestMergePlan.kt`, read at 1.8.1: the
   manifests a commit is about to list — the one it wrote, then the ones it kept in list order,
@@ -2456,7 +2474,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,326 tests across 178 files (1,045 in :core, 270 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,330 tests across 179 files (1,048 in :core, 271 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

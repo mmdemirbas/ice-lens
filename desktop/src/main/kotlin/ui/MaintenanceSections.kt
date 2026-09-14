@@ -32,6 +32,8 @@ import model.planManifestMerge
 import model.RewriteOptions
 import model.planRewrite
 import model.PositionDeleteRewriteOptions
+import model.ManifestRewriteOptions
+import model.planManifestRewrite
 import model.PositionDeleteRewritePlan
 import model.planPositionDeleteRewrite
 import service.PositionDeleteRewriteDrops
@@ -289,6 +291,26 @@ internal fun MaintenanceSection(node: GraphNode.TableNode) {
                 "${formatCounted(listed.count { (it.content ?: ManifestContent.DATA) == ManifestContent.DATA }, "data manifest")} listed; ${merge.describe}" + if (mergeOptions.enabled) " under min-count-to-merge ${mergeOptions.minCountToMerge}" else "",
                 "$snapshotPanel → Manifest Merge",
                 if (merge.mergedBins.isNotEmpty()) verdictSkippedColor() else null,
+            )
+            val manifestRewrite = planManifestRewrite(listed, ManifestRewriteOptions.forTable(meta.properties, meta.defaultSpecId))
+            rows += Row(
+                when {
+                    manifestRewrite.rewrites -> "would replace ${formatCounted(manifestRewrite.replaced, "manifest")} with ${manifestRewrite.created}"
+                    manifestRewrite.refused.isNotEmpty() -> "refused"
+                    else -> "nothing to do"
+                },
+                "rewrite_manifests",
+                when {
+                    manifestRewrite.rewrites -> manifestRewrite.kinds.filter { it.rewritten }.joinToString("; ") { "${formatCounted(it.matching.size, "${it.label} manifest")} into ${it.targetNumManifests}" } + "; ${formatCounted(manifestRewrite.kept, "manifest")} kept"
+                    manifestRewrite.refused.isNotEmpty() -> manifestRewrite.refused.joinToString("; ") { it.leftAlone.orEmpty() }
+                    else -> "each kind is one manifest within commit.manifest.target-size-bytes, or none"
+                },
+                "$snapshotPanel → Manifest Rewrite",
+                when {
+                    manifestRewrite.rewrites -> verdictSkippedColor()
+                    manifestRewrite.refused.isNotEmpty() -> colors.error
+                    else -> null
+                },
             )
         }
         val expiry = meta.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs))
@@ -611,6 +633,86 @@ internal fun RewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel) {
                 leadCellColors = plan.groups.map { if (it.rewritten) verdictSkippedColor() else null },
             )
         }
+    }
+}
+
+/**
+ * What `rewrite_manifests` would do to this snapshot's manifest list, the way
+ * `RewriteManifestsSparkAction` plans it — see [planManifestRewrite]. Two rows, one per content
+ * kind, the verdict first; the manifests under another spec listed as kept, since the action
+ * matches the output spec alone. The figures are the three the commit's summary records, which
+ * is how `maint`'s manifest rewrite holds them.
+ */
+@Composable
+internal fun ManifestRewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel) {
+    val colors = MaterialTheme.colorScheme
+    val latest = graph.newestMetadata()
+    val options = ManifestRewriteOptions.forTable(latest?.properties.orEmpty(), latest?.defaultSpecId)
+    val listed = node.manifestList
+    val plan = planManifestRewrite(listed, options)
+    val title = "Manifest Rewrite" + when {
+        node.expired -> ""
+        plan.rewrites -> " — ${plan.replaced} into ${plan.created}"
+        plan.refused.isNotEmpty() -> " — refused"
+        else -> " — nothing to do"
+    }
+    CountedSection(title, listed.size, "manifests") {
+        Text(
+            "What rewrite_manifests would do, the way RewriteManifestsSparkAction plans it: per content " +
+                "kind, the manifests under the output spec (spec-id, else the table's current spec " +
+                "${options.specId ?: "— none known here"}) are rewritten whole into their total length over " +
+                "commit.manifest.target-size-bytes (${formatBytes(options.targetManifestSizeBytes)}), rounded " +
+                "up — unless the kind is one manifest that fits one target, which is left alone. A manifest " +
+                "under another spec is kept. The commit records the outcome as manifests-created, " +
+                "manifests-kept and manifests-replaced.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (node.expired) {
+            Text("Not readable here — this snapshot's manifest list is gone.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            return@CountedSection
+        }
+        Text(
+            "Created ${plan.created}, kept ${plan.kept}, replaced ${plan.replaced}.",
+            fontSize = TypeScale.small,
+            fontWeight = FontWeight.SemiBold,
+            color = if (plan.rewrites) verdictSkippedColor() else colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        val rows = plan.kinds.map { k ->
+            listOf(
+                when {
+                    k.rewritten -> "REWRITTEN — ${k.matching.size} into ${k.targetNumManifests}"
+                    k.leftAlone?.startsWith(model.ManifestRewritePlan.REFUSED_PREFIX) == true -> k.leftAlone.orEmpty()
+                    else -> "left alone — ${k.leftAlone}"
+                },
+                "${k.label} manifests",
+                "${k.matching.size}",
+                formatBytes(k.inputBytes),
+                if (k.rewritten) "${k.targetNumManifests}" else "—",
+            )
+        } + plan.unmatched.map { m ->
+            listOf(
+                "kept — spec ${m.partitionSpecId ?: "?"} is not the output spec",
+                if ((m.content ?: ManifestContent.DATA) == ManifestContent.DELETES) "delete manifest" else "data manifest",
+                "1",
+                m.manifestLength?.let { formatBytes(it) } ?: "N/A",
+                "—",
+            )
+        }
+        WideTable(
+            headers = listOf("Verdict", "Kind", "Manifests", "Bytes", "Written"),
+            columnWidths = listOf(250.dp, 130.dp, 80.dp, 100.dp, 70.dp),
+            rows = rows,
+            leadCellColors = plan.kinds.map {
+                when {
+                    it.rewritten -> verdictSkippedColor()
+                    it.leftAlone?.startsWith(model.ManifestRewritePlan.REFUSED_PREFIX) == true -> colors.error
+                    else -> null
+                }
+            } + plan.unmatched.map { null },
+        )
     }
 }
 
