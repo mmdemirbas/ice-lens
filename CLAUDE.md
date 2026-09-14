@@ -90,6 +90,7 @@ core/src/main/kotlin/
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonManifestMergePlan.kt # What the next Paimon commit does to the base manifest list — ManifestFileMerger's full and minor compactions
+│   ├── FastForwardPlan.kt     # fast_forward on both formats — Iceberg's ref move under the ancestor rule, Paimon's replacement of main from the branch's earliest snapshot on, and what that leaves
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
 │   ├── SchemaFieldRows.kt     # A schema as one row per field, nested fields under their path with the ids the format evolves them by — both schema panels' table
 │   ├── IcebergExport.kt       # The Iceberg metadata a Paimon table writes beside its own, against the table it exports — which of its live files an Iceberg reader sees
@@ -1854,6 +1855,31 @@ intellij/src/main/kotlin/plugin/
   (`UnreferencedFilesTest`'s no-orphan sweep leaves `prba` out for that reason), and every
   fixture's latest snapshot to a rollback that removes nothing. The Paimon snapshot panel's
   `Rollback` section draws it on `main`'s retained snapshots
+- **`fast_forward` is one name for two operations, and both are planned.**
+  `model/FastForwardPlan.kt`. Iceberg's `fast_forward(table, branch, to)`
+  (`UpdateSnapshotReferencesOperation.replaceBranch` with `fastForward = true`, 1.8.1) moves one
+  ref: the branch's tip must be an ancestor of `to`'s snapshot (`SnapshotUtil.isAncestorOf`) or
+  the call fails with `Cannot fast-forward: <branch> is not an ancestor of <to>`; a name with no
+  ref is created there; the same snapshot on both is nothing to do; a tag cannot be moved.
+  Nothing is deleted and no snapshot is written, so two lines that have both committed since
+  they forked cannot be fast-forwarded either way — `branched`'s every pair. Paimon's
+  `sys.fast_forward(table, branch)` (`FileSystemBranchManager.fastForward`, release-1.3.1)
+  **replaces main from the branch's earliest snapshot id on**: main's `snapshot/` files at or
+  above that id, `schema/` files at or above that snapshot's schema id, every tag at or above the
+  id and `LATEST` are deleted, and the branch's three directories are copied over main's — main's
+  own commits from that id are dropped, not merged, and the files they wrote are left named by
+  nothing, the rollback's leftovers (`PaimonFastForwardPlan.leftovers`, from the same
+  `everyName` fold `rollbackLeftovers` uses; `identicalSnapshots` tells the snapshot a branch
+  carries verbatim from its creation from a commit of main's that goes). `main` refuses by name
+  and a branch with no snapshot refuses. `docs/fixtures/fast-forward.sql` records the runs:
+  `sweepb`'s `dev` → `main` moved (`dev 8337608489946395297 1069833806646654058`), the other
+  direction and every `branched` pair refused, and `brf` is `br` after `fast_forward('dev')` —
+  main's snapshot 3 gone, its 2 overwritten by dev's, `SELECT *` reading k 1, 2, 3, 5.
+  `FastForwardFixtureTest` holds both, and the leftovers to what the orphan check reports on
+  `brf`, two readings of one set. The metadata panel's `Fast-Forward` draws every branch against
+  every other ref where there is more than one; the Paimon table panel's draws each branch with
+  what main loses and gains and the files left; both `Maintenance` summaries carry a
+  `fast_forward` row
 - **A Paimon file records the bucket count it was written under, and a write is refused while
   it differs from the table's — so the integrity check compares the two.** Every manifest entry
   carries `_TOTAL_BUCKETS`, and at release-1.3.1 `AbstractFileStoreWrite.scanExistingFileMetas`
@@ -2661,7 +2687,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,375 tests across 187 files (1,086 in :core, 279 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,385 tests across 188 files (1,092 in :core, 280 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2791,6 +2817,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest`, `PaimonFileBoundsFixtureTest`, `PaimonScanPruningTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
 | `paimon/db.db/ao` | `PaimonAppendOnlyFixtureTest` | an append-only table, no primary key, `bucket = -1` — no key range, everything in `bucket-0`, and a DELETE that rewrites a file as an `APPEND` with a negative delta |
 | `paimon/db.db/br` | `PaimonBranchFixtureTest` | two branches — one created from a tag and committed to, one created empty; main and `dev` both hold a `snapshot-2`, and `bucket-0` holds a file only the branch names |
+| `paimon/db.db/brf` | `FastForwardFixtureTest` | `br` after `sys.fast_forward(branch => 'dev')` — main's snapshot 3 gone and its 2 overwritten by the branch's, the tag rewritten from the branch's copy, and main's k = 4 and k = 6 files with their manifests and lists left named by nothing |
 | `paimon/db.db/cs` | `PaimonConsumerFixtureTest` | a consumer standing on snapshot 2, and an `expire_snapshots(retain_max = 1)` that left snapshots 2 and 3 because of it |
 | `paimon/db.db/fi` | `PaimonFileIndexFixtureTest`, `PaimonFileIndexPruningTest` | a bloom-filter file index both ways — a 599 KB `.index` beside the first data file, 117 bytes embedded in the second entry — on a primary-key table, whose merge read consults neither |
 | `paimon/db.db/fa` | `PaimonFileIndexTest`, `PaimonFileIndexPruningTest` | the append twin — bloom filters on both columns, a 1,290-byte `.index` then an embedded one, and a 43-byte value for xxHash64's stripe; the table whose scan and read actually ask the index |

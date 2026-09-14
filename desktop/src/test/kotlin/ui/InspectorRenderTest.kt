@@ -1444,6 +1444,27 @@ class InspectorRenderTest {
         renderInspector(pmm, "psnap_6", "paimon-snapshot-manifest-merge-kept", height = 3600, sectionCollapse = onlyExpanded("Manifest Merge"))
     }
 
+    /**
+     * `sweepb`'s `dev` sits four commits behind `main`, so one of its two pairs moves; `branched`'s
+     * two lines have both moved on and every pair is refused — the verdict column needs both. `br`
+     * is the Paimon side: fast-forwarding `dev` drops two of main's commits and leaves eight files.
+     */
+    @Test
+    fun `fast-forward is planned for every pair of refs, and for every paimon branch`() {
+        val sweepb = graphFor("sweepb")
+        val latest = sweepb.nodes.filterIsInstance<GraphNode.MetadataNode>().maxBy { metadataVersionFromFileName(it.fileName) ?: -1 }
+        renderInspector(sweepb, latest.id, "metadata-node-fast-forward", height = 3000, sectionCollapse = onlyExpanded("Fast-Forward"))
+        val branched = graphFor("branched")
+        val latestB = branched.nodes.filterIsInstance<GraphNode.MetadataNode>().maxBy { metadataVersionFromFileName(it.fileName) ?: -1 }
+        renderInspector(branched, latestB.id, "metadata-node-fast-forward-refused", height = 3000, sectionCollapse = onlyExpanded("Fast-Forward"))
+        val br = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/br").absolutePath)),
+            showRows = false,
+        )
+        val table = br.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        renderInspector(br, table.id, "paimon-table-node-fast-forward", height = 4200, sectionCollapse = onlyExpanded("Fast-Forward"))
+    }
+
     /** `prb`'s snapshot 2: a rollback to it removes two snapshots and a tag and leaves their files behind, listed. */
     @Test
     fun `a paimon snapshot plans what rolling back to it removes and leaves`() {

@@ -56,6 +56,7 @@ enum class PaimonExpiryFileReason(val label: String) {
     TAG_ALONE("held by the removed tag and by neither neighbour"),
     TAG_FILE("the tag itself"),
     ROLLED_BACK("written by a rolled-back commit and named by nothing kept"),
+    FAST_FORWARDED("written by a commit of main the fast-forward drops and named by nothing kept"),
 }
 
 data class PaimonExpiryFile(
@@ -104,6 +105,14 @@ data class PaimonExpirySnapshotView(
 
 data class PaimonExpiryTagView(val name: String, val snapshot: PaimonExpirySnapshotView)
 
+/** A branch as the fast-forward plan reads it: its own `snapshot/`, `tag/` and the schema ids under it. */
+data class PaimonExpiryBranchView(
+    val name: String,
+    val snapshots: Map<Long, PaimonExpirySnapshotView>,
+    val tags: List<PaimonExpiryTagView>,
+    val schemaIds: List<Int>,
+)
+
 /** What the plan reads: `snapshot/` and `tag/` before the expiry, every manifest still on disk. */
 data class PaimonExpiryFileInput(
     /** By id — `snapshot/` only, the branch the expiry runs on. */
@@ -111,6 +120,10 @@ data class PaimonExpiryFileInput(
     /** In snapshot-id order, as `TagManager.taggedSnapshots()` lists them. */
     val tags: List<PaimonExpiryTagView>,
     val tableOptions: Map<String, String>,
+    /** Main's `schema/` ids — what a fast-forward deletes from. */
+    val schemaIds: List<Int> = emptyList(),
+    /** `branch/`, for the fast-forward plan. */
+    val branches: List<PaimonExpiryBranchView> = emptyList(),
 )
 
 private fun PaimonUnifiedSnapshot.view(): PaimonExpirySnapshotView {
@@ -122,7 +135,41 @@ fun PaimonUnifiedTableModel.expiryFileInput(): PaimonExpiryFileInput = PaimonExp
     snapshots = snapshots.mapNotNull { s -> s.metadata.id?.let { it to s.view() } }.toMap(),
     tags = tags.sortedBy { it.snapshot.metadata.id ?: Long.MAX_VALUE }.map { PaimonExpiryTagView(it.name, it.snapshot.view()) },
     tableOptions = schemas.lastOrNull()?.options.orEmpty(),
+    schemaIds = schemas.mapNotNull { it.id },
+    branches = branches.map { b ->
+        PaimonExpiryBranchView(
+            name = b.name,
+            snapshots = b.snapshots.mapNotNull { s -> s.metadata.id?.let { it to s.view() } }.toMap(),
+            tags = b.tags.sortedBy { it.snapshot.metadata.id ?: Long.MAX_VALUE }.map { PaimonExpiryTagView(it.name, it.snapshot.view()) },
+            schemaIds = b.schemas.mapNotNull { it.id },
+        )
+    },
 )
+
+/** Every file the snapshot names — lists, manifests, data and changelog files, index and statistics — by name, each marked [reason]. */
+internal fun PaimonExpirySnapshotView.everyName(reason: PaimonExpiryFileReason): Map<String, PaimonExpiryFile> {
+    val id = this.id
+    val named = linkedMapOf<String, PaimonExpiryFile>()
+    fun put(kind: PaimonExpiryFileKind, name: String, path: String?, size: Long?) { named.putIfAbsent(name, PaimonExpiryFile(kind, name, path, size, reason, id)) }
+    (base + delta).forEach { m ->
+        put(PaimonExpiryFileKind.MANIFEST, m.name, "manifest/${m.name}", m.sizeBytes)
+        m.entries.forEach { e ->
+            put(PaimonExpiryFileKind.DATA_FILE, paimonEntryFileName(e), e.path.toString(), e.metadata.file?.fileSize)
+            e.metadata.file?.extraFiles.orEmpty().forEach { extra -> put(PaimonExpiryFileKind.DATA_FILE, extra, e.path.resolveSibling(extra).toString(), null) }
+        }
+    }
+    changelog.forEach { m ->
+        put(PaimonExpiryFileKind.MANIFEST, m.name, "manifest/${m.name}", m.sizeBytes)
+        m.entries.forEach { e -> put(PaimonExpiryFileKind.CHANGELOG_FILE, paimonEntryFileName(e), e.path.toString(), e.metadata.file?.fileSize) }
+    }
+    listOfNotNull(metadata.baseManifestList, metadata.deltaManifestList, metadata.changelogManifestList).forEach { put(PaimonExpiryFileKind.MANIFEST_LIST, it, "manifest/$it", null) }
+    metadata.indexManifest?.let { im ->
+        put(PaimonExpiryFileKind.INDEX_MANIFEST, im, "index/$im", null)
+        indexFiles.forEach { f -> f.fileName?.let { put(PaimonExpiryFileKind.INDEX_FILE, it, "index/$it", f.fileSize) } }
+    }
+    metadata.statistics?.let { put(PaimonExpiryFileKind.STATISTICS, it, "statistics/$it", null) }
+    return named
+}
 
 internal fun paimonEntryFileName(f: PaimonUnifiedDataFile) = f.metadata.file?.fileName ?: f.path.fileName.toString()
 

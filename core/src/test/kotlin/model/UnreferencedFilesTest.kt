@@ -33,9 +33,10 @@ class UnreferencedFilesTest {
         // own below; `prba` is a table rolled back, which leaves the rolled-back commits' files named
         // by nothing — PaimonRollbackFixtureTest holds them to the rollback plan's leftovers; `po`,
         // `poa`, `orph` and `orpha` carry stray files by design, and OrphanRemovalPlanFixtureTest
-        // holds them to what remove_orphan_files deleted.
+        // holds them to what remove_orphan_files deleted; `brf` is a table fast-forwarded to a
+        // branch, which drops main's later commits the same way — FastForwardFixtureTest holds it.
         val models: List<() -> FormatTableModel> = (icebergFixtures - setOf("orph", "orpha")).map { name -> { iceberg(name) } } +
-            (FixtureCatalog.paimon - setOf("cl", "tg", "prba", "po", "poa")).map { name -> { paimon(name) } }
+            (FixtureCatalog.paimon - setOf("cl", "tg", "prba", "po", "poa", "brf")).map { name -> { paimon(name) } }
         assertTrue(models.size >= 50, models.size.toString())
         models.forEach { open ->
             val model = open()

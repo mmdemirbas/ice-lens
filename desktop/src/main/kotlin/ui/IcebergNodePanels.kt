@@ -212,6 +212,7 @@ internal fun ColumnScope.MetadataPanel(
             )
         }
 
+        IcebergFastForwardSection(node)
         ExpirySection(node.data, nowMs = expiryClock())
         ExpiryFilesSection(node.data, currentGraph, nowMs = expiryClock())
 

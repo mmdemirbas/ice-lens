@@ -32,6 +32,10 @@ import model.UnreferencedFilesReport
 import model.planManifestMerge
 import model.PaimonManifestMergeOptions
 import model.planOrphanRemoval
+import model.IcebergFastForwardVerdict
+import model.PaimonFastForwardPlan
+import model.fastForwardPlans
+import model.planFastForward
 import model.planPaimonManifestCompaction
 import model.planPaimonManifestMerge
 import model.RewriteOptions
@@ -345,6 +349,18 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: Unrefer
             "${input.metadataFileName} → Expiry, Expiry Files",
             if (expiry.removed.isEmpty()) null else verdictSkippedColor(),
         )
+        if (meta.refs.size > 1) {
+            val pairs = meta.fastForwardPlans()
+            val moving = pairs.filter { it.moves }
+            rows += Row(
+                if (moving.isEmpty()) "nothing moves" else "${moving.size} of ${formatCounted(pairs.size, "pair")} would move",
+                "fast_forward",
+                if (moving.isEmpty()) "no branch's tip is an ancestor of another ref's snapshot: every line has moved on since it forked"
+                else moving.joinToString("; ") { "${it.branch} → ${it.to} takes on ${formatCounted(it.gained.size, "commit")}" },
+                "${input.metadataFileName} → Fast-Forward",
+                if (moving.isEmpty()) null else verdictSkippedColor(),
+            )
+        }
     } else if (input is PaimonMaintenanceInput && paimonExpiry != null) {
         val current = input.current
         if (current != null) {
@@ -366,6 +382,23 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: Unrefer
                 "$snapshotPanel → Manifest Merge",
                 if (manifestCompaction.writesNewList) verdictSkippedColor() else null,
             )
+            val branches = node.summary.branches.orEmpty()
+            if (branches.isNotEmpty()) {
+                val plans = node.paimonExpiryFiles.value?.let { files -> branches.mapNotNull { files.planFastForward(it.name) } }
+                val dropping = plans.orEmpty().filter { it.refused == null && it.leftovers.isNotEmpty() }
+                rows += when {
+                    plans == null -> Row("not readable", "fast_forward", "the manifests could not be read", "table → Fast-Forward", null)
+                    dropping.isNotEmpty() -> Row(
+                        "would drop ${formatCounted(dropping.sumOf { it.droppedCommits }, "commit")} of main",
+                        "fast_forward",
+                        dropping.joinToString("; ") { "${it.branch}: main from snapshot ${it.earliestId} on replaced, ${formatCounted(it.leftovers.size, "file")} left named by nothing" },
+                        "table → Fast-Forward",
+                        colors.error,
+                    )
+                    plans.any { it.refused == null } -> Row("replaces nothing main lacks", "fast_forward", plans.filter { it.refused == null }.joinToString("; ") { "${it.branch}: main from snapshot ${it.earliestId} on is the branch's own line" }, "table → Fast-Forward", null)
+                    else -> Row("refused", "fast_forward", plans.joinToString("; ") { "${it.branch}: ${it.refused}" }, "table → Fast-Forward", null)
+                }
+            }
             val lsms = current.bucketLsms
             if (current.hasPrimaryKey) {
                 val options = PaimonCompactionOptions.from(current.tableOptions)
@@ -882,6 +915,131 @@ internal fun PaimonRollbackSection(node: GraphNode.PaimonSnapshotNode, graph: Gr
                 )
                 if (leftovers.size > MAX_EXPIRY_FILE_ROWS) Text("${leftovers.size - MAX_EXPIRY_FILE_ROWS} more not listed.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
             }
+        }
+    }
+}
+
+/**
+ * What `fast_forward(table, branch, to)` would do for every branch against every other ref —
+ * see [planFastForward]: a move when the branch's tip is an ancestor of the target's snapshot,
+ * nothing when the two are at one snapshot, refused otherwise. Drawn on the metadata panel
+ * beside the refs it moves, and only where there is more than one ref to move between.
+ */
+@Composable
+internal fun IcebergFastForwardSection(node: GraphNode.MetadataNode) {
+    val colors = MaterialTheme.colorScheme
+    val meta = node.data
+    if (meta.refs.size < 2) return
+    val plans = meta.fastForwardPlans()
+    val moving = plans.count { it.moves }
+    val title = "Fast-Forward — " + if (moving == 0) "nothing moves" else "$moving of ${formatCounted(plans.size, "pair")} would move"
+    CountedSection(title, plans.size, "pairs") {
+        Text(
+            "What fast_forward(branch, to) does for each branch against each other ref, the way " +
+                "UpdateSnapshotReferencesOperation decides it: the branch moves to the ref's snapshot when its own " +
+                "tip is an ancestor of that snapshot, and is refused otherwise — two lines that have both " +
+                "committed since they forked cannot be fast-forwarded either way. A name the table has no ref " +
+                "for is created there. Nothing is deleted and no snapshot is written: the old tip stays reachable " +
+                "from the new one.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            headers = listOf("Verdict", "Branch", "To", "Gains", "Why"),
+            columnWidths = listOf(120.dp, 110.dp, 110.dp, 90.dp, 620.dp),
+            rows = plans.map { p ->
+                listOf(
+                    p.verdict.label,
+                    p.branch,
+                    p.to,
+                    if (p.verdict == IcebergFastForwardVerdict.MOVES) formatCounted(p.gained.size, "commit") else "—",
+                    p.reason,
+                )
+            },
+            leadCellColors = plans.map { if (it.moves) verdictSkippedColor() else null },
+        )
+    }
+}
+
+/**
+ * What `sys.fast_forward(table, branch)` does to main for each branch — see [planFastForward]
+ * on the Paimon side: main's snapshot, schema and tag files from the branch's earliest snapshot
+ * id on are deleted and the branch's copied in, so main's own commits from that id are dropped,
+ * not merged, and the files they wrote are left named by nothing. Drawn on the table panel
+ * where the table has a branch, with the leftovers listed the way the rollback lists its own.
+ */
+@Composable
+internal fun PaimonFastForwardSection(node: GraphNode.TableNode) {
+    val colors = MaterialTheme.colorScheme
+    val branches = node.summary.branches.orEmpty()
+    if (branches.isEmpty()) return
+    val files = node.paimonExpiryFiles.value
+    val plans = files?.let { f -> branches.mapNotNull { f.planFastForward(it.name) } }
+    val dropping = plans.orEmpty().count { it.refused == null && it.droppedCommits > 0 }
+    val title = "Fast-Forward" + when {
+        plans == null -> ""
+        dropping > 0 -> " — ${formatCounted(plans.filter { it.refused == null }.sumOf { it.droppedCommits }, "commit")} of main would go"
+        else -> " — main loses nothing"
+    }
+    CountedSection(title, branches.size, "branches") {
+        Text(
+            "What sys.fast_forward(branch) does to main, the way FileSystemBranchManager.fastForward does it: " +
+                "main's snapshot files from the branch's earliest snapshot id on, its schema files from that " +
+                "snapshot's schema id on, and every tag at or above the id are deleted, and the branch's snapshot/, " +
+                "schema/ and tag/ are copied over main's. Main's own commits from that id on are not merged — they " +
+                "are gone, and the data files, manifests and manifest lists they wrote stay on disk named by " +
+                "nothing, until remove_orphan_files. The branch itself is left in place.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (plans == null) {
+            Text("Not readable here: the manifests could not be read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            return@CountedSection
+        }
+        fun ids(xs: List<Long>) = xs.sorted().joinToString(", ")
+        WideTable(
+            headers = listOf("Verdict", "Branch", "Main Loses", "Main Gains", "Left Named By Nothing", "Why"),
+            columnWidths = listOf(200.dp, 90.dp, 260.dp, 240.dp, 200.dp, 520.dp),
+            rows = plans.map { p ->
+                val refused = p.refused
+                if (refused != null) listOf("REFUSED", p.branch, "—", "—", "—", refused)
+                else listOf(
+                    if (p.droppedCommits > 0) "DROPS ${formatCounted(p.droppedCommits, "commit")} of main" else "replaces main with its own line",
+                    p.branch,
+                    listOfNotNull(
+                        p.removedSnapshots.takeIf { it.isNotEmpty() }?.let { "snapshot${if (it.size == 1) "" else "s"} ${ids(it)}" },
+                        p.removedSchemas.takeIf { it.isNotEmpty() }?.let { "schema${if (it.size == 1) "" else "s"} ${it.sorted().joinToString(", ")}" },
+                        p.removedTags.takeIf { it.isNotEmpty() }?.let { "tag${if (it.size == 1) "" else "s"} ${it.joinToString(", ")}" },
+                    ).joinToString("; ").ifEmpty { "nothing" },
+                    listOfNotNull(
+                        "snapshot${if (p.arrivingSnapshots.size == 1) "" else "s"} ${ids(p.arrivingSnapshots)}",
+                        p.arrivingSchemas.takeIf { it.isNotEmpty() }?.let { "schema${if (it.size == 1) "" else "s"} ${it.sorted().joinToString(", ")}" },
+                        p.arrivingTags.takeIf { it.isNotEmpty() }?.let { "tag${if (it.size == 1) "" else "s"} ${it.joinToString(", ")}" },
+                    ).joinToString("; "),
+                    if (p.leftovers.isEmpty()) "nothing" else "${formatCounted(p.leftovers.size, "file")}, ${formatBytes(p.leftoverBytes)}",
+                    "${p.branch}'s earliest snapshot is ${p.earliestId}" +
+                        (if (p.identicalSnapshots.isNotEmpty()) "; snapshot${if (p.identicalSnapshots.size == 1) "" else "s"} ${ids(p.identicalSnapshots)} the branch carries verbatim" else "") +
+                        (if (p.droppedCommits > 0) "; main's ${formatCounted(p.droppedCommits, "later commit")} ${if (p.droppedCommits == 1) "is" else "are"} forgotten" else ""),
+                )
+            },
+            leadCellColors = plans.map { if (it.refused == null && it.droppedCommits > 0) colors.error else null },
+        )
+        val leftovers = plans.flatMap { p -> p.leftovers.map { p.branch to it } }
+        if (leftovers.isNotEmpty()) {
+            Text(
+                "Left on disk after the call, named by nothing:",
+                fontSize = TypeScale.small,
+                color = verdictUnevaluatedColor(),
+                modifier = Modifier.padding(top = 6.dp, bottom = 4.dp),
+            )
+            WideTable(
+                headers = listOf("Kind", "File", "Bytes", "Written By", "After"),
+                columnWidths = listOf(120.dp, 520.dp, 100.dp, 90.dp, 90.dp),
+                rows = leftovers.take(MAX_EXPIRY_FILE_ROWS).map { (branch, f) -> listOf(f.kind.label, f.path ?: f.name, f.sizeBytes?.let(::formatBytes) ?: "—", f.snapshotId?.let { "snapshot $it" } ?: "—", branch) },
+            )
+            if (leftovers.size > MAX_EXPIRY_FILE_ROWS) Text("${leftovers.size - MAX_EXPIRY_FILE_ROWS} more not listed.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
         }
     }
 }

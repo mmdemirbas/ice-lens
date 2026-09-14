@@ -39,33 +39,10 @@ fun PaimonExpiryInput.planRollback(targetId: Long): PaimonRollbackPlan? {
  * leaves alone.
  */
 fun PaimonExpiryFileInput.rollbackLeftovers(targetId: Long): List<PaimonExpiryFile> {
-    fun PaimonExpirySnapshotView.everyName(): Map<String, PaimonExpiryFile> {
-        val id = this.id
-        val named = linkedMapOf<String, PaimonExpiryFile>()
-        fun put(kind: PaimonExpiryFileKind, name: String, path: String?, size: Long?) { named.putIfAbsent(name, PaimonExpiryFile(kind, name, path, size, PaimonExpiryFileReason.ROLLED_BACK, id)) }
-        (base + delta).forEach { m ->
-            put(PaimonExpiryFileKind.MANIFEST, m.name, "manifest/${m.name}", m.sizeBytes)
-            m.entries.forEach { e ->
-                put(PaimonExpiryFileKind.DATA_FILE, paimonEntryFileName(e), e.path.toString(), e.metadata.file?.fileSize)
-                e.metadata.file?.extraFiles.orEmpty().forEach { extra -> put(PaimonExpiryFileKind.DATA_FILE, extra, e.path.resolveSibling(extra).toString(), null) }
-            }
-        }
-        changelog.forEach { m ->
-            put(PaimonExpiryFileKind.MANIFEST, m.name, "manifest/${m.name}", m.sizeBytes)
-            m.entries.forEach { e -> put(PaimonExpiryFileKind.CHANGELOG_FILE, paimonEntryFileName(e), e.path.toString(), e.metadata.file?.fileSize) }
-        }
-        listOfNotNull(metadata.baseManifestList, metadata.deltaManifestList, metadata.changelogManifestList).forEach { put(PaimonExpiryFileKind.MANIFEST_LIST, it, "manifest/$it", null) }
-        metadata.indexManifest?.let { im ->
-            put(PaimonExpiryFileKind.INDEX_MANIFEST, im, "index/$im", null)
-            indexFiles.forEach { f -> f.fileName?.let { put(PaimonExpiryFileKind.INDEX_FILE, it, "index/$it", f.fileSize) } }
-        }
-        metadata.statistics?.let { put(PaimonExpiryFileKind.STATISTICS, it, "statistics/$it", null) }
-        return named
-    }
     val removed = snapshots.filterKeys { it > targetId }.values.sortedBy { it.id ?: Long.MAX_VALUE }
     val kept = snapshots.filterKeys { it <= targetId }.values + tags.filter { (it.snapshot.id ?: Long.MIN_VALUE) <= targetId }.map { it.snapshot }
-    val keptNames = kept.flatMap { it.everyName().keys }.toSet()
+    val keptNames = kept.flatMap { it.everyName(PaimonExpiryFileReason.ROLLED_BACK).keys }.toSet()
     val leftovers = linkedMapOf<String, PaimonExpiryFile>()
-    removed.forEach { s -> s.everyName().forEach { (name, file) -> if (name !in keptNames) leftovers.putIfAbsent(name, file) } }
+    removed.forEach { s -> s.everyName(PaimonExpiryFileReason.ROLLED_BACK).forEach { (name, file) -> if (name !in keptNames) leftovers.putIfAbsent(name, file) } }
     return leftovers.values.toList()
 }

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Fast-Forward`** on the Iceberg metadata panel and the Paimon table panel — what
+  `fast_forward` would do: on Iceberg, which branch can move to which ref under the ancestor
+  rule and which pairs are refused; on Paimon, which of main's commits the call drops in favour
+  of the branch's line, and the files it leaves named by nothing. A `fast_forward` row on both
+  `Maintenance` summaries. Fixture `brf`, and `docs/fixtures/fast-forward.sql` for the runs.
 - **A Paimon snapshot's `Manifest Merge`** — what the next commit does to the base manifest
   list, the way `ManifestFileMerger` does it on every commit: the bins that close on
   `manifest.target-file-size`, the leftover merged at `manifest.merge-min-count`, a full
