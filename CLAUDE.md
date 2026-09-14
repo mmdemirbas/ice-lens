@@ -1004,8 +1004,8 @@ intellij/src/main/kotlin/plugin/
   order, matched to the schema's fields by id and printed in DuckDB's own spelling), marks the
   cell `rebuilt` so the section is drawn and says why, and leaves a value whose shape is the
   schema's exactly as DuckDB prints it — `row-node-read-as-nested` is the capture. What is
-  still by name: a Paimon file's nested fields (its placement is a flat map by the file's
-  schema), and a map's key and value on the row panel, left as they print
+  still by name: a map's key and value on the row panel, left as they print, and a
+  data-evolution split's stitch (`readSplit`), which selects the schema's names from each file
 - **A filter is a boolean expression, and `NOT` is removed before anything is evaluated.**
   `model/ScanFilter.kt` holds `Term`/`And`/`Or`/`Not`; `evaluateScan`, `evaluatePruning` and
   `evaluateFilePruning` each take one, and the list form every existing caller passes is wrapped
