@@ -1409,6 +1409,16 @@ class InspectorRenderTest {
         renderInspector(graph, snapshot.id, "paimon-snapshot-changelog-only", height = 2000, sectionCollapse = onlyExpanded("Recorded Summary"))
     }
 
+    /** `pcl`'s table panel: the changelog expiry beside the snapshot expiry, and the maintenance line for it. */
+    @Test
+    fun `a paimon table with long-lived changelogs plans their expiry`() {
+        val graph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pcl").absolutePath)),
+            showRows = false,
+        )
+        renderInspector(graph, "table_root", "paimon-table-changelog-expiry", height = 3000, sectionCollapse = onlyExpanded("Changelog Expiry", "Maintenance"))
+    }
+
     @Test
     fun `a paimon snapshot lists its index files`() {
         val graph = GraphLayoutService.layoutGraph(

@@ -96,6 +96,8 @@ data class PaimonExpiryInput(
     val tagsBySnapshotId: Map<Long, List<String>>,
     /** The latest schema's `options`, where `snapshot.*` retention is set. */
     val tableOptions: Map<String, String>,
+    /** `changelog/`'s contents — id to `timeMillis` — where the changelog lifecycle is decoupled; see [planChangelogExpiry]. */
+    val changelogTimes: Map<Long, Long?> = emptyMap(),
 )
 
 fun PaimonUnifiedTableModel.expiryInput(): PaimonExpiryInput = PaimonExpiryInput(
@@ -103,6 +105,7 @@ fun PaimonUnifiedTableModel.expiryInput(): PaimonExpiryInput = PaimonExpiryInput
     consumerNext = consumers.associate { it.name to it.metadata.nextSnapshot },
     tagsBySnapshotId = tagNamesBySnapshotId,
     tableOptions = schemas.maxByOrNull { it.id ?: -1 }?.options.orEmpty(),
+    changelogTimes = changelogs.mapNotNull { c -> c.metadata.id?.let { it to c.metadata.timeMillis } }.toMap(),
 )
 
 const val PAIMON_DEFAULT_RETAIN_MIN = 10
@@ -152,6 +155,81 @@ fun PaimonExpiryInput.planExpiry(options: PaimonExpiryOptions): PaimonExpiryPlan
         PaimonSnapshotExpiryVerdict(id, retained, keptBy, tagsBySnapshotId[id].orEmpty())
     }
     return PaimonExpiryPlan(options, retainMax, retainMin, maxDeletes, cutoffMs, earliest, latest, verdicts)
+}
+
+data class PaimonChangelogExpiryPlan(
+    val options: PaimonExpiryOptions,
+    /** What the run would use: `changelog.num-retained.max` / `.min` and `changelog.time-retained`, each falling back to the snapshot setting; `snapshot.expire.limit`. */
+    val retainMax: Int,
+    val retainMin: Int,
+    val maxDeletes: Int,
+    val cutoffMs: Long,
+    /** `changelog/`'s first and last, or null on a table with none. */
+    val earliestId: Long?,
+    val latestId: Long?,
+    /** The floor `latestSnapshotId - retainMax + 1`: every changelog below it goes whatever its age, since the live snapshots count toward the maximum. */
+    val floor: Long?,
+    val changelogs: List<PaimonSnapshotExpiryVerdict>,
+) {
+    val removed: List<PaimonSnapshotExpiryVerdict> get() = changelogs.filter { !it.retained }
+}
+
+/**
+ * What `expire_changelogs` would remove from `changelog/` — `ExpireChangelogImpl.expire()` at
+ * release-1.3.1, which is the snapshot expiry's walk over the long-lived changelogs with one
+ * difference that matters: **the counts are against the latest snapshot id**, so the live
+ * snapshots count toward `changelog.num-retained.max` and `.min`. The floor is
+ * `latestSnapshotId - retainMax + 1` (or the earliest changelog); the end is the least of
+ * `latestSnapshotId - retainMin + 1`, a consumer's `nextSnapshot`, `earliest + snapshot.expire.limit`
+ * and the latest changelog; from the floor up, the first changelog that exists and is younger than
+ * `changelog.time-retained` stops the run there, else it runs to the end — and everything from
+ * the earliest changelog below where it stops goes, the floor included, whatever its age. It runs
+ * at commit time like the snapshot expiry (`TableCommitImpl.expire`), which is how `pcl` came to
+ * hold changelogs 5 and 6 under a maximum of 4 with snapshots 7 and 8 live. Spark 3.5 has no
+ * procedure for it; Flink's `expire_changelogs` action is the only call.
+ */
+fun PaimonExpiryInput.planChangelogExpiry(options: PaimonExpiryOptions): PaimonChangelogExpiryPlan {
+    val snapshotMax = tableOptions["snapshot.num-retained.max"]?.toIntOrNull() ?: Int.MAX_VALUE
+    val snapshotMin = tableOptions["snapshot.num-retained.min"]?.toIntOrNull() ?: PAIMON_DEFAULT_RETAIN_MIN
+    val snapshotTime = tableOptions["snapshot.time-retained"]?.let { parsePaimonDurationMs(it) } ?: PAIMON_DEFAULT_TIME_RETAINED_MS
+    val retainMax = options.retainMax ?: tableOptions["changelog.num-retained.max"]?.toIntOrNull() ?: snapshotMax
+    val retainMin = options.retainMin ?: tableOptions["changelog.num-retained.min"]?.toIntOrNull() ?: snapshotMin
+    val maxDeletes = options.maxDeletes ?: tableOptions["snapshot.expire.limit"]?.toIntOrNull() ?: PAIMON_DEFAULT_EXPIRE_LIMIT
+    val timeRetainedMs = tableOptions["changelog.time-retained"]?.let { parsePaimonDurationMs(it) } ?: snapshotTime
+    val cutoffMs = options.olderThanMs ?: (options.nowMs - timeRetainedMs)
+    require(retainMax >= retainMin) { "retainMax ($retainMax) must not be less than retainMin ($retainMin)" }
+
+    val ids = changelogTimes.keys.sorted()
+    val earliest = ids.firstOrNull()
+    val latest = ids.lastOrNull()
+    val latestSnapshot = snapshotTimes.keys.maxOrNull()
+    if (earliest == null || latest == null || latestSnapshot == null) {
+        return PaimonChangelogExpiryPlan(options, retainMax, retainMin, maxDeletes, cutoffMs, earliest, latest, null, ids.map { PaimonSnapshotExpiryVerdict(it, true, emptyList(), emptyList()) })
+    }
+    val floor = maxOf(latestSnapshot - retainMax + 1, earliest)
+    val minRetainBound = latestSnapshot - retainMin + 1
+    val consumerBound = consumerNext.values.filterNotNull().minOrNull() ?: Long.MAX_VALUE
+    val limitBound = earliest + maxDeletes
+    val maxExclusive = minOf(minRetainBound, consumerBound, limitBound, latest)
+    // `for (id = min; id <= maxExclusive; id++)`: the walk is inclusive of the end, over ids that exist.
+    val stopAt = (floor..maxExclusive).firstOrNull { id -> changelogTimes[id]?.let { it >= cutoffMs } == true }
+    val end = stopAt ?: maxExclusive
+
+    val verdicts = ids.map { id ->
+        val retained = id >= end
+        val keptBy = if (!retained) emptyList() else buildList {
+            if (id >= minRetainBound) add(PaimonKeep(PaimonKeepRule.RETAIN_MIN))
+            val holding = consumerNext.filterValues { it != null && id >= it }.keys.sorted()
+            if (holding.isNotEmpty()) add(PaimonKeep(PaimonKeepRule.CONSUMER, holding))
+            if (id >= limitBound) add(PaimonKeep(PaimonKeepRule.EXPIRE_LIMIT))
+            if (stopAt != null) {
+                if (id == stopAt) add(PaimonKeep(PaimonKeepRule.YOUNGER_THAN_CUTOFF))
+                else if (id > stopAt && id <= maxExclusive) add(PaimonKeep(PaimonKeepRule.BEHIND_STOP))
+            }
+        }
+        PaimonSnapshotExpiryVerdict(id, retained, keptBy, tagsBySnapshotId[id].orEmpty())
+    }
+    return PaimonChangelogExpiryPlan(options, retainMax, retainMin, maxDeletes, cutoffMs, earliest, latest, floor, verdicts)
 }
 
 /**

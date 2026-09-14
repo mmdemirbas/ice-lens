@@ -96,6 +96,45 @@ class PaimonChangelogLifecycleFixtureTest {
         assertTrue("snapshot-7" in plan.names)
     }
 
+    /**
+     * `expire_changelogs` planned the way `ExpireChangelogImpl.expire()` runs it, against the run
+     * that already happened: at commit time, with every changelog younger than the hour, the floor
+     * alone removed 1–4, so a plan from the last commit's moment removes nothing more; with
+     * `older_than = now` and `retain_min = 1` the run goes to the latest changelog and removes 5.
+     * Then the bounds are planted: a consumer, a maximum below the floor, and the limit.
+     */
+    @Test
+    fun `the changelog expiry counts against the latest snapshot, and a bare call at commit time removes nothing more`() {
+        val input = model.expiryInput()
+        assertEquals(listOf(5L, 6L), input.changelogTimes.keys.sorted())
+        val lastCommit = model.snapshots.last().metadata.timeMillis!!
+        val bare = input.planChangelogExpiry(PaimonExpiryOptions(nowMs = lastCommit + 1000))
+        assertEquals(4, bare.retainMax)
+        assertEquals(1, bare.retainMin)
+        assertEquals(5L, bare.floor)
+        assertEquals(emptyList(), bare.removed.map { it.snapshotId }, bare.toString())
+        assertEquals(listOf(PaimonKeepRule.YOUNGER_THAN_CUTOFF), bare.changelogs.first().keptBy.map { it.rule })
+        val byAge = input.planChangelogExpiry(PaimonExpiryOptions(nowMs = lastCommit + 1000, retainMin = 1, olderThanMs = lastCommit + 1000))
+        assertEquals(listOf(5L), byAge.removed.map { it.snapshotId }, byAge.toString())
+        assertTrue(byAge.changelogs.last().retained, "the latest changelog bounds the run")
+        // A consumer at 6 keeps 6 and everything after; a maximum of 2 puts the floor at 7, past every changelog.
+        val consumer = input.copy(consumerNext = mapOf("reader" to 6L)).planChangelogExpiry(PaimonExpiryOptions(nowMs = lastCommit + 1000, retainMin = 1, olderThanMs = lastCommit + 1000))
+        assertEquals(listOf(5L), consumer.removed.map { it.snapshotId })
+        assertTrue(consumer.changelogs.last().keptBy.any { it.rule == PaimonKeepRule.CONSUMER && it.consumers == listOf("reader") })
+        val tight = input.planChangelogExpiry(PaimonExpiryOptions(nowMs = lastCommit + 1000, retainMax = 2, retainMin = 1))
+        assertEquals(7L, tight.floor)
+        assertEquals(listOf(5L), tight.removed.map { it.snapshotId }, "everything below the floor goes whatever its age, up to the latest changelog")
+        val limited = input.copy(tableOptions = input.tableOptions + ("snapshot.expire.limit" to "1")).planChangelogExpiry(PaimonExpiryOptions(nowMs = lastCommit + 1000, retainMin = 1, olderThanMs = lastCommit + 1000))
+        assertEquals(listOf(5L), limited.removed.map { it.snapshotId })
+        assertTrue(limited.changelogs.last().keptBy.any { it.rule == PaimonKeepRule.EXPIRE_LIMIT })
+        // No changelog directory: nothing to plan, and no other fixture has one.
+        FixtureCatalog.paimon.filter { it != "pcl" }.forEach { name ->
+            val other = PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/$name").absolutePath)).expiryInput()
+            assertTrue(other.changelogTimes.isEmpty(), name)
+            assertEquals(emptyList(), other.planChangelogExpiry(PaimonExpiryOptions(nowMs = lastCommit)).removed, name)
+        }
+    }
+
     @Test
     fun `the graph draws a long-lived changelog as a changelog-only snapshot with its changelog list and no base or delta`() {
         val graph = GraphLayoutService.layoutGraph(model, showRows = false)

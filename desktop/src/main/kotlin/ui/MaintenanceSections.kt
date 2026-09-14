@@ -47,6 +47,8 @@ import model.PaimonExpiryInput
 import model.paimonAppendVerdict
 import model.planCompaction
 import model.PaimonExpiryOptions
+import model.planChangelogExpiry
+import model.paimonChangelogLifecycleDecoupled
 import model.TableMetadata
 import model.describe
 
@@ -363,6 +365,17 @@ internal fun MaintenanceSection(node: GraphNode.TableNode) {
             byAge.removed.isNotEmpty() -> Row("nothing on a bare call", "expire_snapshots", "retain_min = 1 with older_than = now would remove ${byAge.removed.size}$freeing", "table → Expiry, Expiry Files", null)
             else -> Row("nothing expires", "expire_snapshots", "no call removes anything: the bounds, a consumer or a tag keep every snapshot", "table → Expiry", null)
         }
+        if (paimonExpiry.changelogTimes.isNotEmpty() || paimonChangelogLifecycleDecoupled(paimonExpiry.tableOptions)) {
+            val changelogBare = runCatching { paimonExpiry.planChangelogExpiry(PaimonExpiryOptions(nowMs = nowMs)) }.getOrNull()
+            val changelogByAge = runCatching { paimonExpiry.planChangelogExpiry(PaimonExpiryOptions(nowMs = nowMs, retainMin = 1, olderThanMs = nowMs)) }.getOrNull()
+            rows += when {
+                changelogBare == null || changelogByAge == null -> Row("rejected", "expire_changelogs", "the table's changelog.* options are ones the action refuses", "table → Changelog Expiry", colors.error)
+                paimonExpiry.changelogTimes.isEmpty() -> Row("nothing to expire", "expire_changelogs", "the changelog lifecycle is decoupled and changelog/ holds nothing yet", "table → Changelog Expiry", null)
+                changelogBare.removed.isNotEmpty() -> Row("would remove ${formatCounted(changelogBare.removed.size, "changelog")}", "expire_changelogs", "a bare call removes ${changelogBare.removed.size} of ${paimonExpiry.changelogTimes.size}; retain_min = 1 with older_than = now removes ${changelogByAge.removed.size}", "table → Changelog Expiry", verdictSkippedColor())
+                changelogByAge.removed.isNotEmpty() -> Row("nothing on a bare call", "expire_changelogs", "retain_min = 1 with older_than = now would remove ${changelogByAge.removed.size} of ${paimonExpiry.changelogTimes.size}", "table → Changelog Expiry", null)
+                else -> Row("nothing expires", "expire_changelogs", "${formatCounted(paimonExpiry.changelogTimes.size, "long-lived changelog")}, every one within the bounds", "table → Changelog Expiry", null)
+            }
+        }
     }
     if (rows.isEmpty()) return
     val acting = rows.count { it.color != null }
@@ -576,6 +589,67 @@ internal fun PaimonExpirySection(input: PaimonExpiryInput, nowMs: Long) {
                 listOf(verdict(v), v.snapshotId.toString(), verdict(byAgeById.getValue(v.snapshotId)))
             },
             leadCellColors = byDefaults.snapshots.map { if (it.retained) null else colors.error },
+        )
+    }
+}
+
+/**
+ * What `expire_changelogs` would remove from `changelog/` — [planChangelogExpiry], the twin of
+ * [PaimonExpirySection] over the long-lived changelogs, drawn only on a table whose changelog
+ * lifecycle is decoupled or whose `changelog/` holds something. The counts are against the
+ * latest *snapshot* id, so the section says the floor, which is the figure that explains why a
+ * maximum of four holds two changelogs beside two snapshots.
+ */
+@Composable
+internal fun PaimonChangelogExpirySection(input: PaimonExpiryInput, nowMs: Long) {
+    val colors = MaterialTheme.colorScheme
+    if (input.changelogTimes.isEmpty() && !paimonChangelogLifecycleDecoupled(input.tableOptions)) return
+    val plans = runCatching {
+        input.planChangelogExpiry(PaimonExpiryOptions(nowMs = nowMs)) to
+            input.planChangelogExpiry(PaimonExpiryOptions(nowMs = nowMs, retainMin = 1, olderThanMs = nowMs))
+    }
+    val byAge = plans.getOrNull()?.second
+    val title = "Changelog Expiry" + if (byAge != null && byAge.removed.isNotEmpty()) " — ${byAge.removed.size} would go" else ""
+    CountedSection(title, input.changelogTimes.size, "long-lived changelogs") {
+        val (byDefaults, byAgePlan) = plans.getOrElse { failure ->
+            Text(
+                "expire_changelogs would refuse this table's options: ${failure.message}",
+                fontSize = TypeScale.small,
+                fontWeight = FontWeight.Bold,
+                color = colors.error,
+            )
+            return@CountedSection
+        }
+        val retainMaxLabel = if (byDefaults.retainMax == Int.MAX_VALUE) "unbounded" else "${byDefaults.retainMax}"
+        Text(
+            "What expire_changelogs would keep of changelog/, the way ExpireChangelogImpl decides it: " +
+                "the changelog lifecycle is decoupled here (changelog.num-retained.* or changelog.time-retained " +
+                "above the snapshot setting), so an expired snapshot is written again under changelog/ with its " +
+                "change stream kept, and this walk retires those. The counts are against the latest snapshot id — " +
+                "the live snapshots count toward changelog.num-retained.max ($retainMaxLabel here) and " +
+                ".min (${byDefaults.retainMin}) — so everything below " +
+                "${byDefaults.floor?.let { "changelog $it" } ?: "the floor"} goes whatever its age; a consumer's next " +
+                "snapshot, snapshot.expire.limit (${byDefaults.maxDeletes}) and the latest changelog bound the end, " +
+                "and between them the run stops at the first changelog younger than changelog.time-retained " +
+                "(${formatRetentionMs(nowMs - byDefaults.cutoffMs).substringBefore(" (")}). It runs at commit time; " +
+                "Spark has no procedure for it and Flink's expire_changelogs action is the call.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (byDefaults.changelogs.isEmpty()) {
+            Text("changelog/ holds nothing yet: the next snapshot to expire is written there.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            return@CountedSection
+        }
+        val byAgeById = byAgePlan.changelogs.associateBy { it.snapshotId }
+        fun verdict(v: model.PaimonSnapshotExpiryVerdict): String = if (v.retained) "kept — " + v.describeKeptBy().ifEmpty { "the latest changelog, never removed by the run" } else "REMOVED"
+        WideTable(
+            headers = listOf("Under the table's options", "Changelog ID", "With retain_min = 1, older_than = now"),
+            columnWidths = listOf(190.dp, 120.dp, 300.dp),
+            rows = byDefaults.changelogs.map { v ->
+                listOf(verdict(v), v.snapshotId.toString(), verdict(byAgeById.getValue(v.snapshotId)))
+            },
+            leadCellColors = byDefaults.changelogs.map { if (it.retained) null else colors.error },
         )
     }
 }

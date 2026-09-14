@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   their changelog list, the lists the expiry deleted named on the panel, their files referenced
   (they were orphans before), and the expiry-file plan keeping what a decoupled expiry keeps
   under the derived rule rather than an option that does not exist. Fixture `pcl`.
+- **`expire_changelogs` planned** — the table panel's `Changelog Expiry`, the way
+  `ExpireChangelogImpl` runs it, with the counts against the latest snapshot id and each
+  `changelog.*` setting falling back to the snapshot's; a maintenance line beside it.
 - **`rewrite_manifests` planned** — the snapshot panel's `Manifest Rewrite`: per content kind,
   the manifests under the output spec rewritten into their length over
   `commit.manifest.target-size-bytes`, a kind of one manifest within the target left alone,

@@ -2474,7 +2474,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,335 tests across 180 files (1,052 in :core, 272 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,337 tests across 180 files (1,053 in :core, 273 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2979,8 +2979,20 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   The expiry-file plan follows the same rules (`planExpiryFiles`: no changelog file or list freed
   when decoupled; base and delta lists and `APPEND` files kept too when nothing produces a
   changelog) and says so; the option it read before, `changelog.lifecycle-decoupled`, does not
-  exist. `PaimonChangelogLifecycleFixtureTest` holds `pcl` to all of it, with what the past
-  expiries left of changelog 5 as the oracle for what a decoupled expiry keeps
+  exist. **And `expire_changelogs` is planned** (`planChangelogExpiry`, from
+  `ExpireChangelogImpl.expire()`): the snapshot expiry's walk over `changelog/` with its counts
+  against the latest *snapshot* id — the floor `latestSnapshotId − changelog.num-retained.max + 1`
+  below which everything goes whatever its age, the end the least of the `.min` bound, a
+  consumer's next snapshot, `earliest + snapshot.expire.limit` and the latest changelog, the run
+  stopping at the first changelog younger than `changelog.time-retained` — each `changelog.*`
+  falling back to the snapshot setting as `ExpireConfig.build` does. It runs at commit time;
+  Spark 3.5 has no procedure for it (`expire_snapshots`, `expire_tags`, `expire_partitions`
+  only). The table panel's `Changelog Expiry` sits under `Expiry Files`, drawn only where the
+  lifecycle is decoupled or `changelog/` holds something, with a maintenance line.
+  `PaimonChangelogLifecycleFixtureTest` holds `pcl` to all of it — a bare call at the last
+  commit's moment removes nothing more than the commit-time run did, `older_than = now` removes
+  5 and never the latest — with what the past expiries left of changelog 5 as the oracle for
+  what a decoupled expiry keeps, and the consumer, maximum and limit bounds planted
 - **A Paimon file written outside the table records where, and that is the one path with
   something to resolve.** The format records no path for a file in its own layout —
   `<table>/<partition>/bucket-N/<file>` is the rule — so `PaimonPathResolution.LAYOUT` says
