@@ -898,11 +898,18 @@ private fun readStatisticsFooters(
         val recorded = file.statisticsPath ?: return@mapNotNull null
         val (path, resolution) = resolveRecordedOrRelative(metadataDir, recorded)
         val read = runCatching { PuffinReader.readFooter(path) }
+        val sketches = read.getOrNull()?.blobs.orEmpty()
+            .filter { it.type == ThetaSketch.BLOB_TYPE }
+            .associate { blob ->
+                val decoded = runCatching { ThetaSketch.decode(PuffinReader.readBlob(path, blob)) }
+                blob.fields to ThetaSketchRead(decoded.getOrNull(), decoded.exceptionOrNull()?.let { it.message ?: it::class.simpleName })
+            }
         recorded to StatisticsFileFooter(
             localPath = path.toString(),
             resolution = resolution,
             footer = read.getOrNull(),
             problem = read.exceptionOrNull()?.let { it.message ?: it::class.simpleName },
+            sketches = sketches,
         )
     }.toMap()
 }

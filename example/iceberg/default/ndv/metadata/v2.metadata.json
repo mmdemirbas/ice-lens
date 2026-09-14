@@ -1,0 +1,91 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "7b11d02b-c074-4d61-9918-e54cad34c835",
+  "location" : "/wh/default/ndv",
+  "last-sequence-number" : 1,
+  "last-updated-ms" : 1789383378585,
+  "last-column-id" : 4,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "bucket",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "one",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 4,
+      "name" : "nothing",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : 1856808428384917733,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 1856808428384917733,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 1856808428384917733,
+    "timestamp-ms" : 1789383378585,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1789383373430",
+      "added-data-files" : "1",
+      "added-records" : "20000",
+      "added-files-size" : "49410",
+      "changed-partition-count" : "1",
+      "total-records" : "20000",
+      "total-files-size" : "49410",
+      "total-data-files" : "1",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1789383373430",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/ndv/metadata/snap-1856808428384917733-1-3ceba504-33a1-44de-9044-01f0766763a4.avro",
+    "schema-id" : 0
+  } ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1789383378585,
+    "snapshot-id" : 1856808428384917733
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1789383376243,
+    "metadata-file" : "/wh/default/ndv/metadata/v1.metadata.json"
+  } ]
+}

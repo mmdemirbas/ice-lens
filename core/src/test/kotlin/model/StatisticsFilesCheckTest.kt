@@ -27,7 +27,7 @@ class StatisticsFilesCheckTest {
         val check = checksOf("stats").single()
         assertEquals(StatisticsFileKind.TABLE, check.kind)
         assertTrue(check.read, check.problem.toString())
-        assertEquals(4, check.figures, "one ndv per blob")
+        assertEquals(8, check.figures, "one ndv per blob against the file's property, and one against the sketch inside it")
         assertEquals(emptyList(), check.findings)
     }
 

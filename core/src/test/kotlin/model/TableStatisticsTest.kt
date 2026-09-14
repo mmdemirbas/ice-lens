@@ -110,7 +110,7 @@ class TableStatisticsTest {
             "the footer names its writer, which the record does not: ${footer.footer?.createdBy}",
         )
 
-        val rows = statisticsRows(node.data) { file -> footers[file.statisticsPath]?.footer }
+        val rows = statisticsRows(node.data, footerOf = { file -> footers[file.statisticsPath]?.footer })
         assertTrue(rows.all { it.agrees == true }, "disagreements: ${rows.filter { it.agrees != true }}")
         assertEquals(listOf(6L, 5L, 3L, 6L), rows.map { it.fileNdv })
         // Three things only the file knows, so a null here means the footer was never consulted.
@@ -128,7 +128,7 @@ class TableStatisticsTest {
     @Test
     fun `a blob missing from the file reads as a disagreement, not as unread`() {
         val emptyFooter = PuffinFileMetadata(blobs = emptyList())
-        val rows = statisticsRows(metadata) { emptyFooter }
+        val rows = statisticsRows(metadata, footerOf = { emptyFooter })
         assertTrue(rows.isNotEmpty())
         assertTrue(rows.all { it.agrees == false }, "a file with no blobs disagrees with all four")
         assertTrue(rows.all { it.fileNdv == null })

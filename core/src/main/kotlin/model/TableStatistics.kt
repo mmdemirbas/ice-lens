@@ -41,6 +41,10 @@ data class StatisticsBlobRow(
      * otherwise look identical — and the second is the one worth seeing.
      */
     val fileRead: Boolean = false,
+    /** The blob's sketch, decoded — what the `ndv` figure was read off, and whether it is exact. Null when not read or not decoded. */
+    val sketch: ThetaSketch? = null,
+    /** Why the sketch was not decoded, when the file was read and it was not. */
+    val sketchProblem: String? = null,
 ) {
     /**
      * Whether the file agreed with the record. Null when the file was not read.
@@ -50,7 +54,13 @@ data class StatisticsBlobRow(
      * are not there.
      */
     val agrees: Boolean? = if (!fileRead) null else fileNdv == ndv
+
+    /** Whether the sketch's own estimate, truncated as the writer truncates it, is the `ndv` the record carries. Null without both. */
+    val sketchAgrees: Boolean? = if (sketch == null || ndv == null) null else sketch.ndv == ndv
 }
+
+/** One blob's sketch as read: decoded, or the reason it was not. */
+data class ThetaSketchRead(val sketch: ThetaSketch?, val problem: String? = null)
 
 /**
  * The Puffin footer of one statistics file, and where it was found — or why it was not.
@@ -66,6 +76,8 @@ data class StatisticsFileFooter(
     val resolution: PathResolution,
     val footer: PuffinFileMetadata?,
     val problem: String?,
+    /** Each theta blob's sketch, by the field ids the blob names — read with the footer, since the file is open and a sketch is a few hundred bytes. */
+    val sketches: Map<List<Int>, ThetaSketchRead> = emptyMap(),
 )
 
 /**
@@ -82,6 +94,7 @@ data class StatisticsFileFooter(
 fun statisticsRows(
     metadata: TableMetadata,
     footerOf: (StatisticsFile) -> PuffinFileMetadata? = { null },
+    sketchOf: (StatisticsFile, List<Int>) -> ThetaSketchRead? = { _, _ -> null },
 ): List<StatisticsBlobRow> {
     val schemasById = metadata.schemas.mapNotNull { schema -> schema.schemaId?.let { it to schema } }.toMap()
     val schemaIdOfSnapshot = metadata.snapshots
@@ -105,6 +118,7 @@ fun statisticsRows(
         val inFile = footer?.blobs.orEmpty().associateBy { it.fields }
         file.blobMetadata.map { blob ->
             val counterpart = inFile[blob.fields]
+            val sketch = if (counterpart == null) null else sketchOf(file, blob.fields)
             StatisticsBlobRow(
                 fileName = name,
                 column = namesFor(blob.snapshotId ?: file.snapshotId, blob.fields).ifBlank { "—" },
@@ -117,6 +131,8 @@ fun statisticsRows(
                 codec = counterpart?.compressionCodec,
                 properties = blob.properties,
                 fileRead = footerRead,
+                sketch = sketch?.sketch,
+                sketchProblem = sketch?.problem,
             )
         }
     }

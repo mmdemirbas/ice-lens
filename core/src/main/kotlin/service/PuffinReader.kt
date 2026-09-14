@@ -2,6 +2,7 @@ package service
 
 import kotlinx.serialization.json.Json
 import model.DeletionVector
+import model.PuffinBlobMetadata
 import model.PuffinFileMetadata
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -93,6 +94,26 @@ object PuffinReader {
             val payload = file.readFully(payloadSize)
             return runCatching { json.decodeFromString<PuffinFileMetadata>(payload.decodeToString()) }
                 .getOrElse { throw PuffinFormatException("the footer is not readable as Puffin JSON: ${it.message}") }
+        }
+    }
+
+    /**
+     * One blob's bytes as written, decompressed by the codec its footer entry names — `zstd`
+     * is what Iceberg's `PuffinWriter` compresses a statistics sketch with; a `lz4` blob is
+     * refused the way an LZ4 footer is, since nothing here decompresses it.
+     */
+    fun readBlob(path: Path, blob: PuffinBlobMetadata): ByteArray {
+        val raw = Files.newByteChannel(path).use { file ->
+            if (blob.offset < 0 || blob.length < 0 || blob.offset + blob.length > file.size()) {
+                throw PuffinFormatException("blob at ${blob.offset}+${blob.length} lies outside a ${file.size()}-byte file")
+            }
+            file.position(blob.offset)
+            file.readFully(blob.length.toInt())
+        }
+        return when (blob.compressionCodec?.lowercase()) {
+            null, "" -> raw
+            "zstd" -> com.github.luben.zstd.ZstdInputStream(raw.inputStream()).use { it.readBytes() }
+            else -> throw PuffinFormatException("the blob is ${blob.compressionCodec}-compressed, which this reader does not decompress")
         }
     }
 

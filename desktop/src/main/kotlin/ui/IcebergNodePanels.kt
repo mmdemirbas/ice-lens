@@ -298,7 +298,11 @@ internal fun ColumnScope.MetadataPanel(
         // where it would be a file open per metadata version of the table.
         val footers = node.statisticsFooters.value.orEmpty()
         val statsRows = remember(node.data, footers) {
-            statisticsRows(node.data) { file -> footers[file.statisticsPath]?.footer }
+            statisticsRows(
+                node.data,
+                footerOf = { file -> footers[file.statisticsPath]?.footer },
+                sketchOf = { file, fields -> footers[file.statisticsPath]?.sketches?.get(fields) },
+            )
         }
         CountedSection("Statistics", node.data.statistics.size, "statistics files") {
             node.data.statistics.forEach { file ->
@@ -334,7 +338,7 @@ internal fun ColumnScope.MetadataPanel(
             }
             WideTable(
                 headers = listOf(
-                    "Column", "Distinct Values", "In File", "Type",
+                    "Column", "Distinct Values", "In File", "Sketch", "Type",
                     "Size", "Codec", "Snapshot", "Sequence",
                 ),
                 rows = statsRows.map { row ->
@@ -350,6 +354,18 @@ internal fun ColumnScope.MetadataPanel(
                             row.fileNdv == null -> "missing"
                             else -> formatCount(row.fileNdv!!)
                         },
+                        // The sketch the figure was read off, and whether it is
+                        // exact: the record keeps the number and not how it was
+                        // made, and 20,158 on a column of 20,000 values is the
+                        // ordinary look of an estimate. A sketch whose estimate is
+                        // not the recorded figure is named with what it gives.
+                        when {
+                            row.sketch != null && row.sketchAgrees == false -> "${row.sketch!!.describe()} — gives ${formatCount(row.sketch!!.ndv)}, not the recorded figure"
+                            row.sketch != null -> row.sketch!!.describe()
+                            row.sketchProblem != null -> "not decoded: ${row.sketchProblem}"
+                            !row.fileRead -> "not read"
+                            else -> "—"
+                        },
                         row.type,
                         row.compressedLength?.let { formatBytes(it) } ?: "N/A",
                         row.codec ?: "N/A",
@@ -363,14 +379,25 @@ internal fun ColumnScope.MetadataPanel(
                 // wrapped on every row, which doubled the height of the whole table
                 // to say nothing.
                 columnWidths = listOf(
-                    120.dp, 110.dp, 90.dp, 250.dp, 80.dp, 70.dp, 180.dp, 80.dp,
+                    120.dp, 110.dp, 90.dp, 350.dp, 250.dp, 80.dp, 70.dp, 180.dp, 80.dp,
                 ),
                 // Only a row whose file disagreed is coloured. A column bolded on
                 // every row has spent its emphasis before the exception arrives.
                 leadCellColors = statsRows.map { row ->
-                    if (row.agrees == false) colors.error else null
+                    if (row.agrees == false || row.sketchAgrees == false) colors.error else null
                 },
             )
+            if (statsRows.any { it.sketch?.exact == false }) {
+                Text(
+                    "A theta sketch keeps every hash while a column's distinct values fit its nominal " +
+                        "entries (4,096 by default) and its count is then exact; past that it keeps the hashes " +
+                        "below a threshold θ and the count is the retained hashes divided by θ — an estimate, " +
+                        "which is what a planner reads as ndv. Nothing in the record says which kind a figure is.",
+                    fontSize = TypeScale.small,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
         }
 
         CountedSection(

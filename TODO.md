@@ -167,11 +167,16 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   snapshot's live files behind a second click under `Integrity` (`model/FileStatsSweep.kt`),
   64 at a click, and a table past that is read a page at a time with the count left stated.
 
-- **A statistics blob's sketch is never decoded.** The `.stats` container is opened now and its
-  footer shown against what `metadata.json` records (`model/TableStatistics.kt`), so a stale record
-  or a cleaned-up file is visible. What is not done is reading the theta sketch itself — it needs
-  the datasketches library, and it yields no figure the `ndv` property does not already carry, so
-  the only thing it would add is catching an `ndv` that disagrees with its own sketch.
+- **A statistics blob's sketch is decoded — done.** The `.stats` container is opened, its footer
+  shown against what `metadata.json` records (`model/TableStatistics.kt`), and each theta blob's
+  compact sketch read (`model/ThetaSketch.kt`) so the panel says whether the `ndv` is exact or
+  an estimate from the hashes kept below θ, and the integrity check holds the sketch's own
+  estimate to the record (`ndv`). What was said here before — that reading the sketch needs
+  the datasketches library and yields no figure the property does not carry — was wrong on
+  both counts: the compact layout is three preamble shapes read in a page of code, and the
+  figure it adds is whether the count is a count. Not done: the estimate's error bounds
+  (`getUpperBound` / `getLowerBound`, a binomial approximation), which the panel does not
+  print rather than approximate.
 - ~~**`partition-statistics` is typed but has never been seen with a value in it.**~~ Done: `pstats`
   is written with the 1.10 runtime's `compute_partition_stats`, and the file's rows are read and
   shown under the record (`model/PartitionStatistics.kt`).

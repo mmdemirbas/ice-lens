@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A statistics blob's theta sketch is decoded, and the panel says whether its distinct count
+  is exact or an estimate.** `compute_table_stats` records `ndv` as a property and the sketch
+  it was read off beside it; the record keeps the figure and not how it was made. The compact
+  sketch's preamble is read now — empty, a single item, exact with every hash, or estimating
+  with a threshold θ — and the metadata panel's statistics table gains a `Sketch` column:
+  `exact, 7 hashes` or `estimate, 4,096 hashes kept below θ 0.2032`, with a line under the table
+  saying what that means when any column is an estimate. The whole-table check holds the
+  sketch's own estimate to the recorded `ndv` as a second figure per blob. `ndv` is the fixture
+  — 20,000 distinct ids, seven, one and none — and the writer's own figures are the oracle,
+  reproduced to the integer.
 - **A Paimon bit-sliced file index (`bsi`) is read, and it answers every comparison.** One
   Roaring bitmap per bit of the value, in two sets for the two signs, so the scan-pruning
   section answers `<`, `<=`, `>`, `>=` and `BETWEEN` exactly, per row, where a bloom filter

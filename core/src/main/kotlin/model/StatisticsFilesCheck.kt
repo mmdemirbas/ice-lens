@@ -7,7 +7,9 @@ package model
  * comparison per file; this is the whole table's, listed beside the other findings.
  *
  * What a table statistics file is held to is its Puffin footer: a blob the record names and
- * the file does not hold, or an `ndv` the two disagree on ([StatisticsBlobRow.agrees]). A
+ * the file does not hold, or an `ndv` the two disagree on ([StatisticsBlobRow.agrees]) — and
+ * the sketch inside the blob, decoded, whose own estimate is where the `ndv` came from
+ * ([StatisticsBlobRow.sketchAgrees]). A
  * partition statistics file is held to its size on disk against `file-size-in-bytes`, and its
  * rows to the live files of the snapshot it names ([checkPartitionStatistics]) — the figures a
  * planner reads instead of walking the manifests. A file that could not be opened is the
@@ -38,16 +40,26 @@ fun UnifiedTableModel.checkStatisticsFiles(
     partitions: Map<String, PartitionStatisticsRead>,
 ): List<StatisticsFileCheck> {
     val newest = metadatas.lastOrNull()?.metadata ?: return emptyList()
-    val rows = statisticsRows(newest) { file -> file.statisticsPath?.let { footers[it]?.footer } }.groupBy { it.fileName }
+    val rows = statisticsRows(
+        newest,
+        footerOf = { file -> file.statisticsPath?.let { footers[it]?.footer } },
+        sketchOf = { file, fields -> file.statisticsPath?.let { footers[it]?.sketches?.get(fields) } },
+    ).groupBy { it.fileName }
     val tableFiles = newest.statistics.mapNotNull { file ->
         val recorded = file.statisticsPath ?: return@mapNotNull null
         val name = recorded.substringAfterLast('/')
         val footer = footers[recorded]
         val blobRows = rows[name].orEmpty()
+        // Two figures per blob: the record's `ndv` against the file's property, and against the
+        // sketch itself — the property is what the writer read off the sketch, so a blob whose
+        // sketch estimates something else has been rewritten or mislabelled since.
         val findings = blobRows.filter { it.agrees == false }.map { row ->
             IntegrityFinding(IntegrityCheck.STATISTICS_FILES, "$name (${row.column})", "ndv", row.ndv?.toString() ?: "—", row.fileNdv?.toString() ?: "no such blob in the file")
+        } + blobRows.filter { it.sketchAgrees == false }.map { row ->
+            IntegrityFinding(IntegrityCheck.STATISTICS_FILES, "$name (${row.column})", "ndv against the sketch", row.ndv?.toString() ?: "—", "the sketch's own ${row.sketch!!.describe()} gives ${row.sketch.ndv}")
         }
-        StatisticsFileCheck(name, StatisticsFileKind.TABLE, file.snapshotId, blobRows.count { it.fileRead }, findings, footer?.problem ?: if (footer == null) "not read" else null)
+        val figures = blobRows.count { it.fileRead } + blobRows.count { it.sketchAgrees != null }
+        StatisticsFileCheck(name, StatisticsFileKind.TABLE, file.snapshotId, figures, findings, footer?.problem ?: if (footer == null) "not read" else null)
     }
     val partitionFiles = newest.partitionStatistics.mapNotNull { file ->
         val recorded = file.statisticsPath ?: return@mapNotNull null

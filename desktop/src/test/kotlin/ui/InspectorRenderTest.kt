@@ -234,6 +234,12 @@ class InspectorRenderTest {
             .maxByOrNull { it.simpleId }
         assertNotNull(metadata, "the stats fixture should carry a metadata version with statistics")
         renderInspector(graph, metadata.id, "metadata-node-statistics", height = 5600)
+        // `ndv`: the four shapes a sketch takes in one table — an estimate past the nominal
+        // entries, an exact count, a single value, an empty one — with the caption that says
+        // which figure is a projection, since a column of `exact` would leave it unjudged.
+        val ndv = graphFor("ndv")
+        val ndvMetadata = assertNotNull(ndv.nodes.filterIsInstance<GraphNode.MetadataNode>().filter { it.data.statistics.isNotEmpty() }.maxByOrNull { it.simpleId })
+        renderInspector(ndv, ndvMetadata.id, "metadata-node-statistics-ndv", height = 6600)
     }
 
     @Test

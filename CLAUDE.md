@@ -911,8 +911,23 @@ intellij/src/main/kotlin/plugin/
   for the same reason: a statistics file describes one commit, and a column renamed after it would
   otherwise put a name against a figure never measured for it. A field no schema names is printed
   as its id rather than guessed at. The `ndv` a `apache-datasketches-theta-v1` blob declares is a
-  *property string*, and it is the figure a planner uses without opening the sketch — reading the
-  sketch itself would need the datasketches library and answers nothing more precise
+  *property string*, and it is the figure a planner uses without opening the sketch. **The sketch
+  is decoded too, because it says what the figure is** (`model/ThetaSketch.kt`): a compact theta
+  sketch keeps every hash while a column's distinct values fit its nominal entries (4,096 by
+  default) and the count is then *exact*; past that it keeps the hashes below a threshold θ and
+  the count is `retained ÷ θ`, an *estimate* — `ndv 20158` on a column of 20,000, with nothing in
+  the record saying which. The layout is `PreambleUtil`'s (datasketches-java 6.1.1, serialization
+  version 3): a preamble of 1, 2 or 3 longs by what the sketch holds — empty; a single item with
+  its one hash; exact with the retained count and the hashes; estimating with θ at byte 16 — in
+  the writer's byte order, which a flag bit names. `PuffinReader.readBlob` reads the blob and
+  decompresses `zstd` (what `PuffinWriter` compresses a sketch with; LZ4 refused by name), the
+  builder decodes each theta blob with the footer (`StatisticsFileFooter.sketches`), the panel's
+  `Sketch` column says `exact, 7 hashes` / `estimate, 4,096 hashes kept below θ 0.2032` / `single
+  value` / `empty`, and `StatisticsFilesCheck` holds the sketch's own `(long) estimate` to the
+  recorded `ndv` as a second figure per blob. `ndv` is the fixture — 20,000 distinct ids, seven
+  buckets, one value, an all-null column: the four preamble shapes in one file — and its oracle is
+  the writer's own `ndv` per blob, which the decoded estimate reproduces to the integer; a θ
+  moved by a tenth of a percent fails it
 - **And the record is shown against the file it describes**, the same rule as `manifestTallies` one
   level up. `metadata.json` carries a *copy* of the blob metadata so a planner never has to open
   the `.stats` file, which is precisely what lets the two drift: a statistics file removed by an
@@ -2176,7 +2191,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,265 tests across 170 files (992 in :core, 263 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,269 tests across 171 files (996 in :core, 263 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2279,6 +2294,7 @@ container invocation and the traps in it:
 | `default/respec` | `PartitionSpecEvolutionTest` | two partition specs — dropped, rebucketed, `days`→`months` |
 | `default/branched` | `BranchedFixtureTest` | a fork, five refs, ten metadata versions |
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
+| `default/ndv` | `ThetaSketchFixtureTest` | the four shapes a compact theta sketch is serialised in — 20,000 distinct ids past the 4,096 nominal entries (an estimate, `ndv 20158`), seven exact, a single value, an all-null column — each blob's `ndv` the oracle for the decoded estimate |
 | `default/pstats` | `PartitionStatsFixtureTest` | a partition statistics file, written by Iceberg 1.10 — three partitions, one with a positional delete, checked against the writer's `.partitions` and this app's own live-file walk |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
 | `default/deep` | `DeepFixtureTest`, `IcebergScanPlanTest` | a struct, a list and a map, `addr.city` renamed to `addr.town` and `addr.country` added inside the struct after the first file — bounds and counts per leaf id, an empty list counted as one null element, and Iceberg's plan for filters on the leaves by path |

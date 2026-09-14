@@ -80,6 +80,8 @@ part-00000-86a2746a-0f28-42ac-b115-3c9e7ae9f37d-c000.snappy.parquet ->
 part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet ->
 -- mor
 00000-8-8bb56de0-bda3-4465-be13-0a3f8fd26149-0-00001.parquet -> 00000-10-c43e73b1-7472-40ab-810c-78d07a57dd52-00001-deletes.parquet
+-- ndv
+00000-0-a64566a2-47a0-42a8-afb3-9b1346f25664-0-00001.parquet ->
 -- nested
 00000-0-96ef5809-8e36-4842-8e7d-9b6f7f224bcf-0-00001.parquet ->
 00000-1-74cd4e79-8fb4-42a9-a996-18347ada2af8-0-00001.parquet ->
