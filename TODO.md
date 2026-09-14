@@ -139,12 +139,13 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   snapshot and live files against the table's own with the rule that explains each absence
   (`model/IcebergExport.kt`, `pic`). What is left: the export is checked at its current snapshot
   only and never drawn — its snapshots, manifests and files are a second graph, and a node for
-  them would have to say which table they belong to. `metadata.iceberg.storage =
-  hadoop-catalog` and `hive-catalog` write the same metadata to a catalog directory *beside* the
-  warehouse, which this does not look for: the export would be a table of its own in the
-  workspace, correctly read as Iceberg, with nothing saying it is Paimon's. No fixture reaches a
-  compacted table's export either, where the level rule lists a level-5 file rather than
-  explaining an absence.
+  them would have to say which table they belong to. The catalog-storage export
+  (`hadoop-catalog`, `hive-catalog`, `rest-catalog`) is found beside the warehouse (`pih`), and
+  opened from its own directory it says its metadata is kept apart from its location — but not
+  that the location is a Paimon table, which it could: the location, re-rooted the way the data
+  files are, is a directory with `snapshot/` and `schema/`. A Hive or REST export also has a
+  catalog entry this never sees. No fixture reaches a compacted table's export either, where
+  the level rule lists a level-5 file rather than explaining an absence.
 
 - **ORC data files cannot be read.** DuckDB 1.4.4 has no ORC table function, core or community;
   every reader says so (`orcfmt`). An ORC reader would be a second engine on the classpath (the

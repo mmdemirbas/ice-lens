@@ -2176,7 +2176,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,259 tests across 170 files (987 in :core, 262 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,262 tests across 170 files (989 in :core, 263 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2314,6 +2314,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pkr` | `PaimonRowLookupFixtureTest`, `PaimonMergedCountFixtureTest` | a primary key renamed between writes — `_KEY_k` in the first file, `_KEY_id` in the two after, key 1 written again after the rename; Paimon's read `1 A / 2 b / 3 c` is printed by the script |
 | `paimon/db.db/pse` | `PaimonReadProjectionFixtureTest` | an append table evolved after its first file — `ADD COLUMN w`, `RENAME COLUMN v TO label`, `ALTER COLUMN w SET DEFAULT 7` — with Paimon's own read printed in the script: the old file's `v` as `label`, its `w` as null, and the default a later write stored for a row that omitted `w` |
 | `paimon/db.db/pne` | `PaimonNestedEvolutionFixtureTest` | `pse` one level down — a struct and a list of structs, a rename and an add inside the struct and a rename inside the list's element between two writes; the nested type object every schema of such a table carries, and Paimon's read of the old file under the new names |
+| `paimon/db.db/pih` | `PaimonIcebergExportFixtureTest`, `GraphTreeTest` | `pic` under `metadata.iceberg.storage = hadoop-catalog` — the export in catalog storage at `example/paimon/iceberg/db/pih/` beside the table, found by the callback's own rule; opened as an Iceberg table its data files resolve to the Paimon table's and its `Metadata Kept At` says the metadata is apart from its location |
 | `paimon/db.db/pic` | `PaimonIcebergExportFixtureTest` | `metadata.iceberg.storage = table-location` — a primary-key table writing Iceberg metadata under its own `metadata/` on every commit, so the directory carries both formats' markers; two appends, neither compacted, and the export lists one of the two live files: snapshot 1 rebuilt it from the snapshot and snapshot 2 went through the level rule |
 | `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest`, `PaimonRowLookupFixtureTest`, `PaimonScanPruningTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted; the stitched read `(1, 11, 1)` the lookup is held to, and the file bounds pruning must not consult |
 | `paimon/db.db/der` | `PaimonRowLookupFixtureTest`, `RowHistoryFixtureTest` | `de` with a column renamed on either side of the patch — `a` to `aa` before the `MERGE INTO`, `b` to `bb` after it, the last rename written under no snapshot; the stitch placed by field id, and the read of the latest snapshot under the latest schema file, to Paimon's `1 1 11 / 2 2 2` |
@@ -2581,7 +2582,26 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   `TableNode.icebergExport`, a `DeferredRead` behind a click for the reason
   `UnreferencedFilesSection` is: it reads another table's metadata tree — and the IDE strip
   fills an `Iceberg export` row from the same read, the way it fills `History`, both shells
-  printing `IcebergExportCheck.describe` so the sentence cannot drift between them
+  printing `IcebergExportCheck.describe` so the sentence cannot drift between them.
+  **Where the export is follows the storage type** (`icebergExportPathOf`, read off
+  `catalogTableMetadataPath` at 1.3.1): `table-location` writes under the table's own
+  `metadata/`; `hadoop-catalog`, `hive-catalog` and `rest-catalog` infer *catalog storage*
+  unless `metadata.iceberg.storage-location` says otherwise, which is
+  `<warehouse>/iceberg/<db>/<table>` — the table's parent has to be `<db>.db`, and an Iceberg
+  HadoopCatalog at `<warehouse>/iceberg` lists the export as `<db>.<table>`.
+  `PaimonUnifiedTableModel.icebergExportPath` asks the table's own directory first, whatever
+  the option says, since an option turned off leaves its metadata behind. `pih` is `pic`
+  under `hadoop-catalog`, checked in as `db.db/pih` and `iceberg/db/pih` side by side the way
+  they sat under `/wh`: the table carries no Iceberg marker, and the export is a directory a
+  workspace scan lists as an Iceberg table of its own — whose data files resolve to the
+  Paimon table's through `rebuildBesideTable`, since the two directories share their trailing
+  `iceberg/db/pih` with the warehouse above. What tells that directory from an ordinary
+  Iceberg table is that its metadata is not under its `location`:
+  `TableSummary.metadataKeptApartAt` is the current snapshot's manifest-list path two levels
+  up when it differs from the location (the same prefix the resolver takes the recorded
+  table directory from), the table panel draws it as `Metadata Kept At` with a line under
+  the identity, and the IDE strip lists it only where present — a `write.metadata.path`
+  layout has the same shape
 - **A tag is a snapshot file under `tag/`, read as one, and it is what keeps files on disk after
   the snapshot is gone.** `PaimonUnifiedTableModel.tags` reads `tag/tag-<name>` through the same
   reader and manifest cache as `snapshot/`; `tagOnlySnapshots` is the tagged snapshots `snapshot/`

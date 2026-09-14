@@ -79,17 +79,76 @@ class PaimonIcebergExportFixtureTest {
         assertEquals(emptySet(), check.extraInIceberg)
     }
 
+    /**
+     * `pih` is `pic` under `metadata.iceberg.storage = hadoop-catalog`, whose export goes to
+     * catalog storage — `<warehouse>/iceberg/<db>/<table>/metadata/` — so the table directory
+     * carries no Iceberg marker and the export is a directory of its own beside the warehouse's
+     * databases (`docs/fixtures/paimon-pih.sql`). The model finds it by the rule
+     * `catalogTableMetadataPath` writes it by, and the check reads the same as `pic`'s. Opened
+     * as the Iceberg table it also is, its data files are the Paimon table's, under the
+     * `location` its metadata records rather than under its own directory — which the resolver
+     * already re-roots beside the table, since the two directories share their trailing
+     * `iceberg/db/pih` with the warehouse above.
+     */
+    @Test
+    fun `an export in catalog storage is found beside the warehouse, and opens as an Iceberg table over the Paimon table's files`() {
+        val pih = FixtureCatalog.paimonModel("pih")
+        assertEquals(TableFormat.PAIMON, TableFormatDetector.detect(pih.path))
+        assertTrue(!TableFormatDetector.isIcebergTable(pih.path), "no Iceberg marker under the table itself")
+        val exportPath = assertNotNull(pih.icebergExportPath)
+        assertEquals(pih.path.parent.parent.resolve("iceberg").resolve("db").resolve("pih").normalize(), exportPath.normalize())
+        val check = assertNotNull(pih.checkIcebergExport())
+        assertTrue(!check.atTable)
+        assertEquals("hadoop-catalog", check.storage)
+        assertTrue(check.current && check.missingFromIceberg.isEmpty() && check.extraInIceberg.isEmpty(), "$check")
+        assertEquals(1, check.icebergFiles.size, "the rebuild path's file, as on pic")
+        assertEquals(1, check.belowExportedLevel.size)
+        assertTrue(check.describe.startsWith("current: the export's snapshot 2 is the table's latest; 1 metadata version at ") && check.describe.endsWith("/iceberg/db/pih/metadata/; an Iceberg reader sees 1 of the table's 2 live files"), check.describe)
+        assertEquals(emptyList(), findUnreferencedFiles(pih).unreferenced, "the export is outside the table root, and nothing under the root is an orphan")
+
+        val export = UnifiedTableModel(exportPath)
+        assertEquals(emptyList(), export.readErrors)
+        val files = export.metadatas.last().snapshots.flatMap { s -> s.manifests.flatMap { it.dataFiles } }
+        assertTrue(files.isNotEmpty())
+        files.forEach { file ->
+            assertEquals(PathResolution.REBUILT_BESIDE_TABLE, file.pathResolution, file.toString())
+            assertTrue(java.nio.file.Files.isRegularFile(file.path), "resolved to the Paimon table's file: ${file.path}")
+            assertTrue(file.path.normalize().startsWith(pih.path.normalize()))
+        }
+        assertEquals("/wh/db.db/pih", export.metadatas.last().metadata.location)
+        // The table panel's row for it: the metadata says it is under /wh/iceberg/db/pih and the table is at /wh/db.db/pih.
+        val summary = service.IcebergGraphBuilder.buildGraph(export).nodes.filterIsInstance<GraphNode.TableNode>().single().summary
+        assertEquals("/wh/iceberg/db/pih", summary.metadataKeptApartAt)
+        assertEquals(null, FixtureCatalog.icebergModel("mor").let { service.IcebergGraphBuilder.buildGraph(it).nodes.filterIsInstance<GraphNode.TableNode>().single().summary.metadataKeptApartAt }, "a table whose metadata sits under its location lists no such row")
+    }
+
+    /** The rule alone, on paths: every storage type but `table-location` goes to catalog storage unless told otherwise, and only from under a `<db>.db` directory. */
+    @Test
+    fun `the export's directory follows the storage type, the storage-location override, and the db suffix`() {
+        val table = java.nio.file.Paths.get("/wh/db.db/t")
+        assertEquals(null, icebergExportPathOf(table, emptyMap()))
+        assertEquals(null, icebergExportPathOf(table, mapOf(ICEBERG_STORAGE_KEY to "disabled")))
+        assertEquals(table, icebergExportPathOf(table, mapOf(ICEBERG_STORAGE_KEY to "table-location")))
+        val catalog = java.nio.file.Paths.get("/wh/iceberg/db/t")
+        assertEquals(catalog, icebergExportPathOf(table, mapOf(ICEBERG_STORAGE_KEY to "hadoop-catalog")))
+        assertEquals(catalog, icebergExportPathOf(table, mapOf(ICEBERG_STORAGE_KEY to "hive-catalog")))
+        assertEquals(catalog, icebergExportPathOf(table, mapOf(ICEBERG_STORAGE_KEY to "rest-catalog")))
+        assertEquals(table, icebergExportPathOf(table, mapOf(ICEBERG_STORAGE_KEY to "hive-catalog", ICEBERG_STORAGE_LOCATION_KEY to "table-location")))
+        assertEquals(catalog, icebergExportPathOf(table, mapOf(ICEBERG_STORAGE_KEY to "table-location", ICEBERG_STORAGE_LOCATION_KEY to "catalog-storage")))
+        assertEquals(null, icebergExportPathOf(java.nio.file.Paths.get("/wh/plain/t"), mapOf(ICEBERG_STORAGE_KEY to "hadoop-catalog")), "the callback refuses a parent that is not <db>.db")
+    }
+
     @Test
     fun `an append table exports every file, and a file the export lacks is then a disagreement`() {
-        val check = IcebergExportCheck(1, 2, 2, icebergFiles = setOf("a"), paimonFiles = mapOf("a" to 0, "b" to 0), exportedLevel = null)
+        val check = IcebergExportCheck("/t", true, "table-location", 1, 2, 2, icebergFiles = setOf("a"), paimonFiles = mapOf("a" to 0, "b" to 0), exportedLevel = null)
         assertEquals(setOf("b"), check.missingFromIceberg)
         assertEquals(emptySet(), check.belowExportedLevel)
         assertEquals(emptySet(), check.exportedBelowLevel, "an append table exports every level")
-        val dv = IcebergExportCheck(1, 2, 2, icebergFiles = setOf("a"), paimonFiles = mapOf("a" to 3, "b" to 0, "c" to 1), exportedLevel = 5, aboveLevelZero = true)
+        val dv = IcebergExportCheck("/t", true, "table-location", 1, 2, 2, icebergFiles = setOf("a"), paimonFiles = mapOf("a" to 3, "b" to 0, "c" to 1), exportedLevel = 5, aboveLevelZero = true)
         assertEquals(setOf("b"), dv.belowExportedLevel)
         assertEquals(setOf("c"), dv.missingFromIceberg, "above level 0 and not exported")
         assertEquals(emptySet(), dv.exportedBelowLevel)
-        val behind = IcebergExportCheck(1, 1, 2, icebergFiles = emptySet(), paimonFiles = emptyMap())
+        val behind = IcebergExportCheck("/t", true, "table-location", 1, 1, 2, icebergFiles = emptySet(), paimonFiles = emptyMap())
         assertTrue(!behind.current)
     }
 }

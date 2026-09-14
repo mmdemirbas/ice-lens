@@ -33,7 +33,7 @@ class PaimonMergedCountFixtureTest {
         "lk" to 3, "dv" to 1497, "pc" to 7, "px" to 6, "pxa" to 6, "cs" to 4, "se" to 3, "cl" to 2, "tg" to 2,
         "pt" to 10, "br" to 5, "fi" to 5, "ep" to 3, "sm" to 3, "pe" to 7, "pea" to 7,
         // the table that also writes Iceberg metadata beside its own — the merge is the ordinary one
-        "pic" to 3,
+        "pic" to 3, "pih" to 3,
         // partial-update under sequence groups: inserts only, a -D removing by a single field, and by one of two
         "sg" to 3, "sgd" to 3, "sgm" to 2,
         // the other merge engines: partial-update, aggregation, and first-row — whose one row is

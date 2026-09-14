@@ -1,0 +1,59 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "e15581ba-10e4-44fe-887e-9f17a1fb857a",
+  "location" : "/wh/db.db/pih",
+  "last-sequence-number" : 2,
+  "last-updated-ms" : 1789377227458,
+  "last-column-id" : 1,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 0,
+      "name" : "k",
+      "required" : true,
+      "type" : "int",
+      "doc" : null
+    }, {
+      "id" : 1,
+      "name" : "v",
+      "required" : false,
+      "type" : "string",
+      "doc" : null
+    } ]
+  } ],
+  "current-schema-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "default-spec-id" : 0,
+  "last-partition-id" : 999,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "default-sort-order-id" : 0,
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 1,
+    "timestamp-ms" : 1789377227243,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/iceberg/db/pih/metadata/snap-1-0e50789c-eeb9-4490-b755-5c188ac34c6f.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 2,
+    "snapshot-id" : 2,
+    "timestamp-ms" : 1789377227457,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/iceberg/db/pih/metadata/snap-1-f51e1520-6998-4a28-9487-25026631111d.avro",
+    "schema-id" : 0
+  } ],
+  "current-snapshot-id" : 2,
+  "properties" : { },
+  "refs" : { }
+}

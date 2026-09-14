@@ -80,6 +80,10 @@ internal fun ColumnScope.TablePanel(
             DetailRow("Name", summary.tableName)
             DetailRow("Table Path", summary.tablePath, copyable = true)
             DetailRow("Location", summary.location ?: "N/A", copyable = true)
+            // Only where the metadata is not under the location: the data files are under the
+            // location and this directory holds the metadata alone — a `write.metadata.path`
+            // layout, or the catalog-storage export a Paimon table writes (`pih`).
+            summary.metadataKeptApartAt?.let { DetailRow("Metadata Kept At", it, copyable = true) }
             DetailRow("Table UUID", summary.tableUuid ?: "N/A", copyable = true)
             DetailRow("Format Version", "${summary.formatVersion ?: "N/A"}")
             DetailRow("Current Snapshot ID", currentSnapshotLabel(summary.currentSnapshotId))
@@ -88,6 +92,16 @@ internal fun ColumnScope.TablePanel(
                 "version-hint.text",
                 summary.versionHintText?.takeIf { it.isNotBlank() }
                     ?: "Not present — normal unless the table is HadoopCatalog-managed"
+            )
+        }
+        if (summary.metadataKeptApartAt != null) {
+            Text(
+                "The metadata is kept apart from the table's location: this directory holds the metadata " +
+                    "and the data files are under the location — a write.metadata.path layout, or the " +
+                    "Iceberg metadata a Paimon table writes in catalog storage.",
+                fontSize = TypeScale.small,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
             )
         }
 

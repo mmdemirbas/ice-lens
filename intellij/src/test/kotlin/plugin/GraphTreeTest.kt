@@ -37,8 +37,11 @@ class GraphTreeTest {
      * the IntelliJ platform's own leak detector (on the classpath of every test in this module)
      * correctly reports as still running when the session ends.
      */
-    private fun graphOf(name: String, policy: AggregationPolicy = AggregationPolicy.NONE): GraphModel {
-        val dir = File(repoRoot, "example/iceberg/default/$name")
+    private fun graphOf(name: String, policy: AggregationPolicy = AggregationPolicy.NONE): GraphModel =
+        icebergGraphAt("example/iceberg/default/$name", policy)
+
+    private fun icebergGraphAt(relative: String, policy: AggregationPolicy = AggregationPolicy.NONE): GraphModel {
+        val dir = File(repoRoot, relative)
         assertTrue(dir.isDirectory, "fixture missing at $dir")
         val built = IcebergGraphBuilder.buildGraph(UnifiedTableModel(Paths.get(dir.absolutePath)))
         val aggregated = GraphAggregation.apply(built.nodes, built.edges, policy = policy)
@@ -151,9 +154,13 @@ class GraphTreeTest {
     @Test
     fun `optional facts are listed only where the table has them`() {
         val plain = flatten(GraphTree.build(graphOf("test"))).flatMap { GraphTree.details(it) }.map { it.first }.toSet()
-        listOf("Next row id", "Row ids", "WAP id", "Published from", "Sort order", "Rolled back", "Columns").forEach {
+        listOf("Next row id", "Row ids", "WAP id", "Published from", "Sort order", "Rolled back", "Columns", "Metadata kept at").forEach {
             assertTrue(it !in plain, "$it listed on a table that has none")
         }
+        // The Iceberg export a Paimon table writes in catalog storage: its metadata is at
+        // /wh/iceberg/db/pih and the table it describes at /wh/db.db/pih, and the row says so.
+        val export = flatten(GraphTree.build(icebergGraphAt("example/paimon/iceberg/db/pih"))).flatMap { GraphTree.details(it) }
+        assertTrue(export.any { it.first == "Metadata kept at" && it.second == "/wh/iceberg/db/pih" }, export.filter { it.first == "Location" || it.first == "Metadata kept at" }.toString())
         val lineage = flatten(GraphTree.build(graphOf("lineage"))).flatMap { GraphTree.details(it) }
         assertTrue(lineage.any { it.first == "Next row id" && it.second == "14" })
         assertTrue(lineage.any { it.first == "Row ids" && it.second.startsWith("6..8 (3 ids for 1 added record —") }, "the UPDATE's snapshot took three ids for one record")

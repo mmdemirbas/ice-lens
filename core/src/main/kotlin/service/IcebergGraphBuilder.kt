@@ -774,6 +774,13 @@ object IcebergGraphBuilder {
 
         val location = latestMetadata?.location
             ?: tableModel.metadatas.asReversed().firstNotNullOfOrNull { it.metadata.location }
+        // Where the metadata says it is, off the current snapshot's manifest-list path — the
+        // same prefix the data-file resolver takes the recorded table directory from — against
+        // where the metadata says the table is. Both sides normalised, since one may be a URI.
+        val metadataKeptApartAt = latestMetadata?.snapshots
+            ?.firstOrNull { it.snapshotId == latestMetadata.currentSnapshotId }?.manifestList
+            ?.let { normalizeFilePath(it).substringBeforeLast('/').substringBeforeLast('/') }
+            ?.takeIf { dir -> dir.isNotEmpty() && location != null && normalizeFilePath(location).trimEnd('/') != dir }
 
         // The table as it is now: the manifest closure of the current snapshot, live entries
         // only. Absent when the table has never been committed to, or when the snapshot the
@@ -793,6 +800,7 @@ object IcebergGraphBuilder {
             tableName = tableModel.name,
             tablePath = tableModel.path.toString(),
             location = location,
+            metadataKeptApartAt = metadataKeptApartAt,
             tableUuid = latestMetadata?.tableUuid,
             formatVersion = latestMetadata?.formatVersion,
             currentSnapshotId = latestMetadata?.currentSnapshotId,

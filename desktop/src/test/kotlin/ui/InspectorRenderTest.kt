@@ -172,6 +172,22 @@ class InspectorRenderTest {
     }
 
     /**
+     * The Iceberg table a Paimon table's catalog-storage export is, opened from its own
+     * directory: its identity rows carry a `Metadata Kept At` line, because the metadata says it
+     * sits under `/wh/iceberg/db/pih` and the table it describes is at `/wh/db.db/pih` — the one
+     * fact that tells this directory from an ordinary Iceberg table. The head of the panel is
+     * enough; the rest is the ordinary table panel.
+     */
+    @Test
+    fun `an Iceberg table whose metadata is kept apart from its location says where`() {
+        val export = UnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/iceberg/db/pih").absolutePath))
+        val graph = GraphLayoutService.layoutGraph(export, showRows = false)
+        val table = graph.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        assertEquals("/wh/iceberg/db/pih", table.summary.metadataKeptApartAt)
+        renderInspector(graph, table.id, "table-node-metadata-apart", height = 1000)
+    }
+
+    /**
      * The same panel with every section folded, which is the state a click produces and a render
      * otherwise never reaches.
      *

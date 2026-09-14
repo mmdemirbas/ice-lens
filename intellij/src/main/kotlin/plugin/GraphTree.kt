@@ -130,6 +130,12 @@ object GraphTree {
         is GraphNode.TableNode -> listOf(
             "Name" to node.summary.tableName,
             "Location" to (node.summary.location ?: node.summary.tablePath),
+        ) + listOfNotNull(
+            // Only where the metadata is kept apart from the location — a `write.metadata.path`
+            // layout, or a Paimon table's export in catalog storage — so every other table's
+            // strip is the strip it was.
+            node.summary.metadataKeptApartAt?.let { "Metadata kept at" to it },
+        ) + listOf(
             "Format version" to (node.summary.formatVersion?.toString() ?: "—"),
             "Snapshots" to node.summary.snapshotCount.toString(),
             "Current snapshot" to (node.summary.currentSnapshotId?.toString() ?: "—"),

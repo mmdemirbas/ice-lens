@@ -30,6 +30,12 @@ package model
  * leaving [missingFromIceberg] and [extraInIceberg] for what no rule explains.
  */
 data class IcebergExportCheck(
+    /** The directory whose `metadata/` holds the export — the table's own, or the catalog-storage directory beside the warehouse. */
+    val exportPath: String,
+    /** Whether [exportPath] is the table's own directory (`table-location`), or a directory of its own beside the warehouse. */
+    val atTable: Boolean,
+    /** `metadata.iceberg.storage` as the latest schema records it; null where the option is not set (an export left by an option since removed). */
+    val storage: String?,
     /** Metadata versions under `metadata/` — one by default: `metadata.iceberg.previous-versions-max` is 0 and `delete-after-commit.enabled` is on, so each commit deletes the versions before its own. */
     val versions: Int,
     val currentIcebergSnapshotId: Long?,
@@ -76,7 +82,8 @@ data class IcebergExportCheck(
         get() {
             val head = if (current) "current: the export's snapshot $currentIcebergSnapshotId is the table's latest" else
                 "behind: the export's snapshot is ${currentIcebergSnapshotId ?: "none"}, the table's latest ${latestPaimonSnapshotId ?: "none"}"
-            val versionsText = "%,d metadata %s under metadata/".format(versions, if (versions == 1) "version" else "versions")
+            val where = if (atTable) "under metadata/" else "at $exportPath/metadata/"
+            val versionsText = "%,d metadata %s $where".format(versions, if (versions == 1) "version" else "versions")
             val files = "an Iceberg reader sees %,d of the table's %,d live %s".format(seen, paimonFiles.size, if (paimonFiles.size == 1) "file" else "files")
             return "$head; $versionsText; $files"
         }
@@ -101,6 +108,9 @@ fun PaimonUnifiedTableModel.checkIcebergExport(): IcebergExportCheck? {
     val primaryKey = schema?.primaryKeys.orEmpty().isNotEmpty()
     val options = schema?.options.orEmpty()
     return IcebergExportCheck(
+        exportPath = export.path.toString(),
+        atTable = export.path.toAbsolutePath().normalize() == path.toAbsolutePath().normalize(),
+        storage = options[ICEBERG_STORAGE_KEY],
         versions = export.metadatas.size,
         currentIcebergSnapshotId = currentId,
         latestPaimonSnapshotId = latest?.metadata?.id,
@@ -110,4 +120,32 @@ fun PaimonUnifiedTableModel.checkIcebergExport(): IcebergExportCheck? {
         aboveLevelZero = primaryKey && options["deletion-vectors.enabled"]?.toBoolean() == true,
         readErrors = export.readErrors,
     )
+}
+
+const val ICEBERG_STORAGE_KEY = "metadata.iceberg.storage"
+const val ICEBERG_STORAGE_LOCATION_KEY = "metadata.iceberg.storage-location"
+
+/**
+ * Where `metadata.iceberg.storage` puts the export, from the table's options, the way
+ * `IcebergCommitCallback.catalogTableMetadataPath` decides it at 1.3.1 — or null where the
+ * option is off or the layout rules the export out.
+ *
+ * `table-location` writes under the table's own `metadata/`. Every other storage type —
+ * `hadoop-catalog`, `hive-catalog`, `rest-catalog` — infers *catalog storage* unless
+ * `metadata.iceberg.storage-location` says otherwise, and catalog storage is
+ * `<warehouse>/iceberg/<db>/<table>`, where the table's parent has to be `<db>.db` (the callback
+ * refuses any other parent): a directory beside the warehouse's databases that an Iceberg
+ * HadoopCatalog at `<warehouse>/iceberg` lists as `<db>.<table>`. The returned path is the
+ * directory whose `metadata/` holds the export, which is what [PaimonUnifiedTableModel.icebergExportPath]
+ * opens as an Iceberg table.
+ */
+fun icebergExportPathOf(tablePath: java.nio.file.Path, options: Map<String, String>): java.nio.file.Path? {
+    val storage = options[ICEBERG_STORAGE_KEY]?.lowercase()?.takeIf { it != "disabled" } ?: return null
+    val location = options[ICEBERG_STORAGE_LOCATION_KEY]?.lowercase()
+        ?: if (storage == "table-location") "table-location" else "catalog-storage"
+    if (location == "table-location") return tablePath
+    val dbDir = tablePath.parent ?: return null
+    val dbName = dbDir.fileName?.toString()?.removeSuffix(".db")?.takeIf { it != dbDir.fileName.toString() } ?: return null
+    val warehouse = dbDir.parent ?: return null
+    return warehouse.resolve("iceberg").resolve(dbName).resolve(tablePath.fileName.toString())
 }

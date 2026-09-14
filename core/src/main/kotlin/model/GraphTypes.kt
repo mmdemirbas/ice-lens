@@ -290,6 +290,15 @@ data class TableSummary(
      * without the model. Null on Iceberg, whose plan is read off the metadata node instead.
      */
     val paimonExpiry: PaimonExpiryInput? = null,
+    /**
+     * The directory the metadata records itself under — the current snapshot's `manifest-list`
+     * path two levels up — when it is not the table's [location]. An Iceberg table's metadata
+     * normally sits at `<location>/metadata/`; under `write.metadata.path`, or in the
+     * catalog-storage export a Paimon table writes (`pih`), it sits elsewhere and the data files
+     * are under the location, not under this directory. Null where the two agree, or nothing
+     * records either.
+     */
+    val metadataKeptApartAt: String? = null,
 ) {
     /**
      * The table as it is now: the manifest closure of `current-snapshot-id`, live entries

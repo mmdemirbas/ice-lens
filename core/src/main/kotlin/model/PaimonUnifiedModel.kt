@@ -32,14 +32,23 @@ data class PaimonUnifiedTableModel(
     val tagOnlySnapshots: List<PaimonUnifiedSnapshot> by lazy { tagOnlySnapshots(snapshots, tags) }
 
     /**
-     * The Iceberg metadata `metadata.iceberg.storage = table-location` writes under
-     * `<table>/metadata/`, read as the Iceberg table it is, or null where there is none. Lazy,
-     * because it is a second table's read — its manifest lists and manifests — for a section
-     * behind a click and for the referenced-files walk, and most tables carry none.
+     * The directory whose `metadata/` holds the Iceberg metadata `metadata.iceberg.storage`
+     * writes — the table's own under `table-location`, `<warehouse>/iceberg/<db>/<table>` under
+     * catalog storage — when an Iceberg table is there; see [icebergExportPathOf]. The table's
+     * own directory is asked first whatever the option says, since the option can be turned
+     * off after the export was written and the metadata stays.
      */
-    val icebergExport: UnifiedTableModel? by lazy {
-        if (service.TableFormatDetector.isIcebergTable(path)) UnifiedTableModel(path) else null
+    val icebergExportPath: Path? by lazy {
+        if (service.TableFormatDetector.isIcebergTable(path)) path
+        else icebergExportPathOf(path, latestSchema?.options.orEmpty())?.takeIf { service.TableFormatDetector.isIcebergTable(it) }
     }
+
+    /**
+     * That metadata read as the Iceberg table it is, or null where there is none. Lazy, because
+     * it is a second table's read — its manifest lists and manifests — for a section behind a
+     * click and for the referenced-files walk, and most tables carry none.
+     */
+    val icebergExport: UnifiedTableModel? by lazy { icebergExportPath?.let { UnifiedTableModel(it) } }
     override val format get() = service.TableFormat.PAIMON
 }
 
