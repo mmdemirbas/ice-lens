@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A file registered by `add_files` or `migrate` is read through the table's name mapping.**
+  Such a file records no field ids; `schema.name-mapping.default` places its columns, on the
+  row panel's `Read As`, in the row lookup, the live-row count and the statistics check.
 - **A row says what a read returns for it when the table's schema has moved on since the
   file.** The row panel's `Read As` section projects the file's cells onto the current schema
   by field id — a renamed column under its new name, a dropped one listed as not read, an
@@ -48,6 +51,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is read whole when the filter left any file of it.
 
 ### Fixed
+- **A filter on a column renamed or added since a file was written reads that file instead of
+  failing on it.** Every DuckDB read under a filter addressed the file by its own column names;
+  the row lookup on `evolved`'s `note` reported the two older files as errors, where a read
+  returns their rows with `note` null. The file is read under the schema's names now, a
+  missing column as its initial default or null.
+- **A data file recorded as a `file:` URI outside the table resolves beside it.** `add_files`
+  records `file:/wh/plain-files/…`, which was rebuilt under the table root as `<table>/file:/…`.
 - **A non-Parquet data file is read by the right DuckDB table function, or refused with the
   reason.** Every reader called `read_parquet` on whatever file it was given, under a comment
   saying DuckDB detected Parquet, ORC and Avro; an Avro file failed on its magic bytes and drew

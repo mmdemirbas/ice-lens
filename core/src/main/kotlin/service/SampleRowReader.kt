@@ -132,21 +132,22 @@ object SampleRowReader {
     }
 
     /**
-     * The field id each top-level column of a data file records — a Parquet file's `field_id`
-     * per column of its footer (`parquet_schema`, which lists every node depth-first, so the
-     * top level is walked by the children counts), an Avro file's `field-id` per field of its
-     * header. A column recording none is left out. Empty on a failure to read, since a row card
-     * has to draw without it.
+     * A data file's top-level columns, in file order, with the field id each records or null —
+     * a Parquet file's `field_id` per column of its footer (`parquet_schema`, which lists every
+     * node depth-first, so the top level is walked by the children counts), an Avro file's
+     * `field-id` per field of its header. What a read places the columns by, with the table's
+     * name mapping for the nulls (`placeFileColumns`). Empty on a failure to read, since a row
+     * card has to draw without it.
      */
-    fun fieldIdsOf(filePath: String): Map<String, Int> = runCatching {
+    fun fileColumnsOf(filePath: String): Map<String, Int?> = runCatching {
         val (safePath, ext) = resolveForQuery(filePath)
         when (ext) {
-            "avro" -> AvroReader.fieldIdsOf(safePath)
+            "avro" -> AvroReader.fileColumnsOf(safePath)
             else -> DuckDb.withConnection { conn ->
                 conn.prepareStatement("SELECT name, num_children, field_id FROM parquet_schema(?)").use { st ->
                     st.setString(1, safePath)
                     st.executeQuery().use { rs ->
-                        val ids = linkedMapOf<String, Int>()
+                        val columns = linkedMapOf<String, Int?>()
                         // Children left to consume at each depth; the root's count opens the walk.
                         val pending = ArrayDeque<Int>()
                         var first = true
@@ -158,15 +159,18 @@ object SampleRowReader {
                             while (pending.isNotEmpty() && pending.last() == 0) pending.removeLast()
                             if (pending.isEmpty()) break
                             pending[pending.lastIndex] = pending.last() - 1
-                            if (pending.size == 1 && fieldId != null) ids.putIfAbsent(name, fieldId)
+                            if (pending.size == 1) columns.putIfAbsent(name, fieldId)
                             if (children > 0) pending.addLast(children)
                         }
-                        ids
+                        columns
                     }
                 }
             }
         }
-    }.getOrElse { e -> logger.debug("field ids unavailable for {}: {}", filePath, e.message); emptyMap() }
+    }.getOrElse { e -> logger.debug("columns unavailable for {}: {}", filePath, e.message); emptyMap() }
+
+    /** [fileColumnsOf] without the columns recording no id. */
+    fun fieldIdsOf(filePath: String): Map<String, Int> = fileColumnsOf(filePath).mapNotNull { (name, id) -> id?.let { name to it } }.toMap()
 
     /** Whether DuckDB can say a row's physical position in a file of this format — Parquet's `file_row_number`. */
     internal fun hasRowPositions(ext: String): Boolean = ext == "parquet"

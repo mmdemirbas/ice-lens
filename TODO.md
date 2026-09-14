@@ -60,9 +60,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   `ALTER TABLE … ADD COLUMN … DEFAULT` with `UnsupportedOperationException: setting default
   values in Spark is currently unsupported` (run 2026-09-13). What is still unsurfaced: the
   **variant / geometry / geography / timestamp_ns** types, which Spark 3.5 cannot write (no
-  VARIANT type) and need a Spark 4.0 image; and a **name mapping** (`schema.name-mapping.default`),
-  which is how a file without field ids is read and which `projectRow` leaves unmatched rather
-  than applies. What the vector work does *not* cover on the
+  VARIANT type) and need a Spark 4.0 image. The **name mapping** is applied now (`migrated`),
+  top-level fields only — a nested mapping (`fields` inside a field) is parsed and not consulted,
+  the same scope as the row projection. What the vector work does *not* cover on the
   canvas: an Iceberg **positional delete** file (v2) marks no row *card*, because its targets are
   one per row and only known after reading the file — the same reason there is no `e_dv_*`-style
   edge for it. A row's panel answers it behind a click (`RowDeletesSection`), for equality deletes

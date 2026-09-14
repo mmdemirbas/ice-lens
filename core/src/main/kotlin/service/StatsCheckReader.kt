@@ -1,7 +1,9 @@
 package service
 
 import model.ActualColumnStats
+import model.NameMapping
 import model.RecordedColumnStats
+import model.placeFileColumns
 import model.StatsCheckResult
 import model.checkStats
 import model.normalizeDuckValue
@@ -20,25 +22,19 @@ import org.slf4j.LoggerFactory
 object StatsCheckReader {
     private val logger = LoggerFactory.getLogger(StatsCheckReader::class.java)
 
-    fun check(filePath: String, recorded: List<RecordedColumnStats>, recordedRows: Long?): StatsCheckResult {
+    fun check(filePath: String, recorded: List<RecordedColumnStats>, recordedRows: Long?, nameMapping: NameMapping? = null): StatsCheckResult {
         val (safePath, ext) = SampleRowReader.resolveForQuery(filePath)
         return DuckDb.withConnection { conn ->
-            // The file's own columns, with the field ids a Parquet file carries.
+            // The file's own columns, with their DuckDB types.
             val columns = linkedMapOf<String, String>()   // name -> DuckDB type
             conn.prepareStatement("DESCRIBE SELECT * FROM ${SampleRowReader.readerCall(ext)}").use { st ->
                 st.setString(1, safePath)
                 st.executeQuery().use { rs -> while (rs.next()) columns[rs.getString("column_name")] = rs.getString("column_type") }
             }
-            val nameById = mutableMapOf<Int, String>()
-            if (ext == "parquet") {
-                runCatching {
-                    conn.prepareStatement("SELECT name, field_id FROM parquet_schema(?) WHERE field_id IS NOT NULL").use { st ->
-                        st.setString(1, safePath)
-                        st.executeQuery().use { rs -> while (rs.next()) if (rs.getString("name") in columns) nameById.putIfAbsent(rs.getInt("field_id"), rs.getString("name")) }
-                    }
-                }.onFailure { logger.debug("parquet_schema unavailable for {}: {}", safePath, it.message) }
-            }
-            // Which file column each recorded statistic is about.
+            // Which file column each recorded statistic is about: the file's own field ids, the
+            // name mapping for a column recording none, and the current name last — a file
+            // written by neither Iceberg nor a migration, which nothing else can place.
+            val nameById = placeFileColumns(SampleRowReader.fileColumnsOf(filePath), nameMapping).filterValues { it in columns }
             val resolved = recorded.mapNotNull { r ->
                 val name = r.fieldId?.let(nameById::get) ?: columns.keys.firstOrNull { it.equals(r.name, ignoreCase = true) } ?: return@mapNotNull null
                 r.name to name

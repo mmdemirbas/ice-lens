@@ -23,11 +23,20 @@ class IntegrityFixtureTest {
     private fun paimonFixtures() = File(repoRoot, "example/paimon/db.db").listFiles()!!.filter { it.isDirectory }.map { it.name }.sorted()
 
     @Test
-    fun `every Iceberg fixture agrees with itself`() {
+    fun `every Iceberg fixture agrees with itself, but for the files total add_files left short`() {
         var checked = 0
         for (fixture in icebergFixtures()) {
             val report = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/$fixture").absolutePath)).integrityReport()
-            assertEquals(emptyList(), report.findings, fixture)
+            if (fixture == "migrated") {
+                // `add_files` appends a manifest, and a manifest_file records no byte total, so the
+                // summary has no `added-files-size` and `total-files-size` stays at 0 — then every
+                // later commit adds its own bytes to that, short by the registered file for good.
+                assertEquals(listOf("Files size", "Files size"), report.findings.map { it.figure }, "$report")
+                assertTrue(report.findings.all { it.check == IntegrityCheck.SNAPSHOT_TOTALS }, "$report")
+                assertEquals(setOf("0" to "916", "943" to "1859"), report.findings.map { it.recorded to it.counted }.toSet())
+            } else {
+                assertEquals(emptyList(), report.findings, fixture)
+            }
             assertEquals(report.snapshotCount, report.closuresChecked, "$fixture: every closure fits under the cap")
             assertTrue(report.checked > 0, fixture)
             checked += report.checked

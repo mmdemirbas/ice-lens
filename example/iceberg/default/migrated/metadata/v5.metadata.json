@@ -1,0 +1,140 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "db978cf7-125b-4725-ae15-1161286d01fa",
+  "location" : "/wh/default/migrated",
+  "last-sequence-number" : 2,
+  "last-updated-ms" : 1789347914176,
+  "last-column-id" : 3,
+  "current-schema-id" : 1,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "amount",
+      "required" : false,
+      "type" : "decimal(9, 2)"
+    } ]
+  }, {
+    "type" : "struct",
+    "schema-id" : 1,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "label",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "amount",
+      "required" : false,
+      "type" : "decimal(9, 2)"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "schema.name-mapping.default" : "[ {\n  \"field-id\" : 1,\n  \"names\" : [ \"id\" ]\n}, {\n  \"field-id\" : 2,\n  \"names\" : [ \"name\", \"label\" ]\n}, {\n  \"field-id\" : 3,\n  \"names\" : [ \"amount\" ]\n} ]",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : 2296384353174587915,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 2296384353174587915,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 4585211609757941234,
+    "timestamp-ms" : 1789347913750,
+    "summary" : {
+      "operation" : "append",
+      "added-data-files" : "1",
+      "added-records" : "2",
+      "total-records" : "2",
+      "total-files-size" : "0",
+      "total-data-files" : "1",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1789347906831",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/migrated/metadata/snap-4585211609757941234-1-21de6484-3be3-4a18-8d75-87c521c43f0a.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 2,
+    "snapshot-id" : 2296384353174587915,
+    "parent-snapshot-id" : 4585211609757941234,
+    "timestamp-ms" : 1789347914176,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1789347906831",
+      "added-data-files" : "1",
+      "added-records" : "1",
+      "added-files-size" : "943",
+      "changed-partition-count" : "1",
+      "total-records" : "3",
+      "total-files-size" : "943",
+      "total-data-files" : "2",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1789347906831",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "/wh/default/migrated/metadata/snap-2296384353174587915-1-013f3271-585b-4482-b6f6-e5f2044210e3.avro",
+    "schema-id" : 1
+  } ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1789347913750,
+    "snapshot-id" : 4585211609757941234
+  }, {
+    "timestamp-ms" : 1789347914176,
+    "snapshot-id" : 2296384353174587915
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1789347909606,
+    "metadata-file" : "/wh/default/migrated/metadata/v1.metadata.json"
+  }, {
+    "timestamp-ms" : 1789347909819,
+    "metadata-file" : "/wh/default/migrated/metadata/v2.metadata.json"
+  }, {
+    "timestamp-ms" : 1789347913750,
+    "metadata-file" : "/wh/default/migrated/metadata/v3.metadata.json"
+  }, {
+    "timestamp-ms" : 1789347913836,
+    "metadata-file" : "/wh/default/migrated/metadata/v4.metadata.json"
+  } ]
+}

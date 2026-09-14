@@ -77,7 +77,7 @@ object LiveRowCount {
                 opened >= MAX_FILES -> { left++; FileCount(file, records, 0, kinds, opened = false, error = "left unopened by the cap") }
                 else -> {
                     opened++
-                    runCatching { FileCount(file, records, removedFrom(file, deletes, vectors), kinds, opened = true) }
+                    runCatching { FileCount(file, records, removedFrom(file, deletes, vectors, input), kinds, opened = true) }
                         .onFailure { logger.warn("Could not count {}: {}", file.localPath, it.message) }
                         .getOrElse { FileCount(file, records, 0, kinds, opened = true, error = it.message ?: it.toString()) }
                 }
@@ -95,7 +95,7 @@ object LiveRowCount {
         }.onFailure { logger.warn("Could not read the vector in {}: {}", delete.localPath, it.message) }.getOrNull()
 
     /** The distinct positions every reaching delete removes from one data file, the file opened once. */
-    private fun removedFrom(file: LookupDataFile, deletes: List<LookupDeleteFile>, vectors: MutableMap<String, BitSet?>): Long {
+    private fun removedFrom(file: LookupDataFile, deletes: List<LookupDeleteFile>, vectors: MutableMap<String, BitSet?>, input: RowLookupInput): Long {
         val (dataPath, ext) = SampleRowReader.resolveForQuery(file.localPath)
         require(SampleRowReader.hasRowPositions(ext)) { "positions are known for Parquet only; this file is $ext" }
         val bits = BitSet()
@@ -117,6 +117,12 @@ object LiveRowCount {
         val conditions = mutableListOf<String>()
         val positionalPaths = positional.map { SampleRowReader.resolveForQuery(it.localPath) }
         val equalityPaths = equality.map { SampleRowReader.resolveForQuery(it.localPath) }
+        // The data file and each equality delete under the schema's names (FileProjection), so
+        // the join matches a column by what it is rather than by what either file called it.
+        val data = FileProjection.of(ext, SampleRowReader.fileColumnsOf(file.localPath), input.schema, input.nameMapping, rowNumber = true, alias = "d")
+        val equalitySources = equality.mapIndexed { index, delete ->
+            FileProjection.of(equalityPaths[index].second, SampleRowReader.fileColumnsOf(delete.localPath), input.schema, input.nameMapping, alias = "e")
+        }
         if (positional.isNotEmpty()) {
             val branches = positionalPaths.joinToString(" UNION ALL ") { (_, deleteExt) -> "SELECT pos FROM ${SampleRowReader.readerCall(deleteExt)} WHERE file_path = ?" }
             conditions += "d.${SampleRowReader.FILE_ROW_NUMBER} IN ($branches)"
@@ -125,19 +131,18 @@ object LiveRowCount {
             val on = delete.equalityColumns.joinToString(" AND ") { column ->
                 "e.${quoteSqlIdentifier(column)} IS NOT DISTINCT FROM d.${quoteSqlIdentifier(column)}"
             }
-            conditions += "EXISTS (SELECT 1 FROM ${SampleRowReader.readerCall(equalityPaths[index].second)} e WHERE $on)"
+            conditions += "EXISTS (SELECT 1 FROM ${equalitySources[index].sql} WHERE $on)"
         }
-        val sql = "SELECT d.${SampleRowReader.FILE_ROW_NUMBER} FROM ${SampleRowReader.readerCall(ext, rowNumber = true)} d " +
+        val sql = "SELECT d.${SampleRowReader.FILE_ROW_NUMBER} FROM ${data.sql} " +
             "WHERE ${conditions.joinToString(" OR ")}"
         DuckDb.withConnection { conn ->
             conn.prepareStatement(sql).use { pstmt ->
-                var i = 1
-                pstmt.setString(i++, dataPath)
+                var i = data.bind(pstmt, 1, dataPath)
                 positionalPaths.forEach { (path, _) ->
                     pstmt.setString(i++, path)
                     pstmt.setString(i++, file.recordedPath)
                 }
-                equalityPaths.forEach { (path, _) -> pstmt.setString(i++, path) }
+                equalityPaths.forEachIndexed { index, (path, _) -> i = equalitySources[index].bind(pstmt, i, path) }
                 pstmt.executeQuery().use { rs ->
                     while (rs.next()) {
                         val position = rs.getLong(1)

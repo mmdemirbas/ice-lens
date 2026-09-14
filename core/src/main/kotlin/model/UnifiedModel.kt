@@ -401,14 +401,19 @@ fun UnifiedManifest(
             // second: before that rule it was rebuilt under the table root, where nothing is,
             // and every file reported missing.
             val (dataFilePathResolved, resolution) = resolveRecordedOrRebuilt(dataFilePathInFile) {
-                val metadataDirPrefix = manifest.manifestPath.orEmpty().substringBeforeLast('/')
+                // Both sides without their scheme: `add_files` records a registered file as the
+                // `file:/wh/plain-files/…` URI its source table had, where the table's own files
+                // are `/wh/…`, and compared raw the URI shares no prefix with anything and was
+                // rebuilt under the table root as `<table>/file:/wh/…` (`migrated`).
+                val recordedLocal = normalizeFilePath(dataFilePathInFile)
+                val metadataDirPrefix = normalizeFilePath(manifest.manifestPath.orEmpty()).substringBeforeLast('/')
                 val tableDirPrefix = metadataDirPrefix.substringBeforeLast('/')
-                if (tableDirPrefix.isNotEmpty() && !dataFilePathInFile.startsWith("$tableDirPrefix/")) {
-                    rebuildBesideTable(dataFilePathInFile, tableDirPrefix, dataRoot)
+                if (tableDirPrefix.isNotEmpty() && !recordedLocal.startsWith("$tableDirPrefix/")) {
+                    rebuildBesideTable(recordedLocal, tableDirPrefix, dataRoot)
                         ?.let { return@resolveRecordedOrRebuilt it to PathResolution.REBUILT_BESIDE_TABLE }
                 }
                 val dataFilePathRelative =
-                    dataFilePathInFile.removePrefix(tableDirPrefix).removePrefix("/")
+                    recordedLocal.removePrefix(tableDirPrefix).removePrefix("/")
                 val rebuilt = dataRoot.resolve(dataFilePathRelative)
 
                 // The rebuilt path is ours, so it must land under the table. A recorded path that
@@ -533,8 +538,8 @@ data class UnifiedDataFile(
 ) {
     val rows: List<UnifiedRow> by lazy { rowsLoader() }
 
-    /** The file's own field id per top-level column — what a read places its columns by; see [projectRow]. */
-    val fieldIds: Map<String, Int> by lazy { SampleRowReader.fieldIdsOf(path.toString()) }
+    /** The file's top-level columns with the field id each records, or null — what a read places them by; see [projectRow]. */
+    val fileColumns: Map<String, Int?> by lazy { SampleRowReader.fileColumnsOf(path.toString()) }
 }
 
 /**

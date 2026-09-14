@@ -9,6 +9,8 @@ import model.RowFate
 import model.RowHit
 import model.RowLookupInput
 import model.RowLookupResult
+import model.IcebergSchemaModel
+import model.NameMapping
 import model.ScanFilter
 import model.normalizeFilePath
 import model.toSql
@@ -46,7 +48,7 @@ object RowLookup {
         val outcomes = mutableListOf<LookupFileOutcome>()
         val hits = mutableListOf<RowHit>()
         for (file in toRead) {
-            val rows = runCatching { readMatches(file, predicate.sql, predicate.params) }
+            val rows = runCatching { readMatches(file, predicate.sql, predicate.params, input.schema, input.nameMapping) }
             val error = rows.exceptionOrNull()
             if (error != null) {
                 logger.warn("Could not read {}: {}", file.localPath, error.message)
@@ -64,13 +66,15 @@ object RowLookup {
         return RowLookupResult(outcomes, input.dataFiles.size - candidates.size, candidates.size - toRead.size, hits)
     }
 
-    private fun readMatches(file: LookupDataFile, where: String, params: List<String>): List<Map<String, Any?>> {
+    private fun readMatches(file: LookupDataFile, where: String, params: List<String>, schema: IcebergSchemaModel?, mapping: NameMapping?): List<Map<String, Any?>> {
         val (safePath, ext) = SampleRowReader.resolveForQuery(file.localPath)
-        val source = SampleRowReader.readerCall(ext, rowNumber = true)
+        // The file under the schema's names, so a column renamed or added since it was written
+        // still answers the filter — see FileProjection.
+        val source = FileProjection.of(ext, SampleRowReader.fileColumnsOf(file.localPath), schema, mapping, rowNumber = true)
         return DuckDb.withConnection { conn ->
-            conn.prepareStatement("SELECT * FROM $source WHERE $where LIMIT $MAX_HITS_PER_FILE").use { pstmt ->
-                pstmt.setString(1, safePath)
-                params.forEachIndexed { i, p -> pstmt.setString(i + 2, p) }
+            conn.prepareStatement("SELECT * FROM ${source.sql} WHERE $where LIMIT $MAX_HITS_PER_FILE").use { pstmt ->
+                var i = source.bind(pstmt, 1, safePath)
+                params.forEach { p -> pstmt.setString(i++, p) }
                 pstmt.executeQuery().use { rs ->
                     val meta = rs.metaData
                     val rows = mutableListOf<Map<String, Any?>>()

@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import model.NameMapping
 import model.RecordedColumnStats
 import model.StatsCheckResult
 import model.StatsVerdict
@@ -36,6 +37,8 @@ internal fun StatsCheckSection(
     path: String?,
     recorded: List<RecordedColumnStats>,
     recordedRows: Long?,
+    /** The table's name mapping, for a file recording no field ids — Iceberg only. */
+    nameMapping: NameMapping? = null,
     startRequested: Boolean = false,
     onSettled: () -> Unit = {},
 ) {
@@ -46,7 +49,7 @@ internal fun StatsCheckSection(
     val outcome by produceState<Result<StatsCheckResult>?>(null, nodeId, requested) {
         value = null
         if (requested) {
-            value = withContext(Dispatchers.IO) { runCatching { StatsCheckReader.check(path, recorded, recordedRows) } }
+            value = withContext(Dispatchers.IO) { runCatching { StatsCheckReader.check(path, recorded, recordedRows, nameMapping) } }
             onSettled()
         }
     }

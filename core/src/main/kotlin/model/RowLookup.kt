@@ -101,6 +101,8 @@ data class RowLookupInput(
     val deleteFiles: List<LookupDeleteFile>,
     /** [deleteReach] over the snapshot — which delete files a scan pairs with which data files. */
     val reach: List<DeleteReach>,
+    /** The table's name mapping, for a file recording no field ids — see [placeFileColumns]. */
+    val nameMapping: NameMapping? = null,
 ) {
     /** The delete files paired with a data file, proved or unsettled, in the order the reach lists them. */
     fun deletesFor(recordedPath: String): List<LookupDeleteFile> {
@@ -181,5 +183,5 @@ fun UnifiedTableModel.rowLookupInputOf(snapshot: UnifiedSnapshot, liveFiles: Lis
             }
         }
     }
-    return RowLookupInput(currentId, schema, data.values.toList(), deletes.values.toList(), reach)
+    return RowLookupInput(currentId, schema, data.values.toList(), deletes.values.toList(), reach, newest.nameMapping())
 }

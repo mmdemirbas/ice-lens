@@ -22,11 +22,13 @@ class SnapshotTotalsTest {
     private fun table(name: String) =
         UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/$name").absolutePath))
 
+    /** `migrated` is the one exception: `add_files` appends a manifest, which carries no byte total, so its `total-files-size` starts at 0 and stays short — see IntegrityFixtureTest. */
     @Test
     fun `every recorded total agrees with the live set at that snapshot`() {
         var compared = 0
         val disagreements = mutableListOf<String>()
         fixtures.forEach { name ->
+            if (name == "migrated") return@forEach
             table(name).metadatas.last().snapshots.filter { !it.expired }.forEach { snapshot ->
                 snapshotTotals(snapshot.metadata.summary, liveFilesOf(snapshot)).forEach { tally ->
                     if (tally.recorded == null) return@forEach

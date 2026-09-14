@@ -68,7 +68,7 @@ internal fun IntegritySection(
             value = withContext(Dispatchers.IO) {
                 runCatching {
                     val targets = requireNotNull(node.fileStats.value) { "no files to read" }
-                    sweepFileStats(targets) { StatsCheckReader.check(it.localPath, it.recorded, it.recordedRows) }
+                    sweepFileStats(targets) { StatsCheckReader.check(it.localPath, it.recorded, it.recordedRows, it.nameMapping) }
                 }
             }
             if (readFilesRequested) onSettled()

@@ -49,8 +49,10 @@ object IcebergGraphBuilder {
         val tableSummary = buildTableSummary(tableModel)
         // Sort orders only accumulate, so the newest metadata's list holds every id a file can name.
         val newestMetadata = tableModel.metadatas.lastOrNull()?.metadata
-        // What a read projects a row onto — the newest metadata's current schema, never the manifest's.
+        // What a read projects a row onto — the newest metadata's current schema, never the
+        // manifest's — and the name mapping a file without field ids is placed through.
         val currentSchema = newestMetadata?.let { m -> m.schemas.firstOrNull { it.schemaId == m.currentSchemaId } ?: m.schemas.lastOrNull() }?.let(::tableSchemaModel)
+        val nameMapping = newestMetadata?.nameMapping()
         val sortOrdersById = newestMetadata?.sortOrders.orEmpty()
             .mapNotNull { order -> order.orderId?.let { it to order } }.toMap()
         val defaultSortOrder = newestMetadata?.defaultSortOrderId?.let { sortOrdersById[it] }
@@ -327,6 +329,7 @@ object IcebergGraphBuilder {
                                     vectorFor = { path -> vectorsByReferencedPath()[path] },
                                     dataSequenceNumber = effectiveSequenceNumber(entry, unifiedManifest.metadata.sequenceNumber),
                                     currentSchema = currentSchema,
+                                    nameMapping = nameMapping,
                                 )
                             }
                         }
@@ -482,6 +485,7 @@ object IcebergGraphBuilder {
         vectorFor: (String) -> GraphNode.FileNode?,
         dataSequenceNumber: Long,
         currentSchema: IcebergSchemaModel?,
+        nameMapping: NameMapping?,
     ): () -> List<GraphNode.RowNode> = {
         if (!Files.isRegularFile(dataFile.path)) {
             emptyList()
@@ -502,7 +506,7 @@ object IcebergGraphBuilder {
                     identifierFields = identifierFields,
                     deletedPositions = deleted,
                     readAs = if (contentType == DataFileContent.DATA && currentSchema != null) DeferredRead.of {
-                        dataFile.rows.getOrNull(rowIndex)?.let { projectRow(it.cells, dataFile.fieldIds, currentSchema) }
+                        dataFile.rows.getOrNull(rowIndex)?.let { projectRow(it.cells, dataFile.fileColumns, currentSchema, nameMapping) }
                     } else DeferredRead.none(),
                     dataLoader = {
                         try {

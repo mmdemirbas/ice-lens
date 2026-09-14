@@ -75,6 +75,7 @@ core/src/main/kotlin/
 │   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
 │   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing — and the fates a hit can have, both formats
 │   ├── ReadProjection.kt      # A sampled row as a read returns it: the file's cells placed onto the current schema by field id, a renamed column under its new name, a dropped one not at all, an added one as its initial default
+│   ├── NameMapping.kt         # `schema.name-mapping.default`, and the one rule placing a file's columns — its own field ids first, the mapping for a column recording none
 │   ├── PaimonRowLookup.kt     # What reading a Paimon snapshot takes: the live files by bucket, the index manifest's vectors, the merge rule — for the row lookup and the merged count
 │   ├── PaimonMergeRule.kt     # What a read does with a key's records under each merge engine, and which level-0 files it never reads
 │   ├── ScanFilterSql.kt       # A ScanFilter as DuckDB's WHERE clause, every literal bound and cast to its column's type
@@ -100,6 +101,7 @@ core/src/main/kotlin/
 │   ├── PaimonRowLookup.kt     # The same on Paimon: a record's fate under its file's vector, its own `_VALUE_KIND`, and the bucket's later writes for its key
 │   ├── PaimonMergedCount.kt   # What `SELECT count(*)` returns as of a Paimon snapshot: the merge over each bucket's files, less retractions and vector-marked keys
 │   ├── LiveRowCount.kt        # The same on Iceberg: each data file's record_count less the rows the delete files the scan pairs with it remove
+│   ├── FileProjection.kt      # A data file as a `FROM` under the schema's names — every column placed by field id or the mapping, a missing one its initial default or NULL — so a lookup, a count or a check names columns the way the schema does
 │   ├── StatsCheckReader.kt    # One DuckDB statement per file — count, min, max, nulls per recorded column, NaNs kept out — for StatsCheck; columns found by field id where the Parquet file carries one
 │   ├── PaimonDeletionVectorReader.kt # A Paimon index file's vector at (offset, length) → the row positions it marks; v1 32-bit, v2 as Iceberg's blob
 │   ├── PaimonSequenceGroups.kt # partial-update's remove-record-on-sequence-group, folded over a key's records in sequence order
@@ -636,6 +638,33 @@ intellij/src/main/kotlin/plugin/
   printed by the script — and `ReadProjectionFixtureTest` holds the first two rows to it; the
   same script shows `updateColumnDefault` moving `write-default` to `us` and leaving
   `initial-default` at `eu`, which is the difference between the two figures
+- **Every DuckDB read of a data file under a filter goes through the file projected onto the
+  schema, and a file that records no field ids is placed through the name mapping.**
+  `SELECT * FROM read_parquet(?) WHERE …` addresses a file by its own column names, and a
+  filter names the schema's: on `evolved`, `note = 'fifth'` came back as a DuckDB *error* on the
+  two files that predate `note`, where a read returns their rows with `note` null — and
+  `note IS NULL` is true of every row in them, which no error can say. `service/FileProjection.kt`
+  builds the `FROM` a lookup (`RowLookup.readMatches`), a live-row count's equality join
+  (`LiveRowCount`, both the data file and the delete file) and the statistics check
+  (`StatsCheckReader`, its placement) run over: each schema field aliased from the file column
+  `placeFileColumns` places for it — the file's own field id first, the table's
+  `schema.name-mapping.default` (`model/NameMapping.kt`) for a column recording none, which is
+  every file `add_files` or `migrate` registered — a field the file lacks as its
+  `initial-default` bound and cast to the column's type, or `NULL`. `migrated` is the fixture:
+  a plain-Spark Parquet file brought in with `add_files`, then `RENAME COLUMN name TO label`, and
+  the rename **appends** `label` to the mapping's names for field 2 (`["name", "label"]`), so a
+  filter on `label` reads the file's `name`. Three more things it settled. **`add_files` records
+  the source's `file:/wh/plain-files/…` URI**, and compared raw against the manifest's `/wh/…`
+  prefix it shared nothing and was rebuilt as `<table>/file:/wh/…`; the resolver normalises
+  both sides now, and the file lands under `example/iceberg/plain-files/` beside the table, the
+  `extdata` rule. **`add_files` appends a manifest, and a `manifest_file` carries no byte
+  total**, so the commit's summary has `added-records` and no `added-files-size`, and
+  `total-files-size` starts at 0 and stays short by the registered bytes on every later commit
+  (`SnapshotSummary.MetricsUpdate.addedManifest` at 1.8.1 adds counts only) — the integrity
+  check's `SNAPSHOT_TOTALS` finds it (`0` against `916`, then `943` against `1859`), and
+  `IntegrityFixtureTest` / `SnapshotTotalsTest` hold `migrated` to exactly that rather than to
+  agreement. And the manifest `add_files` wrote still names field 2 `name`, so the *statistics*
+  check matched the file by name even before the mapping; it is a read that needs it
 - **A sampled row's position is asked for, not inferred.** DuckDB is given
   `read_parquet(?, file_row_number = true)`, and `UnifiedRow.position` carries the answer as
   something separate from the row's cells — it is DuckDB's statement about the file, not a column
@@ -1873,7 +1902,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,203 tests across 159 files (929 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,206 tests across 160 files (932 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1965,6 +1994,7 @@ container invocation and the traps in it:
 | `default/mor` | `MergeOnReadFixtureTest` | positional deletes, a compaction, dangling deletes |
 | `default/eqdel` | `EqualityDeleteFixtureTest` | both delete kinds in one table |
 | `default/v3` | `FormatV3FixtureTest` | format-version 3 with deletion vectors |
+| `default/migrated` | `MigratedFixtureTest` | a plain-Spark Parquet file registered by `add_files` — no field ids, a `file:` URI outside the table, the name mapping the procedure set and a rename extended, and a `total-files-size` the procedure left short |
 | `default/defaults` | `ReadProjectionFixtureTest` | format-version 3 column defaults, written by Iceberg 1.10's `UpdateSchema` from spark-shell — `region` with `initial-default eu` and `write-default us` after an `updateColumnDefault`, `score` with `0`; a file written before both, and the writer's read of it printed in the script |
 | `default/lineage` | `RowLineageFixtureTest` | format-version 3 row lineage, written by Iceberg 1.10 — `next-row-id`, a snapshot's and a manifest's `first-row-id`, files inheriting theirs in entry order, a rewritten file carrying `_row_id`, a deletion vector allocating nothing, and a compaction that keeps every id |
 | `default/evolved` | `SchemaEvolutionFixtureTest` | three manifest schemas — `int`→`long`, `float`→`double`, a rename and a drop |

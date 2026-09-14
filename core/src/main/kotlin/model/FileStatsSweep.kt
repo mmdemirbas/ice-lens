@@ -16,6 +16,8 @@ data class FileStatsTarget(
     val localPath: String,
     val recorded: List<RecordedColumnStats>,
     val recordedRows: Long?,
+    /** The table's name mapping, for a file recording no field ids — Iceberg only. */
+    val nameMapping: NameMapping? = null,
 )
 
 data class FileStatsSweep(
@@ -67,6 +69,7 @@ fun UnifiedTableModel.fileStatsTargets(): List<FileStatsTarget> {
     val snapshot = metadatas.asReversed().firstNotNullOfOrNull { um -> um.snapshots.firstOrNull { it.metadata.snapshotId == currentId } }
         ?.takeIf { !it.expired } ?: return emptyList()
     val live = liveFilesOf(snapshot).map { normalizeFilePath(it.path) }.toSet()
+    val mapping = newest.metadata.nameMapping()
     val tableFieldsById = metadatas.asReversed().flatMap { it.metadata.schemas }.flatMap { tableSchemaModel(it).struct.fields }
         .associateBy { it.id }
     val seen = mutableSetOf<String>()
@@ -82,6 +85,7 @@ fun UnifiedTableModel.fileStatsTargets(): List<FileStatsTarget> {
                 localPath = unified.path.toString(),
                 recorded = recordedColumnStatsOf(columnStatsFor(file, m.schema, tableFieldsById), file),
                 recordedRows = file.recordCount,
+                nameMapping = mapping,
             )
         }
     }

@@ -12,9 +12,9 @@ package model
  * written before either column existed, and that printout is what [ProjectedRow] is held to.
  *
  * Top-level fields only: a struct's inner fields evolve by the same rule, and the card shows a
- * struct whole. A file column with no field id is left unmatched and said so — an Iceberg
- * writer always records one, and a file without them is read through a name mapping this does
- * not apply.
+ * struct whole. A file column with no field id is placed through the table's [NameMapping] —
+ * what `add_files` and `migrate` set for the files they register, which record none — and one
+ * the mapping names nowhere either is left unmatched and said so.
  */
 data class ProjectedRow(
     val cells: List<ProjectedCell>,
@@ -25,7 +25,7 @@ data class ProjectedRow(
 ) {
     /** Whether a read returns anything other than the file's columns under the file's names. */
     val differsFromFile: Boolean
-        get() = dropped.isNotEmpty() || unmatched.isNotEmpty() || cells.any { it.source != ProjectedCellSource.FILE || it.fileColumn != it.name }
+        get() = dropped.isNotEmpty() || unmatched.isNotEmpty() || cells.any { it.source != ProjectedCellSource.FILE || it.fileColumn != it.name || it.viaMapping }
 
     val describe: String
         get() {
@@ -33,6 +33,7 @@ data class ProjectedRow(
                 cells.count { it.source == ProjectedCellSource.INITIAL_DEFAULT }.takeIf { it > 0 }?.let { add("$it from an initial default") }
                 cells.count { it.source == ProjectedCellSource.ABSENT }.takeIf { it > 0 }?.let { add("$it absent from the file, read as null") }
                 cells.count { it.source == ProjectedCellSource.FILE && it.fileColumn != it.name }.takeIf { it > 0 }?.let { add("$it renamed since the file was written") }
+                cells.count { it.viaMapping }.takeIf { it > 0 }?.let { add("$it placed by the name mapping, the file recording no field ids") }
                 dropped.size.takeIf { it > 0 }?.let { add("$it of the file's columns dropped from the table") }
                 unmatched.size.takeIf { it > 0 }?.let { add("$it of the file's columns without a field id") }
             }
@@ -56,6 +57,8 @@ data class ProjectedCell(
     val source: ProjectedCellSource,
     /** The file's name for the column, when the value came from the file. */
     val fileColumn: String? = null,
+    /** Whether the file column was placed through the name mapping rather than by an id it records. */
+    val viaMapping: Boolean = false,
 )
 
 data class DroppedCell(val fileColumn: String, val fieldId: Int, val value: String)
@@ -64,22 +67,24 @@ data class DroppedCell(val fileColumn: String, val fieldId: Int, val value: Stri
 private fun isMetadataColumn(name: String) = name.startsWith("_")
 
 /**
- * [cells] as a read under [schema] returns them, the file's columns placed by [fileFieldIds]
- * (file column name → field id, from the file's own footer or header).
+ * [cells] as a read under [schema] returns them, the file's columns placed by [fileColumns]
+ * (file column name → the field id it records, or null — from the file's own footer or header)
+ * and, for a column recording none, by [mapping] — see [placeFileColumns].
  */
-fun projectRow(cells: Map<String, Any?>, fileFieldIds: Map<String, Int>, schema: IcebergSchemaModel): ProjectedRow {
-    val fileColumnById = fileFieldIds.entries.filter { it.key in cells }.associate { it.value to it.key }
+fun projectRow(cells: Map<String, Any?>, fileColumns: Map<String, Int?>, schema: IcebergSchemaModel, mapping: NameMapping? = null): ProjectedRow {
+    val fileColumnById = placeFileColumns(fileColumns.filterKeys { it in cells }, mapping)
     val projected = schema.struct.fields.map { field ->
         val fileColumn = fileColumnById[field.id]
         when {
-            fileColumn != null -> ProjectedCell(field.id, field.name, field.type.typeName, cells[fileColumn].toString(), ProjectedCellSource.FILE, fileColumn)
+            fileColumn != null -> ProjectedCell(field.id, field.name, field.type.typeName, cells[fileColumn].toString(), ProjectedCellSource.FILE, fileColumn, viaMapping = fileColumns[fileColumn] == null)
             field.initialDefault != null -> ProjectedCell(field.id, field.name, field.type.typeName, field.showDefault(field.initialDefault) ?: "null", ProjectedCellSource.INITIAL_DEFAULT)
             else -> ProjectedCell(field.id, field.name, field.type.typeName, "null", ProjectedCellSource.ABSENT)
         }
     }
     val placed = projected.mapNotNull { it.fileColumn }.toSet()
-    val dropped = cells.keys.filter { it !in placed && !isMetadataColumn(it) && it in fileFieldIds }
-        .map { DroppedCell(it, fileFieldIds.getValue(it), cells[it].toString()) }
-    val unmatched = cells.keys.filter { it !in fileFieldIds && !isMetadataColumn(it) }
+    val idOf = { name: String -> fileColumns[name] ?: mapping?.fieldIdOf(name) }
+    val dropped = cells.keys.filter { it !in placed && !isMetadataColumn(it) && idOf(it) != null }
+        .map { DroppedCell(it, idOf(it)!!, cells[it].toString()) }
+    val unmatched = cells.keys.filter { it !in placed && !isMetadataColumn(it) && idOf(it) == null }
     return ProjectedRow(projected, dropped, unmatched)
 }
