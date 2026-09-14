@@ -148,7 +148,7 @@ fun planRewrite(live: List<LiveFile>, reach: List<DeleteReach>, options: Rewrite
             }
             if (reasons.isEmpty()) null else RewriteCandidate(f.path, f.sizeBytes, f.recordCount, deletes, known, reasons)
         }
-        packBins(candidates, options.maxFileGroupSizeBytes).map { bin ->
+        packBins(candidates, options.maxFileGroupSizeBytes) { it.sizeBytes }.map { bin ->
             val input = bin.sumOf { it.sizeBytes }
             val reasons = buildList {
                 if (options.rewriteAll) add(RewriteGroupReason.REWRITE_ALL) else {
@@ -159,39 +159,39 @@ fun planRewrite(live: List<LiveFile>, reach: List<DeleteReach>, options: Rewrite
                     if (bin.any { RewriteFileReason.HIGH_DELETE_RATIO in it.reasons }) add(RewriteGroupReason.HIGH_DELETE_RATIO)
                 }
             }
-            RewriteGroup(partition, bin, reasons, numOutputFiles(input, options))
+            RewriteGroup(partition, bin, reasons, numOutputFiles(input, options.targetFileSizeBytes, options.minFileSizeBytes, options.maxFileSizeBytes))
         }
     }
     return RewritePlan(options, byPartition, groups)
 }
 
-/** `BinPacking.ListPacker(target, lookback = 1, largestBinFirst = false)`: one open bin, closed by the first item that does not fit. */
-private fun packBins(items: List<RewriteCandidate>, target: Long): List<List<RewriteCandidate>> {
-    val bins = mutableListOf<MutableList<RewriteCandidate>>()
-    var open: MutableList<RewriteCandidate>? = null
+/** `BinPacking.ListPacker(target, lookback = 1, largestBinFirst = false)`: one open bin, closed by the first item that does not fit. Shared with [planPositionDeleteRewrite]. */
+internal fun <T> packBins(items: List<T>, target: Long, weightOf: (T) -> Long): List<List<T>> {
+    val bins = mutableListOf<MutableList<T>>()
+    var open: MutableList<T>? = null
     var weight = 0L
     for (item in items) {
-        if (open != null && weight + item.sizeBytes <= target) {
+        val itemWeight = weightOf(item)
+        if (open != null && weight + itemWeight <= target) {
             open.add(item)
-            weight += item.sizeBytes
+            weight += itemWeight
         } else {
             open = mutableListOf(item).also { bins.add(it) }
-            weight = item.sizeBytes
+            weight = itemWeight
         }
     }
     return bins
 }
 
-/** `SizeBasedFileRewriter.numOutputFiles`: how many files a group's bytes become. */
-private fun numOutputFiles(inputSize: Long, options: RewriteOptions): Long {
-    val target = options.targetFileSizeBytes
+/** `SizeBasedFileRewriter.numOutputFiles`: how many files a group's bytes become. Shared with [planPositionDeleteRewrite]. */
+internal fun numOutputFiles(inputSize: Long, target: Long, minFileSize: Long, maxFileSize: Long): Long {
     if (inputSize < target) return 1
     val withRemainder = ceil(inputSize.toDouble() / target).toLong()
     val withoutRemainder = inputSize / target
     val avgWithoutRemainder = inputSize / withoutRemainder
-    val writeMax = (target + (options.maxFileSizeBytes - target) * 0.5).toLong()
+    val writeMax = (target + (maxFileSize - target) * 0.5).toLong()
     return when {
-        inputSize % target > options.minFileSizeBytes -> withRemainder
+        inputSize % target > minFileSize -> withRemainder
         avgWithoutRemainder < minOf(1.1 * target, writeMax.toDouble()) -> withoutRemainder
         else -> withRemainder
     }

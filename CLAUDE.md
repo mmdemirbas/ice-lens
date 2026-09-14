@@ -1583,6 +1583,30 @@ intellij/src/main/kotlin/plugin/
   `sorted` left alone, `mor` still rewritten by both rules. `LiveFile.specId` exists for the
   spec rule; the snapshot panel's `Rewrite` section takes the target size and the current spec
   off the latest metadata node
+- **`rewrite_position_delete_files` is planned the same way, and what it drops is read.**
+  `model/PositionDeleteRewritePlan.kt` reads `RewritePositionDeleteFilesSparkAction` and
+  `SizeBasedPositionDeletesRewriter` at 1.8.1: the current snapshot's live positional delete
+  files grouped by partition, a candidate when outside 75%–180% of
+  `write.delete.target-file-size-bytes` (64 MB) unless `rewrite-all`, packed into
+  `max-file-group-size-bytes` bins in scan order, a bin rewritten with `min-input-files` (5) or
+  more, more than the target in bytes, or more than the maximum — the data rewriter's three size
+  rules and neither of its delete rules (`packBins` and `numOutputFiles` are shared). **The
+  action refuses a v3 table** (`Cannot rewrite position deletes for V3 table`), so a deletion
+  vector is never planned and `v3` is the refusal. What the rewrite writes is the other half
+  and takes reading: `SparkBinPackPositionDeletesRewriter.doRewrite` keeps a position whose
+  `file_path` names a live data file of the group's partition (a left-semi join against
+  `data_files` filtered to the partition) and drops the rest — the dangling records a compaction
+  leaves, which is why the procedure is run after one. `service/PositionDeleteRewriteDrops.kt`
+  opens each rewritten file through `queryPositionalDeleteTargets` and marks each target kept or
+  dropped against the snapshot's live data files by path and partition. **The oracle is
+  `maint`'s own rewrite**: planned on the snapshot before it under the script's `rewrite-all`,
+  the plan names the three files its summary counts as `removed-position-delete-files`, and the
+  read keeps one position and drops two — `added-position-deletes` and `removed-position-deletes`
+  less added — with the two dangling files naming the compacted-away data files and the bare
+  call leaving all three alone, three short of five. `mor` holds the read's dangling verdict to
+  the pairing's file by file. The snapshot panel's `Position Delete Rewrite` draws the bare
+  call and `rewrite-all` as two plans, the read behind a button under them; the table panel's
+  maintenance summary carries the line
 - **What the next commit does to the manifest list is planned the way `ManifestMergeManager`
   does it, and it runs on every batch write.** `model/ManifestMergePlan.kt`, read at 1.8.1: the
   manifests a commit is about to list — the one it wrote, then the ones it kept in list order,
@@ -2432,7 +2456,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,320 tests across 177 files (1,040 in :core, 269 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,326 tests across 178 files (1,045 in :core, 270 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

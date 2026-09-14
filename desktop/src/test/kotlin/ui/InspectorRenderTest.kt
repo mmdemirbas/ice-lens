@@ -320,6 +320,36 @@ class InspectorRenderTest {
     }
 
     /**
+     * The position-delete rewrite planned on the snapshot *before* `maint` ran it, with the read
+     * requested: the bare call leaves the three files alone, `rewrite-all` takes them, and the
+     * table under the button shows one position kept and two dropped as dangling — the figures
+     * the rewrite's own summary records. `v3` is the refusal, and needs no click.
+     */
+    @Test
+    fun `the position delete rewrite plans the bare call and rewrite-all, and reads what rewrite-all drops`() {
+        val graph = graphFor("maint")
+        val snapshots = graph.nodes.filterIsInstance<GraphNode.SnapshotNode>().sortedBy { it.data.sequenceNumber }
+        val rewrite = snapshots.indexOfFirst { it.change?.tallies?.any { t -> t.label == "Position deletes removed" && t.recorded == 3L } == true }
+        assertTrue(rewrite > 0, "maint should carry the delete rewrite after its first commits")
+        val before = snapshots[rewrite - 1]
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("position-delete-rewrite", width = 1400, height = 1300, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                PositionDeleteRewriteSection(before, graph, startRequested = true) { settled.set(true) }
+            }
+        }
+
+        val v3 = graphFor("v3")
+        val current = v3.nodes.filterIsInstance<GraphNode.SnapshotNode>().maxByOrNull { it.data.sequenceNumber ?: 0 }
+        assertNotNull(current)
+        renderScene("position-delete-rewrite-refused", width = 1400, height = 360) {
+            Column(Modifier.padding(16.dp)) {
+                PositionDeleteRewriteSection(current, v3)
+            }
+        }
+    }
+
+    /**
      * A partitioned Paimon table's data file: the partition decoded from the entry beside the
      * directory text Paimon wrote, which for a date is its epoch day rather than the date.
      */

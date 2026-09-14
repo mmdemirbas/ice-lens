@@ -31,6 +31,16 @@ import model.assumedManifestBytes
 import model.planManifestMerge
 import model.RewriteOptions
 import model.planRewrite
+import model.PositionDeleteRewriteOptions
+import model.PositionDeleteRewritePlan
+import model.planPositionDeleteRewrite
+import service.PositionDeleteRewriteDrops
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import model.PaimonExpiryInput
 import model.paimonAppendVerdict
 import model.planCompaction
@@ -259,6 +269,16 @@ internal fun MaintenanceSection(node: GraphNode.TableNode) {
                 rewritten.isNotEmpty() -> Row("would rewrite ${formatCounted(rewritten.sumOf { it.files.size }, "file")}", "rewrite_data_files", "${rewritten.size} of ${formatCounted(rewrite.groups.size, "group")}, ${formatBytes(rewritten.sumOf { it.inputBytes })}", "$snapshotPanel → Rewrite", verdictSkippedColor())
                 rewrite.candidateCount > 0 -> Row("left alone", "rewrite_data_files", "${formatCounted(rewrite.candidateCount, "candidate")} in ${formatCounted(rewrite.groups.size, "group")}, none reaching min-input-files (${rewrite.options.minInputFiles})", "$snapshotPanel → Rewrite", null)
                 else -> Row("nothing to do", "rewrite_data_files", "every live file is within the size range and under the delete ratio", "$snapshotPanel → Rewrite", null)
+            }
+            val deleteRewrite = current.liveFiles?.let { planPositionDeleteRewrite(it, PositionDeleteRewriteOptions.forTable(meta.properties, meta.formatVersion)) }
+            val deleteRewritten = deleteRewrite?.rewrittenFiles.orEmpty()
+            rows += when {
+                deleteRewrite == null -> Row("not readable", "rewrite_position_delete_files", "the current snapshot's manifests are not retained", "$snapshotPanel → Position Delete Rewrite", null)
+                deleteRewrite.refused != null -> Row("refused", "rewrite_position_delete_files", "${deleteRewrite.refused}; ${formatCounted(deleteRewrite.deleteFileCount, "positional delete file")} live", "$snapshotPanel → Position Delete Rewrite", colors.error)
+                deleteRewrite.deleteFileCount == 0 -> Row("nothing to do", "rewrite_position_delete_files", "no live positional delete file", "$snapshotPanel → Position Delete Rewrite", null)
+                deleteRewritten.isNotEmpty() -> Row("would rewrite ${formatCounted(deleteRewritten.size, "delete file")}", "rewrite_position_delete_files", "${deleteRewrite.rewrittenGroups.size} of ${formatCounted(deleteRewrite.groups.size, "group")}, ${formatBytes(deleteRewrite.rewrittenGroups.sumOf { it.inputBytes })}; the dangling positions go with them", "$snapshotPanel → Position Delete Rewrite", verdictSkippedColor())
+                deleteRewrite.candidateCount > 0 -> Row("left alone", "rewrite_position_delete_files", "${formatCounted(deleteRewrite.candidateCount, "candidate")} in ${formatCounted(deleteRewrite.groups.size, "group")}, none reaching min-input-files (${deleteRewrite.options.minInputFiles}); rewrite-all takes them", "$snapshotPanel → Position Delete Rewrite", null)
+                else -> Row("nothing to do", "rewrite_position_delete_files", "every live positional delete file is within the size range", "$snapshotPanel → Position Delete Rewrite", null)
             }
             val mergeOptions = ManifestMergeOptions.forTable(meta.properties)
             val listed = current.manifestList
@@ -591,6 +611,153 @@ internal fun RewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel) {
                 leadCellColors = plan.groups.map { if (it.rewritten) verdictSkippedColor() else null },
             )
         }
+    }
+}
+
+/**
+ * What `rewrite_position_delete_files` would rewrite, the way `SizeBasedPositionDeletesRewriter`
+ * plans it — see [planPositionDeleteRewrite] — and, behind a click, what it would drop: the
+ * positions naming no live data file of the group's partition, which are the dangling records a
+ * compaction leaves ([PositionDeleteRewriteDrops]). The plan is read from the metadata; the drop
+ * takes opening each rewritten delete file, so it waits for the button. `rewrite-all` is offered
+ * as a second plan because a bare call on a small table takes nothing — every file is a
+ * candidate and it takes five — and the reader's question after a compaction is what the call
+ * that would run does. [startRequested] and [onSettled] follow `PositionalDeleteTargets`.
+ */
+@Composable
+internal fun PositionDeleteRewriteSection(
+    node: GraphNode.SnapshotNode,
+    graph: GraphModel,
+    startRequested: Boolean = false,
+    onSettled: () -> Unit = {},
+) {
+    val colors = MaterialTheme.colorScheme
+    val latest = graph.newestMetadata()
+    val options = PositionDeleteRewriteOptions.forTable(latest?.properties.orEmpty(), latest?.formatVersion)
+    val live = node.liveFiles
+    val plan = live?.let { planPositionDeleteRewrite(it, options) }
+    val all = live?.let { planPositionDeleteRewrite(it, options.copy(rewriteAll = true)) }
+    val rewritten = plan?.rewrittenFiles.orEmpty()
+    val title = "Position Delete Rewrite" + when {
+        plan?.refused != null -> " — refused"
+        rewritten.isNotEmpty() -> " — ${rewritten.size} delete files would go"
+        else -> ""
+    }
+    CountedSection(title, plan?.deleteFileCount ?: 0, "delete files") {
+        Text(
+            "What rewrite_position_delete_files would rewrite, the way SizeBasedPositionDeletesRewriter " +
+                "plans it: the live positional delete files grouped by partition, a file a candidate when " +
+                "outside ${formatBytes(options.minFileSizeBytes)}–${formatBytes(options.maxFileSizeBytes)} " +
+                "(75% and 180% of write.delete.target-file-size-bytes, ${formatBytes(options.targetFileSizeBytes)}), " +
+                "and a group rewritten with at least ${options.minInputFiles} files (min-input-files), more than " +
+                "the target in bytes, or a file past the maximum; rewrite-all takes every file. What it writes " +
+                "back is each position whose file_path names a live data file of the partition — the rest are " +
+                "dangling records and are dropped, which is why the procedure follows a compaction.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        when {
+            plan == null || all == null -> Text("Not readable here — this snapshot's manifests are not retained.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            plan.refused != null -> Text(
+                "${plan.refused}: the action refuses format version ${options.formatVersion} outright, " +
+                    "so its ${formatCounted(plan.deleteFileCount, "positional delete file")} — deletion vectors among them — are never rewritten by it.",
+                fontSize = TypeScale.small,
+                color = colors.error,
+            )
+            plan.deleteFileCount == 0 -> Text("No live positional delete file: nothing to rewrite.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            else -> {
+                val rows = listOf("bare call" to plan, "rewrite-all" to all).flatMap { (call, p) ->
+                    p.groups.map { g ->
+                        listOf(
+                            if (g.rewritten) "REWRITTEN — " + g.reasons.joinToString("; ") { it.label }
+                            else "left alone — ${g.files.size} of ${options.minInputFiles} files",
+                            call,
+                            g.partition.ifEmpty { "(unpartitioned)" },
+                            "${g.files.size}",
+                            formatBytes(g.inputBytes),
+                            formatCount(g.recordCount),
+                            if (g.rewritten) "${g.outputFiles}" else "—",
+                        )
+                    }.ifEmpty {
+                        listOf(listOf("nothing to do — every file within the size range", call, "", "0", "0 B", "0", "—"))
+                    }
+                }
+                val colorsOf = listOf(plan, all).flatMap { p -> p.groups.map { if (it.rewritten) verdictSkippedColor() else null }.ifEmpty { listOf(null) } }
+                WideTable(
+                    headers = listOf("Verdict", "Call", "Partition", "Files", "Bytes", "Positions", "Output Files"),
+                    columnWidths = listOf(230.dp, 90.dp, 170.dp, 60.dp, 100.dp, 90.dp, 100.dp),
+                    rows = rows,
+                    leadCellColors = colorsOf,
+                )
+                PositionDeleteRewriteDrops(node, all, startRequested, onSettled)
+            }
+        }
+    }
+}
+
+/** The read half of [PositionDeleteRewriteSection]: the `rewrite-all` plan's files opened, and what each would keep and drop. */
+@Composable
+private fun PositionDeleteRewriteDrops(
+    node: GraphNode.SnapshotNode,
+    plan: PositionDeleteRewritePlan,
+    startRequested: Boolean,
+    onSettled: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    var requested by remember(node.id) { mutableStateOf(startRequested) }
+    val outcome by produceState<Result<PositionDeleteRewriteDrops.Result>?>(null, node.id, requested) {
+        value = null
+        if (requested) {
+            value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val live = node.liveFiles ?: throw IllegalStateException("the snapshot's live files could not be read")
+                    val input = node.readInput.value ?: throw IllegalStateException("the snapshot's files could not be read")
+                    PositionDeleteRewriteDrops.read(plan, live, input)
+                }
+            }
+            onSettled()
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    when {
+        !requested -> OutlinedButton(onClick = { requested = true }) {
+            Text("Read the delete files — which positions rewrite-all keeps, and which it drops as dangling")
+        }
+        outcome == null -> Text("Reading ${formatCounted(plan.rewrittenFiles.size, "delete file")}…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+        else -> outcome?.fold(
+            onSuccess = { result ->
+                Text(
+                    buildString {
+                        append("${formatCount(result.kept)} ${if (result.kept == 1L) "position" else "positions"} kept and ${formatCount(result.dropped)} dropped as dangling")
+                        append(" across ${formatCounted(result.files.size, "delete file")}")
+                        if (result.failed > 0) append("; ${formatCounted(result.failed, "file")} could not be read")
+                        if (result.filesLeft > 0) append("; ${formatCounted(result.filesLeft, "file")} left unread by the cap of ${PositionDeleteRewriteDrops.MAX_FILES}")
+                        append(". A rewrite's summary records these as added-position-deletes and removed-position-deletes less added.")
+                    },
+                    fontSize = TypeScale.small,
+                    color = if (result.dropped > 0) verdictSkippedColor() else colors.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                val rows = result.files.flatMap { f ->
+                    if (f.error != null) listOf(listOf("not read", fileNameFromPath(f.delete.path), "", "", f.error.orEmpty()))
+                    else f.targets.map { t ->
+                        listOf(if (t.kept) "kept" else "DROPPED", fileNameFromPath(f.delete.path), formatCount(t.positions), fileNameFromPath(t.dataFilePath), t.reason)
+                    }
+                }
+                WideTable(
+                    headers = listOf("Verdict", "Delete file", "Positions", "Names data file", "Why"),
+                    columnWidths = listOf(90.dp, 300.dp, 80.dp, 300.dp, 360.dp),
+                    rows = rows,
+                    leadCellColors = result.files.flatMap { f ->
+                        if (f.error != null) listOf(colors.error) else f.targets.map { if (it.kept) null else verdictSkippedColor() }
+                    },
+                )
+            },
+            onFailure = { failure ->
+                Text("Could not read: ${failure.message ?: failure::class.simpleName}", fontSize = TypeScale.small, color = colors.error)
+            },
+        )
     }
 }
 

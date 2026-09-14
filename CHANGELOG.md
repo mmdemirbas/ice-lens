@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`rewrite_position_delete_files` planned, and what it would drop read** — the snapshot
+  panel's `Position Delete Rewrite`: the live positional delete files grouped and sized the way
+  `SizeBasedPositionDeletesRewriter` plans them, a bare call beside `rewrite-all`, the v3 refusal
+  said; behind a button, each rewritten file's positions kept or dropped as dangling against
+  the snapshot's live data files, which `maint`'s own rewrite (three positions removed, one
+  written) holds. A line on the table panel's maintenance summary.
 - **An equality delete file read against the data files the pairing leaves for it** — behind a
   click on the delete file's panel, the rows it matches in each candidate at the newest drawn
   snapshot listing its manifest, both files placed by field id; *removes nothing* when every
