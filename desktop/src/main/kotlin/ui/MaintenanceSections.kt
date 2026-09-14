@@ -43,6 +43,7 @@ import model.RewriteTablePathOptions
 import model.planRewriteTablePath
 import model.fastForwardPlans
 import model.planFastForward
+import model.planPurge
 import model.planPaimonManifestCompaction
 import model.planPaimonManifestMerge
 import model.RewriteOptions
@@ -467,6 +468,24 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: Unrefer
                 bareTags.removed.isNotEmpty() -> Row("would remove ${formatCounted(bareTags.removed.size, "tag")}", "expire_tags", "a bare call removes ${bareTags.removed.size} of ${paimonExpiry.tags.size}, whose retention ran out" + (if (freed > 0) ", freeing ${formatCounted(freed, "data file")}" else "") + "; older_than = now removes ${byAgeTags.removed.size}", "table → Tag Expiry", verdictSkippedColor())
                 else -> Row("nothing on a bare call", "expire_tags", "${formatCounted(paimonExpiry.tags.size, "tag")}, ${paimonExpiry.tags.count { it.timeRetainedMs != null }} with a retention, none run out; older_than = now removes ${byAgeTags.removed.size}", "table → Tag Expiry", null)
             }
+        }
+        val purge = node.paimonExpiryFiles.value?.planPurge()
+        rows += when {
+            purge == null -> Row("not readable", "purge_files", "the manifests could not be read", "table → Purge", null)
+            !purge.removesAnything -> Row("nothing to purge", "purge_files", "no snapshot, tag, branch or consumer: the truncate commit alone", "table → Purge", null)
+            else -> Row(
+                "would take ${formatCounted(purge.removed.size, "file")}",
+                "purge_files",
+                "${formatCounted(purge.ofKind(PaimonExpiryFileKind.DATA_FILE).size, "data file")}, ${formatBytes(purge.removedBytes)} the metadata accounts for; " +
+                    "${formatCounted(purge.snapshotIds.size, "snapshot")} expired behind a truncating OVERWRITE" +
+                    listOfNotNull(
+                        purge.branches.takeIf { it.isNotEmpty() }?.let { "${formatCounted(it.size, "branch")} dropped" },
+                        purge.tags.takeIf { it.isNotEmpty() }?.let { "${formatCounted(it.size, "tag")} deleted" },
+                        purge.consumers.takeIf { it.isNotEmpty() }?.let { "${formatCounted(it.size, "consumer")} deleted" },
+                    ).joinToString("") { ", $it" },
+                "table → Purge",
+                colors.error,
+            )
         }
     }
     val recordedLocation = summary.location
@@ -1213,6 +1232,77 @@ internal fun PaimonFastForwardSection(node: GraphNode.TableNode) {
             )
             if (leftovers.size > MAX_EXPIRY_FILE_ROWS) Text("${leftovers.size - MAX_EXPIRY_FILE_ROWS} more not listed.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
         }
+    }
+}
+
+/**
+ * What `sys.purge_files(table)` leaves and takes — [planPurge], read off `FileStoreTable.purgeFiles()`:
+ * every branch, tag and consumer, a truncating `OVERWRITE`, every snapshot expired behind it,
+ * `changelog/` whole, then an orphan clean. Drawn on the table panel, in the error colour where
+ * anything goes, because it is the one procedure that empties the table by design; `brp` is
+ * `br` after it.
+ */
+@Composable
+internal fun PaimonPurgeSection(node: GraphNode.TableNode) {
+    val colors = MaterialTheme.colorScheme
+    if (node.summary.paimonExpiry == null) return
+    val plan = node.paimonExpiryFiles.value?.planPurge()
+    val title = "Purge" + when {
+        plan == null -> ""
+        plan.removesAnything -> " — ${formatCounted(plan.removed.size, "file")} would go"
+        else -> " — nothing to take"
+    }
+    Section(title) {
+        Text(
+            "What sys.purge_files(table) does, in the order FileStoreTable.purgeFiles runs it: every branch is " +
+                "dropped, every tag and every consumer deleted; the table is truncated by one OVERWRITE commit " +
+                "whose delta holds a DELETE entry per live file of the latest snapshot and whose base list carries " +
+                "the latest snapshot's own manifests forward; changelog/ is deleted whole; every snapshot but the " +
+                "truncate is expired at once, whatever its age, which frees the data files; and an orphan clean at " +
+                "now takes what nothing names any more. The schema files stay, and the table reads as empty and " +
+                "takes the next INSERT.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (plan == null) {
+            Text("Not readable here: the manifests could not be read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            return@Section
+        }
+        val truncate = plan.truncateSnapshotId?.let { "snapshot $it, an OVERWRITE with deltaRecordCount ${plan.deltaRecordCount} and totalRecordCount 0" } ?: "nothing: the table has no snapshot to truncate"
+        Text(
+            "Writes $truncate; keeps " +
+                (PaimonExpiryFileKind.entries.mapNotNull { k -> plan.kept.count { it.kind == k }.takeIf { it > 0 }?.let { "$it ${k.label}${if (it == 1) "" else "s"}" } }.joinToString(", ").ifEmpty { "nothing" }) +
+                " of the metadata, beside the truncate's own ${formatCounted(plan.newFiles, "new file")}.",
+            fontSize = TypeScale.small,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        val named = listOfNotNull(
+            plan.snapshotIds.takeIf { it.isNotEmpty() }?.let { "snapshot${if (it.size == 1) "" else "s"} ${it.joinToString(", ")} expired" },
+            plan.branches.takeIf { it.isNotEmpty() }?.let { "branch${if (it.size == 1) "" else "es"} ${it.joinToString(", ")} dropped" },
+            plan.tags.takeIf { it.isNotEmpty() }?.let { "tag${if (it.size == 1) "" else "s"} ${it.joinToString(", ")} deleted" },
+            plan.consumers.takeIf { it.isNotEmpty() }?.let { "consumer${if (it.size == 1) "" else "s"} ${it.joinToString(", ")} deleted" },
+        )
+        if (!plan.removesAnything) {
+            Text("Nothing to take: the table holds no snapshot, tag, branch or consumer.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            return@Section
+        }
+        Text(named.joinToString("; ") + ".", fontSize = TypeScale.small, color = colors.error, modifier = Modifier.padding(bottom = 4.dp))
+        val byKind = PaimonExpiryFileKind.entries.mapNotNull { k -> plan.ofKind(k).size.takeIf { it > 0 }?.let { "$it ${k.label}${if (it == 1) "" else "s"}" } }
+        Text(
+            "Taken from disk: ${byKind.joinToString(", ")}, ${formatBytes(plan.removedBytes)} the metadata can account for.",
+            fontSize = TypeScale.small,
+            color = colors.error,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            headers = listOf("Kind", "File", "Bytes", "Named By", "Taken By"),
+            columnWidths = listOf(120.dp, 520.dp, 100.dp, 110.dp, 360.dp),
+            rows = plan.removed.take(MAX_EXPIRY_FILE_ROWS).map { f -> listOf(f.kind.label, f.path ?: f.name, f.sizeBytes?.let(::formatBytes) ?: "—", f.snapshotId?.let { "snapshot $it" } ?: "—", f.reason.label) },
+            leadCellColors = plan.removed.take(MAX_EXPIRY_FILE_ROWS).map { if (it.kind == PaimonExpiryFileKind.DATA_FILE) colors.error else null },
+        )
+        if (plan.removed.size > MAX_EXPIRY_FILE_ROWS) Text("${plan.removed.size - MAX_EXPIRY_FILE_ROWS} more not listed.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
     }
 }
 

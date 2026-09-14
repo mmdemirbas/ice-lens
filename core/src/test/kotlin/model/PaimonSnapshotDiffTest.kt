@@ -91,9 +91,12 @@ class PaimonSnapshotDiffTest {
     /** Paimon has no delete files by definition — a removal is an entry kind, not a file. */
     @Test
     fun `every live Paimon file is a data file`() {
-        models().forEach { m ->
+        // `brp` is a purged table: its one snapshot is the truncate and holds nothing live, by design.
+        FixtureCatalog.paimon.forEach { name ->
+            val m = model(name)
             val live = paimonLiveFilesOf(m.snapshots.lastOrNull())
-            assertTrue(live.isNotEmpty(), "the fixture should hold files")
+            if (name == "brp") { assertTrue(live.isEmpty(), "brp is empty"); return@forEach }
+            assertTrue(live.isNotEmpty(), "$name should hold files")
             assertTrue(
                 live.all { it.content == DataFileContent.DATA },
                 "Paimon records no positional or equality deletes, so no live file can be one",

@@ -90,6 +90,7 @@ core/src/main/kotlin/
 │   ├── ScanFilterSql.kt       # A ScanFilter as DuckDB's WHERE clause, every literal bound and cast to its column's type
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
+│   ├── PaimonPurgePlan.kt     # What sys.purge_files takes and keeps — FileStoreTable.purgeFiles's six steps, folded to one file list
 │   ├── PaimonManifestMergePlan.kt # What the next Paimon commit does to the base manifest list — ManifestFileMerger's full and minor compactions
 │   ├── FastForwardPlan.kt     # fast_forward on both formats — Iceberg's ref move under the ancestor rule, Paimon's replacement of main from the branch's earliest snapshot on, and what that leaves
 │   ├── IcebergRollbackPlan.kt # rollback_to_snapshot, set_current_snapshot and rollback_to_timestamp — the ancestor rule, what main moves past, and the metadata the commit writes for the expiry after
@@ -1908,6 +1909,33 @@ intellij/src/main/kotlin/plugin/
   every other ref where there is more than one; the Paimon table panel's draws each branch with
   what main loses and gains and the files left; both `Maintenance` summaries carry a
   `fast_forward` row
+- **`purge_files` empties a Paimon table by design, and what it takes is planned from what
+  each view holds live.** `model/PaimonPurgePlan.kt` reads `FileStoreTable.purgeFiles()`
+  (release-1.3.1) in its order: every branch dropped, every tag and consumer deleted, the table
+  truncated by one `OVERWRITE` commit (id latest + 1, `commit_identifier` `Long.MAX_VALUE` like
+  every Spark batch commit) whose delta holds a `DELETE` entry per live file of the latest
+  snapshot (`deltaRecordCount` minus its rows, total 0) and whose base list carries the latest
+  snapshot's own manifests forward, `changelog/` deleted whole, every snapshot but the truncate
+  expired at once (retain 1, zero age, no limit), then a local orphan clean at `now`. So the
+  latest snapshot's base and delta manifests and its statistics stay (`PaimonPurgePlan.kept`),
+  the truncate writes its snapshot file, two lists, one delete manifest and — where the latest
+  has one — a new index manifest (`newFiles`), and everything else the metadata names goes.
+  **Which data files that is takes one rule per view**: a retained snapshot, a tag and a branch
+  snapshot each contribute the data files they hold *live* (`everyName(liveOnly = true)`, the
+  base and delta replayed), because a `DELETE` entry names a file the expiry that read that
+  delta already freed — `brp`'s own plan named its three long-gone files before the rule — and a
+  tag-only snapshot contributes no changelog, since the expiry that left the tag deleted it
+  (`withChangelog = false`, the `tg` finding). A long-lived changelog contributes every entry
+  its remaining lists name. `docs/fixtures/paimon-purge.sql` records the runs on copies of `br`,
+  `cs`, `cl`, `dv` and `pcl` — a consumer gone, statistics kept, a new empty index manifest,
+  `changelog/` gone, the table writable after — and `brp` is `br` purged. `PaimonPurgeFixtureTest`
+  holds the plan on `br` to exactly the 17 files `brp` lacks (four data files, eight lists, the
+  branch's manifest, three snapshot files, the tag) and `brp` to the truncate's four new files
+  beyond the three manifests kept, and sweeps every fixture both ways: every planned data or
+  changelog file is on disk (`pru` / `prua` apart) and every data file on disk is planned (the
+  orphan-by-design tables apart). The table panel's `Purge` section leads with the truncate it
+  writes and what it keeps, names the snapshots, branches, tags and consumers, and lists every
+  file with the step that takes it; `Maintenance` carries a `purge_files` row in the error colour
 - **A Paimon file records the bucket count it was written under, and a write is refused while
   it differs from the table's — so the integrity check compares the two.** Every manifest entry
   carries `_TOTAL_BUCKETS`, and at release-1.3.1 `AbstractFileStoreWrite.scanExistingFileMetas`
@@ -2786,7 +2814,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,410 tests across 192 files (1,110 in :core, 282 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,407 tests across 193 files (1,112 in :core, 283 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2940,6 +2968,7 @@ container invocation and the traps in it:
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |
 | `paimon/db.db/px`, `pxa` | `PaimonExpiryFixtureTest` | one table written twice — six commits, a tag on 2, a consumer at 4; `px` as it is, `pxa` after `expire_snapshots(retain_max = 2, retain_min = 1)` — the survivors the plan for `px` is checked against |
 | `paimon/db.db/pe`, `pea` | `PaimonExpiryFilePlanFixtureTest` | one table copied on disk before `expire_snapshots(retain_max => 2, retain_min => 1)` ran on the original — a changelog, a compaction, a tag on 3; the files the expiry freed, and the three the tag held |
+| `paimon/db.db/brp` | `PaimonPurgeFixtureTest` | `br` after `sys.purge_files` — branches, tag, snapshots and every data file gone; one truncating `OVERWRITE` as snapshot 4 over main's three manifests carried forward, `deltaRecordCount` −5, total 0 |
 | `paimon/db.db/prb`, `prba` | `PaimonRollbackFixtureTest` | a primary-key table with four inserts and tags on 2 and 3, copied on disk before `rollback(version => '2')` — snapshots 3 and 4 and the tag above the target gone, every data file and manifest still there, named by nothing |
 | `paimon/db.db/ptt`, `ptta` | `PaimonTagExpiryFixtureTest` | a primary-key table with three tags — `time_retained => '1 s'`, `'1 d'`, and none — copied on disk before a bare `expire_tags` removed the first; the tag JSON's create-time array and seconds duration, and the file-modification rule for a tag recording neither |
 | `paimon/db.db/ppx`, `ppxa` | `PaimonPartitionExpiryFixtureTest` | an append table partitioned by `(region, dt)`, both strings, with `partition.expiration-time = 1 d` and `partition.timestamp-pattern = $dt`, copied on disk before a bare `expire_partitions` ran on the original — two `eu` partitions dropped as one `OVERWRITE`, `2099-12-31` kept, `n-a` kept as unreadable, `update-time` dropping nothing |

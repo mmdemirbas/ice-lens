@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Purge`** on the Paimon table panel — what `sys.purge_files` takes and keeps, in the order
+  `FileStoreTable.purgeFiles` runs it: branches, tags and consumers gone, one truncating
+  `OVERWRITE` over the latest snapshot's manifests, every other snapshot expired, `changelog/`
+  and the orphans taken; every file listed with the step that takes it, and a `Maintenance` row.
+  `docs/fixtures/paimon-purge.sql` records the runs, `brp` is `br` purged
 - **`Rewrite Table Path`** on the Iceberg table panel — what `rewrite_table_path(source_prefix,
   target_prefix)` would stage and list for this table, seeded with the recorded location and the
   directory it was opened from: every version, manifest list and manifest rewritten, the live

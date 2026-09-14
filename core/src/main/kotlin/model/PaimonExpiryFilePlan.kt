@@ -57,6 +57,9 @@ enum class PaimonExpiryFileReason(val label: String) {
     TAG_FILE("the tag itself"),
     ROLLED_BACK("written by a rolled-back commit and named by nothing kept"),
     FAST_FORWARDED("written by a commit of main the fast-forward drops and named by nothing kept"),
+    PURGED("expired by the purge, which keeps the truncate snapshot alone"),
+    PURGED_TAG("the tag and what only it held, deleted by the purge"),
+    PURGED_ORPHAN("named by a dropped branch or by nothing the purge keeps, taken by its orphan clean"),
 }
 
 data class PaimonExpiryFile(
@@ -124,6 +127,10 @@ data class PaimonExpiryFileInput(
     val schemaIds: List<Int> = emptyList(),
     /** `branch/`, for the fast-forward plan. */
     val branches: List<PaimonExpiryBranchView> = emptyList(),
+    /** Main's `changelog/` — the long-lived changelogs, for the purge plan. */
+    val changelogs: List<PaimonExpirySnapshotView> = emptyList(),
+    /** `consumer/` ids, for the purge plan. */
+    val consumers: List<String> = emptyList(),
 )
 
 private fun PaimonUnifiedSnapshot.view(): PaimonExpirySnapshotView {
@@ -144,25 +151,34 @@ fun PaimonUnifiedTableModel.expiryFileInput(): PaimonExpiryFileInput = PaimonExp
             schemaIds = b.schemas.mapNotNull { it.id },
         )
     },
+    changelogs = changelogs.map { it.view() },
+    consumers = consumers.map { it.name },
 )
 
 /** Every file the snapshot names — lists, manifests, data and changelog files, index and statistics — by name, each marked [reason]. */
-internal fun PaimonExpirySnapshotView.everyName(reason: PaimonExpiryFileReason): Map<String, PaimonExpiryFile> {
+/**
+ * Every file this snapshot names, by name. [liveOnly] takes the data files the snapshot holds
+ * live — its base and delta replayed — rather than every entry's: a `DELETE` entry names a file
+ * the commit removed, which is on disk only until an expiry reads that delta. [withChangelog]
+ * is off for a snapshot only a tag retains, whose changelog list and files the expiry deleted.
+ */
+internal fun PaimonExpirySnapshotView.everyName(reason: PaimonExpiryFileReason, liveOnly: Boolean = false, withChangelog: Boolean = true): Map<String, PaimonExpiryFile> {
     val id = this.id
     val named = linkedMapOf<String, PaimonExpiryFile>()
     fun put(kind: PaimonExpiryFileKind, name: String, path: String?, size: Long?) { named.putIfAbsent(name, PaimonExpiryFile(kind, name, path, size, reason, id)) }
-    (base + delta).forEach { m ->
-        put(PaimonExpiryFileKind.MANIFEST, m.name, "manifest/${m.name}", m.sizeBytes)
-        m.entries.forEach { e ->
-            put(PaimonExpiryFileKind.DATA_FILE, paimonEntryFileName(e), e.path.toString(), e.metadata.file?.fileSize)
-            e.metadata.file?.extraFiles.orEmpty().forEach { extra -> put(PaimonExpiryFileKind.DATA_FILE, extra, e.path.resolveSibling(extra).toString(), null) }
+    (base + delta).forEach { m -> put(PaimonExpiryFileKind.MANIFEST, m.name, "manifest/${m.name}", m.sizeBytes) }
+    val dataFiles = if (liveOnly) mergedFiles().values else (base + delta).flatMap { it.entries }
+    dataFiles.forEach { e ->
+        put(PaimonExpiryFileKind.DATA_FILE, paimonEntryFileName(e), e.path.toString(), e.metadata.file?.fileSize)
+        e.metadata.file?.extraFiles.orEmpty().forEach { extra -> put(PaimonExpiryFileKind.DATA_FILE, extra, e.path.resolveSibling(extra).toString(), null) }
+    }
+    if (withChangelog) {
+        changelog.forEach { m ->
+            put(PaimonExpiryFileKind.MANIFEST, m.name, "manifest/${m.name}", m.sizeBytes)
+            m.entries.forEach { e -> put(PaimonExpiryFileKind.CHANGELOG_FILE, paimonEntryFileName(e), e.path.toString(), e.metadata.file?.fileSize) }
         }
     }
-    changelog.forEach { m ->
-        put(PaimonExpiryFileKind.MANIFEST, m.name, "manifest/${m.name}", m.sizeBytes)
-        m.entries.forEach { e -> put(PaimonExpiryFileKind.CHANGELOG_FILE, paimonEntryFileName(e), e.path.toString(), e.metadata.file?.fileSize) }
-    }
-    listOfNotNull(metadata.baseManifestList, metadata.deltaManifestList, metadata.changelogManifestList).forEach { put(PaimonExpiryFileKind.MANIFEST_LIST, it, "manifest/$it", null) }
+    listOfNotNull(metadata.baseManifestList, metadata.deltaManifestList, metadata.changelogManifestList.takeIf { withChangelog }).forEach { put(PaimonExpiryFileKind.MANIFEST_LIST, it, "manifest/$it", null) }
     metadata.indexManifest?.let { im ->
         put(PaimonExpiryFileKind.INDEX_MANIFEST, im, "index/$im", null)
         indexFiles.forEach { f -> f.fileName?.let { put(PaimonExpiryFileKind.INDEX_FILE, it, "index/$it", f.fileSize) } }
