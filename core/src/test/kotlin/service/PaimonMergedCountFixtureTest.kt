@@ -40,7 +40,7 @@ class PaimonMergedCountFixtureTest {
         // Avro data files, read through read_avro — the merge needs no row position
         "pav" to 2,
         // append tables, from the metadata
-        "ad" to 5, "ao" to 6, "rt" to 5, "de" to 3, "fa" to 5, "ft" to 3, "fb" to 8,
+        "ad" to 5, "ao" to 6, "rt" to 5, "de" to 3, "fa" to 5, "ft" to 3, "fb" to 8, "pse" to 4,
     )
 
     @Test

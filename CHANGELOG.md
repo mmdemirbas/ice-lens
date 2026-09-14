@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A Paimon row says what a read returns for it when the schema has moved on since the file.**
+  The row panel's `Read As` projects a Paimon file's cells onto the latest schema by the field
+  ids the file's own schema gives its columns — a renamed column under its new name, an added
+  one as null — the row lookup reads every file the same way, so a filter on a renamed column
+  finds the rows an older file holds, and the Paimon schema panel draws a `Default` column
+  where `ALTER COLUMN … SET DEFAULT` set one. A Paimon default is write-time, and the section
+  says so by putting nothing into the absent column.
 - **A file registered by `add_files` or `migrate` is read through the table's name mapping.**
   Such a file records no field ids; `schema.name-mapping.default` places its columns, on the
   row panel's `Read As`, in the row lookup, the live-row count and the statistics check.

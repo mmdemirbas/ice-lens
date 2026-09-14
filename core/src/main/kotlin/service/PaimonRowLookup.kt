@@ -11,6 +11,8 @@ import model.RowHit
 import model.RowLookupResult
 import model.ScanFilter
 import model.duckDbTypeOf
+import model.IcebergSchemaModel
+import model.paimonFileColumns
 import model.paimonTypeAsIceberg
 import model.quoteSqlIdentifier
 import model.toSql
@@ -95,7 +97,7 @@ object PaimonRowLookup {
             val stitched = sources.entries.filter { split[it.value] != base }.groupBy({ split[it.value] }, { it.key })
                 .entries.joinToString("; ") { (file, cols) -> "${cols.joinToString(", ")} from ${file.fileName}" }.ifEmpty { null }
             val rows = runCatching {
-                if (split.size == 1) readMatches(base, predicate.sql, predicate.params) else readSplit(split, columns, sources, predicate.sql, predicate.params)
+                if (split.size == 1) readMatches(base, predicate.sql, predicate.params, input.schemaModel) else readSplit(split, columns, sources, predicate.sql, predicate.params)
             }
             val error = rows.exceptionOrNull()
             if (error != null) {
@@ -123,13 +125,17 @@ object PaimonRowLookup {
         )
     }
 
-    private fun readMatches(file: PaimonLookupFile, where: String, params: List<String>): List<Map<String, Any?>> {
+    private fun readMatches(file: PaimonLookupFile, where: String, params: List<String>, schema: IcebergSchemaModel): List<Map<String, Any?>> {
         val (safePath, ext) = SampleRowReader.resolveForQuery(file.localPath)
-        val source = SampleRowReader.readerCall(ext, rowNumber = true)
+        // The file under the schema's names, placed by the ids its own schema gives its columns,
+        // its `_KEY_*`, `_SEQUENCE_NUMBER` and `_VALUE_KIND` passed through as they are — so a
+        // column renamed since the file was written still answers the filter (`pse`); see
+        // FileProjection and paimonFileColumns.
+        val source = FileProjection.of(ext, paimonFileColumns(SampleRowReader.fileColumnsOf(file.localPath), file.fileSchema), schema, null, rowNumber = true, passThrough = { it.startsWith("_") })
         return DuckDb.withConnection { conn ->
-            conn.prepareStatement("SELECT * FROM $source WHERE $where LIMIT ${RowLookup.MAX_HITS_PER_FILE}").use { pstmt ->
-                pstmt.setString(1, safePath)
-                params.forEachIndexed { i, p -> pstmt.setString(i + 2, p) }
+            conn.prepareStatement("SELECT * FROM ${source.sql} WHERE $where LIMIT ${RowLookup.MAX_HITS_PER_FILE}").use { pstmt ->
+                var i = source.bind(pstmt, 1, safePath)
+                params.forEach { p -> pstmt.setString(i++, p) }
                 pstmt.executeQuery().use { rs ->
                     val meta = rs.metaData
                     val rows = mutableListOf<Map<String, Any?>>()

@@ -175,11 +175,16 @@ data class PaimonUnifiedDataFile(
     val columnBounds: List<PaimonColumnBounds>? = null,
     /** A data-evolution patch file — [PaimonDataFileMeta.isPartialUnder] the schema the file's own `_SCHEMA_ID` names. */
     val partial: Boolean = false,
+    /** The schema the file's own `_SCHEMA_ID` names — what its columns are placed by; see [paimonFileColumns]. */
+    val schema: PaimonSchema? = null,
     private val rowsLoader: () -> List<UnifiedRow> = {
         SampleRowReader.querySampleRows(path.toString()).map(::unifiedRowOf)
     },
 ) {
     val rows: List<UnifiedRow> by lazy { rowsLoader() }
+
+    /** The file's top-level columns, each with the field id its own schema gives the name — what a read places them by; see [projectRow]. */
+    val fileColumns: Map<String, Int?> by lazy { paimonFileColumns(SampleRowReader.fileColumnsOf(path.toString()), schema) }
 }
 
 /**
@@ -591,6 +596,7 @@ private fun readPaimonManifest(
                 keyBounds = keyBounds,
                 columnBounds = columnBounds,
                 partial = file?.isPartialUnder(fileSchema) ?: false,
+                schema = fileSchema,
             )
         }
     } else {

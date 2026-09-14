@@ -145,6 +145,11 @@ data class PaimonField(
     val id: Int? = null,
     val name: String? = null,
     val type: String? = null,   // Paimon encodes types as strings like "INT NOT NULL"
+    /**
+     * `ALTER COLUMN … SET DEFAULT`: the value a write stores when a row omits the column — a
+     * write-time default, which is why a file written before it reads the column as null (`pse`).
+     */
+    val defaultValue: String? = null,
 )
 
 /**

@@ -1,0 +1,25 @@
+{
+  "version" : 3,
+  "id" : 3,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT"
+  }, {
+    "id" : 1,
+    "name" : "label",
+    "type" : "STRING"
+  }, {
+    "id" : 2,
+    "name" : "w",
+    "type" : "INT",
+    "defaultValue" : "7"
+  } ],
+  "highestFieldId" : 2,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ ],
+  "options" : {
+    "owner" : "root"
+  },
+  "timeMillis" : 1789349023620
+}

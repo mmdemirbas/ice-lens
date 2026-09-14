@@ -21,6 +21,40 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 
 /** A Paimon type string as the Iceberg type its values compare as, or null for one that cannot be compared. */
+/**
+ * A Paimon schema as an [IcebergSchemaModel] — the fields with their ids, each type through
+ * [paimonTypeAsIceberg] (unknown where the bridge has no reading), the write-time
+ * `defaultValue` carried as [NestedField.writeDefault] and no initial default, since Paimon
+ * assigns a default on write only. What [projectRow] and the lookup's file projection take, so a
+ * Paimon row is placed by field id the way an Iceberg row is.
+ */
+fun paimonSchemaAsIceberg(schema: PaimonSchema): IcebergSchemaModel = IcebergSchemaModel(
+    schemaId = schema.id,
+    struct = IcebergType.StructType(
+        schema.fields.mapNotNull { f ->
+            val id = f.id ?: return@mapNotNull null
+            val name = f.name ?: return@mapNotNull null
+            NestedField(
+                id = id, name = name,
+                type = f.type?.let(::paimonTypeAsIceberg) ?: IcebergType.UnknownType,
+                required = f.type?.trim()?.uppercase()?.endsWith("NOT NULL") == true,
+                writeDefault = f.defaultValue?.let { kotlinx.serialization.json.JsonPrimitive(it) },
+            )
+        },
+    ),
+)
+
+/**
+ * A Paimon file's columns with the field id each is read by: the id its **own schema** gives
+ * the name — the schema the entry's `_SCHEMA_ID` names — and null for a name that schema lacks
+ * (`_KEY_*`, `_SEQUENCE_NUMBER`, `_VALUE_KIND`). That is how Paimon evolves a read
+ * (`SchemaEvolutionUtil`, from the file's schema id), and it is the same rule for Parquet, Avro
+ * and ORC: a Paimon Avro file records no field ids at all (`pav`), and the ids a Paimon Parquet
+ * file does record are the schema's.
+ */
+fun paimonFileColumns(physical: Map<String, Int?>, fileSchema: PaimonSchema?): Map<String, Int?> =
+    physical.mapValues { (name, _) -> fileSchema?.fields?.firstOrNull { it.name == name }?.id }
+
 fun paimonTypeAsIceberg(type: String): IcebergType? {
     val head = Regex("""^([A-Z]+)(?:\((\d+)(?:,\s*(\d+))?\))?""").find(type.trim().uppercase()) ?: return null
     val p1 = head.groupValues[2].toIntOrNull()

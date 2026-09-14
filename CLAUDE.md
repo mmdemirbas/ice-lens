@@ -665,6 +665,31 @@ intellij/src/main/kotlin/plugin/
   `IntegrityFixtureTest` / `SnapshotTotalsTest` hold `migrated` to exactly that rather than to
   agreement. And the manifest `add_files` wrote still names field 2 `name`, so the *statistics*
   check matched the file by name even before the mapping; it is a read that needs it
+- **A Paimon row is projected the same way, and its columns are placed by the schema the file's
+  own `_SCHEMA_ID` names — never by an id inside the file.** Paimon evolves a read from the
+  file's schema id (`SchemaEvolutionUtil`), so `paimonFileColumns` in `model/PaimonPruningBridge.kt`
+  gives each physical column the id *that* schema gives its name and a system column (`_KEY_*`,
+  `_SEQUENCE_NUMBER`, `_VALUE_KIND`) none; the ids a Paimon Parquet file records happen to be the
+  schema's, and a Paimon **Avro** file records none at all — the first version placed by the
+  file's ids and `pav`'s lookup found nothing. `paimonSchemaAsIceberg` puts the latest schema in
+  the shape `projectRow` and `FileProjection` read, with a field's `defaultValue` carried as a
+  **write default and no initial default**: a Paimon default (`ALTER COLUMN … SET DEFAULT`,
+  `DataField.defaultValue` in the schema JSON, `PaimonField.defaultValue`) is filled in when a
+  write omits the column and is not applied on read — the first run of `paimon-pse.sql` set
+  `fields.w.default-value = 7` as a table option and Paimon 1.3's read still returned null for
+  every row it could have applied to. So `PaimonUnifiedDataFile.fileColumns` and
+  `PaimonGraphBuilder`'s `RowNode.readAs` project onto the latest schema on `main` (a row node
+  is built once per file, whichever snapshots list it; none on a data-evolution table, whose
+  read is a stitch), `PaimonRowLookup.readMatches` reads the file through `FileProjection.of`
+  with the system columns passed through under their own names (`passThrough`) — the merge is
+  decided on them, and five of the lookup's fixture tests fail without it — and the Paimon
+  schema panel draws a `Default` column where any field records one. `pse` is the fixture, an
+  append table because a primary-key table's compaction rewrites the old file under the new
+  schema and leaves nothing to read across the evolution (`se`): `1 a null / 2 b null / 3 c 30 /
+  4 d 7`, the first file's `v` read as `label` and its missing `w` as null, the 7 the DDL
+  default put into a row that omitted `w`; `PaimonReadProjectionFixtureTest` holds the
+  projection, the placement on both `pse` and `pav`, and the lookup on `label`, `w IS NULL` and
+  `w = 7` to it
 - **A sampled row's position is asked for, not inferred.** DuckDB is given
   `read_parquet(?, file_row_number = true)`, and `UnifiedRow.position` carries the answer as
   something separate from the row's cells — it is DuckDB's statement about the file, not a column
@@ -1902,7 +1927,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,206 tests across 160 files (932 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,210 tests across 161 files (936 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2033,6 +2058,7 @@ container invocation and the traps in it:
 | `paimon/db.db/rt` | `PaimonRowTrackingFixtureTest` | `row-tracking.enabled` — two appends recording first ids 0 and 3, then a full compaction whose output records none and carries `_ROW_ID` per row |
 | `paimon/db.db/sm` | `PaimonStatsModeFixtureTest` | `fields.v.stats-mode = none` — `_VALUE_STATS` over two of three columns, named in `_VALUE_STATS_COLS`; the oracle for the subset decoding |
 | `paimon/db.db/se` | `PaimonSchemaEvolutionFixtureTest` | `ADD COLUMN` between two writes, then a compaction — a schema-1 manifest listing a schema-0 file, whose stats decode only against its own schema |
+| `paimon/db.db/pse` | `PaimonReadProjectionFixtureTest` | an append table evolved after its first file — `ADD COLUMN w`, `RENAME COLUMN v TO label`, `ALTER COLUMN w SET DEFAULT 7` — with Paimon's own read printed in the script: the old file's `v` as `label`, its `w` as null, and the default a later write stored for a row that omitted `w` |
 | `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest`, `PaimonRowLookupFixtureTest`, `PaimonScanPruningTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted; the stitched read `(1, 11, 1)` the lookup is held to, and the file bounds pruning must not consult |
 | `paimon/db.db/lk` | `PaimonRowKindTest` | `changelog-producer = lookup` — the `-U` / `+U` pair a re-inserted key produces, carried by the COMPACT snapshot the lookup ran in, and a `-D` with the value it removed |
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |

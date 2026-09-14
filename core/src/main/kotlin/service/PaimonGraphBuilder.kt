@@ -118,6 +118,13 @@ object PaimonGraphBuilder {
             addErrorNode(tableNodeId, "TABLE READ ERROR", error)
         }
 
+        // A read of the table projects each file onto the latest schema, by field id (`pse`) — a
+        // row node is built once per file whichever snapshots list it, so it answers for the
+        // table as it stands, the way an Iceberg row does; on a data-evolution table the row is
+        // a stitch instead — see stitchedRowAt.
+        val readSchema = tableModel.schemas.maxByOrNull { it.id ?: -1 }
+            ?.takeUnless { it.options[PAIMON_DATA_EVOLUTION_KEY] == "true" }?.let(::paimonSchemaAsIceberg)
+
         // Schema nodes
         val schemaNodeById = mutableMapOf<Int?, String>()
         tableModel.schemas.forEach { schema ->
@@ -315,7 +322,7 @@ object PaimonGraphBuilder {
                             edgeIds.add(fileEdgeId)
                             edges.add(GraphEdge(fileEdgeId, manId, fId))
 
-                            sampleRows[fId] = sampleRowFactory(fId, unifiedDataFile, fileSimpleId, vector)
+                            sampleRows[fId] = sampleRowFactory(fId, unifiedDataFile, fileSimpleId, vector, readSchema)
                         }
                     }
                 }
@@ -369,6 +376,8 @@ object PaimonGraphBuilder {
         simpleId: Int,
         /** The file's vector, shared with its node so it is decoded once — see [GraphNode.PaimonDataFileNode.deletionVector]. */
         vector: DeferredRead<DeletionVector>,
+        /** The latest schema a read projects the row onto, or null on a data-evolution table, whose read is a stitch. */
+        readSchema: IcebergSchemaModel?,
     ): () -> List<GraphNode.RowNode> = {
         if (!Files.exists(dataFile.path)) {
             emptyList()
@@ -389,6 +398,9 @@ object PaimonGraphBuilder {
                     content = 0,
                     deletedPositions = deleted,
                     vectorsResolved = resolved,
+                    readAs = if (readSchema != null) DeferredRead.of {
+                        dataFile.rows.getOrNull(rowIndex)?.let { projectRow(it.cells, dataFile.fileColumns, readSchema) }
+                    } else DeferredRead.none(),
                     dataLoader = {
                         try {
                             val rows = dataFile.rows

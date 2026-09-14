@@ -32,6 +32,8 @@ data class PaimonLookupFile(
     val firstRowId: Long? = null,
     /** `_MAX_SEQUENCE_NUMBER` — the file whose column wins where two files of one split hold it. */
     val maxSequenceNumber: Long? = null,
+    /** The schema the file's own `_SCHEMA_ID` names — what its columns are placed by; see [paimonFileColumns]. */
+    val fileSchema: PaimonSchema? = null,
     /** `_WRITE_COLS` — the columns the file holds; null for every column of its schema. */
     val writeCols: List<String>? = null,
 ) {
@@ -85,6 +87,9 @@ data class PaimonReadInput(
     /** `data-evolution.enabled` — a read stitches files by first row id, see [splits]. */
     val dataEvolution: Boolean get() = schema.options[PAIMON_DATA_EVOLUTION_KEY] == "true"
 
+    /** The schema in the shape a file is projected onto — see [paimonSchemaAsIceberg]. */
+    val schemaModel: IcebergSchemaModel by lazy { paimonSchemaAsIceberg(schema) }
+
     /**
      * What a read opens as one unit, in the order it opens them: under data evolution, the read
      * files sharing a partition, bucket and first row id, freshest first by `_MAX_SEQUENCE_NUMBER`
@@ -127,6 +132,7 @@ fun PaimonUnifiedTableModel.paimonReadInputOf(snapshot: PaimonUnifiedSnapshot, r
             partial = entry.partial,
             firstRowId = meta.firstRowId,
             maxSequenceNumber = meta.maxSequenceNumber,
+            fileSchema = entry.schema,
             writeCols = meta.writeCols,
         )
     }

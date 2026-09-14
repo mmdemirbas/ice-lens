@@ -77,12 +77,17 @@ internal fun ColumnScope.PaimonSchemaPanel(
         }
         if (node.data.fields.isNotEmpty()) {
             Section("Fields") {
-                DetailTable {
-                    DetailRow("Name", "Type", isHeader = true)
-                    node.data.fields.forEach { field ->
-                        DetailRow(field.name ?: "?", field.type ?: "?")
-                    }
-                }
+                // A default is write-time — `ALTER COLUMN … SET DEFAULT` — so a file written
+                // before it reads the column as null; the column is drawn only where one is set.
+                val hasDefaults = node.data.fields.any { it.defaultValue != null }
+                WideTable(
+                    headers = listOf("Field ID", "Name", "Type") + (if (hasDefaults) listOf("Default") else emptyList()),
+                    columnWidths = listOf(70.dp, 160.dp, 200.dp) + (if (hasDefaults) listOf(120.dp) else emptyList()),
+                    rows = node.data.fields.map { field ->
+                        listOf("${field.id ?: "N/A"}", field.name ?: "?", field.type ?: "?") +
+                            (if (hasDefaults) listOf(field.defaultValue ?: "") else emptyList())
+                    },
+                )
             }
         }
         if (node.data.options.isNotEmpty()) {

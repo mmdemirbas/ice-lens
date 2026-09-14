@@ -439,6 +439,20 @@ class InspectorRenderTest {
         }
         val metadata = defaults.nodes.filterIsInstance<GraphNode.MetadataNode>().first { it.fileName == "v6.metadata.json" }
         renderInspector(defaults, metadata.id, "metadata-node-defaults", height = 5200)
+
+        // The Paimon twin: `pse`'s first file holds `v`, read as `label`, and no `w`; the
+        // latest schema's panel carries the write default its SET DEFAULT stored.
+        val pse = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pse").absolutePath)),
+            showRows = true,
+        )
+        val paimonRow = pse.nodes.filterIsInstance<GraphNode.RowNode>().first { it.resolvedData["v"]?.toString() == "a" }
+        val pseSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-row-node-read-as", width = 1400, height = 700, ready = pseSettled::get) {
+            Column(Modifier.padding(16.dp)) { ReadAsSection(paimonRow) { pseSettled.set(true) } }
+        }
+        val pseSchema = pse.nodes.filterIsInstance<GraphNode.PaimonSchemaNode>().first { it.data.id == 3 }
+        renderInspector(pse, pseSchema.id, "paimon-schema-node-defaults", height = 1200)
     }
 
     /**
