@@ -55,6 +55,9 @@ class GraphTreeTest {
                 .mapNotNull { (it.userObject as? GraphTree.Item)?.node }
         }
 
+    private fun items(nodes: List<DefaultMutableTreeNode>): List<GraphTree.Item> =
+        nodes.flatMap { root -> root.depthFirstEnumeration().toList().filterIsInstance<DefaultMutableTreeNode>().mapNotNull { it.userObject as? GraphTree.Item } }
+
     @Test
     fun `the table is the single root, and everything hangs off it`() {
         val roots = GraphTree.build(graphOf("mor"))
@@ -243,6 +246,36 @@ class GraphTreeTest {
      * current snapshot by a ref, so five of six go; the clock is passed so the answer is the
      * desktop panel's whatever day the test runs.
      */
+    /**
+     * The three ref moves the desktop plans from the metadata alone are rows here too: what
+     * fast_forward would do with each pair of refs on the metadata row, and what a rollback and a
+     * cherry-pick would do with a snapshot on its row — planned against the newest metadata the
+     * item carries, so the strip needs no graph to say it.
+     */
+    @Test
+    fun `a metadata row says which refs fast_forward would move, and a snapshot row what a rollback and a cherry-pick would do`() {
+        val plain = flatten(GraphTree.build(graphOf("test"))).flatMap { GraphTree.details(it) }.map { it.first }
+        assertTrue("Fast-forward" !in plain, "one ref, no pair")
+        val sweepb = flatten(GraphTree.build(graphOf("sweepb")))
+        val ff = sweepb.flatMap { GraphTree.details(it) }.filter { it.first == "Fast-forward" }
+        assertTrue(ff.any { it.second == "1 of 2 pairs would move: dev → main (+3)" }, "the newest version: dev three commits behind main — $ff")
+        val rolled = items(GraphTree.build(graphOf("rolled")))
+        fun itemOf(id: Long) = rolled.first { it.node.id == "snap_$id" }
+        fun rowsOf(id: Long) = itemOf(id).let { GraphTree.details(it.node, nowMs = 0L, newest = it.newest) }
+        val abandoned = rowsOf(8241983636156380084L)
+        assertTrue(abandoned.any { it.first == "Rollback" && it.second.startsWith("refused, not an ancestor") }, abandoned.toString())
+        assertTrue(abandoned.any { it.first == "Cherry-pick" && it.second.startsWith("PUBLISH — a new commit on main carrying its 1 added data file") }, abandoned.toString())
+        val first = rowsOf(7121122354710552183L)
+        assertTrue(first.any { it.first == "Rollback" && it.second == "rollback_to_snapshot moves main back past 2 commits" }, first.toString())
+        assertTrue(first.any { it.first == "Cherry-pick" && it.second.startsWith("REFUSED — Cannot cherrypick snapshot 7121122354710552183: already an ancestor") }, first.toString())
+        // Without the newest metadata — a caller that has only the node — the rows are simply absent.
+        assertTrue(GraphTree.details(itemOf(7121122354710552183L).node).none { it.first == "Rollback" || it.first == "Cherry-pick" })
+        // An expired snapshot plans nothing: the newest metadata no longer holds it.
+        val expired = items(GraphTree.build(graphOf("expired"))).filter { (it.node as? GraphNode.SnapshotNode)?.expired == true }
+        assertTrue(expired.isNotEmpty())
+        assertTrue(expired.all { GraphTree.details(it.node, newest = it.newest).none { r -> r.first == "Rollback" || r.first == "Cherry-pick" } })
+    }
+
     @Test
     fun `the table row says what an expiry would remove`() {
         val graph = graphOf("mor")

@@ -2233,7 +2233,12 @@ intellij/src/main/kotlin/plugin/
   row carries one maintenance line, `Expiry (older_than = now)`, because an expiry is planned
   from the metadata alone (`planExpiry` off `TableNode.maintenance`'s newest metadata; a bare
   call on Paimon) — the rest of the maintenance summary walks a closure and stays in the desktop
-  shell, and `details(node, nowMs)` takes the clock so the test's answer is the panel's. It is
+  shell, and `details(node, nowMs)` takes the clock so the test's answer is the panel's. The
+  three ref moves the desktop plans from the metadata alone are rows too: `Fast-forward` on a
+  metadata row (every branch against every other ref, listed only where there is a pair), and
+  `Rollback` and `Cherry-pick` on an unexpired snapshot's row, planned against the newest
+  metadata `GraphTree.Item` carries — `details(node, nowMs, newest)` — since the strip lists a
+  node without the graph. It is
   deliberately not what `GraphSearch.searchableText` answers — a label is one line chosen to fit a row, so a manifest
   reads by its add count and cannot be found by its path, which is right for a label and wrong for
   a search. `GraphTree.details` is *not* shared: the desktop inspector is a panel per node kind
@@ -2750,7 +2755,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,400 tests across 191 files (1,104 in :core, 281 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,400 tests across 191 files (1,104 in :core, 281 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

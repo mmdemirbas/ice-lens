@@ -8,6 +8,11 @@ import model.PaimonRowKind
 import model.PaimonRowValue
 import model.ExpiryOptions
 import model.IcebergMaintenanceInput
+import model.IcebergRollbackVerdict
+import model.TableMetadata
+import model.fastForwardPlans
+import model.planCherryPick
+import model.planRollback
 import model.PaimonExpiryOptions
 import model.displayLabel
 import model.planExpiry
@@ -56,9 +61,10 @@ object GraphTree {
             .groupBy({ it.fromId }, { it.toId })
         val hasParent = graph.edges.filter { it.affectsLayout && !it.isSibling }.map { it.toId }.toSet()
         val roots = graph.nodes.filter { it.id !in hasParent }
+        val newest = (graph.nodes.filterIsInstance<GraphNode.TableNode>().firstOrNull()?.maintenance?.value as? IcebergMaintenanceInput)?.metadata
 
         fun node(graphNode: GraphNode, seen: Set<String>): DefaultMutableTreeNode {
-            val treeNode = DefaultMutableTreeNode(Item(graphNode))
+            val treeNode = DefaultMutableTreeNode(Item(graphNode, newest))
             if (graphNode.id in seen) return treeNode
             childIds[graphNode.id].orEmpty()
                 .mapNotNull { graph.nodeById[it] }
@@ -69,7 +75,11 @@ object GraphTree {
     }
 
     /** One row of the tree. [toString] is what the default renderer draws. */
-    class Item(val node: GraphNode) {
+    /**
+     * A node and the table's newest metadata, which a snapshot's rollback and cherry-pick rows
+     * are planned against — carried on the item because the strip lists a node without the graph.
+     */
+    class Item(val node: GraphNode, val newest: TableMetadata? = null) {
         override fun toString(): String = node.displayLabel()
     }
 
@@ -81,8 +91,8 @@ object GraphTree {
      * answers is "what am I looking at" rather than "explain this number". Anything longer belongs
      * in the desktop shell, which is one keystroke away.
      */
-    fun details(node: GraphNode, nowMs: Long = System.currentTimeMillis()): List<Pair<String, String>> =
-        rows(node, nowMs).map { (field, value) -> field to (value?.takeIf { it.isNotBlank() } ?: ABSENT) }
+    fun details(node: GraphNode, nowMs: Long = System.currentTimeMillis(), newest: TableMetadata? = null): List<Pair<String, String>> =
+        rows(node, nowMs, newest).map { (field, value) -> field to (value?.takeIf { it.isNotBlank() } ?: ABSENT) }
 
     /** The label of the one row [deferredDetails] fills on a file, drawn with a placeholder while the read runs. */
     const val HISTORY = "History"
@@ -142,7 +152,7 @@ object GraphTree {
      * coercing it in one place means every one of them looks the same on screen rather than each
      * branch choosing its own dash — and a branch that forgets cannot print "null".
      */
-    private fun rows(node: GraphNode, nowMs: Long): List<Pair<String, String?>> = when (node) {
+    private fun rows(node: GraphNode, nowMs: Long, newest: TableMetadata?): List<Pair<String, String?>> = when (node) {
         is GraphNode.TableNode -> listOf(
             "Name" to node.summary.tableName,
             "Location" to (node.summary.location ?: node.summary.tablePath),
@@ -173,6 +183,12 @@ object GraphTree {
             "Snapshots listed" to (node.data.snapshots?.size ?: 0).toString(),
         ) + listOfNotNull(
             node.data.nextRowId?.let { "Next row id" to it.toString() },
+            // fast_forward for every branch against every other ref, as of this version — listed only where there is a pair.
+            node.data.fastForwardPlans().takeIf { it.isNotEmpty() }?.let { plans ->
+                val moving = plans.filter { it.moves }
+                "Fast-forward" to if (moving.isEmpty()) "none of ${plans.size} pairs would move — every branch tip is off the other ref's line, or already there"
+                else "${moving.size} of ${plans.size} pairs would move: " + moving.joinToString("; ") { "${it.branch} → ${it.to} (+${it.gained.size})" }
+            },
             // The file's own figures against its contents — the ids the next DDL allocates from, what a reader refuses on.
             CHECKS to checksLine(metadataTallies(node.data).map { Triple(it.label, it.agrees, "${it.recorded} recorded, ${it.counted} folded") }),
         )
@@ -190,7 +206,7 @@ object GraphTree {
             node.leftBehindAt?.let { "Rolled back" to "main set back to ${it.snapshotId}, leaving this commit behind" },
             node.data.wapId?.let { "WAP id" to "$it — staged, on no branch until published" },
             node.data.sourceSnapshotId?.let { "Published from" to "snapshot $it" + (node.data.publishedWapId?.let { id -> " (wap.id $id)" } ?: "") },
-        )
+        ) + rollbackRows(node, nowMs, newest)
         is GraphNode.ManifestNode -> listOf(
             "Path" to (node.data.manifestPath ?: "—"),
             "Content" to if (node.data.content == 1) "deletes" else "data",
@@ -337,6 +353,25 @@ object GraphTree {
             plan.removed.isEmpty() -> "nothing — every snapshot is kept by a ref"
             else -> "would remove %,d of %,d snapshots".format(plan.removed.size, plan.snapshots.size)
         }
+    }
+
+    /**
+     * What setting main back to this snapshot, and cherry-picking it, would do — planned against
+     * the newest metadata the way the desktop's Rollback and Cherry-Pick sections plan them,
+     * metadata only; nothing on an expired snapshot, whose id the newest metadata no longer holds.
+     */
+    private fun rollbackRows(node: GraphNode.SnapshotNode, nowMs: Long, newest: TableMetadata?): List<Pair<String, String?>> {
+        val id = node.data.snapshotId ?: return emptyList()
+        if (node.expired || newest == null || newest.snapshots.none { it.snapshotId == id }) return emptyList()
+        val rollback = newest.planRollback(id, nowMs)
+        val rollbackLine = when (rollback.verdict) {
+            IcebergRollbackVerdict.MOVES -> "rollback_to_snapshot moves main back past ${rollback.leftBehind.size} commit${if (rollback.leftBehind.size == 1) "" else "s"}"
+            IcebergRollbackVerdict.NOTHING_TO_DO -> "the current snapshot — nothing to do"
+            IcebergRollbackVerdict.NOT_AN_ANCESTOR -> "refused, not an ancestor of the current snapshot; set_current_snapshot would move main here, leaving ${rollback.leftBehind.size} commit${if (rollback.leftBehind.size == 1) "" else "s"} of its line behind"
+            IcebergRollbackVerdict.UNKNOWN_SNAPSHOT -> return emptyList()
+        }
+        val pick = newest.planCherryPick(id)
+        return listOf("Rollback" to rollbackLine, "Cherry-pick" to "${pick.verdict.label} — ${pick.reason}")
     }
 
     const val ABSENT = "\u2014"

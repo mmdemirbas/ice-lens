@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **IDE strip: `Fast-forward`, `Rollback` and `Cherry-pick` rows** — the metadata row says
+  which pairs of refs `fast_forward` would move, and an unexpired snapshot's row what
+  `rollback_to_snapshot` and `cherrypick_snapshot` would do with it, planned as the desktop plans them
 - **`remove_unexisting_files` planned** — on a Paimon table, `Missing Files` leads each missing
   file with what `sys.remove_unexisting_files` would do: a DELETE entry in one APPEND for a data
   file the latest snapshot's batch scan opens, not scanned for a level-0 file such a scan skips,

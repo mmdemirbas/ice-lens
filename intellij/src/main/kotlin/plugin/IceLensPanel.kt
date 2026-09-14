@@ -154,7 +154,7 @@ class IceLensPanel(private val project: Project, parent: Disposable) : Disposabl
         detailsModel.rowCount = 0
         val generation = ++detailsGeneration
         item ?: return
-        GraphTree.details(item.node).forEach { (field, value) ->
+        GraphTree.details(item.node, newest = item.newest).forEach { (field, value) ->
             detailsModel.addRow(arrayOf(field, value))
         }
         if (!GraphTree.hasDeferredDetails(item.node)) return
