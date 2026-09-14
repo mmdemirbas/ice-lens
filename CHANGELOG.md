@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The data-file sweep under `Integrity` reads a table past its cap a page at a time.** Each
+  click reads the next 64 live files on top of the ones read, the pages fold into one line and
+  one findings table, and the button says how many files are left
 - **A Paimon Avro table on its default codec is read.** DuckDB's Avro reader refuses
   `zstandard`, so every row card, the merged count, the row lookup, the live count and the
   statistics sweep said so on such a table. A sample is the file's first block, and it is read

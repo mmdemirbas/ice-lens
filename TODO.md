@@ -142,8 +142,7 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   compared now (`model/PartitionSummaryTally.kt`); a data file's own column bounds against its
   rows are checked on the file panel behind a click (`model/StatsCheck.kt`) and over the current
   snapshot's live files behind a second click under `Integrity` (`model/FileStatsSweep.kt`),
-  capped at 64 files and said so — a table past the cap reads its first 64 in manifest order,
-  and there is no way yet to read the next 64.
+  64 at a click, and a table past that is read a page at a time with the count left stated.
 
 - **A statistics blob's sketch is never decoded.** The `.stats` container is opened now and its
   footer shown against what `metadata.json` records (`model/TableStatistics.kt`), so a stale record

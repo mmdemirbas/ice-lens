@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -40,14 +41,18 @@ internal const val MAX_INTEGRITY_ROWS = 500
  * The data files are a second click under the report: the metadata check opens none, and
  * [sweepFileStats] reads up to [MAX_FILE_STATS_CHECKS] of the current snapshot's live files
  * through [StatsCheckReader] — the file panel's own check, run over the table — and lists what
- * disagrees in the same table. [readFilesRequested] is that click for a capture, and
- * [onSettled] then waits for the sweep rather than the report.
+ * disagrees in the same table. A table past the cap is read a page at a time, each click
+ * reading the next [pageSize] and folding them into what was read ([FileStatsSweep.plus]), so
+ * the whole table is reachable and no single click opens more than a page. [readFilesRequested]
+ * is the first click for a capture, and [onSettled] then waits for that page rather than the
+ * report; [pageSize] is the cap, a parameter so a capture can show the paging on a small table.
  */
 @Composable
 internal fun IntegritySection(
     node: GraphNode.TableNode,
     startRequested: Boolean = false,
     readFilesRequested: Boolean = false,
+    pageSize: Int = MAX_FILE_STATS_CHECKS,
     onSettled: () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
@@ -63,21 +68,26 @@ internal fun IntegritySection(
             if (!readFilesRequested) onSettled()
         }
     }
-    var filesRequested by remember(node.id) { mutableStateOf(readFilesRequested) }
-    val sweep by produceState<Result<FileReads>?>(null, node.id, filesRequested) {
-        value = null
-        if (filesRequested) {
-            value = withContext(Dispatchers.IO) {
-                runCatching {
-                    val targets = requireNotNull(node.fileStats.value) { "no files to read" }
-                    FileReads(
-                        sweepFileStats(targets) { StatsCheckReader.check(it.localPath, it.recorded, it.recordedRows, it.nameMapping) },
-                        node.statisticsFiles.value.orEmpty(),
-                    )
+    // Pages asked for so far; each one is read on top of the last, so the pages read stay on
+    // screen while the next is opened rather than being cleared for it.
+    var pagesRequested by remember(node.id) { mutableStateOf(if (readFilesRequested) 1 else 0) }
+    var sweep by remember(node.id) { mutableStateOf<Result<FileReads>?>(null) }
+    var readingPage by remember(node.id) { mutableStateOf(false) }
+    LaunchedEffect(node.id, pagesRequested) {
+        if (pagesRequested == 0) return@LaunchedEffect
+        readingPage = true
+        val soFar = sweep?.getOrNull()
+        sweep = withContext(Dispatchers.IO) {
+            runCatching {
+                val targets = requireNotNull(node.fileStats.value) { "no files to read" }
+                val page = sweepFileStats(targets, max = pageSize, from = soFar?.sweep?.filesRead ?: 0) {
+                    StatsCheckReader.check(it.localPath, it.recorded, it.recordedRows, it.nameMapping)
                 }
+                FileReads(soFar?.sweep?.plus(page) ?: page, node.statisticsFiles.value.orEmpty())
             }
-            if (readFilesRequested) onSettled()
         }
+        readingPage = false
+        if (readFilesRequested && pagesRequested == 1) onSettled()
     }
     val report = outcome?.getOrNull()
     val disagreements = (report?.findings?.size ?: 0) + (sweep?.getOrNull()?.findings?.size ?: 0)
@@ -138,7 +148,9 @@ internal fun IntegritySection(
                     }
                 }
                 Text(scope, fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-                if (node.fileStats.isPresent) FileStatsStage(filesRequested, sweep, onRequest = { filesRequested = true })
+                if (node.fileStats.isPresent) {
+                    FileStatsStage(pagesRequested > 0, readingPage, sweep, pageSize, onRequest = { pagesRequested++ })
+                }
             }
         }
     }
@@ -165,9 +177,13 @@ internal data class FileReads(val sweep: FileStatsSweep, val statistics: List<St
     }
 }
 
-/** The second click: the current snapshot's data files read, their recorded bounds and counts against their rows — and the statistics files against their records. */
+/**
+ * The second click: the current snapshot's data files read, their recorded bounds and counts
+ * against their rows — and the statistics files against their records. [onRequest] asks for
+ * the first page and for each next one; the pages read so far stay drawn while [reading].
+ */
 @Composable
-private fun FileStatsStage(requested: Boolean, outcome: Result<FileReads>?, onRequest: () -> Unit) {
+private fun FileStatsStage(requested: Boolean, reading: Boolean, outcome: Result<FileReads>?, pageSize: Int, onRequest: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     val reads = outcome?.getOrNull()
     when {
@@ -175,14 +191,14 @@ private fun FileStatsStage(requested: Boolean, outcome: Result<FileReads>?, onRe
             Text(
                 "None of that opens a data file. Reading them puts each file's recorded bounds and counts — " +
                     "what a scan prunes on — against its rows, the file panel's own check run over the current " +
-                    "snapshot's live files, at most $MAX_FILE_STATS_CHECKS of them; and opens each statistics " +
+                    "snapshot's live files, $pageSize of them at a click; and opens each statistics " +
                     "file the metadata names against the record it keeps of it.",
                 fontSize = TypeScale.small,
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
             )
             OutlinedButton(onClick = onRequest) {
-                Text("Also read the data files (up to $MAX_FILE_STATS_CHECKS)")
+                Text("Also read the data files (up to $pageSize)")
             }
         }
         outcome == null -> Text("Reading the files…", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
@@ -231,6 +247,12 @@ private fun FileStatsStage(requested: Boolean, outcome: Result<FileReads>?, onRe
             }
             if (unreadable.size > MAX_UNREADABLE_ROWS) {
                 Text("…and ${formatCount(unreadable.size - MAX_UNREADABLE_ROWS)} more could not be read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            }
+            when {
+                reading -> Text("Reading the next files…", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                sweep.filesLeft > 0 -> OutlinedButton(onClick = onRequest, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("Read the next ${minOf(pageSize, sweep.filesLeft)} (${formatCounted(sweep.filesLeft, "file")} left)")
+                }
             }
         }
     }

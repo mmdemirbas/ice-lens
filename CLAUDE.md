@@ -624,10 +624,17 @@ intellij/src/main/kotlin/plugin/
   form the per-column `reason` sentence is joined from, so the table lists `id lower bound:
   5 / a smaller 4` on the file rather than a sentence — listed in the same table as the metadata
   findings and folded into the section's title. A file that could not be read is named with the
-  reason, never counted as agreeing. `FileStatsSweepTest` holds every fixture's targets to
-  exactly the live set (a page size of one shows the graph draws fewer than the sweep reads)
-  and every target to no finding through DuckDB, and folds injected reads to see a throwing
-  read become one unreadable file, a moved bound one finding, and the cap stated
+  reason, never counted as agreeing. **A table past the cap is read a page at a time**:
+  `sweepFileStats` takes `from`, the next click reads the next `MAX_FILE_STATS_CHECKS` from
+  the files read so far and `FileStatsSweep.plus` folds the pages into one, so the whole table
+  is reachable and no click opens more than a page — the stage keeps the pages read on screen
+  while the next is opened, which is why it holds an accumulator under a `LaunchedEffect`
+  rather than a `produceState` that clears on each request, and `IntegritySection.pageSize` is
+  a parameter so `integrity-files-paged` can show the button on `parted`'s four files.
+  `FileStatsSweepTest` holds every fixture's targets to exactly the live set (a page size of
+  one shows the graph draws fewer than the sweep reads) and every target to no finding through
+  DuckDB, and folds injected reads to see a throwing read become one unreadable file, a moved
+  bound one finding, the cap stated, and two pages fold to the one sweep
 - **A recorded figure is shown against the same figure counted.** `manifestTallies` in
   `model/ManifestTally.kt` puts each of `manifest_file`'s six counts beside what the manifest's
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on

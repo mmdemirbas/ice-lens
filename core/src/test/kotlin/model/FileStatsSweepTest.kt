@@ -43,6 +43,15 @@ class FileStatsSweepTest {
             sweep.findings,
         )
         assertEquals("4 of 5 live files read, 3 of their 15 figures disagree", sweep.describe)
+        assertEquals(1, sweep.filesLeft)
+        // The next page starts where the cap stopped, and the two pages folded are the whole sweep.
+        val next = sweepFileStats(targets, max = 4, from = sweep.filesRead, read = readOf())
+        assertEquals(1, next.filesRead)
+        assertEquals(5, next.figures, "e alone")
+        val whole = sweep + next
+        assertEquals(sweepFileStats(targets, max = 5) { t -> if (t.name == "d.parquet") throw IllegalStateException("no such file") else readOf()(t) }, whole)
+        assertEquals(0, whole.filesLeft)
+        assertEquals("3 of 20 figures disagree on the 5 live files", whole.describe)
         assertEquals("every one of the 10 figures agrees on all 2 live files", sweepFileStats(targets.take(2).map { target(it.name, 1, 9) }, read = readOf()).describe)
         assertEquals("no live data file to read", sweepFileStats(emptyList(), read = readOf()).describe)
     }

@@ -2339,6 +2339,15 @@ class InspectorRenderTest {
             }
         }
 
+        // A table past the cap is read a page at a time: at a page of two, `parted`'s first
+        // click reads two of its four files and offers the next two, with the count left.
+        val pagedSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("integrity-files-paged", width = 1400, height = 560, ready = pagedSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                IntegritySection(partedTable, startRequested = true, readFilesRequested = true, pageSize = 2) { pagedSettled.set(true) }
+            }
+        }
+
         // `pstats` names a partition statistics file: the same click opens it against its record
         // and the live files of its snapshot, and the stage says so on a line of its own; the
         // disagreeing one hands the node a check whose file is gone.

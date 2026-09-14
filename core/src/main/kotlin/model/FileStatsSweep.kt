@@ -36,17 +36,29 @@ data class FileStatsSweep(
         findings.isEmpty() -> "every one of the $figures figures agrees on all $filesRead live files"
         else -> "${findings.size} of $figures figures disagree on the $filesRead live files"
     }
+
+    /** Live files the cap left unread — what the next page reads. */
+    val filesLeft: Int get() = filesTotal - filesRead
+
+    /** This sweep with the page read after it: one total, the files and figures summed, the findings and the unreadable in reading order. */
+    operator fun plus(next: FileStatsSweep): FileStatsSweep =
+        FileStatsSweep(filesTotal, filesRead + next.filesRead, figures + next.figures, findings + next.findings, unreadable + next.unreadable)
 }
 
 /** Files read by one sweep, at most. */
 const val MAX_FILE_STATS_CHECKS = 64
 
-/** The sweep over [targets], each read by [read] — injected so the fold is testable without DuckDB and so a read that throws is one unreadable file, not a failed sweep. */
-fun sweepFileStats(targets: List<FileStatsTarget>, max: Int = MAX_FILE_STATS_CHECKS, read: (FileStatsTarget) -> StatsCheckResult): FileStatsSweep {
+/**
+ * The sweep over [targets] from the [from]th, [max] of them, each read by [read] — injected so
+ * the fold is testable without DuckDB and so a read that throws is one unreadable file, not a
+ * failed sweep. A table past the cap is read a page at a time: the next call starts at the
+ * files read so far, and [FileStatsSweep.plus] folds the pages into one.
+ */
+fun sweepFileStats(targets: List<FileStatsTarget>, max: Int = MAX_FILE_STATS_CHECKS, from: Int = 0, read: (FileStatsTarget) -> StatsCheckResult): FileStatsSweep {
     val findings = mutableListOf<IntegrityFinding>()
     val unreadable = mutableListOf<Pair<String, String>>()
     var figures = 0
-    val taken = targets.take(max)
+    val taken = targets.drop(from).take(max)
     for (target in taken) {
         val result = runCatching { read(target) }.getOrElse { e ->
             unreadable += target.name to (e.message ?: e.javaClass.simpleName)
