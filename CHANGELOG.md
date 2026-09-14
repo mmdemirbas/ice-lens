@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **An Iceberg table with gzip-compressed metadata opens.** `write.metadata.compression-codec
+  = gzip` names every version `v<N>.gz.metadata.json` and writes gzip bytes; the codec is
+  read off the name now, the way Iceberg reads it, where every version was a read error
+  before. `gzmeta` is the fixture
 - **A Paimon table with a struct, array or map column opens.** Its schema JSON writes such a
   type as an object, which the schema reader took for a string — every schema of the table was
   a read error and nothing else was drawn. The type is read as a tree now, printed the way

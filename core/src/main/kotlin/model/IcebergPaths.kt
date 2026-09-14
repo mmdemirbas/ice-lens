@@ -50,4 +50,16 @@ fun normalizeFilePath(path: String): String {
  * Returns null for non-matching file names.
  */
 fun metadataVersionFromFileName(fileName: String): Int? =
-    fileName.removePrefix("v").removeSuffix(".metadata.json").toIntOrNull()
+    fileName.removePrefix("v").removeSuffix(".gz").removeSuffix(".metadata.json").removeSuffix(".gz").toIntOrNull()
+
+/**
+ * Whether [fileName] is a metadata file by Iceberg's naming: `.metadata.json`, which under
+ * `write.metadata.compression-codec = gzip` is `v3.gz.metadata.json` — the codec's extension
+ * *before* the suffix (`TableMetadataParser.getFileExtension`, 1.8.1) — or the older
+ * `.metadata.json.gz` the reader stays compatible with.
+ */
+fun isMetadataFileName(fileName: String): Boolean = fileName.endsWith(".metadata.json") || fileName.endsWith(".metadata.json.gz")
+
+/** Whether the metadata file is gzip-compressed, read off its name the way `TableMetadataParser.Codec.fromFileName` reads it. */
+fun isGzipMetadataFileName(fileName: String): Boolean =
+    fileName.endsWith(".metadata.json.gz") || fileName.removeSuffix(".metadata.json").endsWith(".gz")

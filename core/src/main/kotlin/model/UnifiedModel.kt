@@ -65,7 +65,7 @@ fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
             .list(metadataDir)
             .asSequence()
             .filter { Files.isRegularFile(it) }
-            .filter { it.fileName.toString().endsWith(".metadata.json") }
+            .filter { isMetadataFileName(it.fileName.toString()) }
             .toList()
     }.getOrElse { e ->
         tableReadErrors += toError("list-metadata-files", metadataDir, e)
@@ -140,7 +140,7 @@ fun UnifiedTableModel(tablePath: Path): UnifiedTableModel {
             UnifiedMetadata(
                 path = path,
                 metadata = metadata,
-                rawJson = runCatching { path.readText() }.getOrNull(),
+                rawJson = runCatching { IcebergReader.readMetadataText(path) }.getOrNull(),
                 snapshots = metadata.snapshots
                     .mapNotNull { parsedSnapshots[it.snapshotId] }
                     .sortedBy { it.metadata.timestampMs },

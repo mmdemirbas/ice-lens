@@ -4,11 +4,14 @@ import kotlinx.serialization.json.Json
 import model.ManifestEntry
 import model.ManifestListEntry
 import model.TableMetadata
+import model.isGzipMetadataFileName
 import org.apache.avro.generic.GenericFixed
 import org.apache.avro.generic.GenericRecord
 import org.slf4j.LoggerFactory
 import java.nio.ByteBuffer
 import java.nio.file.Files
+import java.nio.file.Path
+import java.util.zip.GZIPInputStream
 
 private val logger = LoggerFactory.getLogger(IcebergReader::class.java)
 
@@ -22,10 +25,18 @@ object IcebergReader {
             logger.error("Iceberg metadata file not found: {}", localPath)
             throw IllegalArgumentException("File not found: $localPath")
         }
-        val metadata = json.decodeFromString(TableMetadata.serializer(), Files.readString(path))
+        val metadata = json.decodeFromString(TableMetadata.serializer(), readMetadataText(path))
         logger.debug("Iceberg metadata read: formatVersion={}, snapshots={}", metadata.formatVersion, metadata.snapshots?.size ?: 0)
         return metadata
     }
+
+    /** The metadata file's JSON — decompressed when its name says gzip (`gzmeta`), the file as it is otherwise. */
+    fun readMetadataText(path: Path): String =
+        if (isGzipMetadataFileName(path.fileName.toString())) {
+            GZIPInputStream(Files.newInputStream(path)).use { it.readBytes().toString(Charsets.UTF_8) }
+        } else {
+            Files.readString(path)
+        }
 
     fun readManifestList(localPath: String): AvroReader.ReadResult<ManifestListEntry> {
         logger.debug("Reading Iceberg manifest list: {}", localPath)

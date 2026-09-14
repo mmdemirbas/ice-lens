@@ -1,5 +1,6 @@
 package service
 
+import model.isMetadataFileName
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
@@ -45,7 +46,7 @@ object TableFormatDetector {
         // at the first match rather than materialising every metadata version of the table.
         return runCatching {
             Files.list(metaDir).use { entries ->
-                entries.asSequence().any { it.fileName.toString().endsWith(".metadata.json") }
+                entries.asSequence().any { isMetadataFileName(it.fileName.toString()) }
             }
         }.getOrDefault(false)
     }

@@ -181,7 +181,9 @@ object ObjectStorage {
      */
     fun globTables(warehouse: String): Map<String, TableFormat> {
         val root = warehouse.trimEnd('/')
-        val iceberg = glob("$root/**/metadata/*.metadata.json")
+        // `*.metadata.json*` takes the gzip-compressed `.metadata.json.gz` spelling too; the
+        // `.gz.metadata.json` one the plain suffix already matches.
+        val iceberg = glob("$root/**/metadata/*.metadata.json*")
             .mapNotNull { it.substringBeforeLast("/metadata/", "").takeIf(String::isNotEmpty) }
         val paimon = glob("$root/**/snapshot/snapshot-*")
             .mapNotNull { it.substringBeforeLast("/snapshot/", "").takeIf(String::isNotEmpty) }

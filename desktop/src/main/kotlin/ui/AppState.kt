@@ -655,7 +655,7 @@ class AppState(
         listOf("metadata", "snapshot", "schema", "tag", "branch", "consumer").forEach { ObjectStorage.invalidate("$root/$it") }
         val names = runCatching {
             ObjectStorage.list("$root/metadata")
-                .filter { it.name.endsWith(".metadata.json") || it.name == "version-hint.text" }
+                .filter { isMetadataFileName(it.name) || it.name == "version-hint.text" }
                 .map { it.name }
                 .ifEmpty {
                     // The same directories the local fingerprint stats, and a branch commit lands
@@ -677,7 +677,7 @@ class AppState(
         val metadataDir = File(tableDir, "metadata")
         if (!metadataDir.exists() || !metadataDir.isDirectory) return emptyList()
         return metadataDir.listFiles()
-            ?.filter { it.isFile && (it.name.endsWith(".metadata.json") || it.name == "version-hint.text") }
+            ?.filter { it.isFile && (isMetadataFileName(it.name) || it.name == "version-hint.text") }
             ?.sortedBy { it.name }
             .orEmpty()
     }

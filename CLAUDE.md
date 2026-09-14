@@ -1476,6 +1476,16 @@ intellij/src/main/kotlin/plugin/
   An expired snapshot carries no manifests, so the builder gives it no `change`, no diff and no
   delete-reach: its summary is all the writer left of it, and the card and panel say so. The
   precedent is the version hint below — absence that the format defines is not a failure to read
+- **A metadata file's codec is read off its name, the way Iceberg reads it.** Under
+  `write.metadata.compression-codec = gzip` every `metadata.json` is gzip bytes and the name
+  carries the codec *before* the suffix — `v3.gz.metadata.json`, a metastore's
+  `00003-<uuid>.gz.metadata.json` (`TableMetadataParser.getFileExtension` at 1.8.1) — with the
+  older `.metadata.json.gz` still accepted by `Codec.fromFileName`. `isMetadataFileName`,
+  `isGzipMetadataFileName` and `metadataVersionFromFileName` in `model/IcebergPaths.kt` are
+  the one reading of that naming, `IcebergReader.readMetadataText` decompresses by it, and the
+  listing, the detector, the object-storage glob (`*.metadata.json*`) and the desktop
+  fingerprint go through the same predicate. `gzmeta` is the fixture, and every version of it
+  was a `read-metadata-json` error before — the table opened as nothing but errors
 - `versionHint` is nullable — `version-hint.text` exists only for HadoopCatalog/HadoopTables
   tables, so absence is normal and must not be reported as a read error
 - **Nothing leaves the graph silently.** `GraphAggregation` draws the first
@@ -2155,7 +2165,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,248 tests across 166 files (978 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,251 tests across 167 files (981 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2249,6 +2259,7 @@ container invocation and the traps in it:
 | `default/eqren` | `RowLookupFixtureTest`, `RowFateFixtureTest`, `IcebergScanPlanTest` | `eqdel` with the equality delete on `name`, then `RENAME COLUMN name TO label` and a row inserted after — the delete file holds `name`, the table calls it `label`, and Spark's read (`1 4 5 7 8`) is printed by the script |
 | `default/v3` | `FormatV3FixtureTest` | format-version 3 with deletion vectors |
 | `default/migrated` | `MigratedFixtureTest` | a plain-Spark Parquet file registered by `add_files` — no field ids, a `file:` URI outside the table, the name mapping the procedure set and a rename extended, and a `total-files-size` the procedure left short |
+| `default/gzmeta` | `GzipMetadataFixtureTest` | `write.metadata.compression-codec = gzip` — every `metadata.json` gzip-compressed and named `v<N>.gz.metadata.json`, the codec read off the name |
 | `default/migdeep` | `MigratedNestedFixtureTest` | `migrated` with a struct, a list of structs and a map — no field id at any level, the mapping's tree kept current by a rename and an add inside the struct and a rename inside the list's element; the plain files under `example/iceberg/deep-files/` |
 | `default/defaults` | `ReadProjectionFixtureTest` | format-version 3 column defaults, written by Iceberg 1.10's `UpdateSchema` from spark-shell — `region` with `initial-default eu` and `write-default us` after an `updateColumnDefault`, `score` with `0`; a file written before both, and the writer's read of it printed in the script |
 | `default/lineage` | `RowLineageFixtureTest` | format-version 3 row lineage, written by Iceberg 1.10 — `next-row-id`, a snapshot's and a manifest's `first-row-id`, files inheriting theirs in entry order, a rewritten file carrying `_row_id`, a deletion vector allocating nothing, and a compaction that keeps every id |
