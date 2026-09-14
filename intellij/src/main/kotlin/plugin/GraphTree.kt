@@ -80,12 +80,24 @@ object GraphTree {
     /** The same on an Iceberg data row: what a read returns for it, projected onto the current schema. */
     const val READ_AS = "Read as"
 
-    /** The placeholder label for [deferredDetails] on the node, while the read runs. */
-    fun deferredLabel(node: GraphNode): String = if (node is GraphNode.RowNode) READ_AS else HISTORY
+    /** The same on a Paimon table writing Iceberg metadata beside its own: whether the export is current, and what an Iceberg reader sees. */
+    const val ICEBERG_EXPORT = "Iceberg export"
 
-    /** Whether [deferredDetails] has anything to read for the node — a data file's history on either format, an Iceberg data row's projection. */
+    /** The placeholder label for [deferredDetails] on the node, while the read runs. */
+    fun deferredLabel(node: GraphNode): String = when (node) {
+        is GraphNode.RowNode -> READ_AS
+        is GraphNode.TableNode -> ICEBERG_EXPORT
+        else -> HISTORY
+    }
+
+    /**
+     * Whether [deferredDetails] has anything to read for the node — a data file's history on
+     * either format, an Iceberg data row's projection, a Paimon table's Iceberg export.
+     */
     fun hasDeferredDetails(node: GraphNode): Boolean =
-        node is GraphNode.FileNode || node is GraphNode.PaimonDataFileNode || (node is GraphNode.RowNode && node.readAs.isPresent)
+        node is GraphNode.FileNode || node is GraphNode.PaimonDataFileNode ||
+            (node is GraphNode.RowNode && node.readAs.isPresent) ||
+            (node is GraphNode.TableNode && node.icebergExport.isPresent)
 
     /**
      * The rows that cost a read: a file's history is a scan of every retained snapshot's manifest
@@ -100,6 +112,8 @@ object GraphTree {
             is GraphNode.RowNode -> return listOf(READ_AS to (node.readAs.value?.let { read ->
                 read.describe + if (read.differsFromFile) ": " + read.cells.joinToString(", ") { "${it.name} = ${it.value}" } else ""
             } ?: "could not be read"))
+            // The export is another table's metadata tree, read whole — deferred like the history.
+            is GraphNode.TableNode -> return if (node.icebergExport.isPresent) listOf(ICEBERG_EXPORT to (node.icebergExport.value?.describe ?: "could not be read")) else emptyList()
             else -> return emptyList()
         }
         return listOf(HISTORY to (history.value?.describe ?: "could not be read"))

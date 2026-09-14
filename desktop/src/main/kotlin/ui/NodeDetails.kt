@@ -2068,12 +2068,8 @@ internal fun IcebergExportSection(
                 color = colors.error,
             )
             else -> {
-                val seen = check.paimonFiles.keys.count { it in check.icebergFiles }
                 Text(
-                    (if (check.current) "Current: the export's snapshot ${check.currentIcebergSnapshotId} is the table's latest" else
-                        "Behind: the export's snapshot is ${check.currentIcebergSnapshotId ?: "none"}, the table's latest ${check.latestPaimonSnapshotId ?: "none"}") +
-                        "; ${formatCount(check.versions)} ${if (check.versions == 1) "metadata version" else "metadata versions"} under metadata/. " +
-                        "An Iceberg reader sees ${formatCount(seen)} of the table's ${formatCounted(check.paimonFiles.size, "live file")}.",
+                    check.describe.replaceFirstChar { it.uppercase() } + ".",
                     fontSize = TypeScale.small,
                     fontWeight = FontWeight.Bold,
                     color = if (agrees) colors.onSurface else colors.error,

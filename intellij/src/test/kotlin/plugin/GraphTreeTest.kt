@@ -227,6 +227,23 @@ class GraphTreeTest {
     }
 
     /**
+     * A Paimon table writing Iceberg metadata beside its own carries a third deferred detail on
+     * its table row — the export is another metadata tree, read whole — and a table without the
+     * export carries none, so the strip of every other table is the strip it was.
+     */
+    @Test
+    fun `a Paimon table's Iceberg export is a deferred detail on its table row`() {
+        val pic = flatten(GraphTree.build(paimonGraphOf("pic"))).first { it is GraphNode.TableNode }
+        assertTrue(GraphTree.hasDeferredDetails(pic) && GraphTree.deferredLabel(pic) == GraphTree.ICEBERG_EXPORT)
+        assertEquals(
+            listOf(GraphTree.ICEBERG_EXPORT to "current: the export's snapshot 2 is the table's latest; 1 metadata version under metadata/; an Iceberg reader sees 1 of the table's 2 live files"),
+            GraphTree.deferredDetails(pic),
+        )
+        val dv = flatten(GraphTree.build(paimonGraphOf("dv"))).first { it is GraphNode.TableNode }
+        assertTrue(!GraphTree.hasDeferredDetails(dv) && GraphTree.deferredDetails(dv).isEmpty())
+    }
+
+    /**
      * A row's projection onto the current schema is the other deferred detail — it opens the
      * file's footer — and the strip's one line has to carry the values a read returns, since
      * the eager rows are the file's own columns: `defaults`' first file predates two columns.

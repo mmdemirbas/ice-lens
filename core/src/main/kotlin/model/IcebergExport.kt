@@ -64,6 +64,23 @@ data class IcebergExportCheck(
     /** Files the export lists that the table no longer holds live. */
     val extraInIceberg: Set<String> get() = icebergFiles - paimonFiles.keys
 
+    /** Live files the export lists — what an Iceberg reader sees of the table. */
+    val seen: Int get() = paimonFiles.keys.count { it in icebergFiles }
+
+    /**
+     * The check in one sentence, shared by both shells so the two cannot spell it differently:
+     * whether the export is current, how many versions are on disk, and what an Iceberg reader
+     * sees of the table's live files.
+     */
+    val describe: String
+        get() {
+            val head = if (current) "current: the export's snapshot $currentIcebergSnapshotId is the table's latest" else
+                "behind: the export's snapshot is ${currentIcebergSnapshotId ?: "none"}, the table's latest ${latestPaimonSnapshotId ?: "none"}"
+            val versionsText = "%,d metadata %s under metadata/".format(versions, if (versions == 1) "version" else "versions")
+            val files = "an Iceberg reader sees %,d of the table's %,d live %s".format(seen, paimonFiles.size, if (paimonFiles.size == 1) "file" else "files")
+            return "$head; $versionsText; $files"
+        }
+
     private fun exportsLevel(level: Int?): Boolean = when {
         exportedLevel == null -> true
         aboveLevelZero -> (level ?: 0) > 0

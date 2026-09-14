@@ -2176,7 +2176,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,258 tests across 170 files (987 in :core, 262 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,259 tests across 170 files (987 in :core, 262 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2579,7 +2579,9 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   disagreement — `belowExportedLevel` and `exportedBelowLevel` name each with its rule, leaving
   `missingFromIceberg` and `extraInIceberg` for what no rule explains. The section rides
   `TableNode.icebergExport`, a `DeferredRead` behind a click for the reason
-  `UnreferencedFilesSection` is: it reads another table's metadata tree
+  `UnreferencedFilesSection` is: it reads another table's metadata tree — and the IDE strip
+  fills an `Iceberg export` row from the same read, the way it fills `History`, both shells
+  printing `IcebergExportCheck.describe` so the sentence cannot drift between them
 - **A tag is a snapshot file under `tag/`, read as one, and it is what keeps files on disk after
   the snapshot is gone.** `PaimonUnifiedTableModel.tags` reads `tag/tag-<name>` through the same
   reader and manifest cache as `snapshot/`; `tagOnlySnapshots` is the tagged snapshots `snapshot/`
