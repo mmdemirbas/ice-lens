@@ -191,6 +191,7 @@ object PaimonGraphBuilder {
                     tableOptions = unifiedSnapshot.schema?.options.orEmpty(),
                     hasPrimaryKey = unifiedSnapshot.schema?.primaryKeys?.isNotEmpty() ?: true,
                     indexFiles = unifiedSnapshot.indexFiles,
+                    sizesOnDisk = unifiedSnapshot.sizesOnDisk,
                     statistics = unifiedSnapshot.statistics,
                     tags = tagNames,
                     retainedByTagOnly = retainedByTagOnly,

@@ -217,6 +217,9 @@ class GraphTreeTest {
         val paimonKinds = pt.filter { GraphTree.details(it).any { d -> d.first == GraphTree.CHECKS } }.map { it::class.simpleName }.toSet()
         assertEquals(setOf("PaimonSnapshotNode", "PaimonSchemaNode", "PaimonManifestNode", "PaimonDataFileNode"), paimonKinds)
         assertTrue(pt.flatMap { GraphTree.details(it) }.filter { it.first == GraphTree.CHECKS }.all { it.second.startsWith("all ") }, pt.flatMap { GraphTree.details(it) }.filter { it.first == GraphTree.CHECKS }.toString())
+        // A snapshot's line folds its schema id and the lengths it records for its manifest lists — at least the base and delta lists.
+        val snapshotLines = pt.filterIsInstance<GraphNode.PaimonSnapshotNode>().map { n -> GraphTree.details(n).first { it.first == GraphTree.CHECKS }.second }
+        assertTrue(snapshotLines.all { line -> line.removePrefix("all ").substringBefore(' ').toInt() >= 3 }, snapshotLines.toString())
     }
 
     private fun paimonGraphOf(name: String): GraphModel {

@@ -1389,7 +1389,17 @@ intellij/src/main/kotlin/plugin/
   `model/Integrity.kt` runs `metadataTallies` on the newest metadata, `manifestTallies`, `partitionSummaryTallies` and `partitionBoundsChecks` on every distinct manifest, each commit's
   `snapshotChangeOf(...).tallies` and `snapshotTotals` on its closure (Iceberg), and
   `paimonManifestTallies` on every distinct manifest with `paimonRecordTallies` on every
-  snapshot's replay across main, the branches and the tag-only snapshots (Paimon), and lists the
+  snapshot's replay across main, the branches and the tag-only snapshots (Paimon) — and, under
+  `METADATA_FIGURES`, the lengths a Paimon snapshot records for the files it names against the
+  files: `baseManifestListSize` and siblings, which `ManifestList.read` opens each list at
+  (release-1.3.1, `ObjectsFile.read(fileName, fileSize)`, the manifest `_FILE_SIZE` rule one
+  level up), and each index file's `_FILE_SIZE` in the index manifest, the figure the expiry
+  plan charges (`paimonSnapshotTallies`, `paimonIndexFileTallies`; `PaimonSnapshotSizes` is
+  the stat, once per file through `PaimonManifestCache.sizeOf`, since an index file is carried
+  into every later snapshot's index manifest). A list the snapshot names that is not there —
+  a tag-only snapshot's changelog list, deleted by the expiry — has nothing to compare and is
+  not counted; the snapshot panel draws the list lengths under `Recorded Figures` and the index
+  file's on its own row of `Index Files`, the IDE strip folds both into `Checks` — and lists the
   pairs that disagree with where they are — nothing of its own, so it cannot say anything a
   node's panel would not. `checked` counts only pairs with both sides; a figure a writer did not
   record is not a comparison. The two checks that walk a closure per snapshot stop after
@@ -2336,7 +2346,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,295 tests across 176 files (1,018 in :core, 266 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,296 tests across 176 files (1,019 in :core, 266 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

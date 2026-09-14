@@ -135,6 +135,25 @@ data class PaimonUnifiedSnapshot(
      */
     val statistics: PaimonStatistics? = null,
     val readErrors: List<UnifiedReadError> = emptyList(),
+    /** The lengths the snapshot records for the files it names, each beside the file's length on disk. */
+    val sizesOnDisk: PaimonSnapshotSizes = PaimonSnapshotSizes(),
+)
+
+/**
+ * The lengths a snapshot records for the files it names, each beside the file's length on disk —
+ * the `sizeOnDisk` rule applied to the snapshot's own figures. `ManifestList.read` opens each
+ * manifest list at the size the snapshot records for it (`baseManifestListSize` and siblings,
+ * release-1.3.1), the way a manifest is opened at its `_FILE_SIZE`; an index file's `_FILE_SIZE`
+ * is the figure the expiry plan and the metrics charge, the vector reader opening the file by
+ * offset and length. Null, or absent from the map, where the file could not be stat-ed — a
+ * tag-only snapshot's changelog list is the ordinary case, an expiry having deleted it.
+ */
+data class PaimonSnapshotSizes(
+    val baseManifestList: Long? = null,
+    val deltaManifestList: Long? = null,
+    val changelogManifestList: Long? = null,
+    /** By the index file's name, only where the file was stat-ed. */
+    val indexFiles: Map<String, Long> = emptyMap(),
 )
 
 /** A Paimon manifest file with its resolved data file entries. */
@@ -418,11 +437,15 @@ private fun listSnapshotFiles(snapshotDir: Path, errors: MutableList<UnifiedRead
  */
 class PaimonManifestCache {
     private val byName = mutableMapOf<String, PaimonUnifiedManifest>()
+    private val sizes = mutableMapOf<Path, Long?>()
 
     fun manifestFor(meta: PaimonManifestFileMeta, read: () -> PaimonUnifiedManifest): PaimonUnifiedManifest {
         val key = meta.fileName ?: return read()
         return byName.getOrPut(key) { read() }
     }
+
+    /** The file's length, stat-ed once per table load — an index file is carried into every later snapshot's index manifest. Null where it is not there. */
+    fun sizeOf(path: Path): Long? = sizes.getOrPut(path) { runCatching { Files.size(path) }.getOrNull() }
 }
 
 private fun readPaimonSnapshot(
@@ -445,6 +468,12 @@ private fun readPaimonSnapshot(
     val deltaManifests = readManifestList(tablePath, snapshot.deltaManifestList, "delta-manifest-list", snapshotErrors, manifestCache, schemasById)
     val changelogManifests = readManifestList(tablePath, snapshot.changelogManifestList, "changelog-manifest-list", snapshotErrors, manifestCache, schemasById)
 
+    val indexFiles = readIndexManifest(tablePath, snapshot.indexManifest, snapshotErrors)
+    // The same resolution `readManifestList` applies: under `manifest/`, else at the table root.
+    val manifestDir = tablePath.resolve("manifest")
+    fun listSize(name: String?): Long? = name?.takeIf { it.isNotBlank() }
+        ?.let { manifestCache.sizeOf(manifestDir.resolve(it)) ?: manifestCache.sizeOf(tablePath.resolve(it)) }
+
     return PaimonUnifiedSnapshot(
         path = snapshotPath,
         metadata = snapshot,
@@ -452,9 +481,15 @@ private fun readPaimonSnapshot(
         baseManifests = baseManifests,
         deltaManifests = deltaManifests,
         changelogManifests = changelogManifests,
-        indexFiles = readIndexManifest(tablePath, snapshot.indexManifest, snapshotErrors),
+        indexFiles = indexFiles,
         statistics = readStatistics(tablePath, snapshot.statistics, snapshotErrors),
         readErrors = snapshotErrors,
+        sizesOnDisk = PaimonSnapshotSizes(
+            baseManifestList = listSize(snapshot.baseManifestList),
+            deltaManifestList = listSize(snapshot.deltaManifestList),
+            changelogManifestList = listSize(snapshot.changelogManifestList),
+            indexFiles = indexFiles.mapNotNull { f -> f.fileName?.let { n -> manifestCache.sizeOf(tablePath.resolve("index").resolve(n))?.let { n to it } } }.toMap(),
+        ),
     )
 }
 

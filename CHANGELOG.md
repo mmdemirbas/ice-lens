@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A Paimon snapshot's recorded lengths checked against the files** — `baseManifestListSize`
+  and siblings, which the reader opens each manifest list at, on the snapshot panel's
+  `Recorded Figures` and in the integrity check; and each index file's `_FILE_SIZE` on its
+  row of `Index Files`. A tag-only snapshot's deleted changelog list has nothing to compare
+  and is not counted.
 - **The files the retained snapshots need that are not there, behind a click on the table
   panel** — the converse of the unreferenced-files walk. Every retained snapshot's manifest
   list, manifests and live data and delete files, plus a Paimon snapshot's index, changelog,

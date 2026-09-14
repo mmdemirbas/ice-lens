@@ -163,14 +163,53 @@ private fun nestedIds(type: PaimonType?): List<Int> = when (type) {
     else -> emptyList()
 }
 
-/** A Paimon snapshot's `schemaId` against the schema files present — the schema every file of the commit is read under. */
-fun paimonSnapshotTallies(snapshot: PaimonSnapshot, schemaIds: Set<Int>): List<MetadataTally> {
+/**
+ * A Paimon snapshot's `schemaId` against the schema files present — the schema every file of the
+ * commit is read under — and the lengths it records for its manifest lists against the files:
+ * `ManifestList.read` opens a list at `baseManifestListSize` and siblings (release-1.3.1,
+ * `ObjectsFile.read(fileName, fileSize)`), the `_FILE_SIZE` rule one level up. A list the
+ * snapshot names but [sizes] does not hold — deleted, as a tag-only snapshot's changelog list
+ * is — has nothing to compare and is not counted.
+ */
+fun paimonSnapshotTallies(
+    snapshot: PaimonSnapshot,
+    schemaIds: Set<Int>,
+    sizes: PaimonSnapshotSizes = PaimonSnapshotSizes(),
+): List<MetadataTally> {
     val id = snapshot.schemaId
-    return listOf(
+    val tallies = mutableListOf(
         MetadataTally(
             "schemaId", id?.toString() ?: "N/A", if (id != null && id.toInt() in schemaIds) "schema file present" else "no such schema file",
             id?.let { it.toInt() in schemaIds },
             "the schema the commit's files are read under; Paimon fails the read of the snapshot without it",
         ),
     )
+    val listRule = "the length the list is opened and read to (ManifestList.read); a figure short of the file leaves manifests unread, one past it fails the read"
+    fun list(label: String, named: String?, recorded: Long?, onDisk: Long?) {
+        if (!named.isNullOrBlank()) tallies += lengthTally(label, recorded, onDisk, listRule)
+    }
+    list("baseManifestListSize", snapshot.baseManifestList, snapshot.baseManifestListSize, sizes.baseManifestList)
+    list("deltaManifestListSize", snapshot.deltaManifestList, snapshot.deltaManifestListSize, sizes.deltaManifestList)
+    list("changelogManifestListSize", snapshot.changelogManifestList, snapshot.changelogManifestListSize, sizes.changelogManifestList)
+    return tallies
 }
+
+/**
+ * Each index file's `_FILE_SIZE` in the snapshot's index manifest against the file. Kept apart
+ * from [paimonSnapshotTallies] because the snapshot panel draws these on the index file's own
+ * row, where a figure about a file belongs; the integrity check and the IDE strip fold both.
+ */
+fun paimonIndexFileTallies(indexFiles: List<PaimonIndexManifestEntry>, sizes: PaimonSnapshotSizes): List<MetadataTally> =
+    indexFiles.mapNotNull { f ->
+        val name = f.fileName?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        lengthTally(
+            "index/$name _FILE_SIZE", f.fileSize, sizes.indexFiles[name],
+            "what the expiry plan and the metrics charge the index file at; the vector reader opens it by offset and length, so a wrong figure misreports and does not misread",
+        )
+    }
+
+/** A recorded length against the file's, or nothing to compare when the file is not there. */
+private fun lengthTally(label: String, recorded: Long?, onDisk: Long?, consequence: String) = MetadataTally(
+    label, recorded?.toString() ?: "N/A", onDisk?.let { "$it in the file" } ?: "file not there",
+    if (recorded == null || onDisk == null) null else recorded == onDisk, consequence,
+)

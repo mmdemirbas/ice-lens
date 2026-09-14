@@ -141,7 +141,7 @@ fun PaimonUnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_
     }
     val schemaIdsByLine = (listOf(null to schemas) + branches.map { it.name to it.schemas }).associate { (b, ss) -> b to ss.mapNotNull { it.id }.toSet() }
     all.forEach { (line, s) ->
-        paimonSnapshotTallies(s.metadata, schemaIdsByLine[line.branch].orEmpty()).forEach { t.count(IntegrityCheck.METADATA_FIGURES, name(line, s), it.label, it.recorded, it.counted, it.agrees) }
+        (paimonSnapshotTallies(s.metadata, schemaIdsByLine[line.branch].orEmpty(), s.sizesOnDisk) + paimonIndexFileTallies(s.indexFiles, s.sizesOnDisk)).forEach { t.count(IntegrityCheck.METADATA_FIGURES, name(line, s), it.label, it.recorded, it.counted, it.agrees) }
         snapshotCount++
         readErrors += s.readErrors.size
         (s.baseManifests + s.deltaManifests + s.changelogManifests).forEach { m ->

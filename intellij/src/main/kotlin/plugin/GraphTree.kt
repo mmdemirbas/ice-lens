@@ -19,6 +19,7 @@ import model.describe
 import model.manifestTallies
 import model.metadataTallies
 import model.MissingFilesReport
+import model.paimonIndexFileTallies
 import model.paimonManifestTallies
 import model.paimonPartitionBoundsChecks
 import model.paimonSchemaTallies
@@ -241,7 +242,7 @@ object GraphTree {
             "Merged rows" to (node.statistics?.mergedRecordCount?.toString() ?: "—"),
             "Total records" to (node.data.totalRecordCount?.toString() ?: "—"),
             "Delta records" to (node.data.deltaRecordCount?.toString() ?: "—"),
-            CHECKS to checksLine(paimonSnapshotTallies(node.data, node.schemaIds).map { Triple(it.label, it.agrees, "${it.recorded}: ${it.counted}") }),
+            CHECKS to checksLine((paimonSnapshotTallies(node.data, node.schemaIds, node.sizesOnDisk) + paimonIndexFileTallies(node.indexFiles, node.sizesOnDisk)).map { Triple(it.label, it.agrees, "${it.recorded}: ${it.counted}") }),
         )
         is GraphNode.PaimonSchemaNode -> listOf(
             "Schema id" to node.data.id.toString(),

@@ -33,22 +33,55 @@ class MetadataTallyTest {
     @Test
     fun `every checked-in Paimon schema and snapshot agree with their files`() {
         var checked = 0
+        var lengths = 0
+        var indexLengths = 0
         for (fixture in FixtureCatalog.paimon) {
             val model = FixtureCatalog.paimonModel(fixture)
-            val lines = listOf(model.schemas to model.snapshots + model.tagOnlySnapshots) + model.branches.map { it.schemas to it.snapshots + it.tagOnlySnapshots }
-            for ((schemas, snapshots) in lines) {
+            val lines = listOf(Triple(model.schemas, model.snapshots + model.tagOnlySnapshots, model.tagOnlySnapshots)) +
+                model.branches.map { Triple(it.schemas, it.snapshots + it.tagOnlySnapshots, it.tagOnlySnapshots) }
+            for ((schemas, snapshots, tagOnly) in lines) {
                 for (schema in schemas) for (t in paimonSchemaTallies(schema)) {
                     assertEquals(true, t.agrees, "$fixture/schema-${schema.id}: ${t.recorded} recorded, ${t.counted} folded")
                     checked++
                 }
                 val ids = schemas.mapNotNull { it.id }.toSet()
-                for (s in snapshots) for (t in paimonSnapshotTallies(s.metadata, ids)) {
-                    assertEquals(true, t.agrees, "$fixture/snapshot-${s.metadata.id}: ${t.counted}")
+                for (s in snapshots) for (t in paimonSnapshotTallies(s.metadata, ids, s.sizesOnDisk) + paimonIndexFileTallies(s.indexFiles, s.sizesOnDisk)) {
+                    // The one figure with nothing to compare is a tag-only snapshot's changelog list, which the expiry deleted (`tg`, `pea`).
+                    if (t.agrees == null) {
+                        assertTrue(t.label == "changelogManifestListSize" && s in tagOnly, "$fixture/snapshot-${s.metadata.id}: ${t.label} ${t.counted}")
+                        continue
+                    }
+                    assertEquals(true, t.agrees, "$fixture/snapshot-${s.metadata.id}: ${t.label} ${t.recorded} recorded, ${t.counted}")
                     checked++
+                    if (t.label.endsWith("ManifestListSize")) lengths++
+                    if (t.label.endsWith("_FILE_SIZE")) indexLengths++
                 }
             }
         }
         assertTrue(checked >= 100, "$checked figures agreed")
+        assertTrue(lengths >= 100, "$lengths manifest list lengths agreed")
+        assertTrue(indexLengths >= 4, "$indexLengths index file lengths agreed — dv, ad and test each list at least one")
+    }
+
+    @Test
+    fun `a manifest list length or an index file length off by one is named, and a deleted list has nothing to compare`() {
+        val dv = FixtureCatalog.paimonModel("dv")
+        val withIndex = dv.snapshots.last { it.indexFiles.isNotEmpty() }
+        assertEquals(true, paimonSnapshotTallies(withIndex.metadata, setOf(0), withIndex.sizesOnDisk).single { it.label == "baseManifestListSize" }.agrees)
+        val indexes = paimonIndexFileTallies(withIndex.indexFiles, withIndex.sizesOnDisk)
+        assertTrue(indexes.isNotEmpty() && indexes.all { it.agrees == true }, indexes.toString())
+
+        val longer = withIndex.metadata.copy(baseManifestListSize = withIndex.metadata.baseManifestListSize!! + 1)
+        assertEquals(false, paimonSnapshotTallies(longer, setOf(0), withIndex.sizesOnDisk).single { it.label == "baseManifestListSize" }.agrees)
+        val shorter = withIndex.indexFiles.map { it.copy(fileSize = it.fileSize!! - 1) }
+        assertTrue(paimonIndexFileTallies(shorter, withIndex.sizesOnDisk).all { it.agrees == false })
+
+        // `tg`'s tag keeps a snapshot whose changelog list the expiry deleted: recorded, not there, nothing to compare.
+        val tagged = FixtureCatalog.paimonModel("tg").tagOnlySnapshots.single()
+        val changelog = paimonSnapshotTallies(tagged.metadata, setOf(0), tagged.sizesOnDisk).single { it.label == "changelogManifestListSize" }
+        assertEquals(null, changelog.agrees)
+        assertEquals("file not there", changelog.counted)
+        assertTrue(tagged.metadata.changelogManifestListSize!! > 0)
     }
 
     @Test
@@ -106,6 +139,6 @@ class MetadataTallyTest {
         val highest = nested.highestFieldId!!
         assertEquals(false, paimonSchemaTallies(nested.copy(highestFieldId = highest - 1)).single().agrees)
         val snapshot = FixtureCatalog.paimonModel("pne").snapshots.last().metadata
-        assertEquals(false, paimonSnapshotTallies(snapshot, setOf(0)).single().agrees)
+        assertEquals(false, paimonSnapshotTallies(snapshot, setOf(0)).single { it.label == "schemaId" }.agrees)
     }
 }

@@ -1352,7 +1352,8 @@ class InspectorRenderTest {
         val snapshot = graph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>()
             .firstOrNull { it.indexFiles.isNotEmpty() }
         assertNotNull(snapshot, "the paimon fixture should carry a snapshot with an index file")
-        renderInspector(graph, snapshot.id, "paimon-snapshot-index", height = 1800)
+        // The section sits under five others; folded, the identity table and the index files share one screen.
+        renderInspector(graph, snapshot.id, "paimon-snapshot-index", height = 1800, sectionCollapse = onlyExpanded("Index Files"))
 
         // And the other kind, on the Spark-written table: a deletion-vector index whose
         // "Deleted rows" column is the answer rather than a dash, plus the one line above the
@@ -1364,7 +1365,7 @@ class InspectorRenderTest {
         val vectored = dvGraph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>()
             .firstOrNull { node -> node.indexFiles.any { it.isDeletionVectorIndex } }
         assertNotNull(vectored, "the dv fixture should carry a snapshot with a deletion-vector index")
-        renderInspector(dvGraph, vectored.id, "paimon-snapshot-vectors", height = 1800)
+        renderInspector(dvGraph, vectored.id, "paimon-snapshot-vectors", height = 3000, sectionCollapse = onlyExpanded("Recorded Figures", "Index Files"))
 
         // And the statistics an ANALYZE commit wrote, on the one snapshot of the changelog table
         // that names them: the merged row count leads, and the column table has a string column
@@ -3000,8 +3001,14 @@ class InspectorRenderTest {
         )
     }
 
-    private fun renderInspector(graph: GraphModel, nodeId: String, name: String, height: Int) =
-        renderScene(name, width = 1400, height = height) { InspectorUnderTest(graph, nodeId) }
+    private fun renderInspector(graph: GraphModel, nodeId: String, name: String, height: Int, sectionCollapse: SectionCollapseState? = null) =
+        renderScene(name, width = 1400, height = height) { InspectorUnderTest(graph, nodeId, sectionCollapse) }
+
+    /** Every section folded but the ones named — for a section that sits below a screen of others. */
+    private fun onlyExpanded(vararg sections: String) = SectionCollapseState().apply {
+        setAll(true)
+        sections.forEach { toggle(it) }
+    }
 
     /** The same, for a selection of several nodes — the only way to reach the comparison panel. */
     private fun renderInspector(graph: GraphModel, nodeIds: Set<String>, name: String, height: Int) =
@@ -3206,7 +3213,7 @@ class InspectorRenderTest {
     }
 
     @Composable
-    private fun InspectorUnderTest(graph: GraphModel, nodeId: String) {
+    private fun InspectorUnderTest(graph: GraphModel, nodeId: String, sectionCollapse: SectionCollapseState? = null) {
         // The expiry plan measures ages from a clock; pinned to the table's own last write so the
         // capture is the same whichever day it is taken.
         // A Paimon table has no metadata node; its last commit's time is the same clock, plus a
@@ -3215,7 +3222,7 @@ class InspectorRenderTest {
             ?: graph.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().mapNotNull { it.data.timeMillis }.maxOrNull()?.plus(1_000)
             ?: System.currentTimeMillis()
         CompositionLocalProvider(LocalExpiryClock provides { lastWrite }) {
-            NodeDetailsContent(graph, setOf(nodeId))
+            if (sectionCollapse == null) NodeDetailsContent(graph, setOf(nodeId)) else NodeDetailsContent(graph, setOf(nodeId), sectionCollapse = sectionCollapse)
         }
     }
 }

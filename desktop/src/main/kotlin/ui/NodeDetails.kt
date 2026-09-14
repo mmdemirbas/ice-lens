@@ -1992,14 +1992,15 @@ internal fun PaimonIndexFilesSection(node: GraphNode.PaimonSnapshotNode) {
             // the answer, and a file name is the identifier the table decides — the one thing
             // `WideTable` is willing to put behind a scroll.
             headers = listOf("Type", "Bucket", "Rows", "Size", "Deleted rows", "File"),
-            columnWidths = listOf(160.dp, 70.dp, 90.dp, 90.dp, 260.dp, 300.dp),
+            columnWidths = listOf(160.dp, 70.dp, 90.dp, 300.dp, 260.dp, 300.dp),
             rows = files.map { file ->
                 val ranges = file.deletionVectorRanges?.filterNotNull().orEmpty()
                 listOf(
                     file.indexType ?: "N/A",
                     "${file.bucket ?: "N/A"}",
                     formatCount(file.rowCount ?: 0L),
-                    formatBytes(file.fileSize ?: 0L),
+                    // `_FILE_SIZE` against the file — the `manifest_length` rule; the file is what the expiry plan charges.
+                    recordedAgainstFile(file.fileSize, file.fileName?.let { node.sizesOnDisk.indexFiles[it] }),
                     if (ranges.isEmpty()) {
                         "—"
                     } else {

@@ -179,8 +179,8 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   stripe offsets, which DuckDB cannot open, and an Avro file's blocks, which Iceberg's writer
   records no offsets for anyway. The metadata files' recorded lengths are checked without a
   click — `manifest_length`, Paimon's manifest `_FILE_SIZE`, a statistics file's two lengths —
-  since a stat is not a read; what is still taken on trust is a Paimon index file's `_FILE_SIZE`
-  in the index manifest, which the vector reader opens by offset and length rather than by size.
+  since a stat is not a read — a Paimon snapshot's three manifest list sizes and each index
+  file's `_FILE_SIZE` among them now, so no recorded length in either format is taken on trust.
 
 - **A statistics blob's sketch is decoded — done.** The `.stats` container is opened, its footer
   shown against what `metadata.json` records (`model/TableStatistics.kt`), and each theta blob's

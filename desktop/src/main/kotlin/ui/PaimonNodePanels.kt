@@ -58,7 +58,7 @@ internal fun ColumnScope.PaimonSnapshotPanel(
             // a different thing from a table that has produced no rows yet.
             DetailRow("Next Row ID", "${node.data.nextRowId ?: "not recorded"}")
         }
-        MetadataTalliesSection(paimonSnapshotTallies(node.data, node.schemaIds))
+        MetadataTalliesSection(paimonSnapshotTallies(node.data, node.schemaIds, node.sizesOnDisk))
         PaimonRecordsSection(node)
         PaimonMergedCountSection(node)
         PartitionsSection(node)
