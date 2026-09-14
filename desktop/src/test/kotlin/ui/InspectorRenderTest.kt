@@ -55,6 +55,7 @@ import model.wapId
 import model.describe
 import model.metadataVersionFromFileName
 import model.ManifestEntryStatus
+import model.DataFileContent
 import model.ScanFilter
 import model.snapshotAsOf
 import model.PaimonUnifiedTableModel
@@ -2210,6 +2211,39 @@ class InspectorRenderTest {
         renderUntil("unreferenced-files-none", width = 1400, height = 260, ready = cleanSettled::get) {
             Column(Modifier.padding(16.dp)) {
                 UnreferencedFilesSection(morTable, startRequested = true) { cleanSettled.set(true) }
+            }
+        }
+    }
+
+    /**
+     * The converse walk: what the retained snapshots need that is not there — captured on a copy
+     * of `mor` with a live data file and the oldest manifest list deleted, each listed with the
+     * snapshots that read it, and once against the table as checked in for the sentence a whole
+     * table gets.
+     */
+    @Test
+    fun `a table names the files its retained snapshots need that are gone`() {
+        val copy = java.nio.file.Files.createTempDirectory("lens-missing").resolve("mor")
+        File(repoRoot, "example/iceberg/default/mor").copyRecursively(copy.toFile())
+        val copied = UnifiedTableModel(copy)
+        val newest = copied.metadatas.last()
+        val liveData = newest.snapshots.last().manifests.flatMap { m -> m.dataFiles.filter { it.metadata.status == ManifestEntryStatus.ADDED && it.metadata.dataFile?.content == DataFileContent.DATA } }.first()
+        java.nio.file.Files.delete(liveData.path)
+        java.nio.file.Files.delete(newest.snapshots.first().path)
+        val broken = GraphLayoutService.layoutGraph(UnifiedTableModel(copy), showRows = false).nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("missing-files", width = 1400, height = 460, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                MissingFilesSection(broken, startRequested = true) { settled.set(true) }
+            }
+        }
+        copy.toFile().deleteRecursively()
+
+        val morTable = graphFor("mor").nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val cleanSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("missing-files-none", width = 1400, height = 260, ready = cleanSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                MissingFilesSection(morTable, startRequested = true) { cleanSettled.set(true) }
             }
         }
     }

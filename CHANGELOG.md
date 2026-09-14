@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The files the retained snapshots need that are not there, behind a click on the table
+  panel** — the converse of the unreferenced-files walk. Every retained snapshot's manifest
+  list, manifests and live data and delete files, plus a Paimon snapshot's index, changelog,
+  statistics and schema files and the newest Iceberg metadata's statistics files, each stat'ed
+  and each missing one named with its kind and the snapshots that read it. An expired
+  snapshot's files and a tag-only Paimon snapshot's changelog are gone by design and not
+  counted. The IDE strip prints the same as a `Missing Files` row.
 - **The IDE strip carries the metadata-only checks as one `Checks` row** on the metadata,
   manifest and file rows and their Paimon twins — `all 39 figures agree`, or the figures that
   differ named with both sides.

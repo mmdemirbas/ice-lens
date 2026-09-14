@@ -53,6 +53,7 @@ so and the inspector lists all of them.
 - One click checks every figure the metadata records against the same figure counted — the metadata file's own ids and lengths, manifest counts and lengths, commit summaries, snapshot totals, Paimon record counts, each file's partition against its own bounds — over the whole table
 - What `SELECT count(*)` returns as of a snapshot, on either format — on Iceberg the delete files applied per data file, on Paimon the merge over each bucket's files under the table's merge engine, less retractions and vector-marked keys, and the level-0 files a batch read never opens — beside the row total the snapshot records
 - A file's history on either format — the commit that added it, the one that removed it, and the retained snapshots that still list it live and so keep it on disk
+- Both directions of the orphan question, behind a click on the table panel: what is under the table that no metadata names, and what the retained snapshots need that is not there — each missing file with the snapshots that read it
 - Per-snapshot partition breakdown, largest first; per-partition and table statistics files opened and shown against their records
 - A data file's recorded bounds, counts, size and split offsets checked against the file itself — its rows, its size on disk and its Parquet row groups — behind a click on the file, and over every live file under the integrity check
 - Which snapshot a read as of a time lands on, the way each engine resolves it — including the abandoned commit a rolled-back table's log still points a time at

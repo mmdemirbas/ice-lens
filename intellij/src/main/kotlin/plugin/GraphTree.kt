@@ -18,6 +18,7 @@ import model.describeRowIds
 import model.describe
 import model.manifestTallies
 import model.metadataTallies
+import model.MissingFilesReport
 import model.paimonManifestTallies
 import model.paimonPartitionBoundsChecks
 import model.paimonSchemaTallies
@@ -91,10 +92,13 @@ object GraphTree {
     /** The same on a Paimon table writing Iceberg metadata beside its own: whether the export is current, and what an Iceberg reader sees. */
     const val ICEBERG_EXPORT = "Iceberg export"
 
+    /** On every table: what the retained snapshots need that is not there — a stat per needed file, so deferred. */
+    const val MISSING_FILES = "Missing files"
+
     /** The placeholder label for [deferredDetails] on the node, while the read runs. */
     fun deferredLabel(node: GraphNode): String = when (node) {
         is GraphNode.RowNode -> READ_AS
-        is GraphNode.TableNode -> ICEBERG_EXPORT
+        is GraphNode.TableNode -> MISSING_FILES
         else -> HISTORY
     }
 
@@ -105,7 +109,7 @@ object GraphTree {
     fun hasDeferredDetails(node: GraphNode): Boolean =
         node is GraphNode.FileNode || node is GraphNode.PaimonDataFileNode ||
             (node is GraphNode.RowNode && node.readAs.isPresent) ||
-            (node is GraphNode.TableNode && node.icebergExport.isPresent)
+            (node is GraphNode.TableNode && (node.missingFiles.isPresent || node.icebergExport.isPresent))
 
     /**
      * The rows that cost a read: a file's history is a scan of every retained snapshot's manifest
@@ -121,7 +125,10 @@ object GraphTree {
                 read.describe + if (read.differsFromFile) ": " + read.cells.joinToString(", ") { "${it.name} = ${it.value}" } else ""
             } ?: "could not be read"))
             // The export is another table's metadata tree, read whole — deferred like the history.
-            is GraphNode.TableNode -> return if (node.icebergExport.isPresent) listOf(ICEBERG_EXPORT to (node.icebergExport.value?.describe ?: "could not be read")) else emptyList()
+            is GraphNode.TableNode -> return listOfNotNull(
+                if (node.missingFiles.isPresent) MISSING_FILES to (node.missingFiles.value?.let { missingFilesLine(it) } ?: "could not be read") else null,
+                if (node.icebergExport.isPresent) ICEBERG_EXPORT to (node.icebergExport.value?.describe ?: "could not be read") else null,
+            )
             else -> return emptyList()
         }
         return listOf(HISTORY to (history.value?.describe ?: "could not be read"))
@@ -283,6 +290,14 @@ object GraphTree {
 
     /** The metadata-only checks a node's panel draws as a table, in one line: what agrees, and the first thing that does not. */
     const val CHECKS = "Checks"
+
+    /** `none of the 41 files the 6 retained snapshots need`, or the missing ones named with the snapshot that reads them. */
+    private fun missingFilesLine(report: MissingFilesReport): String {
+        val needed = "%,d files the %,d retained snapshots need".format(report.needed, report.snapshotsChecked)
+        if (report.missing.isEmpty()) return "none of the $needed"
+        return "${report.missing.size} of the $needed — " + report.missing.take(3).joinToString("; ") { "${report.relativePathOf(it)} (${it.kind.label}, read by ${it.neededBy.first()}${if (it.neededBy.size > 1) " and ${it.neededBy.size - 1} more" else ""})" } +
+            (if (report.missing.size > 3) "; …" else "")
+    }
 
     /**
      * Every figure with both sides in one line — the count agreeing, or the ones that differ

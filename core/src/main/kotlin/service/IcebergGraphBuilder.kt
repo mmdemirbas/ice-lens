@@ -63,6 +63,7 @@ object IcebergGraphBuilder {
             tableNodeId,
             tableSummary,
             unreferencedFiles = DeferredRead.of { findUnreferencedFiles(tableModel) },
+            missingFiles = DeferredRead.of { tableModel.findMissingFiles() },
             expiryFiles = DeferredRead.of { tableModel.expiryFileInput() },
             integrity = DeferredRead.of { tableModel.integrityReport() },
             fileStats = DeferredRead.of { tableModel.fileStatsTargets() },

@@ -48,6 +48,7 @@ object PaimonGraphBuilder {
             tableNodeId,
             tableSummary,
             unreferencedFiles = DeferredRead.of { findUnreferencedFiles(tableModel) },
+            missingFiles = DeferredRead.of { tableModel.findMissingFiles() },
             paimonExpiryFiles = DeferredRead.of { tableModel.expiryFileInput() },
             integrity = DeferredRead.of { tableModel.integrityReport() },
             fileStats = DeferredRead.of { tableModel.fileStatsTargets() },

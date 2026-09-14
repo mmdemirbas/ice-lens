@@ -72,6 +72,8 @@ core/src/main/kotlin/
 │   ├── MaintenanceInput.kt    # The newest metadata and the current snapshot's node, carried on the table node for the planners — never read off the drawn graph
 │   ├── FileHistory.kt         # One file across the retained snapshots — added by, removed by, still listed live by — on either format
 │   ├── Integrity.kt           # Every recorded figure against the same figure counted, over the whole table at once — the panels' checks, run everywhere
+│   ├── UnreferencedFiles.kt   # What is under the table root that no metadata version names — the orphan question, asked from the directory
+│   ├── MissingFiles.kt        # The converse: what the retained snapshots need that is not there — a stat per needed file, both formats
 │   ├── StatsCheck.kt          # A data file's recorded column bounds and counts against the same figures counted from its rows — a file read, behind its own click
 │   ├── FileStatsSweep.kt      # The same over the current snapshot's live files from the model, capped — the table panel's second click under Integrity
 │   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
@@ -655,6 +657,27 @@ intellij/src/main/kotlin/plugin/
   panel that scales with the data rather than the metadata, and on a remote table it is a subtree
   listing. A `Path` is an `Iterable<Path>` of its own segments, so the referenced set is built with
   `add`, never `+=`, which would append the segments and compile
+- **The converse is asked from the metadata: what the retained snapshots need that is not there.**
+  `model/MissingFiles.kt` is the question a `NoSuchFileException` at query time asks after the
+  fact, and it is scoped to what a reader can still be asked for — every snapshot the newest
+  Iceberg metadata retains (an expired one is a state, `UnifiedSnapshot.expired`, and the files
+  only it listed are gone by design: `expired` and `swept` must report nothing), and every Paimon
+  snapshot under `snapshot/`, a tag or a branch. For each: its manifest list, its manifests, the
+  data and delete files **live** in it — an Iceberg `DELETED` entry and a Paimon `_KIND = 1` entry
+  name a file the commit removed, which no read opens — and on Paimon the index manifest and
+  index files, the changelog files, the statistics and the schema file it names; on Iceberg the
+  newest metadata's statistics files. **A snapshot only a tag retains needs no changelog**: an
+  expiry deletes a tagged snapshot's changelog list and files (`tg`, `pea`), since a tag retains
+  data and not the stream — the first version required them and reported both fixtures broken.
+  Older `metadata.json` versions are not needed either; `write.metadata.delete-after-commit.enabled`
+  removes them on purpose. Each missing file is named with its kind and the snapshots that read
+  it (`MissingFile.neededBy`), which is what decides whether a query fails today or only a time
+  travel does. It is a stat per needed file behind a click, `TableNode.missingFiles`, the shape
+  of the walk it mirrors; the panel's `Missing Files` section sits under `Unreferenced Files`,
+  and the IDE strip prints it as a deferred row beside `Iceberg Export`. `MissingFilesTest`
+  holds every checked-in table to nothing missing and deletes a data file, a manifest, a manifest
+  list, a tag-only Paimon data file and a schema file from copies to see each named with its
+  readers
 - **A data file's own statistics are the last recorded figures, and they are checked behind a
   click.** `model/StatsCheck.kt` puts each column's recorded lower and upper bound, null count
   and (Iceberg) value and NaN count beside the same figures `service/StatsCheckReader.kt` counts
@@ -2313,7 +2336,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,290 tests across 175 files (1,014 in :core, 265 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,295 tests across 176 files (1,018 in :core, 266 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

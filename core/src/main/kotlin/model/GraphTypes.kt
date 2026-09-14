@@ -369,6 +369,8 @@ sealed class GraphNode(
          * walk of the whole table directory, so deferred to a click rather than run at build.
          */
         val unreferencedFiles: DeferredRead<UnreferencedFilesReport> = DeferredRead.none(),
+        /** The converse: what the retained snapshots need that is not there — see [findMissingFiles]. A stat per needed file, behind a click. */
+        val missingFiles: DeferredRead<MissingFilesReport> = DeferredRead.none(),
         /**
          * What an Iceberg expiry's file plan reads — see [ExpiryFileInput] — built from the model,
          * never from the drawn graph: aggregation folds snapshots and manifests past the page

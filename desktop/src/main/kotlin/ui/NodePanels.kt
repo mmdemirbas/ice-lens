@@ -204,6 +204,7 @@ internal fun ColumnScope.TablePanel(
         // The panel's other controls, kept beside the first for the same reason.
         IntegritySection(node)
         UnreferencedFilesSection(node)
+        MissingFilesSection(node)
         IcebergExportSection(node)
 
         // Folded, and out of the identity table above, because none of the three

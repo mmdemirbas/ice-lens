@@ -257,27 +257,34 @@ class GraphTreeTest {
         assertTrue(histories.all { it.first == GraphTree.HISTORY })
         assertTrue(histories.any { it.second.startsWith("removed by snapshot") && "still listed live by" in it.second }, histories.toString())
         assertTrue(histories.any { it.second.startsWith("live now — added by snapshot") }, histories.toString())
+        // The table's own deferred row is the missing-files check — a stat per needed file — and every table has one.
         val table = flatten(GraphTree.build(mor)).first { it is GraphNode.TableNode }
-        assertTrue(!GraphTree.hasDeferredDetails(table) && GraphTree.deferredDetails(table).isEmpty())
+        assertTrue(GraphTree.hasDeferredDetails(table) && GraphTree.deferredLabel(table) == GraphTree.MISSING_FILES)
+        assertEquals(listOf(GraphTree.MISSING_FILES to "none of the 25 files the 6 retained snapshots need"), GraphTree.deferredDetails(table))
         val dv = flatten(GraphTree.build(paimonGraphOf("dv"))).filterIsInstance<GraphNode.PaimonDataFileNode>()
         assertTrue(dv.map { GraphTree.deferredDetails(it).single().second }.any { it.startsWith("removed by snapshot") }, "dv's upgrade compactions remove files")
     }
 
     /**
-     * A Paimon table writing Iceberg metadata beside its own carries a third deferred detail on
-     * its table row — the export is another metadata tree, read whole — and a table without the
-     * export carries none, so the strip of every other table is the strip it was.
+     * A Paimon table writing Iceberg metadata beside its own carries a second deferred detail on
+     * its table row after the missing-files line — the export is another metadata tree, read
+     * whole — and a table without the export carries the one line, so the strip of every other
+     * table is the strip it was.
      */
     @Test
     fun `a Paimon table's Iceberg export is a deferred detail on its table row`() {
         val pic = flatten(GraphTree.build(paimonGraphOf("pic"))).first { it is GraphNode.TableNode }
-        assertTrue(GraphTree.hasDeferredDetails(pic) && GraphTree.deferredLabel(pic) == GraphTree.ICEBERG_EXPORT)
+        assertTrue(GraphTree.hasDeferredDetails(pic) && GraphTree.deferredLabel(pic) == GraphTree.MISSING_FILES)
         assertEquals(
-            listOf(GraphTree.ICEBERG_EXPORT to "current: the export's snapshot 2 is the table's latest; 1 metadata version under metadata/; an Iceberg reader sees 1 of the table's 2 live files"),
+            listOf(
+                GraphTree.MISSING_FILES to "none of the 9 files the 2 retained snapshots need",
+                GraphTree.ICEBERG_EXPORT to "current: the export's snapshot 2 is the table's latest; 1 metadata version under metadata/; an Iceberg reader sees 1 of the table's 2 live files",
+            ),
             GraphTree.deferredDetails(pic),
         )
         val dv = flatten(GraphTree.build(paimonGraphOf("dv"))).first { it is GraphNode.TableNode }
-        assertTrue(!GraphTree.hasDeferredDetails(dv) && GraphTree.deferredDetails(dv).isEmpty())
+        assertEquals(1, GraphTree.deferredDetails(dv).size)
+        assertTrue(GraphTree.deferredDetails(dv).single().second.startsWith("none of the "), GraphTree.deferredDetails(dv).toString())
     }
 
     /**

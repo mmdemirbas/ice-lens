@@ -70,6 +70,7 @@ import model.snapshotTotals
 import model.FileChange
 import model.manifestTallies
 import model.MetadataTally
+import model.MissingFilesReport
 import model.PartitionFieldCheck
 import model.PartitionFieldVerdict
 import model.partialRows
@@ -2918,5 +2919,86 @@ internal fun MetadataTalliesSection(tallies: List<MetadataTally>) {
                 )
             },
         )
+    }
+}
+
+/**
+ * What the retained snapshots need that is not there — [findMissingFiles], behind a click,
+ * beside the walk it is the converse of. A missing data file draws no rows and fails no read
+ * until a query opens it, so the table panel is where it has to be findable; each one is
+ * listed with the snapshots that read it, which is what says whether an expiry would have
+ * freed it or a query will hit it.
+ */
+@Composable
+internal fun MissingFilesSection(
+    node: GraphNode.TableNode,
+    startRequested: Boolean = false,
+    onSettled: () -> Unit = {},
+) {
+    val colors = MaterialTheme.colorScheme
+    if (!node.missingFiles.isPresent) return
+
+    var requested by remember(node.id) { mutableStateOf(startRequested) }
+    val outcome by produceState<Result<MissingFilesReport>?>(null, node.id, requested) {
+        value = null
+        if (requested) {
+            value = withContext(Dispatchers.IO) { runCatching { requireNotNull(node.missingFiles.value) { "no report" } } }
+            onSettled()
+        }
+    }
+    val report = outcome?.getOrNull()
+    val title = if (report != null) "Missing Files (${formatCount(report.missing.size)})" else "Missing Files"
+
+    Section(title) {
+        when {
+            !requested -> {
+                Text(
+                    "Files the retained snapshots name that are not there — a data file an orphan " +
+                        "cleanup or a hand deletion took, a manifest list an expiry lost. A missing data " +
+                        "file draws no rows and fails nothing until a query opens it. One stat per file " +
+                        "the retained snapshots need.",
+                    fontSize = TypeScale.small,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                OutlinedButton(onClick = { requested = true }) { Text("Check that every needed file is there") }
+            }
+            outcome == null -> Text("Checking the files the retained snapshots need…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            report == null -> Text(
+                "Could not check: ${outcome?.exceptionOrNull()?.message ?: "unknown error"}",
+                fontSize = TypeScale.small,
+                color = colors.error,
+            )
+            else -> {
+                val needed = "${formatCounted(report.needed, "file")} the ${formatCounted(report.snapshotsChecked, "retained snapshot")} need"
+                Text(
+                    if (report.missing.isEmpty()) "Every one of the $needed is there." else "${formatCounted(report.missing.size, "file")} of the $needed ${if (report.missing.size == 1) "is" else "are"} not there.",
+                    fontSize = TypeScale.small,
+                    fontWeight = FontWeight.Bold,
+                    color = if (report.missing.isEmpty()) colors.onSurface else colors.error,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                if (report.missing.isNotEmpty()) {
+                    WideTable(
+                        headers = listOf("Kind", "File", "Read By"),
+                        columnWidths = listOf(110.dp, 520.dp, 400.dp),
+                        leadCellColors = report.missing.map { colors.error },
+                        rows = report.missing.take(MAX_UNREFERENCED_ROWS).map { file ->
+                            listOf(file.kind.label, report.relativePathOf(file), file.neededBy.joinToString(", "))
+                        },
+                    )
+                    if (report.missing.size > MAX_UNREFERENCED_ROWS) {
+                        Text("…and ${formatCount(report.missing.size - MAX_UNREFERENCED_ROWS)} more.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+                    }
+                }
+                Text(
+                    "Needed means live in a snapshot the newest metadata retains, or under Paimon's snapshot/, a tag or a branch — " +
+                        "the files only an expired snapshot listed are gone by design and not counted, nor are older metadata versions.",
+                    fontSize = TypeScale.small,
+                    color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        }
     }
 }
