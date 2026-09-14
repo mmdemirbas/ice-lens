@@ -18,7 +18,11 @@
 -- `v1.metadata.json` and went incremental (`createMetadataWithBase`), which is where the level
 -- rule is applied, so its file is not listed and its manifest list re-lists snapshot 1's
 -- manifest. An Iceberg reader of this table therefore sees one of its two live files, and
--- `v1.metadata.json` is gone: `metadata.iceberg.previous-versions-max` keeps one.
+-- `v1.metadata.json` is gone: `metadata.iceberg.previous-versions-max` is 0 by default and
+-- `metadata.iceberg.delete-after-commit.enabled` is on, so each commit deletes the versions
+-- before its own. The manifest list is `snap-<count>-<uuid>.avro` with a counter the callback
+-- keeps per run, not the snapshot id — both lists here are `snap-1-…` — and the manifest is
+-- `<uuid>-m<count>.avro`.
 --
 -- Written by Spark 3.5.5 (the tabulario/spark-iceberg image) with the Paimon Spark 3.5 runtime
 -- jar, version 1.3, the same way as paimon-pse.sql:

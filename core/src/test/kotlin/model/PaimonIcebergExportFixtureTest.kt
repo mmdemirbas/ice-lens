@@ -35,7 +35,7 @@ class PaimonIcebergExportFixtureTest {
         assertEquals(emptyList(), model.readErrors)
         val export = assertNotNull(model.icebergExport)
         assertEquals(emptyList(), export.readErrors)
-        assertEquals(listOf("v2.metadata.json"), export.metadatas.map { it.path.fileName.toString() }, "previous-versions-max keeps one")
+        assertEquals(listOf("v2.metadata.json"), export.metadatas.map { it.path.fileName.toString() }, "metadata.iceberg.previous-versions-max is 0 by default and delete-after-commit is on, so only the current version stays")
         // The export's four files are under the table root and nothing in Paimon's own metadata
         // names them, so each is an orphan unless the export's referenced set covers it.
         val referenced = referencedFiles(model).map { it.fileName.toString() }.toSet()

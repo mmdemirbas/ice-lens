@@ -30,7 +30,7 @@ package model
  * leaving [missingFromIceberg] and [extraInIceberg] for what no rule explains.
  */
 data class IcebergExportCheck(
-    /** Metadata versions under `metadata/` — `metadata.iceberg.previous-versions-max` keeps one by default. */
+    /** Metadata versions under `metadata/` — one by default: `metadata.iceberg.previous-versions-max` is 0 and `delete-after-commit.enabled` is on, so each commit deletes the versions before its own. */
     val versions: Int,
     val currentIcebergSnapshotId: Long?,
     val latestPaimonSnapshotId: Long?,
