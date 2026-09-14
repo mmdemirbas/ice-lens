@@ -787,7 +787,7 @@ data class FilePruneResult(
     val outcomes: List<PredicateOutcome>,
     val fate: FileFate,
     val note: String? = null,
-    /** A skip the file's bloom-filter index proved where its bounds had not — see [applyPaimonFileIndex]. */
+    /** A skip the file's index proved where its bounds had not — see [applyPaimonFileIndex]. */
     val byIndex: Boolean = false,
 ) {
     /** The first outcome that proved the file cannot match, or null when none did. */

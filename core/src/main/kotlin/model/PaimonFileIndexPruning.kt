@@ -25,7 +25,8 @@ enum class FileIndexUse { AT_PLAN, AT_READ }
 /** The rule in a sentence, for the panel's file stage, where some drawn data file carries an index; null where none does. */
 fun paimonFileIndexRule(graph: GraphModel, rule: PaimonScanRule?): String? {
     if (graph.nodes.none { it is GraphNode.PaimonDataFileNode && it.hasFileIndex }) return null
-    val base = "Files here carry a file index, and an equality on an indexed column is asked of its bloom filter"
+    val base = "Files here carry a file index, and a term on an indexed column is asked of it — a bloom filter " +
+        "answers an equality as a maybe, a bitmap dictionary answers it exactly, a bit-sliced index answers every comparison"
     return when {
         rule == null -> "$base: an index embedded in the entry is tested when the scan plans, and a .index file beside the " +
             "data file when the read opens it — a file the latter rules out is still listed by the plan, and yields no row"
@@ -47,17 +48,20 @@ val GraphNode.PaimonDataFileNode.hasFileIndex: Boolean
 
 /**
  * [own] with every term the file's indexes rule out marked as proved, and the verdict folded
- * again.
+ * again — over the indexes' *rows*, the way `FileIndexPredicate` folds them.
  *
- * A bloom filter answers `=` only — `IN` is a disjunction of them by the time it arrives — and
- * a bitmap index answers `=`, `<>`, `IS NULL` and `IS NOT NULL`, the four `BitmapFileIndex`'s
- * reader visits; nothing is asked where the bounds already settled the term, since a bound's
- * proof needs no second one. A column carrying several indexes is ruled out by any one of them,
- * which is `FileIndexPredicate` and-ing their results. An index the writer left empty holds no
- * non-null value, which `EmptyFileIndexReader` reads as a skip for any equality, and so does
- * this. A term the indexes cannot decide keeps the outcome the bounds gave it, except that an
- * index which *may* hold the value turns "no statistics" into an evaluation — the index looked,
- * and that is the answer.
+ * A bloom filter answers `=` only — `IN` is a disjunction of them by the time it arrives — with
+ * a maybe; a bitmap index answers `=`, `<>`, `IS NULL` and `IS NOT NULL` with the rows that
+ * hold the value; a bit-sliced index answers those and every comparison with rows too. Nothing
+ * is asked where the bounds already settled the term, since a bound's proof needs no second
+ * one. A column carrying several indexes is ruled out by any one of them, which is
+ * `FileIndexPredicate` and-ing their results; and the terms' rows are then folded up the
+ * filter — an `And` intersects, an `Or` unites, a term no index answers is every row — so
+ * `n BETWEEN 4 AND 6` skips a file holding 3 and 10 though neither `n >= 4` nor `n <= 6` rules
+ * it out alone ([IndexRows]). An index the writer left empty holds no non-null value, which
+ * `EmptyFileIndexReader` reads as a skip for any equality, and so does this. A term the indexes
+ * cannot decide keeps the outcome the bounds gave it, except that an index which *may* hold the
+ * value turns "no statistics" into an evaluation — the index looked, and that is the answer.
  */
 internal fun applyPaimonFileIndex(
     own: FilePruneResult,
@@ -72,6 +76,7 @@ internal fun applyPaimonFileIndex(
     val index = read.index ?: return own.copy(note = joinNotes(own.note, "its file index was not read: ${read.error ?: "no index decoded"}"))
     val consulted = if (use == FileIndexUse.AT_PLAN) "tested when the scan plans" else "opened by the read"
     var decided = false
+    val rowsByTerm = HashMap<ScanPredicate, IndexAnswer>()
     val outcomes = own.outcomes.map { o ->
         val op = o.predicate.op
         if (o.effect == TermEffect.SKIPS || op !in INDEXED_OPS) return@map o
@@ -83,35 +88,107 @@ internal fun applyPaimonFileIndex(
             ?: return@map o
         val iceberg = paimonTypeAsIceberg(type) ?: return@map o
         val value = if (op.takesLiteral) parseLiteral(o.predicate.literal, iceberg) ?: return@map o else null
-        // One verdict per index of the column that can answer the operator: a proof, or "may".
-        val verdicts = indexes.mapNotNull { ix -> indexVerdict(ix, op, column, type, value, literal, where, consulted) }
-        val proof = verdicts.firstOrNull { it.first }
+        // One answer per index of the column that can answer the operator, and-ed the way the
+        // leaf visit and-s its readers: a proof, rows, or "may".
+        val answers = indexes.mapNotNull { ix -> indexAnswer(ix, op, column, type, value, literal, where, consulted) }
+        if (answers.isEmpty()) return@map o
+        rowsByTerm[o.predicate] = IndexAnswer(
+            answers.fold(IndexRows.Remain as IndexRows) { acc, a -> acc and a.rows },
+            (answers.firstOrNull { it.rows is IndexRows.Rows } ?: answers.first()).reason,
+        )
+        val proof = answers.firstOrNull { it.proves }
         when {
-            proof != null -> { decided = true; o.copy(effect = TermEffect.SKIPS, fieldName = column, reason = proof.second) }
-            verdicts.isNotEmpty() && o.effect == TermEffect.NOT_EVALUATED -> o.copy(effect = TermEffect.KEEPS, fieldName = column, reason = verdicts.first().second)
+            proof != null -> { decided = true; o.copy(effect = TermEffect.SKIPS, fieldName = column, reason = proof.reason) }
+            o.effect == TermEffect.NOT_EVALUATED -> o.copy(effect = TermEffect.KEEPS, fieldName = column, reason = answers.first().reason)
             else -> o
         }
     }
-    val folded = foldFileOutcomes(filter.pushNegation(), outcomes)
+    val normalized = filter.pushNegation()
+    var folded = foldFileOutcomes(normalized, outcomes)
+    // The rows across the terms: a file no single term ruled out is still skipped when the
+    // terms' rows meet in none — a term the bounds settled contributes no rows and stands as
+    // proved, one no index answered as every row. The terms then carry the index's count
+    // rather than the bounds' range, since the count is what the skip was decided on.
+    val together = normalized.indexRows { p ->
+        rowsByTerm[p]?.rows ?: if (outcomes.any { it.predicate == p && it.effect == TermEffect.SKIPS }) IndexRows.Skip else IndexRows.Remain
+    }
+    var joint: String? = null
+    if (folded.fate != FileFate.SKIPPED && !together.remains) {
+        decided = true
+        joint = "the terms' index rows meet in none, though no term rules the file out alone"
+        val counted = outcomes.map { o ->
+            val answer = rowsByTerm[o.predicate]
+            if (answer?.rows is IndexRows.Rows) o.copy(fieldName = o.predicate.column.trim(), reason = answer.reason) else o
+        }
+        folded = folded.copy(outcomes = counted, fate = FileFate.SKIPPED)
+    }
     val byIndex = decided && folded.fate == FileFate.SKIPPED && own.fate != FileFate.SKIPPED
     val note = when {
         byIndex && use == FileIndexUse.AT_READ ->
             "skipped when read, not when planned: the plan lists the file, the read opens its index and none of its rows"
         else -> null
     }
-    return folded.copy(note = joinNotes(own.note, note), byIndex = byIndex)
+    return folded.copy(note = joinNotes(own.note, joint, note), byIndex = byIndex)
 }
 
-private val INDEXED_OPS = setOf(PredicateOp.EQ, PredicateOp.NOT_EQ, PredicateOp.IS_NULL, PredicateOp.IS_NOT_NULL)
+/**
+ * What an index says about a term, as `FileIndexResult` says it: nothing decided ([Remain],
+ * every row may match), no row ([Skip]), or the rows that do ([Rows]). Folded the way the
+ * interface's `and` and `or` fold — rows with rows meet or unite, rows with a maybe stay rows
+ * under `And` and become a maybe under `Or`, a skip is absorbing under `And` and neutral under
+ * `Or` — which is what makes `n >= 4 AND n <= 6` a skip on rows holding 3 and 10.
+ */
+internal sealed interface IndexRows {
+    val remains: Boolean
+
+    object Remain : IndexRows { override val remains get() = true }
+    object Skip : IndexRows { override val remains get() = false }
+    class Rows(val set: java.util.BitSet) : IndexRows { override val remains get() = !set.isEmpty }
+
+    infix fun and(other: IndexRows): IndexRows = when {
+        this is Rows && other is Rows -> Rows((set.clone() as java.util.BitSet).also { it.and(other.set) })
+        this is Remain -> other
+        this is Skip -> this
+        other.remains -> this
+        else -> Skip
+    }
+
+    infix fun or(other: IndexRows): IndexRows = when {
+        this is Rows && other is Rows -> Rows((set.clone() as java.util.BitSet).also { it.or(other.set) })
+        this is Remain -> this
+        this is Skip -> other
+        other.remains -> Remain
+        else -> this
+    }
+}
+
+/** [IndexRows] folded up the tree as `FileIndexPredicate.visit(CompoundPredicate)` folds it; a `Not` nobody rewrote is every row. */
+internal fun ScanFilter.indexRows(leaf: (ScanPredicate) -> IndexRows): IndexRows = when (this) {
+    is ScanFilter.Term -> leaf(predicate)
+    is ScanFilter.And -> terms.fold(IndexRows.Remain as IndexRows) { acc, t -> if (!acc.remains) acc else acc and t.indexRows(leaf) }
+    is ScanFilter.Or -> terms.fold(IndexRows.Skip as IndexRows) { acc, t -> acc or t.indexRows(leaf) }
+    is ScanFilter.Not -> IndexRows.Remain
+}
+
+private val INDEXED_OPS = setOf(
+    PredicateOp.EQ, PredicateOp.NOT_EQ, PredicateOp.IS_NULL, PredicateOp.IS_NOT_NULL,
+    PredicateOp.LT, PredicateOp.LTE, PredicateOp.GT, PredicateOp.GTE,
+)
+
+/** One index's answer to one term: its [rows], the reason in a sentence, and whether it alone proves the file holds no matching row. */
+private class IndexAnswer(val rows: IndexRows, val reason: String) {
+    val proves: Boolean get() = !rows.remains
+}
 
 /**
- * What one index says about one term: `true` and the reason when it proves the file holds no
- * matching row, `false` and the reason when it looked and could not, null when it cannot answer
- * the operator or the type. A bloom filter answers `=`; a bitmap index answers all four, the
- * way `BitmapFileIndex.Reader` does — `<>` is the value's rows flipped over the row count, so it
- * is empty only when every row holds the value, nulls included in the count.
+ * What one index says about one term, or null when it cannot answer the operator or the type.
+ * A bloom filter answers `=` with a maybe or a skip; a bitmap index answers `=`, `<>` and the
+ * null tests with rows, the way `BitmapFileIndex.Reader` does — `<>` is the value's rows flipped
+ * over the row count, so it is empty only when every row holds the value, nulls included in the
+ * count; a bit-sliced index answers those and the four comparisons with rows too
+ * (`BitSliceIndexBitmapFileIndex.Reader`), its `<>` over the non-null rows alone.
  */
-private fun indexVerdict(
+private fun indexAnswer(
     ix: PaimonColumnIndex,
     op: PredicateOp,
     column: String,
@@ -120,38 +197,58 @@ private fun indexVerdict(
     literal: String,
     where: String,
     consulted: String,
-): Pair<Boolean, String>? = when (ix.type) {
+): IndexAnswer? = when (ix.type) {
     PaimonFileIndex.BLOOM_FILTER -> {
         if (op != PredicateOp.EQ) null
-        else if (ix.bytes == null) true to "$column's file index ($where) is empty: no non-null $column here"
+        else if (ix.bytes == null) IndexAnswer(IndexRows.Skip, "$column's file index ($where) is empty: no non-null $column here")
         else {
             val hash = paimonFastHash(type, value!!)
             val filter = ix.bytes.let(PaimonBloomFilter::decode)
             if (hash == null || filter == null) null
-            else if (filter.mightContain(hash)) false to "$column's bloom filter ($where) may hold $literal"
-            else true to "$column's bloom filter ($where, $consulted) has no $literal"
+            else if (filter.mightContain(hash)) IndexAnswer(IndexRows.Remain, "$column's bloom filter ($where) may hold $literal")
+            else IndexAnswer(IndexRows.Skip, "$column's bloom filter ($where, $consulted) has no $literal")
         }
     }
     PaimonFileIndex.BITMAP -> {
         if (ix.bytes == null) {
-            if (op == PredicateOp.EQ) true to "$column's file index ($where) is empty: no non-null $column here" else null
+            if (op == PredicateOp.EQ) IndexAnswer(IndexRows.Skip, "$column's file index ($where) is empty: no non-null $column here") else null
         } else {
             val bitmap = PaimonBitmapIndex.decode(ix.bytes, type)
             val key = value?.let { paimonBitmapKey(type, it) }
+            val rows = if (bitmap == null || (op.takesLiteral && key == null)) null else bitmap.rowsMatching(op, key)
             when {
-                bitmap == null -> null
-                op == PredicateOp.EQ -> if (key == null) null
-                    else if (bitmap.contains(key)) false to "$column's bitmap index ($where) lists $literal"
-                    else true to "$column's bitmap index ($where, $consulted) lists no $literal: its ${bitmap.distinctValues} values are not it"
-                op == PredicateOp.NOT_EQ -> if (key == null) null
-                    else if (bitmap.cardinalityOf(key) == bitmap.rowCount) true to "$column's bitmap index ($where, $consulted): every one of its ${bitmap.rowCount} rows is $literal"
-                    else false to "$column's bitmap index ($where) has rows that are not $literal"
+                rows == null -> null
+                op == PredicateOp.EQ ->
+                    if (rows.isEmpty) IndexAnswer(IndexRows.Rows(rows), "$column's bitmap index ($where, $consulted) lists no $literal: its ${bitmap!!.distinctValues} values are not it")
+                    else IndexAnswer(IndexRows.Rows(rows), "$column's bitmap index ($where) lists $literal")
+                op == PredicateOp.NOT_EQ ->
+                    if (rows.isEmpty) IndexAnswer(IndexRows.Rows(rows), "$column's bitmap index ($where, $consulted): every one of its ${bitmap!!.rowCount} rows is $literal")
+                    else IndexAnswer(IndexRows.Rows(rows), "$column's bitmap index ($where) has rows that are not $literal")
                 op == PredicateOp.IS_NULL ->
-                    if (bitmap.hasNull) false to "$column's bitmap index ($where) has a null bitmap"
-                    else true to "$column's bitmap index ($where, $consulted) has no null bitmap"
+                    if (rows.isEmpty) IndexAnswer(IndexRows.Rows(rows), "$column's bitmap index ($where, $consulted) has no null bitmap")
+                    else IndexAnswer(IndexRows.Rows(rows), "$column's bitmap index ($where) has a null bitmap")
                 else -> // IS_NOT_NULL
-                    if (bitmap.distinctValues > 0) false to "$column's bitmap index ($where) lists ${bitmap.distinctValues} values"
-                    else true to "$column's bitmap index ($where, $consulted) lists no value: every row is null"
+                    if (rows.isEmpty) IndexAnswer(IndexRows.Rows(rows), "$column's bitmap index ($where, $consulted) lists no value: every row is null")
+                    else IndexAnswer(IndexRows.Rows(rows), "$column's bitmap index ($where) lists ${bitmap!!.distinctValues} values")
+            }
+        }
+    }
+    PaimonFileIndex.BSI -> {
+        if (ix.bytes == null) {
+            if (op == PredicateOp.EQ) IndexAnswer(IndexRows.Skip, "$column's file index ($where) is empty: no non-null $column here") else null
+        } else {
+            val bsi = PaimonBsiIndex.decode(ix.bytes)
+            val long = value?.let { paimonBsiValue(type, it) }
+            val rows = if (bsi == null || (op.takesLiteral && long == null)) null else bsi.rowsMatching(op, long)
+            val term = when (op) {
+                PredicateOp.IS_NULL -> "null"
+                PredicateOp.IS_NOT_NULL -> "non-null"
+                else -> "${op.symbol} $literal"
+            }
+            when {
+                rows == null -> null
+                rows.isEmpty -> IndexAnswer(IndexRows.Rows(rows), "$column's bit-sliced index ($where, $consulted) has no row $term among its ${bsi!!.rowCount}")
+                else -> IndexAnswer(IndexRows.Rows(rows), "$column's bit-sliced index ($where) has ${rows.cardinality()} of its ${bsi!!.rowCount} rows $term")
             }
         }
     }

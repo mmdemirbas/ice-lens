@@ -156,6 +156,81 @@ class PaimonFileIndexTest {
     }
 
     /**
+     * `fbs`'s bit-sliced indexes — one embedded, three in `.index` files, over an INT, a
+     * DECIMAL(10,2), a DATE and a TIMESTAMP(6) — decoded to the two sets of slices the writer
+     * splits a column into, and held to `FileIndexPredicate` asked over every file for every
+     * operator (`paimon-scan-plans.scala`, the `[index-all]` sections on `fbs`): the filter's
+     * terms answered by [PaimonBsiIndex.rowsMatching] and folded with [indexRows] the way the
+     * predicate folds its readers' bitmaps. `REMAIN` is a row left, `SKIP` none.
+     */
+    @Test
+    fun `fbs's bit-sliced indexes answer every comparison per row, folded across the terms as FileIndexPredicate folds them`() {
+        val model = FixtureCatalog.paimonModel("fbs")
+        fun indexAt(snapshot: Long): PaimonFileIndex {
+            val entry = model.snapshots.first { it.metadata.id == snapshot }.deltaManifests.single().entries.single()
+            val file = entry.metadata.file!!
+            return file.embeddedFileIndex?.let(PaimonFileIndexReader::decode)
+                ?: PaimonFileIndexReader.read(entry.path.resolveSibling(file.extraFiles!!.single { it.endsWith(".index") }))
+        }
+        val files = listOf(indexAt(1), indexAt(2), indexAt(3), indexAt(4))
+        assertEquals("bsi on d, amt, n, ts", files[0].describe(), "the head's own order, which is not the schema's")
+        val types = mapOf("n" to "INT", "amt" to "DECIMAL(10, 2)", "d" to "DATE", "ts" to "TIMESTAMP(6)")
+        val ldt = { s: String -> java.time.LocalDateTime.parse(s.replace(' ', 'T')) }
+
+        // File 1: -5, 3, 10, null — the negative slices hold the 5, the positive the 3 and 10.
+        val n1 = assertNotNull(files[0].bsiIndex("n"))
+        assertEquals(4, n1.rowCount); assertEquals(3, n1.nonNullCount)
+        assertEquals(setOf(0), n1.lt(0).bits()); assertEquals(setOf(1, 2), n1.gte(0).bits()); assertEquals(setOf(3), n1.isNull().bits())
+        assertEquals(setOf(1), n1.eq(3).bits()); assertEquals(setOf(0), n1.eq(-5).bits()); assertEquals(emptySet(), n1.eq(4).bits())
+        assertEquals(setOf(0, 1), n1.lt(4).bits()); assertEquals(setOf(2), n1.gt(3).bits()); assertEquals(setOf(0, 2), n1.notEq(3).bits())
+        // File 2: a thousand rows, 100..1099 — the slices are ten deep and every row is in the existence bitmap.
+        val n2 = assertNotNull(files[1].bsiIndex("n"))
+        assertEquals(1000, n2.rowCount); assertEquals(1000, n2.nonNullCount)
+        assertEquals(1, n2.eq(1099).cardinality()); assertEquals(0, n2.gt(1099).cardinality()); assertEquals(99, n2.gt(1000).cardinality())
+        assertEquals(setOf(0), n2.eq(100).bits()); assertEquals(setOf(999), n2.gte(1099).bits())
+        // File 4: every value null — no slices on either side, every row in `IS NULL`.
+        val n4 = assertNotNull(files[3].bsiIndex("n"))
+        assertEquals(2, n4.rowCount); assertEquals(0, n4.nonNullCount); assertEquals(setOf(0, 1), n4.isNull().bits()); assertEquals(emptySet(), n4.lte(Long.MAX_VALUE).bits())
+        // The value mapping: a decimal at the column's scale, a date's epoch day, a timestamp's microseconds.
+        assertEquals(1250L, paimonBsiValue("DECIMAL(10, 2)", java.math.BigDecimal("12.50")))
+        assertEquals(700L, paimonBsiValue("DECIMAL(10, 2)", java.math.BigDecimal("7")))
+        assertNull(paimonBsiValue("DECIMAL(10, 2)", java.math.BigDecimal("7.005")), "a literal the scale cannot hold is not compared")
+        assertEquals(19787L, paimonBsiValue("DATE", java.time.LocalDate.of(2024, 3, 5)))
+        assertEquals(1_709_632_800_123_456L, paimonBsiValue("TIMESTAMP(6)", ldt("2024-03-05 10:00:00.123456")))
+        assertEquals(1_709_632_800_123L, paimonBsiValue("TIMESTAMP(3)", ldt("2024-03-05 10:00:00.123456")))
+        assertNull(paimonBsiValue("STRING", "x")); assertNull(paimonBsiValue("DOUBLE", 1.5))
+
+        // Every [index-all] case the oracle printed, R for REMAIN and S for SKIP over files 1..4.
+        val oracle = listOf(
+            "n < 0" to "RSSS", "n < -5" to "SSSS", "n <= -5" to "RSSS",
+            "n BETWEEN 4 AND 6" to "SSSS", "n >= 4 AND n <= 6" to "SSSS", "n BETWEEN 4 AND 8" to "SSRS",
+            "n > 1000" to "SRSS", "n >= 1099" to "SRSS", "n > 1099" to "SSSS",
+            "n = 7" to "SSRS", "n <> 7" to "RRSS", "n IS NULL" to "RSSR", "n IS NOT NULL" to "RRRS",
+            "n IN (3, 10)" to "RSSS", "n IN (4, 5, 6)" to "SSSS",
+            "n = 3 AND amt = 99.99" to "SSSS", "n = 3 OR amt = 99.99" to "RSSS", "n = 7 AND amt = 7.00" to "SSRS",
+            "amt > 50" to "RSSS", "amt < 0" to "RSSS", "amt = 7.00" to "SRRS", "amt BETWEEN 1 AND 50" to "SRRS",
+            "d < '2024-03-05'" to "RSSS", "d > '2024-03-07'" to "RRSS", "d BETWEEN '2024-03-02' AND '2024-03-04'" to "SSSS",
+            "ts < '2024-03-01 10:00:00.000005'" to "RSSS", "ts >= '2024-03-01 10:00:00.000009'" to "RRRS",
+            "ts BETWEEN '2024-03-01 10:00:00.000002' AND '2024-03-01 10:00:00.000003'" to "SSSS",
+        )
+        for ((filter, expected) in oracle) {
+            val parsed = (parseScanFilter(filter) as ScanFilterParse.Parsed).filter.pushNegation()
+            val actual = files.map { index ->
+                val rows = parsed.indexRows { p ->
+                    val type = types.getValue(p.column)
+                    val bsi = index.bsiIndex(p.column) ?: return@indexRows IndexRows.Remain
+                    val value = if (p.op.takesLiteral) parseLiteral(p.literal, paimonTypeAsIceberg(type)!!)!!.let { paimonBsiValue(type, it)!! } else null
+                    IndexRows.Rows(bsi.rowsMatching(p.op, value)!!)
+                }
+                if (rows.remains) 'R' else 'S'
+            }.joinToString("")
+            assertEquals(expected, actual, filter)
+        }
+    }
+
+    private fun java.util.BitSet.bits(): Set<Int> = stream().toArray().toSet()
+
+    /**
      * A v2 meta with two blocks, written here the way `BitmapFileIndexMetaV2.serialize` writes
      * one — `fb`'s dictionaries fit one block each, so the directory search is exercised only
      * by hand: a key before the first block, inside each block, between two keys, past the last.

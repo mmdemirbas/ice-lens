@@ -18,7 +18,7 @@
 // Run with the Paimon Spark 3.5 runtime jar, version 1.3, over copies of the tables:
 //
 //   WH=$PWD/tmp/plans-wh; rm -rf "$WH"; mkdir -p "$WH/db.db"
-//   for t in pc lk pu ag dv sm pt fa fi ft fb pse pkr; do cp -R example/paimon/db.db/$t "$WH/db.db/$t"; done
+//   for t in pc lk pu ag dv sm pt fa fi ft fb fbs pse pkr; do cp -R example/paimon/db.db/$t "$WH/db.db/$t"; done
 //   JAR=~/code/spark-kit/lakelab/tasks/01_FlinkUpsertRead/.run/jars/paimon-spark-3.5-local.jar
 //   docker run --rm --entrypoint bash \
 //     -v "$WH:/wh" -v "$JAR:/opt/paimon-spark.jar:ro" \
@@ -122,6 +122,15 @@ def isNotEq(name: String, v: Any) = (b: PredicateBuilder, t: org.apache.paimon.t
 def isIn(name: String, vs: Any*) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.in(t.getFieldIndex(name), vs.map(lit).asJava)
 def isNull(name: String) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.isNull(t.getFieldIndex(name))
 def isNotNull(name: String) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.isNotNull(t.getFieldIndex(name))
+def isLt(name: String, v: Any) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.lessThan(t.getFieldIndex(name), lit(v))
+def isLte(name: String, v: Any) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.lessOrEqual(t.getFieldIndex(name), lit(v))
+def isGt(name: String, v: Any) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.greaterThan(t.getFieldIndex(name), lit(v))
+def isGte(name: String, v: Any) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.greaterOrEqual(t.getFieldIndex(name), lit(v))
+def between(name: String, lo: Any, hi: Any) = (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => b.between(t.getFieldIndex(name), lit(lo), lit(hi))
+def or(ps: ((PredicateBuilder, org.apache.paimon.types.RowType) => Predicate)*) =
+  (b: PredicateBuilder, t: org.apache.paimon.types.RowType) => PredicateBuilder.or(ps.map(_(b, t)).asJava)
+// A DECIMAL(10,2) literal, the column's own precision and scale — fbs's amt.
+def dec(s: String) = org.apache.paimon.data.Decimal.fromBigDecimal(new java.math.BigDecimal(s), 10, 2)
 
 // pc: deduplicate, a level-5 file (keys 1..5) and two level-0 files (6, 7) — overlapping levels
 plan("pc", "no filter", (b, t) => null)
@@ -258,3 +267,49 @@ indexAll("fb", "n <> 5", isNotEq("n", 5))
 indexAll("fb", "n IN (2, 6)", isIn("n", 2, 6))
 indexAll("fb", "n IS NULL", isNull("n"))
 indexAll("fb", "c IN ('green', 'orange')", isIn("c", "green", "orange"))
+
+// fbs: an append table with a bit-sliced index on n (INT), amt (DECIMAL(10,2)), d (DATE) and ts
+// (TIMESTAMP(6)) — file 1 embedded (-5, 3, 10, null), file 2 a thousand rows in a .index
+// (n 100..1099), file 3 all 7 and file 4 all null with .index files. A BSI answers every
+// comparison per row, so `n BETWEEN 4 AND 6` skips file 1 whose bounds are -5..10, and
+// `FileIndexPredicate` ands the terms' bitmaps, so `n = 3 AND amt = 99.99` skips it too.
+plan("fbs", "no filter", (b, t) => null)
+plan("fbs", "n < 0", isLt("n", 0))
+plan("fbs", "n BETWEEN 4 AND 6", between("n", 4, 6))
+plan("fbs", "n IN (4, 5, 6)", isIn("n", 4, 5, 6))
+plan("fbs", "n BETWEEN 4 AND 8", between("n", 4, 8))
+plan("fbs", "n <> 7", isNotEq("n", 7))
+plan("fbs", "n IS NULL", isNull("n"))
+plan("fbs", "amt BETWEEN 1 AND 50", between("amt", dec("1"), dec("50")))
+plan("fbs", "d BETWEEN 2024-03-02 AND 2024-03-04", between("d", date("2024-03-02"), date("2024-03-04")))
+plan("fbs", "ts BETWEEN 2024-03-01 10:00:00.000002 AND 2024-03-01 10:00:00.000003", between("ts", ldt("2024-03-01 10:00:00.000002"), ldt("2024-03-01 10:00:00.000003")))
+plan("fbs", "n = 3 AND amt = 99.99", and(isEq("n", 3), isEq("amt", dec("99.99"))))
+plan("fbs", "n = 3 OR amt = 99.99", or(isEq("n", 3), isEq("amt", dec("99.99"))))
+indexAll("fbs", "n < 0", isLt("n", 0))
+indexAll("fbs", "n < -5", isLt("n", -5))
+indexAll("fbs", "n <= -5", isLte("n", -5))
+indexAll("fbs", "n BETWEEN 4 AND 6", between("n", 4, 6))
+indexAll("fbs", "n >= 4 AND n <= 6", and(isGte("n", 4), isLte("n", 6)))
+indexAll("fbs", "n BETWEEN 4 AND 8", between("n", 4, 8))
+indexAll("fbs", "n > 1000", isGt("n", 1000))
+indexAll("fbs", "n >= 1099", isGte("n", 1099))
+indexAll("fbs", "n > 1099", isGt("n", 1099))
+indexAll("fbs", "n = 7", isEq("n", 7))
+indexAll("fbs", "n <> 7", isNotEq("n", 7))
+indexAll("fbs", "n IS NULL", isNull("n"))
+indexAll("fbs", "n IS NOT NULL", isNotNull("n"))
+indexAll("fbs", "n IN (3, 10)", isIn("n", 3, 10))
+indexAll("fbs", "n IN (4, 5, 6)", isIn("n", 4, 5, 6))
+indexAll("fbs", "n = 3 AND amt = 99.99", and(isEq("n", 3), isEq("amt", dec("99.99"))))
+indexAll("fbs", "n = 3 OR amt = 99.99", or(isEq("n", 3), isEq("amt", dec("99.99"))))
+indexAll("fbs", "n = 7 AND amt = 7.00", and(isEq("n", 7), isEq("amt", dec("7.00"))))
+indexAll("fbs", "amt > 50", isGt("amt", dec("50")))
+indexAll("fbs", "amt < 0", isLt("amt", dec("0")))
+indexAll("fbs", "amt = 7.00", isEq("amt", dec("7.00")))
+indexAll("fbs", "amt BETWEEN 1 AND 50", between("amt", dec("1"), dec("50")))
+indexAll("fbs", "d < 2024-03-05", isLt("d", date("2024-03-05")))
+indexAll("fbs", "d > 2024-03-07", isGt("d", date("2024-03-07")))
+indexAll("fbs", "d BETWEEN 2024-03-02 AND 2024-03-04", between("d", date("2024-03-02"), date("2024-03-04")))
+indexAll("fbs", "ts < 2024-03-01 10:00:00.000005", isLt("ts", ldt("2024-03-01 10:00:00.000005")))
+indexAll("fbs", "ts >= 2024-03-01 10:00:00.000009", isGte("ts", ldt("2024-03-01 10:00:00.000009")))
+indexAll("fbs", "ts BETWEEN 2024-03-01 10:00:00.000002 AND 2024-03-01 10:00:00.000003", between("ts", ldt("2024-03-01 10:00:00.000002"), ldt("2024-03-01 10:00:00.000003")))

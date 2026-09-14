@@ -11,9 +11,9 @@ import java.time.Instant
  *
  * One entry per indexed column, in the order the head lists them; a column may carry several
  * index types. What each index's bytes mean is decided by [PaimonColumnIndex.type]: a
- * `bloom-filter` is [PaimonBloomFilter], a `bitmap` is [PaimonBitmapIndex], and the other types
- * (`bsi`, `dynamic-bitmap`) are named and left undecoded, which the pruning reports rather than
- * guesses at.
+ * `bloom-filter` is [PaimonBloomFilter], a `bitmap` is [PaimonBitmapIndex], a `bsi` is
+ * [PaimonBsiIndex], and `range-bitmap` (release-1.3.1's fourth) is named and left undecoded,
+ * which the pruning reports rather than guesses at.
  */
 data class PaimonFileIndex(
     val columns: Map<String, List<PaimonColumnIndex>>,
@@ -38,9 +38,16 @@ data class PaimonFileIndex(
         ?.firstOrNull { it.type == BITMAP }?.bytes
         ?.let { PaimonBitmapIndex.decode(it, paimonType) }
 
+    /** The bit-sliced index over [column], decoded, or null when the column has none or its bytes are empty. */
+    fun bsiIndex(column: String): PaimonBsiIndex? = columns.entries
+        .firstOrNull { it.key.equals(column.trim(), ignoreCase = true) }?.value
+        ?.firstOrNull { it.type == BSI }?.bytes
+        ?.let { PaimonBsiIndex.decode(it) }
+
     companion object {
         const val BLOOM_FILTER = "bloom-filter"
         const val BITMAP = "bitmap"
+        const val BSI = "bsi"
     }
 }
 
@@ -112,21 +119,25 @@ fun paimonFastHash(paimonType: String, value: Any): Long? {
         "DOUBLE" -> (value as? Number)?.let { wangHash(java.lang.Double.doubleToLongBits(it.toDouble())) }
         "DATE" -> (value as? LocalDate)?.let { wangHash(it.toEpochDay()) }
         "TIME" -> (value as? LocalTime)?.let { wangHash(it.toNanoOfDay() / 1_000_000) }
-        "TIMESTAMP", "TIMESTAMP_LTZ" -> {
-            val precision = head.groupValues[2].toIntOrNull() ?: 6
-            val utc = when (value) {
-                is LocalDateTime -> value
-                is Instant -> LocalDateTime.ofInstant(value, ZoneOffset.UTC)
-                else -> return null
-            }
-            // Paimon's Timestamp keeps milliseconds and the nanoseconds within the millisecond,
-            // and `toMicros` floors the latter to microseconds.
-            val millis = utc.toLocalDate().toEpochDay() * 86_400_000L + utc.toLocalTime().toNanoOfDay() / 1_000_000
-            val nanoOfMilli = utc.toLocalTime().toNanoOfDay() % 1_000_000
-            wangHash(if (precision <= 3) millis else millis * 1_000 + nanoOfMilli / 1_000)
-        }
+        "TIMESTAMP", "TIMESTAMP_LTZ" -> paimonTimestampLong(head.groupValues[2].toIntOrNull() ?: 6, value)?.let { wangHash(it) }
         else -> null
     }
+}
+
+/**
+ * A timestamp as the three indexes take it: its milliseconds since the epoch at precision 3 and
+ * below, else its microseconds — Paimon's `Timestamp` keeps milliseconds and the nanoseconds
+ * within the millisecond, and `toMicros` floors the latter. A zone-less literal is read at UTC.
+ */
+internal fun paimonTimestampLong(precision: Int, value: Any): Long? {
+    val utc = when (value) {
+        is LocalDateTime -> value
+        is Instant -> LocalDateTime.ofInstant(value, ZoneOffset.UTC)
+        else -> return null
+    }
+    val millis = utc.toLocalDate().toEpochDay() * 86_400_000L + utc.toLocalTime().toNanoOfDay() / 1_000_000
+    val nanoOfMilli = utc.toLocalTime().toNanoOfDay() % 1_000_000
+    return if (precision <= 3) millis else millis * 1_000 + nanoOfMilli / 1_000
 }
 
 /** Thomas Wang's 64-bit integer hash, as `FastHash.getLongHash` computes it. */

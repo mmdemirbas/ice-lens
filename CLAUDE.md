@@ -2176,7 +2176,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,263 tests across 170 files (990 in :core, 263 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,265 tests across 170 files (992 in :core, 263 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2307,6 +2307,7 @@ container invocation and the traps in it:
 | `paimon/db.db/fa` | `PaimonFileIndexTest`, `PaimonFileIndexPruningTest` | the append twin — bloom filters on both columns, a 1,290-byte `.index` then an embedded one, and a 43-byte value for xxHash64's stripe; the table whose scan and read actually ask the index |
 | `paimon/db.db/fb` | `PaimonFileIndexTest`, `PaimonFileIndexPruningTest` | a bitmap file index on two columns, one also under a bloom filter — one file with red, green and a null (embedded), one all red and one all null (`.index` files); the dictionary held to `FileIndexPredicate` over every file for `=`, `<>`, `IS NULL` and `IS NOT NULL` |
 | `paimon/db.db/ft` | `PaimonFileIndexTest`, `PaimonFileIndexPruningTest` | an append table with a bloom filter on a `TIMESTAMP(6)`, a `TIMESTAMP(6) WITH LOCAL TIME ZONE` and a `DATE` column, embedded — the temporal hashes, held to the plan on three values a column and on two misses inside the bounds that only a microsecond hash answers |
+| `paimon/db.db/fbs` | `PaimonFileIndexTest`, `PaimonFileIndexPruningTest` | a bit-sliced index (`bsi`) on an INT, a DECIMAL(10,2), a DATE and a TIMESTAMP(6) — a file of -5, 3, 10 and null with its index embedded, a thousand-row file, an all-7 file and an all-null file with `.index` files; every comparison held to `FileIndexPredicate` over every file, `n BETWEEN 4 AND 6` skipped inside the bounds by the slices alone |
 | `paimon/db.db/ep` | `PaimonExternalPathFixtureTest` | `data-file.external-paths` — no bucket under the table, both files at `example/paimon/ep-files/bucket-0/` beside it, `_EXTERNAL_PATH` recorded |
 | `paimon/db.db/rt` | `PaimonRowTrackingFixtureTest` | `row-tracking.enabled` — two appends recording first ids 0 and 3, then a full compaction whose output records none and carries `_ROW_ID` per row |
 | `paimon/db.db/sm` | `PaimonStatsModeFixtureTest` | `fields.v.stats-mode = none` — `_VALUE_STATS` over two of three columns, named in `_VALUE_STATS_COLS`; the oracle for the subset decoding |
@@ -2889,7 +2890,30 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   the file for `=`, `<`, `<=`, `>`, `>=` and a prefix — now the shared stage's rule — while for
   `<>` Paimon skips it and Iceberg's `notEq` answers "might match" before it looks, so
   `paimonAllNullNegations` adds Paimon's reading to Paimon's files only, and the shared reason
-  says which format does what
+  says which format does what. **The `bsi` index is read too, and it is the one that answers a
+  range** (`model/PaimonBsiIndex.kt`): `BitSliceIndexBitmapFileIndex` at 1.3.1 maps every
+  value to a `long` (an integer as itself, a decimal as its unscaled value, a date as its epoch
+  day, a time as its milliseconds, a timestamp as `paimonTimestampLong` — the three indexes
+  share that one mapping now) and writes two `BitSliceIndexRoaringBitmap`s, one over the
+  non-negative values and one over the magnitudes of the negative ones, each a min, a max, an
+  existence bitmap and one Roaring bitmap per bit of `value - min`; a comparison outside
+  `[min, max]` is settled by the two figures, inside it by O'Neil's walk down the slices. So
+  `<`, `<=`, `>`, `>=` are answered per row, `=` and `<>` too (`<>` over the non-null rows,
+  where the bitmap index's counts nulls), and `n BETWEEN 4 AND 6` skips a file of -5, 3, 10.
+  **Which needs the terms' rows folded across the filter**: `n >= 4` keeps one row and
+  `n <= 6` two, neither ruling the file out, and the two are different rows — so
+  `applyPaimonFileIndex` folds every term's rows the way `FileIndexPredicate.visit` folds its
+  readers' results (`IndexRows`: `Remain`, `Skip` or `Rows`; an `And` meets, an `Or` unites, a
+  term the bounds settled is a skip, one no index answered is every row), the bitmap index
+  gives rows to the same fold (`PaimonBitmapIndex.rowsMatching`), and a file skipped only by
+  the fold carries each term's count and a note saying no term did it alone. `fbs` is the
+  fixture — `n INT`, `amt DECIMAL(10,2)`, `d DATE`, `ts TIMESTAMP(6)` under `bsi`; a file of
+  -5, 3, 10 and null with its index embedded, a thousand-row file, an all-7 file and an
+  all-null file with `.index` files — and `PaimonFileIndexTest` holds the decoder to
+  `FileIndexPredicate` over every file for twenty-eight filters (`indexAll` in the script), the
+  microsecond gap inside one file's `ts` bounds among them, which a millisecond mapping keeps.
+  Flipping the O'Neil bit branch fails three tests. `range-bitmap`, release-1.3.1's fourth
+  index, is named and not read
 - **A consumer is why an expiry stopped short, and it is one JSON file.** `consumer/consumer-<id>`
   holds `nextSnapshot`, the snapshot a streaming reader will consume next, and
   `expire_snapshots` keeps that snapshot and everything after it — the `cs` fixture asked for

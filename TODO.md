@@ -45,8 +45,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   split read raw (`model/PaimonFileIndexPruning.kt`, `fa` and `fi` against `FileIndexPredicate`).
   The temporal hashes are in too (`ft`: a date's epoch day, a timestamp's microseconds), and
   the `bitmap` index is read as the dictionary it is (`fb`: `=` exact, `<>`, `IS NULL`,
-  `IS NOT NULL`). What is left of the index is `bsi` and `dynamic-bitmap`, named and not read,
-  and the range operators a bit-sliced index answers.
+  `IS NOT NULL`), and the `bsi` index as the slices it is (`fbs`: every comparison per row,
+  the terms' rows met across the filter as `FileIndexPredicate` meets them). What is left of
+  the index is `range-bitmap`, release-1.3.1's fourth, named and not read.
 
 - **Iceberg v3 is modelled up to what Spark 3.5 can write.** A deletion vector's Puffin blob is
   opened and its positions decoded (`service/PuffinReader.kt`), so the inspector answers which

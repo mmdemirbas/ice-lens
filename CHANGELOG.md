@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A Paimon bit-sliced file index (`bsi`) is read, and it answers every comparison.** One
+  Roaring bitmap per bit of the value, in two sets for the two signs, so the scan-pruning
+  section answers `<`, `<=`, `>`, `>=` and `BETWEEN` exactly, per row, where a bloom filter
+  answers `=` as a maybe and a bitmap dictionary `=` and `<>` alone — `n BETWEEN 4 AND 6`
+  skips a file whose bounds are -5..10 and whose rows are -5, 3 and 10. The terms' rows are
+  folded across the filter the way `FileIndexPredicate` folds its readers' bitmaps — an `And`
+  intersects, an `Or` unites — so a file no single term rules out is still skipped when the
+  terms' rows are different rows, and its reason says so with the count per term; the bitmap
+  index gives rows to the same fold. A decimal is compared at the column's scale, a date as its
+  epoch day, a timestamp as its microseconds (milliseconds at precision 3 and below). `fbs` is
+  the fixture — an INT, a DECIMAL, a DATE and a TIMESTAMP under `bsi`, one index embedded and
+  three beside their files — held to `FileIndexPredicate` over every file for twenty-eight
+  filters, and to Paimon's plan.
 - **A Paimon table that writes Iceberg metadata beside its own says what an Iceberg reader
   sees.** Under `metadata.iceberg.storage = table-location` every commit also writes Iceberg
   metadata under `metadata/`; the table panel reads it and puts the export's current snapshot

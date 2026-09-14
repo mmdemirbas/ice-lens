@@ -60,6 +60,8 @@ import model.snapshotAsOf
 import model.PaimonUnifiedTableModel
 import model.PredicateOp
 import model.ScanPredicate
+import model.ScanFilterParse
+import model.parseScanFilter
 import model.deleteKindOf
 import model.recordedColumnStats
 import model.SnapshotRefLabel
@@ -1786,6 +1788,19 @@ class InspectorRenderTest {
         renderScene("scan-pruning-paimon-fa", width = 1400, height = 2400) {
             Column(Modifier.padding(16.dp)) {
                 ScanPruningSection(fa, model.ScanFilter.of(listOf(ScanPredicate("v", PredicateOp.EQ, "delta")))) {}
+            }
+        }
+        // fbs: the bit-sliced index. `n BETWEEN 4 AND 8` is inside file 1's -5..10 bounds and
+        // neither `n >= 4` nor `n <= 8` rules it out alone; the two terms' rows are different
+        // rows, which the fold across terms sees — one file skipped by its index with the count
+        // per term, one by its bounds, one all null, and the all-7 file read.
+        val fbs = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/fbs").absolutePath)),
+            showRows = false,
+        )
+        renderScene("scan-pruning-paimon-fbs", width = 1400, height = 3800) {
+            Column(Modifier.padding(16.dp)) {
+                ScanPruningSection(fbs, (parseScanFilter("n BETWEEN 4 AND 8") as ScanFilterParse.Parsed).filter) {}
             }
         }
     }

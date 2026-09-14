@@ -31,6 +31,10 @@ class PaimonFileIndexPruningTest {
     private val fb1 = "data-78cf96d7-9512-4747-8693-dbc3c5d6ad40-0.parquet"   // red, green, red, null; n 1..4; bitmap embedded
     private val fb2 = "data-0601ba10-ed0a-4763-b7de-f03655fc7c77-0.parquet"   // red, red; n 5..6; .index beside it
     private val fb3 = "data-02d4b3e1-d6fa-4f0b-9a20-3932c2cf06d4-0.parquet"   // null, null; n 7..8; .index beside it
+    private val fbs1 = "data-a6bfbe8c-557a-4b07-a514-e33bbf1aff52-0.parquet"  // n -5, 3, 10, null; bsi embedded
+    private val fbs2 = "data-9aec0cc6-8d86-462b-832c-701daf318d13-0.parquet"  // a thousand rows, n 100..1099; .index beside it
+    private val fbs3 = "data-93aa7e5d-3634-4ce3-a95a-5bfcfb8e8e59-0.parquet"  // every row 7; .index beside it
+    private val fbs4 = "data-45f79f1b-a157-4ecb-9a2f-bf4fada5db8c-0.parquet"  // every value null; .index beside it
 
     /** [planned] is what the plan opened; [rawSkipped] the planned files a raw read's index then ruled out; [merged] the planned files read through a merge, index unconsulted. */
     private class Case(val fixture: String, val filter: String, val planned: Set<String>, val rawSkipped: Set<String> = emptySet(), val merged: Set<String> = emptySet())
@@ -73,6 +77,21 @@ class PaimonFileIndexPruningTest {
         Case("fb", "n IN (2, 6)", setOf(fb1, fb2)),
         Case("fb", "n = 5 AND c = 'green'", emptySet()),
         Case("fb", "n <> 7", setOf(fb1, fb2, fb3)),
+        // fbs: the bit-sliced index. File 1's is embedded, so the plan itself skips it where its
+        // slices rule the rows out — `n BETWEEN 4 AND 6` inside its -5..10 bounds, `n = 3 AND
+        // amt = 99.99` whose two terms' rows are different rows — and files 2..4 are pruned by
+        // the statistics alone at plan time, their `.index` files being the read's.
+        Case("fbs", "n < 0", setOf(fbs1)),
+        Case("fbs", "n BETWEEN 4 AND 6", emptySet()),
+        Case("fbs", "n IN (4, 5, 6)", emptySet()),
+        Case("fbs", "n BETWEEN 4 AND 8", setOf(fbs3)),
+        Case("fbs", "n <> 7", setOf(fbs1, fbs2)),
+        Case("fbs", "n IS NULL", setOf(fbs1, fbs4)),
+        Case("fbs", "amt BETWEEN 1 AND 50", setOf(fbs2, fbs3)),
+        Case("fbs", "d BETWEEN '2024-03-02' AND '2024-03-04'", emptySet()),
+        Case("fbs", "ts BETWEEN '2024-03-01 10:00:00.000002' AND '2024-03-01 10:00:00.000003'", emptySet()),
+        Case("fbs", "n = 3 AND amt = 99.99", emptySet()),
+        Case("fbs", "n = 3 OR amt = 99.99", setOf(fbs1)),
     )
 
     private fun fileNodes(graph: GraphModel) = graph.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
@@ -85,7 +104,7 @@ class PaimonFileIndexPruningTest {
             val graph = graphs.getValue(case.fixture)
             val plan = evaluateScan(graph, (parseScanFilter(case.filter) as ScanFilterParse.Parsed).filter)
             val nodes = fileNodes(graph)
-            assertEquals(when (case.fixture) { "ft" -> 1; "fb" -> 3; else -> 2 }, nodes.size, case.fixture)
+            assertEquals(when (case.fixture) { "ft" -> 1; "fb" -> 3; "fbs" -> 4; else -> 2 }, nodes.size, case.fixture)
             for ((name, node) in nodes) {
                 val result = plan.files.getValue(node.id)
                 val label = "${case.fixture}: ${case.filter} — $name: $result"
@@ -133,6 +152,48 @@ class PaimonFileIndexPruningTest {
         val readSkip = outcome("n = 6 AND c = 'green'", fb2)
         assertEquals(FileFate.SKIPPED, readSkip.fate)
         assertFalse(readSkip.byIndex, "bounds that meet settle `c = 'green'` on an all-red file: $readSkip")
+    }
+
+    /**
+     * The bit-sliced index through the pruning path, and the fold across terms that only it
+     * needs: `n >= 4` keeps a row of file 1 and `n <= 6` keeps two, neither ruling the file out,
+     * and the rows are different rows — which is the skip `FileIndexPredicate` finds by and-ing
+     * the two bitmaps, and the one no per-term verdict can. The same across columns.
+     */
+    @Test
+    fun `a bit-sliced index answers a comparison per row, and the terms' rows are met before the file is kept`() {
+        val graph = graphOf("fbs")
+        val nodes = fileNodes(graph)
+        fun outcome(filter: String, file: String) = evaluateScan(graph, (parseScanFilter(filter) as ScanFilterParse.Parsed).filter)
+            .files.getValue(nodes.getValue(file).id)
+        val negative = outcome("n < 0", fbs1)
+        assertEquals(FileFate.WOULD_BE_READ, negative.fate)
+        assertTrue(negative.outcomes.single().reason.contains("reaches below"), "the bounds answered first, and the index is not asked after them: ${negative.outcomes.single().reason}")
+        val gap = outcome("n BETWEEN 4 AND 6", fbs1)
+        assertEquals(FileFate.SKIPPED, gap.fate)
+        assertTrue(gap.byIndex, "$gap")
+        assertTrue(gap.outcomes.none { it.effect == TermEffect.SKIPS }, "no term alone: $gap")
+        assertTrue(gap.note.orEmpty().contains("meet in none"), "$gap")
+        assertTrue(gap.outcomes.any { it.reason.contains("has 1 of its 4 rows >= '4'") } && gap.outcomes.any { it.reason.contains("has 2 of its 4 rows <= '6'") }, "$gap")
+        val across = outcome("n = 3 AND amt = 99.99", fbs1)
+        assertEquals(FileFate.SKIPPED, across.fate)
+        assertTrue(across.byIndex && across.note.orEmpty().contains("meet in none"), "$across")
+        assertEquals(FileFate.WOULD_BE_READ, outcome("n = 3 OR amt = 99.99", fbs1).fate)
+        // The microsecond gap inside file 1's ts bounds is the slices' own skip — a millisecond
+        // mapping would put both literals and both rows in one millisecond — and file 1's index
+        // is embedded, so it is the plan's skip and not the read's.
+        val micro = outcome("ts BETWEEN '2024-03-01 10:00:00.000002' AND '2024-03-01 10:00:00.000003'", fbs1)
+        assertEquals(FileFate.SKIPPED, micro.fate)
+        assertTrue(micro.byIndex && micro.note.orEmpty().contains("meet in none"), "$micro")
+        assertTrue(micro.note.orEmpty().contains("when read").not(), "file 1's index is embedded and tested at plan time: ${micro.note}")
+        // File 3, every row 7: `n <> 7` is settled by bounds that meet; `amt <> 7.00` on the .index is the slices' own
+        // answer — every non-null row is 7.00 — and the read's, since the file's index is beside it.
+        val allSeven = outcome("amt <> 7.00", fbs3)
+        assertEquals(FileFate.SKIPPED, allSeven.fate)
+        assertFalse(allSeven.byIndex, "bounds that meet settle it before the index is asked: $allSeven")
+        // File 4, every value null: `n IS NOT NULL` is the statistics' (null count is the row count), `n IS NULL` keeps it.
+        assertEquals(FileFate.SKIPPED, outcome("n IS NOT NULL", fbs4).fate)
+        assertEquals(FileFate.WOULD_BE_READ, outcome("n IS NULL", fbs4).fate)
     }
 
     @Test

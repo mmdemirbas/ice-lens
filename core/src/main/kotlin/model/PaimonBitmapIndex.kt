@@ -5,11 +5,9 @@ import java.io.DataInputStream
 import java.io.ByteArrayInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.LocalTime
-import java.time.ZoneOffset
+import java.util.BitSet
 
 /**
  * A `bitmap` file index as `BitmapFileIndex` writes it at release-1.3.1: a dictionary of the
@@ -65,18 +63,37 @@ class PaimonBitmapIndex private constructor(
     }
 
     /** How many rows hold [key] — the bitmap's cardinality, read for the answer to `<>`. */
-    fun cardinalityOf(key: Any): Int = find(key)?.let(::cardinality) ?: 0
+    fun cardinalityOf(key: Any): Int = rowsOf(key).cardinality()
 
     /** How many rows are null. */
-    val nullCount: Int get() = nullEntry?.let(::cardinality) ?: 0
+    val nullCount: Int get() = nullRows().cardinality()
 
-    private fun cardinality(entry: Entry): Int {
-        entry.singleRow?.let { return 1 }
+    /** The rows holding [key], decoded from its bitmap — empty when no row does. */
+    fun rowsOf(key: Any): BitSet = find(key)?.let(::rows) ?: BitSet()
+
+    /** The rows that are null. */
+    fun nullRows(): BitSet = nullEntry?.let(::rows) ?: BitSet()
+
+    /**
+     * The rows [op] keeps for [key], as `BitmapFileIndex.Reader` answers it: `=` the value's
+     * rows, `<>` those flipped over the row count — nulls among them — `IS NULL` the null
+     * bitmap, `IS NOT NULL` that flipped. Null for an operator the dictionary does not answer.
+     */
+    fun rowsMatching(op: PredicateOp, key: Any?): BitSet? = when (op) {
+        PredicateOp.EQ -> key?.let(::rowsOf)
+        PredicateOp.NOT_EQ -> key?.let(::rowsOf)?.also { it.flip(0, rowCount) }
+        PredicateOp.IS_NULL -> nullRows()
+        PredicateOp.IS_NOT_NULL -> nullRows().also { it.flip(0, rowCount) }
+        else -> null
+    }
+
+    private fun rows(entry: Entry): BitSet {
+        val set = BitSet()
+        entry.singleRow?.let { set.set(it); return set }
         val start = bodyStart + entry.offset
         val end = if (entry.length >= 0) start + entry.length else bytes.size
-        var n = 0
-        PuffinReader.readRoaring32(ByteBuffer.wrap(bytes, start, end - start).slice().order(ByteOrder.LITTLE_ENDIAN)) { n++ }
-        return n
+        PuffinReader.readRoaring32(ByteBuffer.wrap(bytes, start, end - start).slice().order(ByteOrder.LITTLE_ENDIAN)) { set.set(it.toInt()) }
+        return set
     }
 
     companion object {
@@ -203,17 +220,7 @@ fun paimonBitmapKey(paimonType: String, value: Any): Any? {
         "BOOLEAN" -> value as? Boolean
         "DATE" -> (value as? LocalDate)?.toEpochDay()?.toInt()
         "TIME" -> (value as? LocalTime)?.let { (it.toNanoOfDay() / 1_000_000).toInt() }
-        "TIMESTAMP", "TIMESTAMP_LTZ" -> {
-            val precision = head.groupValues[2].toIntOrNull() ?: 6
-            val utc = when (value) {
-                is LocalDateTime -> value
-                is Instant -> LocalDateTime.ofInstant(value, ZoneOffset.UTC)
-                else -> return null
-            }
-            val millis = utc.toLocalDate().toEpochDay() * 86_400_000L + utc.toLocalTime().toNanoOfDay() / 1_000_000
-            val nanoOfMilli = utc.toLocalTime().toNanoOfDay() % 1_000_000
-            if (precision <= 3) millis else millis * 1_000 + nanoOfMilli / 1_000
-        }
+        "TIMESTAMP", "TIMESTAMP_LTZ" -> paimonTimestampLong(head.groupValues[2].toIntOrNull() ?: 6, value)
         else -> null
     }
 }
