@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   snapshot written under it or that none was. A Paimon schema node lists its own step, and the
   IDE strip prints it. Replaces a section that diffed the drawn metadata nodes' top-level
   fields, which aggregation could fold and a nested rename never reached
+- **The table panel's `Table Properties` reads every metadata version from the model.** Its
+  change history was folded from the drawn metadata nodes, which aggregation drops past the
+  page size, so a table with more versions than the page lost its earliest changes; the
+  versions travel on the summary now, the keys no longer wrap, and the section says when
+  nothing changed
 - **The data-file sweep under `Integrity` reads a table past its cap a page at a time.** Each
   click reads the next 64 live files on top of the ones read, the pages fold into one line and
   one findings table, and the button says how many files are left

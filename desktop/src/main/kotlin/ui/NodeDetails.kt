@@ -75,6 +75,7 @@ import model.LiveFile
 import model.describe
 import model.KeyValuePairLong
 import model.MetadataLogEntry
+import model.MetadataVersionInfo
 import model.SchemaChangeKind
 import model.SchemaStep
 import model.metadataVersionFromFileName
@@ -2533,7 +2534,7 @@ internal fun SchemaEvolutionSection(steps: List<SchemaStep>) {
     val first = steps.first()
     val later = steps.drop(1)
     val changes = later.sumOf { it.changes.size }
-    Section("Schema Evolution (${formatCount(later.size)})") {
+    Section("Schema Evolution (${formatCounted(steps.size, "schema")})") {
         Text(
             "Schema ${first.toId} started with ${formatCounted(first.changes.size, "column")}" +
                 (if (later.isEmpty()) " and is the only schema." else "; ${formatCounted(changes, "change")} across ${formatCounted(later.size, "later schema")}, each by field id — a rename keeps the id, a drop and an add do not.") +
@@ -2605,107 +2606,64 @@ private fun isPromotion(detail: String): Boolean {
 
 // --- Properties Evolution ---
 
+/**
+ * The table's properties as the newest version has them, and every change between two
+ * versions — from the model's versions ([MetadataVersionInfo.properties]), never the drawn
+ * metadata nodes, which aggregation folds past the page size and which would then lose the
+ * early changes. A key set, changed or removed is one row of the changes table, naming the two
+ * versions it happened between.
+ */
 @Composable
-internal fun PropertiesEvolutionSection(metadataChildren: List<GraphNode.MetadataNode>) {
-    if (metadataChildren.isEmpty()) return
-
-    // Collect properties from each metadata version
-    data class VersionProps(val version: String, val props: Map<String, String>)
-    val versions = metadataChildren.map { meta ->
-        VersionProps(
-            version = metadataVersionFromFileName(meta.fileName)?.let { "v$it" } ?: meta.fileName,
-            props = meta.data.properties
-        )
-    }
-
-    // Merge all property keys
-    val allKeys = versions.flatMap { it.props.keys }.toSortedSet()
+internal fun PropertiesEvolutionSection(versions: List<MetadataVersionInfo>) {
+    if (versions.isEmpty()) return
+    val labelOf = { v: MetadataVersionInfo -> v.version?.let { "v$it" } ?: v.fileName }
+    val allKeys = versions.flatMap { it.properties.keys }.toSortedSet()
     if (allKeys.isEmpty()) return
-
-    Section("Table Properties") {
-
-        val colors = MaterialTheme.colorScheme
-
-        // If only one metadata version, show a simple table
-        if (versions.size == 1) {
-            DetailTable {
-                DetailRow("Key", "Value", isHeader = true)
-                versions[0].props.toSortedMap().forEach { (k, v) ->
-                    DetailRow(k, v)
-                }
-            }
-            return@Section
+    val colors = MaterialTheme.colorScheme
+    val latest = versions.last().properties
+    data class PropChange(val key: String, val from: String, val to: String, val oldValue: String?, val newValue: String?)
+    val changes = versions.zipWithNext().flatMap { (older, newer) ->
+        (older.properties.keys union newer.properties.keys).sorted().mapNotNull { key ->
+            val old = older.properties[key]
+            val new = newer.properties[key]
+            if (old == new) null else PropChange(key, labelOf(older), labelOf(newer), old, new)
         }
-
-        // Multiple versions: show evolution
-        // First show the current values
-        val latestProps = versions.last().props
-
-        // Detect changes across versions
-        data class PropChange(
-            val key: String,
-            val fromVersion: String,
-            val toVersion: String,
-            val oldValue: String?,
-            val newValue: String?,
+    }
+    // Counted by every key any version set, so a table whose properties were all removed still lists them as removed.
+    CountedSection("Table Properties", allKeys.size, "properties") {
+        if (versions.size > 1) {
+            Text(
+                "As ${labelOf(versions.last())} has them" +
+                    (if (changes.isEmpty()) ", unchanged across ${formatCounted(versions.size, "metadata version")}." else "; ${formatCounted(changes.size, "change")} across ${formatCounted(versions.size, "metadata version")} below."),
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+        // A wide table rather than a detail table: a key is the table's own vocabulary and wrapped at the detail table's label width.
+        WideTable(
+            headers = listOf("Key", "Value"),
+            columnWidths = listOf(260.dp, 480.dp),
+            rows = allKeys.map { key ->
+                val current = latest[key]
+                listOf(key, when {
+                    current == null -> "(removed)"
+                    changes.any { it.key == key } -> "$current (changed)"
+                    else -> current
+                })
+            },
         )
-
-        val changes = mutableListOf<PropChange>()
-        for (i in 0 until versions.size - 1) {
-            val oldV = versions[i]
-            val newV = versions[i + 1]
-            // Use a set to avoid double-reporting keys present in both versions.
-            val bothKeys = oldV.props.keys union newV.props.keys
-            bothKeys.forEach { key ->
-                val oldVal = oldV.props[key]
-                val newVal = newV.props[key]
-                if (oldVal != newVal) {
-                    changes.add(PropChange(key, oldV.version, newV.version, oldVal, newVal))
-                }
-            }
-        }
-
-        // Show current properties with change indicators
-        DetailTable {
-            DetailRow("Key", "Value", isHeader = true)
-            allKeys.forEach { key ->
-                val currentVal = latestProps[key]
-                val hasChanges = changes.any { it.key == key }
-                if (currentVal != null) {
-                    DetailRow(
-                        key = if (hasChanges) "\u0394 $key" else key,
-                        value = currentVal
-                    )
-                } else {
-                    DetailRow(key = "- $key", value = "(removed)")
-                }
-            }
-        }
-
-        // Show change log if there are any
         if (changes.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
             Text(
                 "Property Changes",
                 fontWeight = FontWeight.SemiBold,
                 fontSize = TypeScale.small,
-                modifier = Modifier.padding(bottom = 4.dp)
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
             )
-
-            val changeHeaders = listOf("Property", "From", "To", "Old Value", "New Value")
-            val changeRows = changes.map { change ->
-                listOf(
-                    change.key,
-                    change.fromVersion,
-                    change.toVersion,
-                    change.oldValue ?: "(not set)",
-                    change.newValue ?: "(removed)"
-                )
-            }
             WideTable(
-                headers = changeHeaders,
-                rows = changeRows,
-                columnWidth = 160.dp
+                headers = listOf("Property", "From", "To", "Old Value", "New Value"),
+                columnWidths = listOf(240.dp, 80.dp, 80.dp, 260.dp, 260.dp),
+                rows = changes.map { listOf(it.key, it.from, it.to, it.oldValue ?: "(not set)", it.newValue ?: "(removed)") },
             )
         }
     }

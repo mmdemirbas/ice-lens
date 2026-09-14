@@ -573,7 +573,10 @@ intellij/src/main/kotlin/plugin/
   Paimon schema node draws its own step, and the IDE strip prints it as a row.
   `SchemaEvolutionFixtureTest` holds `evolved`, `deep`, `defaults`, `pse` and `pkr` to their
   scripts' DDL step by step, and every Iceberg fixture to a first step of columns and a change
-  on every later one, since a schema id is assigned only when the schema differs
+  on every later one, since a schema id is assigned only when the schema differs. The table
+  panel's `Table Properties` had the same flaw and takes the same cure:
+  `MetadataVersionInfo.properties` carries every version's properties on the summary, and
+  `MaintenanceInputTest`'s page size of one holds both evolutions to the model
 - **The same lookup run at every retained snapshot on `main` is a row's history, and the fate at
   the current snapshot cannot stand in for it.** A row deleted three commits ago and one deleted
   by the last commit look the same there; `model/RowHistory.kt` names the commit. The table node

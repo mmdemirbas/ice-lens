@@ -328,7 +328,7 @@ internal fun ColumnScope.TablePanel(
         }
 
         SchemaEvolutionSection(node.schemaEvolution)
-        PropertiesEvolutionSection(metadataChildren)
+        PropertiesEvolutionSection(summary.metadataVersions)
 }
 
 @Composable

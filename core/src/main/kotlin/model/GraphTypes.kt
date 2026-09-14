@@ -139,6 +139,8 @@ data class MetadataVersionInfo(
     val metadataLastUpdatedMs: Long?,
     val snapshotCount: Int,
     val currentSnapshotId: Long?,
+    /** The version's table properties — every version's, from the model, so the panel's property history is not the drawn page's. */
+    val properties: Map<String, String> = emptyMap(),
 )
 
 /**

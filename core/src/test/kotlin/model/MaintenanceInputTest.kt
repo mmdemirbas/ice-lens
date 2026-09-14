@@ -49,6 +49,11 @@ class MaintenanceInputTest {
         val unified = m.metadatas.asReversed().firstNotNullOf { um -> um.snapshots.firstOrNull { it.metadata.snapshotId == currentId } }
         assertEquals(liveFilesOf(unified).map { it.path }.toSet(), current.liveFiles!!.map { it.path }.toSet())
         assertEquals(unified.manifests.map { it.metadata }, current.manifestList)
+
+        // The two evolutions on the table panel read the model too: every version's properties, every schema's step.
+        assertEquals(m.metadatas.map { it.metadata.properties }, table.summary.metadataVersions.map { it.properties })
+        assertEquals(newest.metadata.schemaEvolution(), table.schemaEvolution)
+        assertTrue(table.summary.metadataVersions.size > 1 && table.summary.metadataVersions.all { it.properties.isNotEmpty() })
     }
 
     @Test

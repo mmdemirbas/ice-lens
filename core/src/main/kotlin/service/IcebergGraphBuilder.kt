@@ -725,7 +725,8 @@ object IcebergGraphBuilder {
                 fileLastModifiedMs = fileModifiedMs,
                 metadataLastUpdatedMs = unifiedMetadata.metadata.lastUpdatedMs,
                 snapshotCount = unifiedMetadata.metadata.snapshots.size,
-                currentSnapshotId = unifiedMetadata.metadata.currentSnapshotId
+                currentSnapshotId = unifiedMetadata.metadata.currentSnapshotId,
+                properties = unifiedMetadata.metadata.properties,
             )
         }
 
