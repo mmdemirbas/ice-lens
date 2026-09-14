@@ -1218,6 +1218,9 @@ internal fun ColumnScope.FilePanel(
                 if (deleteContent == DataFileContent.POSITION_DELETES && referenced == null) {
                     PositionalDeleteTargets(node)
                 }
+                if (deleteContent == DataFileContent.EQUALITY_DELETES) {
+                    EqualityDeleteTargetsSection(node, currentGraph)
+                }
             }
             DeletionVectorSection(node)
         }

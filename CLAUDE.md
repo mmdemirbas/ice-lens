@@ -903,6 +903,28 @@ intellij/src/main/kotlin/plugin/
   dispatcher when rendered, and sixty frames in a tight loop finish long before a DuckDB query
   does — the first capture attempt was a PNG of the loading line. `renderUntil` polls with a
   deadline and fails rather than capturing a spinner
+- **What an equality delete file removes is counted the same way, and the candidates come from
+  the pairing.** An equality delete names no target — the metadata can rule a data file *out*
+  (sequence, partition, bounds) and never in — so `service/EqualityDeleteTargets.kt` opens every
+  candidate `deleteReach` leaves at `mayReach` for the delete at one snapshot and counts, per
+  data file, the rows some row of the delete equals on every equality column: both files
+  projected onto the snapshot's schema by field id (`FileProjection`, so `eqren`'s delete holding
+  `name` joins the table's `label`), `IS NOT DISTINCT FROM` as Iceberg compares, one `EXISTS`
+  statement per candidate — `LiveRowCount`'s join asked from the delete's end. A delete every
+  candidate answers zero for **removes nothing**, which is the equality kind's dangling and the
+  one thing the metadata cannot reach; a delete the pairing leaves no candidate for is dangling
+  by the metadata alone and nothing is read. The scope is a commit: `EqualityDeleteTargetsSection`
+  on the delete file's panel counts at the newest drawn, unexpired snapshot listing the file's
+  manifest (`newestSnapshotListing`, walked over the graph's structural edges — a manifest
+  carried forward is listed by every later snapshot, and the newest is where the delete is still
+  live if anywhere), through that snapshot's `readInput`, and says which; a delete that snapshot
+  no longer pairs is said to be not live there. `EqualityDeleteTargetsFixtureTest` holds it to
+  the scripts: `eqdel` one row from each of two files, `eqren` the same through the rename with
+  the later row not a candidate, `eqpart`'s partition-keyed delete one row from the `p=y` file
+  alone and its global one from each of three, `fup`'s commit-2 delete `(2, b)` from commit 1's
+  file and its commit-1 delete paired with nothing — and, on every table, no delete matching
+  more rows of a file than `LiveRowCount` removes from it. `equality-delete-targets` and
+  `-dangling` are the captures
 - **A sampled row is the file's, and what a read returns for it is projected onto the current
   schema by field id — the rule every Iceberg reader applies and the card does not.** The card
   prints the file's columns under the file's names, which on a table that evolved after the file
@@ -2410,7 +2432,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,313 tests across 176 files (1,034 in :core, 268 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,320 tests across 177 files (1,040 in :core, 269 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

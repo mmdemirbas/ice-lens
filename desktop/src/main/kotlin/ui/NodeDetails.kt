@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import service.EqualityDeleteTargets
 import service.PositionalDeleteTally
 import service.SampleRowReader
 import model.DeletionVector
@@ -43,6 +44,7 @@ import model.UnreferencedFilesReport
 import model.DeleteReachVerdict
 import model.deleteCandidatesFor
 import model.deleteKindOf
+import model.ledgerKey
 import model.DeleteFileKind
 import model.ManifestContent
 import model.ScanFilter
@@ -1484,6 +1486,139 @@ internal fun PositionalDeleteTargets(
             onFailure = { failure ->
                 Text(
                     "Could not read ${fileNameFromPath(path)}: ${failure.message ?: failure::class.simpleName}",
+                    fontSize = TypeScale.small,
+                    color = colors.error,
+                )
+            },
+        )
+    }
+}
+
+/**
+ * The newest drawn, unexpired snapshot listing a manifest that holds [node] — the scope a delete
+ * file's targets are counted in, since which data files a delete reaches is a question about
+ * one commit. The graph's structural edges are walked rather than the model, so the answer is
+ * about a snapshot the reader can see; a manifest carried forward is listed by every later
+ * snapshot, and the newest is where the delete is still live, if it is anywhere.
+ */
+internal fun newestSnapshotListing(node: GraphNode.FileNode, graph: GraphModel): GraphNode.SnapshotNode? {
+    val nodeById = graph.nodeById
+    val manifestIds = graph.edges.asSequence().filter { it.toId == node.id }.map { it.fromId }
+        .filter { nodeById[it] is GraphNode.ManifestNode }.toSet()
+    if (manifestIds.isEmpty()) return null
+    return graph.edges.asSequence().filter { it.toId in manifestIds }
+        .mapNotNull { nodeById[it.fromId] as? GraphNode.SnapshotNode }
+        .filter { !it.expired && it.readInput.isPresent }
+        .maxWithOrNull(compareBy({ it.data.sequenceNumber ?: -1L }, { it.data.timestampMs ?: 0L }, { it.data.snapshotId ?: 0L }))
+}
+
+/**
+ * [PositionalDeleteTargets]' twin for an equality delete, which names no target at all: the
+ * file is read against every data file the snapshot's pairing leaves for it and the matching rows
+ * counted per file ([EqualityDeleteTargets]). Same shape — a button, the read on IO, [startRequested]
+ * and [onSettled] for the capture — and the answer leads with whether the delete still removes
+ * anything, since a delete every candidate answers zero for is the equality kind's dangling.
+ */
+@Composable
+internal fun EqualityDeleteTargetsSection(
+    node: GraphNode.FileNode,
+    graph: GraphModel,
+    startRequested: Boolean = false,
+    onSettled: () -> Unit = {},
+) {
+    val colors = MaterialTheme.colorScheme
+    val deleteKey = node.data.ledgerKey() ?: return
+    val snapshot = remember(node.id, graph.nodes) { newestSnapshotListing(node, graph) }
+    var requested by remember(node.id) { mutableStateOf(startRequested) }
+    val outcome by produceState<Result<EqualityDeleteTargets.Result?>?>(null, node.id, requested) {
+        value = null
+        if (requested) {
+            value = withContext(Dispatchers.IO) {
+                runCatching {
+                    val input = snapshot?.readInput?.value ?: throw IllegalStateException("the snapshot's files could not be read")
+                    EqualityDeleteTargets.count(input, deleteKey)
+                }
+            }
+            onSettled()
+        }
+    }
+
+    Spacer(Modifier.height(8.dp))
+    if (snapshot == null) {
+        Text(
+            "No drawn snapshot lists this file's manifest, so there is no scope to count its targets in — " +
+                "expand the snapshots above, or draw the whole table.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+        )
+        return
+    }
+    val scope = "snapshot ${snapshot.data.snapshotId}, the newest drawn listing this file's manifest"
+    when {
+        !requested -> {
+            OutlinedButton(onClick = { requested = true }) {
+                Text("Read the file — which data files hold rows it matches, and how many each")
+            }
+            Text(
+                "Counted at $scope: the delete against every data file the pairing leaves for it there.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        outcome == null -> Text(
+            "Reading ${fileNameFromPath(node.localPath.orEmpty())} against its candidates at $scope…",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+        )
+        else -> outcome?.fold(
+            onSuccess = { result ->
+                if (result == null) {
+                    Text(
+                        "Not live at $scope: that commit's pairing lists no such delete file, so it applies to nothing there.",
+                        fontSize = TypeScale.small,
+                        color = colors.onSurfaceVariant,
+                    )
+                    return@fold
+                }
+                val candidates = result.files.size
+                val headline = when {
+                    candidates == 0 -> "The pairing leaves no data file for it at $scope — dangling by the metadata alone " +
+                        "(sequence, partition or bounds ruled every live file out), nothing read."
+                    result.removesNothing == true -> "Removes nothing at $scope: ${formatCounted(candidates, "candidate data file")} " +
+                        "read, none holds a row this delete matches — dangling, which only the rows could say."
+                    else -> "${formatCount(result.matched)} ${if (result.matched == 1L) "row" else "rows"} across " +
+                        "${formatCount(result.filesWithMatches.toLong())} of ${formatCounted(candidates, "candidate data file")} " +
+                        "match this delete at $scope" +
+                        (if (result.failed > 0) "; ${formatCounted(result.failed, "file")} could not be read" else "") +
+                        (if (result.filesLeft > 0) "; ${formatCounted(result.filesLeft, "candidate")} left unopened by the cap of ${EqualityDeleteTargets.MAX_FILES}" else "") +
+                        "."
+                }
+                Text(
+                    headline,
+                    fontSize = TypeScale.small,
+                    color = if (result.removesNothing == true || candidates == 0) colors.error else colors.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                if (result.files.isNotEmpty()) {
+                    WideTable(
+                        headers = listOf("Rows matched", "Data file", "Records", "Note"),
+                        columnWidths = listOf(110.dp, 380.dp, 90.dp, 300.dp),
+                        rows = result.files.map { match ->
+                            listOf(
+                                match.matched?.let { formatCount(it) } ?: "not read",
+                                fileNameFromPath(match.file.recordedPath),
+                                match.file.recordCount?.let { formatCount(it) } ?: "N/A",
+                                match.error ?: if ((match.matched ?: 0L) == 0L) "no row matches: the metadata could not rule it out, the rows do" else "",
+                            )
+                        },
+                        leadCellColors = result.files.map { if (it.error != null) colors.error else null },
+                    )
+                }
+            },
+            onFailure = { failure ->
+                Text(
+                    "Could not count: ${failure.message ?: failure::class.simpleName}",
                     fontSize = TypeScale.small,
                     color = colors.error,
                 )

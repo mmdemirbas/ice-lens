@@ -2194,6 +2194,38 @@ class InspectorRenderTest {
     }
 
     /**
+     * The equality twin: `eqdel`'s delete on `name` read against the two data files the pairing
+     * leaves for it, one matching row in each; and `fup`'s commit-1 delete, which the pairing
+     * leaves nothing for — the state the headline is in the error colour for. The scope line
+     * names the snapshot the count was made at.
+     */
+    @Test
+    fun `an equality delete file is read against the data files the pairing leaves for it`() {
+        val graph = graphFor("eqdel")
+        val delete = graph.nodes.filterIsInstance<GraphNode.FileNode>()
+            .firstOrNull { it.data.content == model.DataFileContent.EQUALITY_DELETES }
+        assertNotNull(delete, "the eqdel fixture should draw an equality delete file")
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("equality-delete-targets", width = 1400, height = 420, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) {
+                EqualityDeleteTargetsSection(delete, graph, startRequested = true) { settled.set(true) }
+            }
+        }
+
+        val fup = graphFor("fup")
+        val dangling = fup.nodes.filterIsInstance<GraphNode.FileNode>()
+            .filter { it.data.content == model.DataFileContent.EQUALITY_DELETES }
+            .minByOrNull { it.sequenceNumber }
+        assertNotNull(dangling, "the fup fixture should draw two equality delete files")
+        val fupSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("equality-delete-targets-dangling", width = 1400, height = 260, ready = fupSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                EqualityDeleteTargetsSection(dangling, fup, startRequested = true) { fupSettled.set(true) }
+            }
+        }
+    }
+
+    /**
      * The live row count, which is the sentence this whole pairing exists to make possible.
      *
      * `mor`'s compacted file records six rows and one of them is deleted, so five are live — and

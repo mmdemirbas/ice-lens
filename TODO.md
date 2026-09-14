@@ -95,8 +95,10 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   all four of `DeleteFileIndex`'s rules — sequence, target, spec and partition, an equality
   delete's bounds — and is held to Iceberg's plan on every table (`IcebergDeletePairingPlanTest`):
   the sequence boundary on `fup`, the bounds rule on `fupp`, the partition and global rules on
-  `eqpart`. What is left unsettled is exactly what the metadata cannot settle: an equality delete
-  whose bounds overlap a file's in its own partition.
+  `eqpart`. What the metadata cannot settle — an equality delete whose bounds overlap a file's
+  in its own partition — is settled by reading, behind a click on the delete file's panel: the
+  matching rows per candidate data file, and *removes nothing* when there are none
+  (`service/EqualityDeleteTargets.kt`). Not drawn as edges, for the reason above.
 
 - **The branch columns are exercised at three branches and at a branch cut from a branch, and
   each found a defect.** `example/iceberg/default/branched3` forks three times at three

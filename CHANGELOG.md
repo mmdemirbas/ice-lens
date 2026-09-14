@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **An equality delete file read against the data files the pairing leaves for it** — behind a
+  click on the delete file's panel, the rows it matches in each candidate at the newest drawn
+  snapshot listing its manifest, both files placed by field id; *removes nothing* when every
+  candidate answers zero, which is the equality kind's dangling and the one thing the metadata
+  cannot say. `eqdel`, `eqren`, `eqpart` and `fup` are the oracles.
 - **The Paimon file panel's `Stats Modes`** — `metadata.stats-mode`, `fields.<name>.stats-mode`,
   `metadata.stats-keep-first-n-columns` and `metadata.stats-mode.per.level` read off the schema
   the file names, at the level the file was written to (an upgraded file keeps level 0's), and
