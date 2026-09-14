@@ -92,6 +92,10 @@ data class RowLookupResult(
     val live: Int get() = hits.count { it.fate == RowFate.LIVE || it.fate == RowFate.MERGED }
     val deleted: Int get() = hits.count { it.fate.deleted }
     val undecided: Int get() = hits.count { it.fate == RowFate.UNKNOWN }
+
+    /** This result with the page read after it: the files and hits in reading order, what is left as the later page says. */
+    operator fun plus(next: RowLookupResult): RowLookupResult =
+        RowLookupResult(filesRead + next.filesRead, next.filesRuledOut, next.filesLeft, hits + next.hits, rule ?: next.rule, next.skippedFiles, next.skippedRows)
 }
 
 data class RowLookupInput(

@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -54,6 +55,8 @@ internal fun RowLookupSection(
     /** Runs the history trace under the lookup without a click — a capture's way in, like [startRequested]. */
     historyRequested: Boolean = false,
     onHistorySettled: () -> Unit = {},
+    /** Files opened per click; a capture lowers it to reach the paged state on a small table. */
+    pageSize: Int = RowLookup.MAX_FILES,
     /** Last, so a caller's trailing lambda is the lookup's. */
     onSettled: () -> Unit = {},
 ) {
@@ -74,21 +77,29 @@ internal fun RowLookupSection(
             .toSet()
     }
     var requestedFor by remember(node.id) { mutableStateOf<ScanFilter?>(if (startRequested) filter else null) }
-    val outcome by produceState<Result<RowLookupResult>?>(null, node.id, requestedFor) {
-        value = null
-        val asked = requestedFor
-        if (asked != null) {
-            value = withContext(Dispatchers.IO) {
-                runCatching {
-                    if (paimon) {
-                        PaimonRowLookup.lookup(requireNotNull(node.paimonRowLookup.value) { "no snapshot to read" }, asked, ruledOut)
-                    } else {
-                        RowLookup.lookup(requireNotNull(node.rowLookup.value) { "no current snapshot to read" }, asked, ruledOut)
-                    }
+    // A table past the cap is read a page per click, the pages folded with `plus` — the same
+    // shape as the integrity panel's file sweep. A new filter starts the pages over.
+    var pagesRequested by remember(node.id) { mutableStateOf(if (startRequested) 1 else 0) }
+    var outcome by remember(node.id) { mutableStateOf<Result<RowLookupResult>?>(null) }
+    var readingPage by remember(node.id) { mutableStateOf(false) }
+    LaunchedEffect(node.id, requestedFor, pagesRequested) {
+        val asked = requestedFor ?: return@LaunchedEffect
+        if (pagesRequested == 0) return@LaunchedEffect
+        readingPage = true
+        val soFar = outcome?.getOrNull()
+        val from = soFar?.filesRead?.size ?: 0
+        outcome = withContext(Dispatchers.IO) {
+            runCatching {
+                val page = if (paimon) {
+                    PaimonRowLookup.lookup(requireNotNull(node.paimonRowLookup.value) { "no snapshot to read" }, asked, ruledOut, from = from, max = pageSize)
+                } else {
+                    RowLookup.lookup(requireNotNull(node.rowLookup.value) { "no current snapshot to read" }, asked, ruledOut, from = from, max = pageSize)
                 }
+                soFar?.plus(page) ?: page
             }
-            onSettled()
         }
+        readingPage = false
+        if (pagesRequested == 1) onSettled()
     }
     val result = outcome?.getOrNull()
     val title = "Row Lookup" + if (result != null) " — ${formatCounted(result.hits.size, "row")}, ${result.live} live" else ""
@@ -118,8 +129,8 @@ internal fun RowLookupSection(
                 if (requestedFor != null && result != null) {
                     Text("The filter has changed since these rows were read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp))
                 }
-                OutlinedButton(onClick = { requestedFor = filter }) {
-                    Text("Read the files the filter leaves (${RowLookup.MAX_FILES} at most)")
+                OutlinedButton(onClick = { requestedFor = filter; outcome = null; pagesRequested = 1 }) {
+                    Text("Read the files the filter leaves ($pageSize at most)")
                 }
                 if (result != null) ResultBody(result, paimon)
             }
@@ -131,6 +142,12 @@ internal fun RowLookupSection(
             )
             else -> {
                 ResultBody(result, paimon)
+                when {
+                    readingPage -> Text("Reading the next files…", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                    result.filesLeft > 0 -> OutlinedButton(onClick = { pagesRequested++ }, modifier = Modifier.padding(top = 8.dp)) {
+                        Text("Read the next ${minOf(pageSize, result.filesLeft)} (${formatCounted(result.filesLeft, "file")} left)")
+                    }
+                }
                 if (node.rowHistory.isPresent) RowHistoryStage(node, filter, ruledOut, paimon, historyRequested, onHistorySettled)
             }
         }
@@ -244,7 +261,7 @@ private fun ResultBody(result: RowLookupResult, paimon: Boolean) {
     Text(
         "${formatCounted(result.hits.size, "matching row")} in ${formatCounted(read, "file")} read" +
             (if (result.filesRuledOut > 0) ", ${result.filesRuledOut} ruled out by the filter" else "") +
-            (if (result.filesLeft > 0) ", ${result.filesLeft} left unread by the cap" else "") +
+            (if (result.filesLeft > 0) ", ${result.filesLeft} not read yet" else "") +
             (if (failed > 0) ", $failed could not be read" else "") +
             ": ${result.live} live, ${result.deleted} ${if (paimon) "not live" else "deleted"}" +
             (result.undecided.takeIf { it > 0 }?.let { ", $it not decided" } ?: "") + ".",

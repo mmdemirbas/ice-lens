@@ -137,6 +137,36 @@ class RowLookupFixtureTest {
         assertEquals(0, result.filesLeft)
     }
 
+    /**
+     * A table past the cap is read a page at a time, and the pages fold into the one result a
+     * single read would give: the same files in the same order, the same hits with the same
+     * fates, nothing left. `parted` is written a row per file, so at two a page it is several
+     * pages, each but the last leaving files unread and saying so.
+     */
+    @Test
+    fun `the files past the cap are read on the next page, and the pages fold into one read`() {
+        val input = input("parted")
+        val filter = ScanFilter.Term(ScanPredicate("id", PredicateOp.GTE, "0"))
+        val whole = RowLookup.lookup(input, filter, emptySet())
+        assertTrue(whole.filesRead.size >= 3, "one page would not page: ${whole.filesRead}")
+
+        var folded: RowLookupResult? = null
+        var pages = 0
+        do {
+            val from = folded?.filesRead?.size ?: 0
+            val page = RowLookup.lookup(input, filter, emptySet(), from = from, max = 2)
+            assertEquals(minOf(2, whole.filesRead.size - from), page.filesRead.size)
+            assertEquals(whole.filesRead.size - from - page.filesRead.size, page.filesLeft)
+            folded = folded?.plus(page) ?: page
+            pages++
+        } while (folded.filesLeft > 0)
+        assertEquals((whole.filesRead.size + 1) / 2, pages)
+        assertEquals(whole.filesRead, folded.filesRead)
+        assertEquals(whole.hits, folded.hits)
+        assertEquals(0, folded.filesLeft)
+        assertEquals(whole.filesRuledOut, folded.filesRuledOut)
+    }
+
     @Test
     fun `a filter renders as a WHERE clause with every literal bound and cast to its column's type`() {
         val filter = ScanFilter.And(listOf(

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **A row lookup past the file cap continues a page at a time.** Sixty-four files a click, the
+  headline counting what is not read yet and a control under the table reading the next page,
+  the pages folded into one result — on both formats, a Paimon page keeping a data-evolution
+  split together
+
 ### Fixed
 - **Startup no longer walks the workspace on the main thread.** A restored warehouse comes back
   with the table list it was saved with and is drawn as `scanning…` until the first poll's sweep

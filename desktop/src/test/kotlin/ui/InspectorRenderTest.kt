@@ -2131,6 +2131,14 @@ class InspectorRenderTest {
                 RowLookupSection(table, eqdel, filter, startRequested = true) { settled.set(true) }
             }
         }
+        // The same at one file a page: the headline counts what is not read yet and the control
+        // under the table offers the next page, sized to what is left.
+        val pagedSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("row-lookup-paged", width = 1400, height = 900, ready = pagedSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                RowLookupSection(table, eqdel, filter, startRequested = true, pageSize = 1) { pagedSettled.set(true) }
+            }
+        }
     }
 
     /**

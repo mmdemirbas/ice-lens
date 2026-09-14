@@ -470,7 +470,10 @@ intellij/src/main/kotlin/plugin/
   type** (`duckDbTypeOf`) — DuckDB compares a typed column with a text parameter only through a
   cast, and the parser keeps literals as text for exactly the reason a cast is needed here. Then
   `service/RowLookup.kt` opens each file the drawn graph's pruning did not rule out (`MAX_FILES`
-  64, `MAX_HITS_PER_FILE` 20, a file not drawn is read rather than guessed at) with
+  64 a click, the rest a page per click and folded with `RowLookupResult.plus` — the sweep's
+  paging shape, and on Paimon a page never lands inside a data-evolution split, since a split is
+  read whole or not at all; `MAX_HITS_PER_FILE` 20, a file not drawn is read rather than guessed
+  at) with
   `file_row_number = true`, and puts every hit to its file's delete files in the order a scan
   finds them decisive: a vector by the position's bit, a positional delete by `(file_path, pos)`
   **with the path as the manifest recorded it** (the container's `/wh/…`, not the local one — a
@@ -2110,7 +2113,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,234 tests across 164 files (964 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,237 tests across 164 files (967 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

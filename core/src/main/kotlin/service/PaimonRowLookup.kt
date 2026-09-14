@@ -91,9 +91,11 @@ object PaimonRowLookup {
 
     /**
      * Reads the files the filter leaves — every live data file whose name is not in
-     * [ruledOut] — and decides each hit.
+     * [ruledOut] — and decides each hit. A table past the cap is read a page at a time, as
+     * [RowLookup.lookup] is: the next call starts [from] the files read so far, which is a
+     * split boundary because a split is read whole or not at all.
      */
-    fun lookup(input: PaimonReadInput, filter: ScanFilter, ruledOut: Set<String>): RowLookupResult {
+    fun lookup(input: PaimonReadInput, filter: ScanFilter, ruledOut: Set<String>, from: Int = 0, max: Int = RowLookup.MAX_FILES): RowLookupResult {
         // A split is read whole when any file of it is left: under data evolution the filter's
         // columns may come from one file and the row's other columns from another, and a file the
         // bounds ruled out is still the one holding those. Level-0 files a batch read skips are
@@ -101,9 +103,13 @@ object PaimonRowLookup {
         val keptSplits = input.splitsOf(input.files).filter { split -> split.any { it.fileName !in ruledOut } }
         val candidates = keptSplits.sumOf { it.size }
         val toRead = mutableListOf<List<PaimonLookupFile>>()
+        var skipping = 0
         var reading = 0
         for (split in keptSplits) {
-            if (reading + split.size > RowLookup.MAX_FILES) break
+            if (skipping < from) { skipping += split.size; continue }
+            // A split wider than the page is still read, alone: a page that reads nothing would be
+            // offered again forever.
+            if (toRead.isNotEmpty() && reading + split.size > max) break
             toRead += split
             reading += split.size
         }
@@ -138,7 +144,7 @@ object PaimonRowLookup {
         val vectors = mutableMapOf<String, DeletionVector?>()
         val hits = raws.map { raw -> decide(input, raw, keyColumns, keyStates[raw.file.partition to raw.file.bucket].orEmpty(), vectors) }
         return RowLookupResult(
-            outcomes, input.files.size - candidates, candidates - reading, hits,
+            outcomes, input.files.size - candidates, (candidates - skipping - reading).coerceAtLeast(0), hits,
             rule = if (input.hasPrimaryKey) input.rule.describe() else null,
             skippedFiles = input.skippedFiles.size,
             skippedRows = input.skippedFiles.sumOf { it.recordCount ?: 0L },

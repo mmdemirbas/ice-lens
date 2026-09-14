@@ -141,6 +141,50 @@ class PaimonRowLookupFixtureTest {
     }
 
     /**
+     * The pages fold into the one result a single read gives, on a primary-key table whose
+     * fates need the bucket's other files: a key's state is asked per bucket whatever page its
+     * file is on, so a page holding the superseded record still calls it superseded. `pc` has
+     * three live files after its compaction; at one a page that is three pages.
+     */
+    @Test
+    fun `the files past the cap are read on the next page, and the pages fold into one read`() {
+        val input = input("pc")
+        val filter = ScanFilter.Term(ScanPredicate("k", PredicateOp.GTE, "1"))
+        val whole = PaimonRowLookup.lookup(input, filter, emptySet())
+        assertTrue(whole.filesRead.size >= 2, "one page would not page: ${whole.filesRead}")
+
+        var folded: RowLookupResult? = null
+        var pages = 0
+        do {
+            val page = PaimonRowLookup.lookup(input, filter, emptySet(), from = folded?.filesRead?.size ?: 0, max = 1)
+            assertEquals(1, page.filesRead.size)
+            folded = folded?.plus(page) ?: page
+            pages++
+        } while (folded.filesLeft > 0)
+        assertEquals(whole.filesRead.size, pages)
+        assertEquals(whole.filesRead, folded.filesRead)
+        assertEquals(whole.hits, folded.hits)
+        assertEquals(7, folded.live)
+    }
+
+    /**
+     * A split is read whole or not at all, so a page never lands inside one: `de`'s patch and
+     * the file it patches are two files read as one, and a page of one file still reads both.
+     */
+    @Test
+    fun `a page never splits a data-evolution split`() {
+        val input = input("de")
+        val filter = ScanFilter.Term(ScanPredicate("id", PredicateOp.GTE, "0"))
+        val whole = PaimonRowLookup.lookup(input, filter, emptySet())
+        val first = PaimonRowLookup.lookup(input, filter, emptySet(), max = 1)
+        assertEquals(2, first.filesRead.size, "the split's two files, together: ${first.filesRead}")
+        val second = PaimonRowLookup.lookup(input, filter, emptySet(), from = first.filesRead.size, max = 1)
+        assertEquals(whole.filesRead, (first + second).filesRead)
+        assertEquals(whole.hits, (first + second).hits)
+        assertEquals(0, second.filesLeft)
+    }
+
+    /**
      * `de` is read stitched: `SELECT *` on the table prints `(1, 11, 1)`, `(2, 22, 2)`, `(3, 33, 0)`
      * (`docs/fixtures/paimon-de.sql`; re-run 2026-09-13 on a copy of the checked-in bytes), the
      * `b` of rows 0..1 coming from the patch file and every other column from the file it

@@ -41,13 +41,16 @@ object RowLookup {
      * not in [ruledOut] — and decides each hit. [reads] holds each file's matching rows by local
      * path, for a caller looking the same files up at several snapshots ([RowHistoryTrace]):
      * the rows a file holds do not change with the snapshot listing it, only their fates do.
+     * A table past the cap is read a page at a time: the next call starts [from] the files read
+     * so far, [max] of them, and [RowLookupResult.plus] folds the pages into one.
      */
     fun lookup(
         input: RowLookupInput, filter: ScanFilter, ruledOut: Set<String>,
         reads: MutableMap<String, Result<List<Map<String, Any?>>>> = mutableMapOf(),
+        from: Int = 0, max: Int = MAX_FILES,
     ): RowLookupResult {
         val candidates = input.dataFiles.filter { normalizeFilePath(it.recordedPath) !in ruledOut }
-        val toRead = candidates.take(MAX_FILES)
+        val toRead = candidates.drop(from).take(max)
         val predicate = filter.toSql { column -> input.schema?.let { s -> s.idOfPath(column)?.let(s::typeOf) } }
         val vectors = mutableMapOf<String, DeletionVector?>()
         val outcomes = mutableListOf<LookupFileOutcome>()
@@ -68,7 +71,7 @@ object RowLookup {
                 hits += decide(file, position, cells - SampleRowReader.FILE_ROW_NUMBER, deletes, vectors, input.schema, input.nameMapping)
             }
         }
-        return RowLookupResult(outcomes, input.dataFiles.size - candidates.size, candidates.size - toRead.size, hits)
+        return RowLookupResult(outcomes, input.dataFiles.size - candidates.size, (candidates.size - from - toRead.size).coerceAtLeast(0), hits)
     }
 
     private fun readMatches(file: LookupDataFile, where: String, params: List<String>, schema: IcebergSchemaModel?, mapping: NameMapping?): List<Map<String, Any?>> {
