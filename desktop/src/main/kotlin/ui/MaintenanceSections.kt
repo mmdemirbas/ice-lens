@@ -30,7 +30,9 @@ import model.ManifestMergeVerdict
 import model.assumedManifestBytes
 import model.UnreferencedFilesReport
 import model.planManifestMerge
+import model.PaimonManifestMergeOptions
 import model.planOrphanRemoval
+import model.planPaimonManifestMerge
 import model.RewriteOptions
 import model.planRewrite
 import model.PositionDeleteRewriteOptions
@@ -346,6 +348,15 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: Unrefer
         val current = input.current
         if (current != null) {
             val snapshotPanel = "snapshot ${current.simpleId}"
+            val manifestInput = current.manifestMergeInput.value.orEmpty()
+            val manifestMerge = planPaimonManifestMerge(manifestInput, PaimonManifestMergeOptions.forTable(current.tableOptions))
+            rows += Row(
+                if (manifestMerge.mergedBins.isNotEmpty()) "would merge ${formatCounted(manifestMerge.mergedManifests, "manifest")}" else "nothing merges",
+                "next commit's manifest merge",
+                "${formatCounted(manifestInput.size, "data manifest")} listed; ${manifestMerge.describe}",
+                "$snapshotPanel → Manifest Merge",
+                if (manifestMerge.mergedBins.isNotEmpty()) verdictSkippedColor() else null,
+            )
             val lsms = current.bucketLsms
             if (current.hasPrimaryKey) {
                 val options = PaimonCompactionOptions.from(current.tableOptions)
@@ -1214,6 +1225,71 @@ internal fun ManifestMergeSection(node: GraphNode.SnapshotNode, graph: GraphMode
                     leadCellColors = rows.map { if (it.second.merged) verdictSkippedColor() else null },
                 )
             }
+        }
+    }
+}
+
+/**
+ * The Paimon twin, decided the way `ManifestFileMerger.merge` decides it on every commit — see
+ * [planPaimonManifestMerge]: the next commit rebuilds the base list from this snapshot's base and
+ * delta manifests, full compaction first (the manifests that must change against
+ * `manifest.full-compaction-threshold-size`), else the minor one (bins that close on
+ * `manifest.target-file-size`, the leftover merged at `manifest.merge-min-count`). One row per bin,
+ * the verdict first, and the leftover's row says how far it is from the count, which is the
+ * figure a reader with twenty-nine manifests came for.
+ */
+@Composable
+internal fun PaimonManifestMergeSection(node: GraphNode.PaimonSnapshotNode) {
+    val colors = MaterialTheme.colorScheme
+    if (!node.manifestMergeInput.isPresent) return
+    val input = node.manifestMergeInput.value.orEmpty()
+    val options = PaimonManifestMergeOptions.forTable(node.tableOptions)
+    val plan = planPaimonManifestMerge(input, options)
+    CountedSection("Manifest Merge — next commit: ${plan.describe}", input.size, "manifests") {
+        Text(
+            "What the next commit does to the base manifest list, the way ManifestFileMerger does it on " +
+                "every commit over this snapshot's base and delta manifests in that order. A full " +
+                "compaction when the manifests that must change — any with a DELETE entry, or under " +
+                "${formatBytes(options.targetSizeBytes)} (manifest.target-file-size) — sum to " +
+                "${formatBytes(options.fullCompactionThresholdBytes)} (manifest.full-compaction-threshold-size), " +
+                "rewriting them with every DELETE and the ADD it cancels dropped; otherwise the manifests fill " +
+                "bins that close at the target size, and the leftover bin is merged only at " +
+                "${options.mergeMinCount} (manifest.merge-min-count) manifests. A merge folds an ADD and a DELETE " +
+                "of one file away, so it can write fewer entries than it reads, or nothing.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (plan.bins.isEmpty()) {
+            Text("Nothing to merge: this snapshot lists no data manifest.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+        } else {
+            Text(
+                "The manifests that must change sum to ${formatBytes(plan.mustChangeBytes)} against the " +
+                    "${formatBytes(options.fullCompactionThresholdBytes)} that triggers a full compaction.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+            WideTable(
+                headers = listOf("Verdict", "Manifests", "Bytes", "Entries In", "Entries Out", "Why"),
+                columnWidths = listOf(190.dp, 90.dp, 90.dp, 90.dp, 90.dp, 520.dp),
+                rows = plan.bins.map { bin ->
+                    listOf(
+                        when {
+                            bin.merged && bin.mergedEntries == 0 -> "MERGED — ${bin.manifests.size} into nothing"
+                            bin.merged -> "MERGED — ${bin.manifests.size} into 1"
+                            bin.manifests.size == 1 -> "kept — alone"
+                            else -> "kept — ${bin.manifests.size} of ${options.mergeMinCount}"
+                        },
+                        "${bin.manifests.size}",
+                        formatBytes(bin.bytes),
+                        formatCount(bin.manifests.sumOf { it.entries.size }),
+                        bin.mergedEntries?.let { formatCount(it.toLong()) } ?: "as they are",
+                        bin.reason,
+                    )
+                },
+                leadCellColors = plan.bins.map { if (it.merged) verdictSkippedColor() else null },
+            )
         }
     }
 }

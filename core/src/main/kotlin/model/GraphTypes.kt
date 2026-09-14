@@ -849,6 +849,12 @@ sealed class GraphNode(
          * threaded through the same deferred replay as [liveFiles].
          */
         val readInput: DeferredRead<PaimonReadInput> = DeferredRead.none(),
+        /**
+         * The snapshot's base and delta manifests as the next commit's merger takes them — see
+         * [planPaimonManifestMerge]. Deferred to avoid building an identifier per entry for every
+         * snapshot at build time; no file is opened.
+         */
+        val manifestMergeInput: DeferredRead<List<PaimonManifestMergeInput>> = DeferredRead.none(),
         /** The options of the schema this snapshot names — the ones its writer ran under. */
         val tableOptions: Map<String, String> = emptyMap(),
         /** False on an append table, which has no LSM tree and compacts only when asked. */

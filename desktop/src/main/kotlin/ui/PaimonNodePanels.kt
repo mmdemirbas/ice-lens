@@ -79,6 +79,7 @@ internal fun ColumnScope.PaimonSnapshotPanel(
         PartitionsSection(node)
         PaimonCompactionSection(node)
         PaimonRollbackSection(node, currentGraph)
+        PaimonManifestMergeSection(node)
         PaimonIndexFilesSection(node)
         PaimonStatisticsSection(node)
         RecursiveDataTableSection(node = node, graphModel = currentGraph)

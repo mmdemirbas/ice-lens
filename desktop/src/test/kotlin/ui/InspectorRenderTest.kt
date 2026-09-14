@@ -1429,6 +1429,21 @@ class InspectorRenderTest {
         renderInspector(graph, "table_root", "paimon-table-partition-expiry", height = 3000, sectionCollapse = onlyExpanded("Partition Expiry", "Maintenance"))
     }
 
+    /**
+     * `pmm`'s snapshot 9: its base list of four plus its delta make the five that
+     * `manifest.merge-min-count = 5` merges at the next commit — one bin, MERGED, ten entries in
+     * and eight out — and snapshot 6's two, kept under the count, beside it.
+     */
+    @Test
+    fun `a paimon snapshot plans the next commit's manifest merge`() {
+        val pmm = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pmm").absolutePath)),
+            showRows = false,
+        )
+        renderInspector(pmm, "psnap_9", "paimon-snapshot-manifest-merge", height = 3600, sectionCollapse = onlyExpanded("Manifest Merge"))
+        renderInspector(pmm, "psnap_6", "paimon-snapshot-manifest-merge-kept", height = 3600, sectionCollapse = onlyExpanded("Manifest Merge"))
+    }
+
     /** `prb`'s snapshot 2: a rollback to it removes two snapshots and a tag and leaves their files behind, listed. */
     @Test
     fun `a paimon snapshot plans what rolling back to it removes and leaves`() {

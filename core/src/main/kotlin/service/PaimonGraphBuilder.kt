@@ -188,6 +188,7 @@ object PaimonGraphBuilder {
                     },
                     bucketLsmsLoader = DeferredRead.of { replay.value?.let { paimonBucketLsms(it.liveEntries.values) } },
                     readInput = DeferredRead.of { replay.value?.let { tableModel.paimonReadInputOf(unifiedSnapshot, it, lineSchema) } },
+                    manifestMergeInput = DeferredRead.of { unifiedSnapshot.manifestMergeInput() },
                     tableOptions = unifiedSnapshot.schema?.options.orEmpty(),
                     hasPrimaryKey = unifiedSnapshot.schema?.primaryKeys?.isNotEmpty() ?: true,
                     indexFiles = unifiedSnapshot.indexFiles,
