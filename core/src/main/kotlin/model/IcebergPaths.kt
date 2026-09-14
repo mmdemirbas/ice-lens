@@ -46,11 +46,19 @@ fun normalizeFilePath(path: String): String {
 }
 
 /**
- * Extracts the numeric version from a metadata file name like `v1.metadata.json` → `1`.
+ * Extracts the numeric version from a metadata file name — a Hadoop table's `v1.metadata.json`
+ * → `1`, a catalog table's `00001-<uuid>.metadata.json` → `1` (`BaseMetastoreTableOperations`
+ * names a version `%05d-<uuid>` at 1.8.1, from `00000` for a new table), either with a gzip
+ * codec in the name (see [isGzipMetadataFileName]); null for any other name.
  * Returns null for non-matching file names.
  */
-fun metadataVersionFromFileName(fileName: String): Int? =
-    fileName.removePrefix("v").removeSuffix(".gz").removeSuffix(".metadata.json").removeSuffix(".gz").toIntOrNull()
+fun metadataVersionFromFileName(fileName: String): Int? {
+    val stem = fileName.removeSuffix(".gz").removeSuffix(".metadata.json").removeSuffix(".gz")
+    if (stem.startsWith("v")) return stem.drop(1).toIntOrNull()
+    // `%05d-<uuid>`: the version, a dash, the 36-character UUID that makes the name unique.
+    val dash = stem.indexOf('-')
+    return if (dash > 0 && stem.length - dash - 1 == 36) stem.substring(0, dash).toIntOrNull() else null
+}
 
 /**
  * Whether [fileName] is a metadata file by Iceberg's naming: `.metadata.json`, which under

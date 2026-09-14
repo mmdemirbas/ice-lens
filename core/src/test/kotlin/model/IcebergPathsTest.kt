@@ -98,6 +98,11 @@ class IcebergPathsTest {
         assertEquals(1, metadataVersionFromFileName("v1.metadata.json"))
         assertEquals(42, metadataVersionFromFileName("v42.metadata.json"))
         assertEquals(100, metadataVersionFromFileName("v100.metadata.json"))
+        // A catalog table's `%05d-<uuid>` (BaseMetastoreTableOperations), from 00000, with or without the gzip codec in the name.
+        assertEquals(0, metadataVersionFromFileName("00000-0b7f3c1e-6a2d-4a4b-9c3e-2f1d8e7a6b5c.metadata.json"))
+        assertEquals(147, metadataVersionFromFileName("00147-0b7f3c1e-6a2d-4a4b-9c3e-2f1d8e7a6b5c.metadata.json"))
+        assertEquals(147, metadataVersionFromFileName("00147-0b7f3c1e-6a2d-4a4b-9c3e-2f1d8e7a6b5c.gz.metadata.json"))
+        assertEquals(3, metadataVersionFromFileName("v3.gz.metadata.json"))
     }
 
     @Test

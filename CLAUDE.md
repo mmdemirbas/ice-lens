@@ -1485,7 +1485,13 @@ intellij/src/main/kotlin/plugin/
   the one reading of that naming, `IcebergReader.readMetadataText` decompresses by it, and the
   listing, the detector, the object-storage glob (`*.metadata.json*`) and the desktop
   fingerprint go through the same predicate. `gzmeta` is the fixture, and every version of it
-  was a `read-metadata-json` error before — the table opened as nothing but errors
+  was a `read-metadata-json` error before — the table opened as nothing but errors. **A
+  catalog table's version is in its name too**: `BaseMetastoreTableOperations` names a version
+  `%05d-<uuid>.metadata.json` from `00000`, and `metadataVersionFromFileName` reads the number
+  off that shape as well as off `v<N>`, so a Hive, Glue or REST table's cards say `METADATA
+  147` and its versions order by number rather than only by `last-updated-ms`;
+  `MetastoreMetadataNamingTest` copies `test` under those names, since the corpus is all
+  Hadoop tables
 - `versionHint` is nullable — `version-hint.text` exists only for HadoopCatalog/HadoopTables
   tables, so absence is normal and must not be reported as a read error
 - **Nothing leaves the graph silently.** `GraphAggregation` draws the first
@@ -2165,7 +2171,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,251 tests across 167 files (981 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,252 tests across 168 files (982 in :core, 261 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

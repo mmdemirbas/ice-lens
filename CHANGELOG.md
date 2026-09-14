@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **A catalog table's metadata versions are numbered.** A Hive, Glue or REST catalog names a
+  version `00147-<uuid>.metadata.json`; the number is read off that name now, as off
+  `v147.metadata.json`, so the cards say `METADATA 147` and the versions order by it
 - **An Iceberg table with gzip-compressed metadata opens.** `write.metadata.compression-codec
   = gzip` names every version `v<N>.gz.metadata.json` and writes gzip bytes; the codec is
   read off the name now, the way Iceberg reads it, where every version was a read error
