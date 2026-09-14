@@ -630,6 +630,7 @@ internal fun ColumnScope.SnapshotPanel(
         PositionDeleteRewriteSection(node, currentGraph)
         ManifestMergeSection(node, currentGraph)
         ManifestRewriteSection(node, currentGraph)
+        IcebergRollbackSection(node, currentGraph, nowMs = expiryClock())
 
         DeleteReachSection(node, children)
 

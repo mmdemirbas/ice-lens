@@ -1445,6 +1445,20 @@ class InspectorRenderTest {
     }
 
     /**
+     * `sweep`'s second commit is two below main's tip on the current line, with the rolled-back
+     * fourth commit already off it — so a rollback to it leaves two commits, and the expiry after
+     * (at the pinned clock) removes three snapshots. `branched`'s `audit` tip is off main's line, which `rollback_to_snapshot` refuses
+     * and `set_current_snapshot` takes, leaving two commits both held by tags.
+     */
+    @Test
+    fun `an iceberg snapshot plans the rollback to it and the expiry after`() {
+        val sweep = graphFor("sweep")
+        renderInspector(sweep, "snap_6454228146597789500", "snapshot-node-rollback", height = 3200, sectionCollapse = onlyExpanded("Rollback"))
+        val branched = graphFor("branched")
+        renderInspector(branched, "snap_1183816113347240589", "snapshot-node-rollback-refused", height = 3200, sectionCollapse = onlyExpanded("Rollback"))
+    }
+
+    /**
      * `sweepb`'s `dev` sits four commits behind `main`, so one of its two pairs moves; `branched`'s
      * two lines have both moved on and every pair is refused — the verdict column needs both. `br`
      * is the Paimon side: fast-forwarding `dev` drops two of main's commits and leaves eight files.

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Rollback`** on the Iceberg snapshot panel — whether `rollback_to_snapshot` to this
+  snapshot is allowed (an ancestor of the current one) or only `set_current_snapshot` would
+  do it, the times `rollback_to_timestamp` lands here for, the commits main would move past
+  with the refs still holding each, and what an expiry after the rollback would remove and
+  free. `docs/fixtures/rollback.sql` records the runs.
 - **`Fast-Forward`** on the Iceberg metadata panel and the Paimon table panel — what
   `fast_forward` would do: on Iceberg, which branch can move to which ref under the ancestor
   rule and which pairs are refused; on Paimon, which of main's commits the call drops in favour

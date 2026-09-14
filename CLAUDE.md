@@ -91,6 +91,7 @@ core/src/main/kotlin/
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonManifestMergePlan.kt # What the next Paimon commit does to the base manifest list — ManifestFileMerger's full and minor compactions
 │   ├── FastForwardPlan.kt     # fast_forward on both formats — Iceberg's ref move under the ancestor rule, Paimon's replacement of main from the branch's earliest snapshot on, and what that leaves
+│   ├── IcebergRollbackPlan.kt # rollback_to_snapshot, set_current_snapshot and rollback_to_timestamp — the ancestor rule, what main moves past, and the metadata the commit writes for the expiry after
 │   ├── PaimonReplay.kt        # Paimon's delta-over-base replay: per-manifest figures, the file set, and a per-entry trace — one walk
 │   ├── SchemaFieldRows.kt     # A schema as one row per field, nested fields under their path with the ids the format evolves them by — both schema panels' table
 │   ├── IcebergExport.kt       # The Iceberg metadata a Paimon table writes beside its own, against the table it exports — which of its live files an Iceberg reader sees
@@ -1955,6 +1956,24 @@ intellij/src/main/kotlin/plugin/
   current" with one "set back" in it has to be findable without reading every row. The abandoned
   commit gets a column of its own from `snapshotTracks` for free: it is a second child of the
   reset's target, and the trunk rule keeps `main` where it was
+- **And the rollback itself is planned, with the expiry that follows it.** `model/IcebergRollbackPlan.kt`
+  reads `SetSnapshotOperation` (1.8.1): `rollback_to_snapshot` only onto an ancestor of the
+  current snapshot (`Cannot roll back to snapshot, not an ancestor of the current state`),
+  `set_current_snapshot` onto any snapshot the table holds, `rollback_to_timestamp` onto the
+  newest current ancestor whose timestamp is *strictly* before the time (`findLatestAncestorOlderThan`;
+  the first commit's own moment is refused with `Cannot roll back, no valid snapshot older than`)
+  — so every current ancestor has a window of times that land on it (`timestampWindow`,
+  `rollbackTargetForTime`). The plan names what main moves past (`leftBehind`: the current
+  ancestors the target's line does not reach, with the refs that still hold each) and builds
+  the metadata the commit writes (`after`: main and `current-snapshot-id` moved, a `snapshot-log`
+  entry added), which is what the expiry planners are then run on — the snapshot panel's
+  `Rollback` section says what an `expire_snapshots(older_than = now)` after the rollback would
+  remove and free, the reverted commits' files among it, since that is what a rollback costs on
+  Iceberg and Paimon's costs at once. `sweep` and `rolled` each record a reset in their metadata
+  log, and `IcebergRollbackFixtureTest` holds the plan from the version before to the version
+  after and to the log reader's own `leftBehind`; `docs/fixtures/rollback.sql` records the
+  refusals on `sweep`, `branched` and `rolled`, `set_current_snapshot` moving `branched`'s main
+  onto `audit`'s tip, and the timestamp rule a millisecond after a commit and at its own moment
 - **A null sequence number on an entry means "the manifest's", never "unknown".** Iceberg inherits
   it: an entry written by the commit that wrote its manifest stores nothing, because every entry
   that commit adds shares one number, and only an entry *carried forward* records one of its own.
@@ -2687,7 +2706,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,385 tests across 188 files (1,092 in :core, 280 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,390 tests across 189 files (1,096 in :core, 281 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -33,6 +33,8 @@ import model.planManifestMerge
 import model.PaimonManifestMergeOptions
 import model.planOrphanRemoval
 import model.IcebergFastForwardVerdict
+import model.IcebergRollbackVerdict
+import model.planRollback
 import model.PaimonFastForwardPlan
 import model.fastForwardPlans
 import model.planFastForward
@@ -918,6 +920,101 @@ internal fun PaimonRollbackSection(node: GraphNode.PaimonSnapshotNode, graph: Gr
         }
     }
 }
+
+/**
+ * What setting `main` back to this snapshot does, and what the expiry after it would free — see
+ * [planRollback] on the Iceberg side: `rollback_to_snapshot` only onto a current ancestor,
+ * `set_current_snapshot` onto anything, `rollback_to_timestamp` onto the newest ancestor before
+ * a time; none writes a snapshot, and the commits main moves past wait for an expiry. The
+ * Paimon twin is [PaimonRollbackSection], and the difference is the point: Paimon deletes the
+ * snapshot files at once and leaves the data as orphans, Iceberg keeps everything until an
+ * expiry frees the reverted commits' files. Drawn on every retained, unexpired snapshot; the
+ * current one says a rollback to it does nothing.
+ */
+@Composable
+internal fun IcebergRollbackSection(node: GraphNode.SnapshotNode, graph: GraphModel, nowMs: Long) {
+    val colors = MaterialTheme.colorScheme
+    if (node.expired) return
+    val meta = graph.newestMetadata() ?: return
+    val id = node.data.snapshotId ?: return
+    val plan = meta.planRollback(id, nowMs)
+    val title = "Rollback" + when (plan.verdict) {
+        IcebergRollbackVerdict.MOVES -> " — ${formatCounted(plan.leftBehind.size, "commit")} would be left behind"
+        IcebergRollbackVerdict.NOT_AN_ANCESTOR -> " — refused, set_current_snapshot would leave ${formatCounted(plan.leftBehind.size, "commit")}"
+        else -> ""
+    }
+    Section(title) {
+        Text(
+            "What rollback_to_snapshot($id) does, the way SetSnapshotOperation does it: main is pointed at " +
+                "this snapshot — only ever at an ancestor of the current one — and a snapshot-log entry records the " +
+                "moment; set_current_snapshot takes any snapshot the table holds, and rollback_to_timestamp picks " +
+                "the newest current ancestor before the time. No snapshot is written and nothing is deleted: the " +
+                "commits main moves past stay in the metadata, on no ref unless a tag or branch names them, until " +
+                "an expiry removes them and frees the files they added. Paimon's rollback deletes the snapshot files " +
+                "at once and leaves their data as orphans.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        when (plan.verdict) {
+            IcebergRollbackVerdict.NOTHING_TO_DO -> {
+                Text("This is the current snapshot: a rollback to it changes nothing.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+                plan.timestampWindow?.let { w -> Text(windowText(w), fontSize = TypeScale.small, color = colors.onSurfaceVariant) }
+                return@Section
+            }
+            IcebergRollbackVerdict.UNKNOWN_SNAPSHOT -> {
+                Text(plan.reason, fontSize = TypeScale.small, color = colors.error)
+                return@Section
+            }
+            else -> {}
+        }
+        Text(
+            when (plan.verdict) {
+                IcebergRollbackVerdict.MOVES -> "rollback_to_snapshot: ALLOWED — ${plan.reason}."
+                else -> "rollback_to_snapshot: REFUSED — ${plan.reason}."
+            },
+            fontSize = TypeScale.small,
+            fontWeight = FontWeight.Bold,
+            color = if (plan.verdict == IcebergRollbackVerdict.MOVES) colors.onSurface else colors.error,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        plan.timestampWindow?.let { w -> Text(windowText(w), fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 4.dp)) }
+        if (plan.leftBehind.isNotEmpty()) {
+            WideTable(
+                headers = listOf("Left Behind", "Still Held By", "Then"),
+                columnWidths = listOf(200.dp, 200.dp, 520.dp),
+                rows = plan.leftBehind.map { s ->
+                    listOf(
+                        "snapshot ${graph.nodeById["snap_${s.snapshotId}"]?.let { (it as? GraphNode.SnapshotNode)?.simpleId } ?: s.snapshotId}",
+                        if (s.heldBy.isEmpty()) "no ref" else s.heldBy.joinToString(", "),
+                        if (s.heldBy.isEmpty()) "on no ref and off the current line: the next expiry removes it and frees what it added"
+                        else "kept by the ref for as long as the ref lasts; its files stay",
+                    )
+                },
+                leadCellColors = plan.leftBehind.map { if (it.heldBy.isEmpty()) verdictSkippedColor() else null },
+            )
+        }
+        // The expiry after: planned on the metadata the rollback writes, under older_than = now.
+        val after = plan.after
+        if (after != null) {
+            val expiry = after.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs))
+            val removedBehind = plan.leftBehind.filter { it.snapshotId in expiry.removed }
+            val files = graph.tableNode()?.expiryFiles?.value?.copy(metadata = after)?.planExpiryFiles(expiry.removed.toSet())
+            Text(
+                "An expire_snapshots(older_than = now) after it would remove ${formatCounted(expiry.removed.size, "snapshot")}" +
+                    (if (removedBehind.isNotEmpty()) ", the ${formatCounted(removedBehind.size, "left-behind commit")} among them" else ", none of them left behind") +
+                    (files?.let { f -> ", and free ${f.describe}" + (if (f.files.isNotEmpty()) " — ${formatBytes(f.knownBytes)} the metadata accounts for, ${f.cleanup.label}" else "") } ?: "") + ".",
+                fontSize = TypeScale.small,
+                color = if (removedBehind.isNotEmpty()) verdictUnevaluatedColor() else colors.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
+}
+
+private fun windowText(w: LongRange): String =
+    "rollback_to_timestamp lands here for a time from ${formatAppTimestampExact(w.first)}" +
+        (if (w.last == Long.MAX_VALUE) " on" else " up to ${formatAppTimestampExact(w.last)}") + "."
 
 /**
  * What `fast_forward(table, branch, to)` would do for every branch against every other ref —
