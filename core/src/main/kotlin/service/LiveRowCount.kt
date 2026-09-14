@@ -119,9 +119,9 @@ object LiveRowCount {
         val equalityPaths = equality.map { SampleRowReader.resolveForQuery(it.localPath) }
         // The data file and each equality delete under the schema's names (FileProjection), so
         // the join matches a column by what it is rather than by what either file called it.
-        val data = FileProjection.of(ext, SampleRowReader.fileColumnsOf(file.localPath), input.schema, input.nameMapping, rowNumber = true, alias = "d")
+        val data = FileProjection.of(ext, SampleRowReader.fileColumnTreeOf(file.localPath), input.schema, input.nameMapping, rowNumber = true, alias = "d")
         val equalitySources = equality.mapIndexed { index, delete ->
-            FileProjection.of(equalityPaths[index].second, SampleRowReader.fileColumnsOf(delete.localPath), input.schema, input.nameMapping, alias = "e")
+            FileProjection.of(equalityPaths[index].second, SampleRowReader.fileColumnTreeOf(delete.localPath), input.schema, input.nameMapping, alias = "e")
         }
         if (positional.isNotEmpty()) {
             val branches = positionalPaths.joinToString(" UNION ALL ") { (_, deleteExt) -> "SELECT pos FROM ${SampleRowReader.readerCall(deleteExt)} WHERE file_path = ?" }

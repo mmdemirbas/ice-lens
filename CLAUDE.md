@@ -60,6 +60,7 @@ core/src/main/kotlin/
 │   ├── PaimonUnifiedModel.kt  # Aggregated Paimon data layer — reads & links snapshots, schemas, manifests
 │   ├── GraphTypes.kt          # Point, GraphModel (nodeById, layoutPositions, groups), GraphNode (sealed incl. Paimon + GroupNode), AggregationKind, GraphEdge, TableSummary/ContentStats
 │   ├── IcebergTypes.kt        # Iceberg type model + parser (field-id → type, from a manifest's own schema)
+│   ├── FileColumnTree.kt      # A data file's columns as a tree with the id each records — what a nested column is placed by
 │   ├── SingleValueDecoder.kt  # Appendix D: bytes + type → DecodedValue (bounds, partition values)
 │   ├── PuffinSchema.kt        # Puffin footer JSON + DeletionVector (positions, and the two figures it is checked against)
 │   ├── PartitionStatistics.kt # A partition statistics file's rows, read through DuckDB, and the record they are checked against
@@ -941,9 +942,20 @@ intellij/src/main/kotlin/plugin/
   `decodePaimonRow`). Both oracles were rerun: `eqren` and `deep` on the Iceberg side (48 cases),
   `pse` and `pkr` on the Paimon side, every case agreeing file for file. The row lookup reads a
   nested leaf as struct access (`quoteSqlColumnPath`: `"addr"."zip"`, the type through
-  `idOfPath`), so a filter on a leaf every file holds answers; what it still cannot do is
-  rename *inside* a struct — the projection renames top-level columns only, so `addr.town` on
-  the file written when it was `city` reports DuckDB's error rather than the row, said per file
+  `idOfPath`), and **a rename inside a struct is read through the file's struct rebuilt by
+  id**: `SampleRowReader.fileColumnTreeOf` reads a file's columns as a tree (`FileColumn` —
+  Parquet's `parquet_schema` walked by children count with the `LIST` wrapper and the `MAP`
+  `key_value` folded away, an Avro schema by its `field-id` / `element-id` / `key-id` /
+  `value-id`), and `FileProjection` places a struct's fields by id the way it places the
+  top-level ones, emitting `struct_pack(town := f.addr.city, zip := f.addr.zip, country :=
+  CAST(NULL AS VARCHAR))` where the file's shape is not the schema's and the bare column where
+  it is; a list's element and a map's key and value go through `list_transform` with DuckDB's
+  `lambda` form. So `addr.town = 'Ankara'` finds the two rows in the file written when it was
+  `city`, and `addr.country IS NULL` the three rows that predate the column. The tree is the
+  one reader and the flat map is its top level, so nothing that placed by name changed. What
+  is still by name: a Paimon file's nested fields (its placement is a flat map by the file's
+  schema) and the row panel's `Read As`, which renames the cells it has and cannot rebuild a
+  struct inside a DuckDB value
 - **A filter is a boolean expression, and `NOT` is removed before anything is evaluated.**
   `model/ScanFilter.kt` holds `Term`/`And`/`Or`/`Not`; `evaluateScan`, `evaluatePruning` and
   `evaluateFilePruning` each take one, and the list form every existing caller passes is wrapped
@@ -2086,7 +2098,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,231 tests across 164 files (962 in :core, 260 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,232 tests across 164 files (963 in :core, 260 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

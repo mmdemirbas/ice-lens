@@ -5,6 +5,9 @@ package service
 import com.github.avrokotlin.avro4k.Avro
 import com.github.avrokotlin.avro4k.decodeFromGenericData
 import com.github.avrokotlin.avro4k.schema
+import model.FileColumn
+import model.topLevel
+import org.apache.avro.Schema
 import org.apache.avro.file.DataFileReader
 import org.apache.avro.generic.GenericDatumReader
 import org.apache.avro.generic.GenericRecord
@@ -105,10 +108,32 @@ object AvroReader {
      * An Avro file's top-level fields in schema order with the `field-id` each carries, or null
      * — what Iceberg's Avro writer records, and what a read places the column by.
      */
-    fun fileColumnsOf(localPath: String): Map<String, Int?> =
+    fun fileColumnsOf(localPath: String): Map<String, Int?> = fileColumnTreeOf(localPath).topLevel()
+
+    /**
+     * The file's columns as a tree — see [model.FileColumn]: a record's fields by `field-id`, an
+     * array's element by the array's `element-id`, a map's key and value by `key-id` and
+     * `value-id`, which is where Iceberg's Avro writer puts them; a nullable union is its
+     * non-null branch.
+     */
+    fun fileColumnTreeOf(localPath: String): List<FileColumn> =
         DataFileReader(ChannelInput(Files.newByteChannel(StorageLocation.pathOf(localPath))), GenericDatumReader<GenericRecord>())
-            // `getProp` answers string-valued props only; the id is a JSON number, so `getObjectProp`.
-            .use { reader -> reader.schema.fields.associate { f -> f.name() to (f.getObjectProp("field-id") as? Number)?.toInt() } }
+            .use { reader -> reader.schema.fields.map { f -> avroColumn(f.name(), (f.getObjectProp("field-id") as? Number)?.toInt(), f.schema()) } }
+
+    private fun avroColumn(name: String, fieldId: Int?, schema: Schema): FileColumn {
+        val type = if (schema.type == Schema.Type.UNION) schema.types.firstOrNull { it.type != Schema.Type.NULL } ?: schema else schema
+        // `getProp` answers string-valued props only; an id is a JSON number, so `getObjectProp`.
+        fun idOf(s: Schema, prop: String) = (s.getObjectProp(prop) as? Number)?.toInt()
+        return when (type.type) {
+            Schema.Type.RECORD -> FileColumn(name, fieldId, FileColumn.Kind.STRUCT, type.fields.map { avroColumn(it.name(), (it.getObjectProp("field-id") as? Number)?.toInt(), it.schema()) })
+            Schema.Type.ARRAY -> FileColumn(name, fieldId, FileColumn.Kind.LIST, listOf(avroColumn("element", idOf(type, "element-id"), type.elementType)))
+            Schema.Type.MAP -> FileColumn(
+                name, fieldId, FileColumn.Kind.MAP,
+                listOf(FileColumn("key", idOf(type, "key-id"), FileColumn.Kind.PRIMITIVE), avroColumn("value", idOf(type, "value-id"), type.valueType)),
+            )
+            else -> FileColumn(name, fieldId, FileColumn.Kind.PRIMITIVE)
+        }
+    }
 
     /**
      * The `avro.codec` an Avro file's header names — `null` when the header names none, which

@@ -1,5 +1,7 @@
 package service
 
+import model.FileColumn
+import model.topLevel
 import org.slf4j.LoggerFactory
 import java.io.File
 
@@ -147,35 +149,57 @@ object SampleRowReader {
      * name mapping for the nulls (`placeFileColumns`). Empty on a failure to read, since a row
      * card has to draw without it.
      */
-    fun fileColumnsOf(filePath: String): Map<String, Int?> = runCatching {
+    fun fileColumnsOf(filePath: String): Map<String, Int?> = fileColumnTreeOf(filePath).topLevel()
+
+    /**
+     * The same as a tree — see [FileColumn]. A Parquet file's `parquet_schema` lists every node
+     * depth-first with its children count, so the tree is rebuilt by consuming that count at
+     * each depth; a `LIST` group's repeated wrapper and a `MAP` group's `key_value` are folded
+     * away, since neither records an id and the schema has no node for them. An Avro file's
+     * schema is walked the same way through the ids Iceberg's writer puts on it.
+     */
+    fun fileColumnTreeOf(filePath: String): List<FileColumn> = runCatching {
         val (safePath, ext) = resolveDataFile(filePath)
         when (ext) {
-            "avro" -> AvroReader.fileColumnsOf(safePath)
+            "avro" -> AvroReader.fileColumnTreeOf(safePath)
             else -> DuckDb.withConnection { conn ->
-                conn.prepareStatement("SELECT name, num_children, field_id FROM parquet_schema(?)").use { st ->
+                conn.prepareStatement("SELECT name, num_children, field_id, converted_type, repetition_type FROM parquet_schema(?)").use { st ->
                     st.setString(1, safePath)
                     st.executeQuery().use { rs ->
-                        val columns = linkedMapOf<String, Int?>()
-                        // Children left to consume at each depth; the root's count opens the walk.
-                        val pending = ArrayDeque<Int>()
-                        var first = true
+                        data class Node(val name: String, val children: Int, val fieldId: Int?, val converted: String?, val repeated: Boolean)
+                        val nodes = mutableListOf<Node>()
                         while (rs.next()) {
-                            val name = rs.getString(1)
-                            val children = rs.getObject(2)?.let { (it as Number).toInt() } ?: 0
-                            val fieldId = rs.getObject(3)?.let { (it as Number).toInt() }
-                            if (first) { first = false; pending.addLast(children); continue }
-                            while (pending.isNotEmpty() && pending.last() == 0) pending.removeLast()
-                            if (pending.isEmpty()) break
-                            pending[pending.lastIndex] = pending.last() - 1
-                            if (pending.size == 1) columns.putIfAbsent(name, fieldId)
-                            if (children > 0) pending.addLast(children)
+                            nodes += Node(
+                                rs.getString(1),
+                                rs.getObject(2)?.let { (it as Number).toInt() } ?: 0,
+                                rs.getObject(3)?.let { (it as Number).toInt() },
+                                rs.getString(4),
+                                rs.getString(5) == "REPEATED",
+                            )
                         }
-                        columns
+                        var at = 1 // the root is first
+                        fun read(): FileColumn {
+                            val node = nodes[at++]
+                            val children = (0 until node.children).map { read() }
+                            return when {
+                                node.converted == "LIST" && children.size == 1 -> {
+                                    // Three-level: the repeated wrapper holds the element; two-level: the repeated node is the element.
+                                    val wrapper = children.single()
+                                    val element = if (wrapper.fieldId == null && wrapper.children.size == 1 && wrapper.kind == FileColumn.Kind.STRUCT) wrapper.children.single() else wrapper
+                                    FileColumn(node.name, node.fieldId, FileColumn.Kind.LIST, listOf(element))
+                                }
+                                node.converted == "MAP" && children.size == 1 && children.single().children.size == 2 ->
+                                    FileColumn(node.name, node.fieldId, FileColumn.Kind.MAP, children.single().children)
+                                node.children > 0 -> FileColumn(node.name, node.fieldId, FileColumn.Kind.STRUCT, children)
+                                else -> FileColumn(node.name, node.fieldId, FileColumn.Kind.PRIMITIVE)
+                            }
+                        }
+                        if (nodes.isEmpty()) emptyList() else (0 until nodes[0].children).map { read() }
                     }
                 }
             }
         }
-    }.getOrElse { e -> logger.debug("columns unavailable for {}: {}", filePath, e.message); emptyMap() }
+    }.getOrElse { e -> logger.debug("columns unavailable for {}: {}", filePath, e.message); emptyList() }
 
     /** [fileColumnsOf] without the columns recording no id. */
     fun fieldIdsOf(filePath: String): Map<String, Int> = fileColumnsOf(filePath).mapNotNull { (name, id) -> id?.let { name to it } }.toMap()

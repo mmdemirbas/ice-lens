@@ -80,21 +80,46 @@ class DeepFixtureTest {
     }
 
     /**
-     * The lookup reads a nested leaf as struct access — `"addr"."zip"` — under the current
-     * names, so a filter on a leaf the files all hold answers; a leaf renamed inside the struct
-     * after a file was written is still the old name inside that file's struct, and the file
-     * reports DuckDB's error rather than a wrong answer — the projection renames top-level
-     * columns only, which TODO.md records.
+     * The lookup reads a nested leaf as struct access — `"addr"."town"` — under the current
+     * names, and the old file answers it too: its struct is rebuilt by field id
+     * (`FileProjection`'s `struct_pack`), so `city` is read as `town` and the `country` the
+     * file predates is null. The projected cell is what a read returns for the row.
      */
     @Test
-    fun `the lookup reads a nested leaf by path, and says so where a rename inside the struct leaves the old file unreadable`() {
+    fun `the lookup reads a nested leaf by path through the old file's struct rebuilt by id`() {
         val input = assertNotNull(model.rowLookupInput())
         val zips = RowLookup.lookup(input, ScanFilter.Term(ScanPredicate("addr.zip", PredicateOp.LT, "7000")), emptySet())
         assertTrue(zips.filesRead.all { it.error == null }, zips.filesRead.toString())
         assertEquals(mapOf("1" to RowFate.LIVE, "3" to RowFate.LIVE), zips.hits.associate { it.cells["id"].toString() to it.fate })
-        val towns = RowLookup.lookup(input, ScanFilter.Term(ScanPredicate("addr.town", PredicateOp.EQ, "Izmir")), emptySet())
-        assertEquals(listOf("4"), towns.hits.map { it.cells["id"].toString() })
-        val old = towns.filesRead.single { it.filePath.substringAfterLast('/').startsWith("00000-0-") }
-        assertTrue(old.error?.contains("town") == true, "the old file's struct has no town: ${old.error}")
+        val izmir = RowLookup.lookup(input, ScanFilter.Term(ScanPredicate("addr.town", PredicateOp.EQ, "Izmir")), emptySet())
+        assertTrue(izmir.filesRead.all { it.error == null }, izmir.filesRead.toString())
+        assertEquals(listOf("4"), izmir.hits.map { it.cells["id"].toString() })
+        // `Ankara` sits in the file written before the rename, under `city`.
+        val ankara = RowLookup.lookup(input, ScanFilter.Term(ScanPredicate("addr.town", PredicateOp.EQ, "Ankara")), emptySet())
+        assertTrue(ankara.filesRead.all { it.error == null }, ankara.filesRead.toString())
+        assertEquals(listOf("1", "3"), ankara.hits.map { it.cells["id"].toString() }.sorted())
+        val addr = ankara.hits.first { it.cells["id"].toString() == "1" }.cells["addr"].toString()
+        assertTrue("town" in addr && "Ankara" in addr && "country" in addr && "city" !in addr, addr)
+        // A struct field added after the file: null in the old file, `TR` in the new one.
+        val noCountry = RowLookup.lookup(input, ScanFilter.Term(ScanPredicate("addr.country", PredicateOp.IS_NULL, "")), emptySet())
+        assertEquals(listOf("1", "2", "3"), noCountry.hits.map { it.cells["id"].toString() }.sorted())
+        val tr = RowLookup.lookup(input, ScanFilter.Term(ScanPredicate("addr.country", PredicateOp.EQ, "TR")), emptySet())
+        assertEquals(listOf("4"), tr.hits.map { it.cells["id"].toString() })
+    }
+
+    @Test
+    fun `a file's column tree has the schema's shape, the list and map wrappers folded away`() {
+        val file = model.metadatas.last().snapshots.first().manifests.flatMap { it.dataFiles }.first()
+        val tree = service.SampleRowReader.fileColumnTreeOf(file.path.toString())
+        assertEquals(listOf("id" to 1, "name" to 2, "addr" to 3, "tags" to 4, "props" to 5), tree.map { it.name to it.fieldId })
+        val addr = tree.first { it.name == "addr" }
+        assertEquals(FileColumn.Kind.STRUCT, addr.kind)
+        assertEquals(listOf("city" to 6, "zip" to 7), addr.children.map { it.name to it.fieldId })
+        val tags = tree.first { it.name == "tags" }
+        assertEquals(FileColumn.Kind.LIST, tags.kind)
+        assertEquals(listOf("element" to 8), tags.children.map { it.name to it.fieldId })
+        val props = tree.first { it.name == "props" }
+        assertEquals(FileColumn.Kind.MAP, props.kind)
+        assertEquals(listOf("key" to 9, "value" to 10), props.children.map { it.name to it.fieldId })
     }
 }
