@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   list, the way `ManifestFileMerger` does it on every commit: the bins that close on
   `manifest.target-file-size`, the leftover merged at `manifest.merge-min-count`, a full
   compaction past `manifest.full-compaction-threshold-size`, and how many entries a merge
-  writes once an ADD and a DELETE of one file cancel. On the `Maintenance` summary too.
-  Fixture `pmm`.
+  writes once an ADD and a DELETE of one file cancel, and what `sys.compact_manifest` would
+  rewrite instead. On the `Maintenance` summary too. Fixtures `pmm` and `pmma`.
 - **What `remove_orphan_files` would delete** — the table panel's `Unreferenced Files` plans a
   bare call over the walk: each file `REMOVED`, `too young` (Iceberg's default cutoff is three
   days, Paimon's one) or `never listed` (Iceberg hides `_` and `.` names; Paimon lists only

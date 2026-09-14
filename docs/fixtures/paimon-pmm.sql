@@ -50,6 +50,25 @@
 --           --conf spark.ui.enabled=false -f /tmp/paimon-pmm.sql"
 --   rm -rf example/paimon/db.db/pmm && cp -R "$WH/db.db/pmm" example/paimon/db.db/pmm
 --   find example/paimon/db.db/pmm -name '.*.crc' -delete
+--
+-- pmma is pmm after CALL sys.compact_manifest — FileStoreCommitImpl.compactManifestOnce, the
+-- same merge with manifest.merge-min-count and manifest.full-compaction-threshold-size both at
+-- 1, committing a COMPACT snapshot with an empty delta list only when the set of manifests
+-- changed. Regenerate it from the checked-in pmm (the copy keeps the file names the two share):
+--
+--   WH=$(mktemp -d); mkdir -p "$WH/db.db"; cp -R example/paimon/db.db/pmm "$WH/db.db/pmma"
+--   docker run --rm --entrypoint bash -v "$WH:/wh" -v "$JAR:/opt/paimon-spark.jar:ro" \
+--     tabulario/spark-iceberg:latest \
+--     -c "/opt/spark/bin/spark-sql --master local[1] --jars /opt/paimon-spark.jar <the same confs> \
+--           -e \"CALL sys.compact_manifest(table => 'db.pmma'); SELECT count(*) FROM db.pmma; CALL sys.compact_manifest(table => 'db.pmma');\""
+--   rm -rf example/paimon/db.db/pmma && cp -R "$WH/db.db/pmma" example/paimon/db.db/pmma
+--   find example/paimon/db.db/pmma -name '.*.crc' -delete
+--
+-- Observed (2026-09-15): the first call returned true and wrote snapshot 13 — COMPACT, base list
+-- of one manifest holding the ten ADDs (snapshot 12's merged manifest of seven and three of one),
+-- numDeletedFiles 0, delta list empty, deltaRecordCount 0, totalRecordCount 10, the index
+-- manifest, statistics and nextRowId of snapshot 12; count(*) 10; the second call returned true
+-- and wrote nothing — LATEST stayed at 13.
 
 CREATE DATABASE IF NOT EXISTS db;
 CREATE TABLE db.pmm (id INT, v STRING) TBLPROPERTIES ('bucket' = '-1', 'manifest.merge-min-count' = '5');

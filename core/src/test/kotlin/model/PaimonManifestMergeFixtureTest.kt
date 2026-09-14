@@ -37,7 +37,13 @@ class PaimonManifestMergeFixtureTest {
             byId.zipWithNext().forEach { (older, newer) ->
                 if (newer.metadata.id != older.metadata.id!! + 1) return@forEach
                 pairs++
-                val plan = planPaimonManifestMerge(older.manifestMergeInput(), optionsAt(line, newer))
+                // A `sys.compact_manifest` commit is a COMPACT with an empty delta list that changes
+                // nothing but the base list — `ad`'s vector-writing COMPACT has an empty delta too,
+                // and a new index manifest. Such a snapshot is held to the procedure's plan instead.
+                val manifestCompaction = newer.metadata.commitKind == "COMPACT" && newer.deltaManifests.isEmpty() &&
+                    newer.metadata.indexManifest == older.metadata.indexManifest
+                val plan = if (manifestCompaction) planPaimonManifestCompaction(older.manifestMergeInput(), optionsAt(line, newer))
+                else planPaimonManifestMerge(older.manifestMergeInput(), optionsAt(line, newer))
                 val where = "${line.table}${line.branch?.let { " on $it" } ?: ""}: snapshot ${older.metadata.id} → ${newer.metadata.id}"
                 val inputNames = plan.input.map { it.name }.toSet()
                 val newerBase = newer.baseManifests.map { paimonManifestKey(it) }
@@ -84,6 +90,37 @@ class PaimonManifestMergeFixtureTest {
         assertEquals(PaimonManifestMergeKind.NONE, at6.kind)
         assertEquals(listOf(2), at6.bins.map { it.manifests.size })
         assertEquals(2, byId.getValue(7).baseManifests.size)
+    }
+
+    @Test
+    fun `sys_compact_manifest on pmm lands where pmma's snapshot 13 is, and a second call writes nothing`() {
+        val before = FixtureCatalog.paimonModel("pmm")
+        val after = FixtureCatalog.paimonModel("pmma")
+        val options = PaimonManifestMergeOptions.forTable(before.schemas.single().options)
+        val latest = before.snapshots.maxBy { it.metadata.id!! }
+        assertEquals(12L, latest.metadata.id)
+        // Four small manifests — a merged one of seven entries, three of one ADD — under the count of
+        // five: the next commit keeps them, and the procedure rewrites all four into one of ten.
+        assertEquals(PaimonManifestMergeKind.NONE, planPaimonManifestMerge(latest.manifestMergeInput(), options).kind)
+        val plan = planPaimonManifestCompaction(latest.manifestMergeInput(), options)
+        assertEquals(PaimonManifestMergeKind.FULL, plan.kind)
+        assertTrue(plan.writesNewList)
+        assertEquals(listOf(4), plan.mergedBins.map { it.manifests.size })
+        assertEquals(10, plan.mergedBins.single().mergedEntries)
+        assertEquals(emptyList(), plan.kept)
+        assertEquals(1, plan.outputCount)
+        val written = after.snapshots.single { it.metadata.id == 13L }
+        assertEquals("COMPACT", written.metadata.commitKind)
+        assertEquals(emptyList(), written.deltaManifests)
+        assertEquals(listOf(10), written.baseManifests.map { it.entries.size })
+        assertEquals(0L, written.baseManifests.single().metadata.numDeletedFiles)
+        assertEquals(latest.metadata.totalRecordCount, written.metadata.totalRecordCount)
+        assertEquals(0L, written.metadata.deltaRecordCount)
+        // The second call in the script found the same set and wrote no snapshot 14.
+        assertEquals(13L, after.snapshots.maxOf { it.metadata.id!! })
+        val again = planPaimonManifestCompaction(written.manifestMergeInput(), options)
+        assertTrue(!again.writesNewList, again.describeCompaction)
+        assertEquals(listOf(written.baseManifests.single().let { paimonManifestKey(it) }), again.kept)
     }
 
     @Test

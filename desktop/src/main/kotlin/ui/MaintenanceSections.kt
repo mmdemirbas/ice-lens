@@ -32,6 +32,7 @@ import model.UnreferencedFilesReport
 import model.planManifestMerge
 import model.PaimonManifestMergeOptions
 import model.planOrphanRemoval
+import model.planPaimonManifestCompaction
 import model.planPaimonManifestMerge
 import model.RewriteOptions
 import model.planRewrite
@@ -356,6 +357,14 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: Unrefer
                 "${formatCounted(manifestInput.size, "data manifest")} listed; ${manifestMerge.describe}",
                 "$snapshotPanel → Manifest Merge",
                 if (manifestMerge.mergedBins.isNotEmpty()) verdictSkippedColor() else null,
+            )
+            val manifestCompaction = planPaimonManifestCompaction(manifestInput, PaimonManifestMergeOptions.forTable(current.tableOptions))
+            rows += Row(
+                if (manifestCompaction.writesNewList) "would rewrite ${formatCounted(manifestCompaction.mergedManifests, "manifest")}" else "nothing to compact",
+                "compact_manifest",
+                manifestCompaction.describeCompaction,
+                "$snapshotPanel → Manifest Merge",
+                if (manifestCompaction.writesNewList) verdictSkippedColor() else null,
             )
             val lsms = current.bucketLsms
             if (current.hasPrimaryKey) {
@@ -1236,7 +1245,8 @@ internal fun ManifestMergeSection(node: GraphNode.SnapshotNode, graph: GraphMode
  * `manifest.full-compaction-threshold-size`), else the minor one (bins that close on
  * `manifest.target-file-size`, the leftover merged at `manifest.merge-min-count`). One row per bin,
  * the verdict first, and the leftover's row says how far it is from the count, which is the
- * figure a reader with twenty-nine manifests came for.
+ * figure a reader with twenty-nine manifests came for. Under the table, what `sys.compact_manifest`
+ * would do instead ([planPaimonManifestCompaction]) — the call that reader runs next.
  */
 @Composable
 internal fun PaimonManifestMergeSection(node: GraphNode.PaimonSnapshotNode) {
@@ -1289,6 +1299,17 @@ internal fun PaimonManifestMergeSection(node: GraphNode.PaimonSnapshotNode) {
                     )
                 },
                 leadCellColors = plan.bins.map { if (it.merged) verdictSkippedColor() else null },
+            )
+            val compaction = planPaimonManifestCompaction(input, options)
+            Text(
+                "CALL sys.compact_manifest runs the same merge with merge-min-count and the full-compaction " +
+                    "threshold both at 1, so every manifest under the target size or holding a DELETE is " +
+                    "rewritten at once and a list that comes out the same commits nothing: " +
+                    (if (compaction.writesNewList) "it would write a COMPACT snapshot with an empty delta list — " else "here ") +
+                    "${compaction.describeCompaction}.",
+                fontSize = TypeScale.small,
+                color = if (compaction.writesNewList) verdictSkippedColor() else colors.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
     }

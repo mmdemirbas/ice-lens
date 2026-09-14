@@ -1727,9 +1727,16 @@ intellij/src/main/kotlin/plugin/
   snapshots on every fixture and branch to the plan (the names kept, the list's length, a
   merged manifest's entry count), which is the no-merge direction on every other table; the full
   compaction and the bin that closes on size are read from the source and pinned on synthetic
-  inputs only. `PaimonSnapshotNode.manifestMergeInput` carries the input deferred — no file is
-  opened, but an identifier per entry is not built for every snapshot at build time — and the
-  snapshot panel's `Manifest Merge` and the table's `Maintenance` summary draw the plan
+  inputs only. **`sys.compact_manifest` is the same merge with both figures at 1**
+  (`FileStoreCommitImpl.compactManifestOnce`: `merge-min-count` 1, threshold 1), so every
+  manifest under the target size or holding a `DELETE` is rewritten at once, and a list that
+  comes out as the same set commits nothing — `pmma` is `pmm` after one call, four small
+  manifests into one of ten entries as a `COMPACT` with an empty delta list, and a second call
+  in the same script wrote no snapshot; the sweep tells that commit from `ad`'s vector-writing
+  `COMPACT` by the index manifest it kept. `PaimonSnapshotNode.manifestMergeInput` carries the
+  input deferred — no file is opened, but an identifier per entry is not built for every
+  snapshot at build time — and the snapshot panel's `Manifest Merge` and the table's
+  `Maintenance` summary draw both plans
 - **Paimon's expiry is planned the same way, from `ExpireSnapshotsImpl.expire()`, and checked
   against the one oracle a planner can have.** `model/PaimonExpiryPlan.kt` applies the six things
   that method reads: the newest `snapshot.num-retained.min` stay; everything below
@@ -2654,7 +2661,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,375 tests across 187 files (1,085 in :core, 279 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,375 tests across 187 files (1,086 in :core, 279 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2817,7 +2824,7 @@ container invocation and the traps in it:
 | `paimon/db.db/sgm` | `PaimonMergeEngineFixtureTest` | `partial-update` with a sequence group of two fields, `fields.g1,g2.sequence-group = a`, and `remove-record-on-sequence-group = g2` — an insert with a null in the tuple ordered below the row's, and Paimon's read at every snapshot |
 | `paimon/db.db/sg`, `sgd` | `PaimonMergeEngineFixtureTest` | `partial-update` with two sequence groups — `sg` inserts only, a lower group value not overriding a higher; `sgd` with `remove-record-on-sequence-group = ga`, a DELETE writing a `-D` that removes the key and an insert bringing it back, Paimon's read at every snapshot |
 | `paimon/db.db/pcl`, `pcn` | `PaimonChangelogLifecycleFixtureTest` | `changelog.num-retained.max` above `snapshot.num-retained.max`, every expiry run at commit — `snapshot/` holds 7 and 8, `changelog/` holds 5 and 6; `pcl` under `changelog-producer = input`, its changelog lists and files kept and its base and delta lists gone; `pcn` with no producer, where the delta list is the change stream and the base and delta lists and every `APPEND` file stay — the five files the compaction removed still on disk |
-| `paimon/db.db/pmm` | `PaimonManifestMergeFixtureTest` | an append table under `manifest.merge-min-count = 5` — twelve commits with a DELETE that removes a whole file in the sixth, whose base lists grow to four and merge to one twice, the second merge folding that DELETE against the ADD it met |
+| `paimon/db.db/pmm`, `pmma` | `PaimonManifestMergeFixtureTest` | an append table under `manifest.merge-min-count = 5` — twelve commits with a DELETE that removes a whole file in the sixth, whose base lists grow to four and merge to one twice, the second merge folding that DELETE against the ADD it met; `pmma` the same table after `sys.compact_manifest` rewrote its four small manifests into one, and a second call wrote nothing |
 | `paimon/db.db/po`, `poa` | `OrphanRemovalPlanFixtureTest` | one partitioned primary-key table copied before `sys.remove_orphan_files` ran on it — a rollback's leftovers and six strays, one per directory rule; the eleven files the procedure deleted from `poa`, and the three it never lists |
 | `paimon/db.db/pbk`, `pbka` | `PaimonBucketCountFixtureTest` | a primary-key table whose `bucket` was raised from 1 to 2 after three writes, copied before the `INSERT OVERWRITE` that rescales it — three live files recording the old count, every write refused until the rescale; `pbka` after it, rescaled over two buckets and written to again |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |

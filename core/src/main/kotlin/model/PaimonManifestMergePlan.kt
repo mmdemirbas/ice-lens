@@ -116,6 +116,23 @@ data class PaimonManifestMergePlan(
     /** How many manifests the next base list holds, counting one per merged bin that writes anything. */
     val outputCount: Int get() = bins.sumOf { it.outputCount }
 
+    /**
+     * Whether the merge changes the list at all — any merged bin writes new names, and a list of
+     * kept manifests is the list that was read. `compactManifestOnce` commits only in the first case.
+     */
+    val writesNewList: Boolean get() = mergedBins.isNotEmpty()
+
+    /** [describe] for the `sys.compact_manifest` reading, whose options make the merge-min-count wording meaningless. */
+    val describeCompaction: String
+        get() = when {
+            input.isEmpty() -> "nothing to compact: no data manifest listed"
+            !writesNewList -> "nothing to compact: ${input.size} listed, at most one needs rewriting and the rest are at the target size with no DELETE"
+            kind == PaimonManifestMergeKind.FULL -> "$mergedManifests of ${input.size} rewritten into ${mergedBins.sumOf { it.outputCount }} (${formatEntries(mergedBins.sumOf { it.mergedEntries ?: 0 })}), ${kept.size} kept whole"
+            else -> "$mergedManifests of ${input.size} merged into ${mergedBins.sumOf { it.outputCount }}, ${kept.size} kept; the base list goes from ${input.size} to $outputCount"
+        }
+
+    private fun formatEntries(n: Int) = if (n == 1) "1 entry" else "$n entries"
+
     val describe: String
         get() = when (kind) {
             PaimonManifestMergeKind.NONE -> when {
@@ -159,6 +176,21 @@ fun planPaimonManifestMerge(input: List<PaimonManifestMergeInput>, options: Paim
     val kind = if (bins.any { it.merged }) PaimonManifestMergeKind.MINOR else PaimonManifestMergeKind.NONE
     return PaimonManifestMergePlan(options, input, kind, bins, mustChangeBytes)
 }
+
+/**
+ * What `CALL sys.compact_manifest` writes: `FileStoreCommitImpl.compactManifestOnce` (release-1.3.1)
+ * runs the same merge over the latest snapshot's base and delta manifests with
+ * `manifest.merge-min-count` and `manifest.full-compaction-threshold-size` both set to 1 — so any
+ * manifest under `manifest.target-file-size` or holding a `DELETE` is rewritten in one full
+ * compaction whatever its bytes, a leftover bin of any count merges, and a manifest at the target
+ * size with no `DELETE` and none of its files deleted is kept whole. A list that comes out as the
+ * same set of manifests commits nothing; otherwise a `COMPACT` snapshot carries the rebuilt base
+ * list, an empty delta list, and the previous snapshot's index manifest, totals and statistics.
+ * `pmma` is `pmm` after one such call: four small manifests into one of ten entries, and a second
+ * call writing nothing.
+ */
+fun planPaimonManifestCompaction(input: List<PaimonManifestMergeInput>, options: PaimonManifestMergeOptions): PaimonManifestMergePlan =
+    planPaimonManifestMerge(input, options.copy(mergeMinCount = 1, fullCompactionThresholdBytes = 1))
 
 /** `mergeCandidates`: a bin of one is kept as it is; otherwise the entries fold and what is left is written. */
 private fun binOf(candidates: List<PaimonManifestMergeInput>, reason: String): PaimonManifestMergeBin =
