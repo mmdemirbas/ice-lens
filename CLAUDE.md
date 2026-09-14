@@ -74,6 +74,7 @@ core/src/main/kotlin/
 │   ├── FileStatsSweep.kt      # The same over the current snapshot's live files from the model, capped — the table panel's second click under Integrity
 │   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
 │   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing — and the fates a hit can have, both formats
+│   ├── ReadProjection.kt      # A sampled row as a read returns it: the file's cells placed onto the current schema by field id, a renamed column under its new name, a dropped one not at all, an added one as its initial default
 │   ├── PaimonRowLookup.kt     # What reading a Paimon snapshot takes: the live files by bucket, the index manifest's vectors, the merge rule — for the row lookup and the merged count
 │   ├── PaimonMergeRule.kt     # What a read does with a key's records under each merge engine, and which level-0 files it never reads
 │   ├── ScanFilterSql.kt       # A ScanFilter as DuckDB's WHERE clause, every literal bound and cast to its column's type
@@ -142,6 +143,7 @@ desktop/src/main/kotlin/
     ├── StatsCheckSection.kt   # A data file's recorded statistics beside the counted ones, behind a click on either format's file panel
     ├── RowDeletesSection.kt   # Whether a read returns a sampled Iceberg row: the delete files paired with its file, asked for it behind a click
     ├── PaimonRowMergeSection.kt # The same on Paimon: the merge engine over the record's key, the row lookup run for it behind a click
+    ├── ReadAsSection.kt       # An Iceberg row as a read returns it, where the schema has moved on since the file — drawn only when it differs
     ├── TimeTravelSection.kt   # A typed time and the snapshot it resolves to, on the metadata panel and the Paimon table panel
     ├── RowLookupSection.kt    # The scan filter one step further: the matching rows read from the files it leaves, each with its fate — both formats
     ├── NodePanels.kt          # Table, row, error and group panels
@@ -613,6 +615,27 @@ intellij/src/main/kotlin/plugin/
   dispatcher when rendered, and sixty frames in a tight loop finish long before a DuckDB query
   does — the first capture attempt was a PNG of the loading line. `renderUntil` polls with a
   deadline and fails rather than capturing a spinner
+- **A sampled row is the file's, and what a read returns for it is projected onto the current
+  schema by field id — the rule every Iceberg reader applies and the card does not.** The card
+  prints the file's columns under the file's names, which on a table that evolved after the file
+  was written is not what a query returns: `evolved`'s first file holds `name`, a column renamed
+  to `label` and then dropped, and lacks `note`; `defaults`' first file predates `region` and
+  `score`. `model/ReadProjection.kt` (`projectRow`) places each cell by the file's own field ids —
+  a Parquet footer's `field_id` per top-level column, walked past a struct's children by the
+  children counts `parquet_schema` lists; an Avro header's `field-id` prop, read with
+  `getObjectProp` because it is a JSON number — against the newest metadata's current schema: a
+  renamed column reads under its new name, a dropped one is listed as *not read* with the value
+  the file holds, an added one reads as its **`initial-default`** (v3; `TableSchemaField` /
+  `NestedField` carry `initial-default` and `write-default` now, and the metadata panel's schema
+  table draws both where any field records one) or as null, and a column recording no field id
+  is *unmatched* — a read resolves it through a name mapping this does not apply. `RowNode.readAs`
+  is a `DeferredRead`, since the footer is a read; `UnifiedDataFile.fieldIds` is its lazy source.
+  `ReadAsSection` on the row panel is drawn only when the projection differs from the file, with
+  the count in its title; the IDE strip fills a `Read as` row the way it fills `History`. The
+  oracle is Iceberg 1.10's own read of `defaults` — `1 alpha eu 0 / 2 bravo eu 0 / 3 charlie us 7`,
+  printed by the script — and `ReadProjectionFixtureTest` holds the first two rows to it; the
+  same script shows `updateColumnDefault` moving `write-default` to `us` and leaving
+  `initial-default` at `eu`, which is the difference between the two figures
 - **A sampled row's position is asked for, not inferred.** DuckDB is given
   `read_parquet(?, file_row_number = true)`, and `UnifiedRow.position` carries the answer as
   something separate from the row's cells — it is DuckDB's statement about the file, not a column
@@ -1850,7 +1873,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,197 tests across 158 files (925 in :core, 264 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,203 tests across 159 files (929 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1942,6 +1965,7 @@ container invocation and the traps in it:
 | `default/mor` | `MergeOnReadFixtureTest` | positional deletes, a compaction, dangling deletes |
 | `default/eqdel` | `EqualityDeleteFixtureTest` | both delete kinds in one table |
 | `default/v3` | `FormatV3FixtureTest` | format-version 3 with deletion vectors |
+| `default/defaults` | `ReadProjectionFixtureTest` | format-version 3 column defaults, written by Iceberg 1.10's `UpdateSchema` from spark-shell — `region` with `initial-default eu` and `write-default us` after an `updateColumnDefault`, `score` with `0`; a file written before both, and the writer's read of it printed in the script |
 | `default/lineage` | `RowLineageFixtureTest` | format-version 3 row lineage, written by Iceberg 1.10 — `next-row-id`, a snapshot's and a manifest's `first-row-id`, files inheriting theirs in entry order, a rewritten file carrying `_row_id`, a deletion vector allocating nothing, and a compaction that keeps every id |
 | `default/evolved` | `SchemaEvolutionFixtureTest` | three manifest schemas — `int`→`long`, `float`→`double`, a rename and a drop |
 | `default/promoted` | `PromotedBoundsFixtureTest` | `evolved` then `rewrite_manifests` — one manifest under the current schema carrying four-byte bounds under `long`/`double` and a bound for a dropped field — then `rewrite_data_files`, which re-encodes |

@@ -532,6 +532,9 @@ data class UnifiedDataFile(
     },
 ) {
     val rows: List<UnifiedRow> by lazy { rowsLoader() }
+
+    /** The file's own field id per top-level column — what a read places its columns by; see [projectRow]. */
+    val fieldIds: Map<String, Int> by lazy { SampleRowReader.fieldIdsOf(path.toString()) }
 }
 
 /**

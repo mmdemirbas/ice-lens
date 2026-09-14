@@ -53,11 +53,16 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   rows a vector deletes rather than only where the blob sits. **Row lineage is in** (`lineage`,
   written with the 1.10 runtime dropped into the image — see CLAUDE.md's fixture notes for the
   jar swap), down to a snapshot's `added-rows` being the id space it took rather than its
-  `added-records`. What is still unsurfaced: the **variant / geometry / geography / timestamp_ns** types and **column
-  defaults** (`initial-default` / `write-default`). The jar swap does not reach them: Spark 3.5
-  has no VARIANT type, and Iceberg 1.10's Spark 3.5 module answers `ALTER TABLE … ADD COLUMN … DEFAULT`
-  with `UnsupportedOperationException: setting default values in Spark is currently unsupported`
-  (run 2026-09-13). These need a Spark 4.0 image. What the vector work does *not* cover on the
+  `added-records`. **Column defaults are in** (`defaults`): `initial-default` / `write-default`
+  are parsed, drawn on the schema table, and the initial default is what a row written before
+  the column reads as on the row panel's `Read As` — written through Iceberg's own
+  `UpdateSchema` from spark-shell, because Iceberg 1.10's Spark 3.5 module answers
+  `ALTER TABLE … ADD COLUMN … DEFAULT` with `UnsupportedOperationException: setting default
+  values in Spark is currently unsupported` (run 2026-09-13). What is still unsurfaced: the
+  **variant / geometry / geography / timestamp_ns** types, which Spark 3.5 cannot write (no
+  VARIANT type) and need a Spark 4.0 image; and a **name mapping** (`schema.name-mapping.default`),
+  which is how a file without field ids is read and which `projectRow` leaves unmatched rather
+  than applies. What the vector work does *not* cover on the
   canvas: an Iceberg **positional delete** file (v2) marks no row *card*, because its targets are
   one per row and only known after reading the file — the same reason there is no `e_dv_*`-style
   edge for it. A row's panel answers it behind a click (`RowDeletesSection`), for equality deletes

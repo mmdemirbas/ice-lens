@@ -179,6 +179,10 @@ data class TableSchemaField(
     val name: String? = null,
     val required: Boolean? = null,
     val type: JsonElement? = null,
+    /** v3: the value a read returns for a row written before the column existed — JSON single-value form. */
+    @SerialName("initial-default") val initialDefault: JsonElement? = null,
+    /** v3: the value a writer stores when a row omits the column. */
+    @SerialName("write-default") val writeDefault: JsonElement? = null,
 )
 
 @Serializable

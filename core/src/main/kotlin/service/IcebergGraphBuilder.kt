@@ -49,6 +49,8 @@ object IcebergGraphBuilder {
         val tableSummary = buildTableSummary(tableModel)
         // Sort orders only accumulate, so the newest metadata's list holds every id a file can name.
         val newestMetadata = tableModel.metadatas.lastOrNull()?.metadata
+        // What a read projects a row onto — the newest metadata's current schema, never the manifest's.
+        val currentSchema = newestMetadata?.let { m -> m.schemas.firstOrNull { it.schemaId == m.currentSchemaId } ?: m.schemas.lastOrNull() }?.let(::tableSchemaModel)
         val sortOrdersById = newestMetadata?.sortOrders.orEmpty()
             .mapNotNull { order -> order.orderId?.let { it to order } }.toMap()
         val defaultSortOrder = newestMetadata?.defaultSortOrderId?.let { sortOrdersById[it] }
@@ -324,6 +326,7 @@ object IcebergGraphBuilder {
                                     filePathToSimpleId = filePathToSimpleId,
                                     vectorFor = { path -> vectorsByReferencedPath()[path] },
                                     dataSequenceNumber = effectiveSequenceNumber(entry, unifiedManifest.metadata.sequenceNumber),
+                                    currentSchema = currentSchema,
                                 )
                             }
                         }
@@ -478,6 +481,7 @@ object IcebergGraphBuilder {
         filePathToSimpleId: Map<String, Int>,
         vectorFor: (String) -> GraphNode.FileNode?,
         dataSequenceNumber: Long,
+        currentSchema: IcebergSchemaModel?,
     ): () -> List<GraphNode.RowNode> = {
         if (!Files.isRegularFile(dataFile.path)) {
             emptyList()
@@ -497,6 +501,9 @@ object IcebergGraphBuilder {
                     content = contentType,
                     identifierFields = identifierFields,
                     deletedPositions = deleted,
+                    readAs = if (contentType == DataFileContent.DATA && currentSchema != null) DeferredRead.of {
+                        dataFile.rows.getOrNull(rowIndex)?.let { projectRow(it.cells, dataFile.fieldIds, currentSchema) }
+                    } else DeferredRead.none(),
                     dataLoader = {
                         try {
                             val rows = dataFile.rows

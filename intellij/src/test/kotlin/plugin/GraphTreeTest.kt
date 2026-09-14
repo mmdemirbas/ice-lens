@@ -221,4 +221,22 @@ class GraphTreeTest {
         val dv = flatten(GraphTree.build(paimonGraphOf("dv"))).filterIsInstance<GraphNode.PaimonDataFileNode>()
         assertTrue(dv.map { GraphTree.deferredDetails(it).single().second }.any { it.startsWith("removed by snapshot") }, "dv's upgrade compactions remove files")
     }
+
+    /**
+     * A row's projection onto the current schema is the other deferred detail — it opens the
+     * file's footer — and the strip's one line has to carry the values a read returns, since
+     * the eager rows are the file's own columns: `defaults`' first file predates two columns.
+     */
+    @Test
+    fun `an Iceberg data row's projection is a deferred detail carrying what a read returns`() {
+        // The builder's row factories, called directly: laying the graph out would start ELK's
+        // reference-cleaner thread, which the IDE test framework reports as a leak.
+        val built = IcebergGraphBuilder.buildGraph(UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/defaults").absolutePath)))
+        val rows = built.sampleRows.values.flatMap { it() }
+        assertTrue(rows.isNotEmpty() && rows.all { GraphTree.hasDeferredDetails(it) && GraphTree.deferredLabel(it) == GraphTree.READ_AS })
+        val lines = rows.map { GraphTree.deferredDetails(it).single() }
+        assertTrue(lines.all { it.first == GraphTree.READ_AS })
+        assertTrue(lines.any { it.second == "a read returns 4 columns: 2 from an initial default: id = 1, name = alpha, region = eu, score = 0" }, lines.toString())
+        assertTrue(lines.any { it.second == "a read returns the row as the file holds it" }, lines.toString())
+    }
 }

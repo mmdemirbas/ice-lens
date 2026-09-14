@@ -394,6 +394,8 @@ internal fun ColumnScope.RowPanel(
                 .forEach { (k, v) -> DetailRow(k, "$v") }
         }
 
+        // What a query returns for the row, where the table's schema has moved on since the file.
+        ReadAsSection(node)
         // A v2 positional or an equality delete is a file read, so what the `Deleted` row above
         // cannot say for them is asked behind a click here.
         if (node.content == 0) RowDeletesSection(node, currentGraph)

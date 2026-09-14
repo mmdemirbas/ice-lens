@@ -113,7 +113,18 @@ data class NestedField(
     val type: IcebergType,
     val required: Boolean = false,
     val doc: String? = null,
-)
+    /**
+     * v3 column defaults, in the JSON single-value form the spec fixes (Appendix D: a string as a
+     * string, a number as a number, a decimal or a timestamp as a string). [initialDefault] is what
+     * a read returns for the column on a row written before it existed; [writeDefault] is what a
+     * writer stores when a row omits it. A field added before v3, or without one, has neither.
+     */
+    val initialDefault: JsonElement? = null,
+    val writeDefault: JsonElement? = null,
+) {
+    /** A default as the panel prints it — the JSON scalar's text, or the element for a struct/list. */
+    fun showDefault(default: JsonElement?): String? = default?.let { (it as? JsonPrimitive)?.contentOrNull ?: it.toString() }
+}
 
 private val FIXED_RE = Regex("""fixed\s*\[\s*(\d+)\s*]""")
 private val DECIMAL_RE = Regex("""decimal\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)""")
@@ -162,6 +173,8 @@ private fun parseNestedField(element: JsonElement): NestedField? {
         type = type,
         required = obj["required"]?.jsonPrimitive?.booleanOrNull ?: false,
         doc = obj["doc"]?.jsonPrimitive?.contentOrNull,
+        initialDefault = obj["initial-default"],
+        writeDefault = obj["write-default"],
     )
 }
 
@@ -247,7 +260,7 @@ fun tableSchemaModel(schema: TableSchema): IcebergSchemaModel = IcebergSchemaMod
             val id = field.id ?: return@mapNotNull null
             val name = field.name ?: return@mapNotNull null
             val type = field.type?.let { parseIcebergType(it) } ?: return@mapNotNull null
-            NestedField(id = id, name = name, type = type, required = field.required ?: false)
+            NestedField(id = id, name = name, type = type, required = field.required ?: false, initialDefault = field.initialDefault, writeDefault = field.writeDefault)
         },
     ),
     identifierFieldIds = schema.identifierFieldIds.toSet(),

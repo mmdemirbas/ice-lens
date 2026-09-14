@@ -74,11 +74,18 @@ object GraphTree {
     fun details(node: GraphNode, nowMs: Long = System.currentTimeMillis()): List<Pair<String, String>> =
         rows(node, nowMs).map { (field, value) -> field to (value?.takeIf { it.isNotBlank() } ?: ABSENT) }
 
-    /** The label of the one row [deferredDetails] fills, drawn with a placeholder while the read runs. */
+    /** The label of the one row [deferredDetails] fills on a file, drawn with a placeholder while the read runs. */
     const val HISTORY = "History"
 
-    /** Whether [deferredDetails] has anything to read for the node — a data file's history, on either format. */
-    fun hasDeferredDetails(node: GraphNode): Boolean = node is GraphNode.FileNode || node is GraphNode.PaimonDataFileNode
+    /** The same on an Iceberg data row: what a read returns for it, projected onto the current schema. */
+    const val READ_AS = "Read as"
+
+    /** The placeholder label for [deferredDetails] on the node, while the read runs. */
+    fun deferredLabel(node: GraphNode): String = if (node is GraphNode.RowNode) READ_AS else HISTORY
+
+    /** Whether [deferredDetails] has anything to read for the node — a data file's history on either format, an Iceberg data row's projection. */
+    fun hasDeferredDetails(node: GraphNode): Boolean =
+        node is GraphNode.FileNode || node is GraphNode.PaimonDataFileNode || (node is GraphNode.RowNode && node.readAs.isPresent)
 
     /**
      * The rows that cost a read: a file's history is a scan of every retained snapshot's manifest
@@ -89,6 +96,10 @@ object GraphTree {
         val history = when (node) {
             is GraphNode.FileNode -> node.history
             is GraphNode.PaimonDataFileNode -> node.history
+            // The projection opens the file's footer for its field ids — a read, so deferred like the history.
+            is GraphNode.RowNode -> return listOf(READ_AS to (node.readAs.value?.let { read ->
+                read.describe + if (read.differsFromFile) ": " + read.cells.joinToString(", ") { "${it.name} = ${it.value}" } else ""
+            } ?: "could not be read"))
             else -> return emptyList()
         }
         return listOf(HISTORY to (history.value?.describe ?: "could not be read"))

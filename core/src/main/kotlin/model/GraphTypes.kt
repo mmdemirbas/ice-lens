@@ -679,6 +679,13 @@ sealed class GraphNode(
          * "not by a deletion vector" would then be a claim nothing checked.
          */
         val vectorsResolved: Boolean = true,
+        /**
+         * The row as a read of the table returns it, projected onto the current schema by field
+         * id — see [ProjectedRow]. Iceberg data rows only; nothing on a delete file's row, whose
+         * columns are the delete's own, and nothing on Paimon, whose data-evolution stitch is
+         * [service.PaimonRowLookup.stitchedRowAt]. Deferred because it opens the file's footer.
+         */
+        val readAs: DeferredRead<ProjectedRow> = DeferredRead.none(),
     ) : GraphNode(id, initialX, initialY, 200.0, 80.0) {
         val isDelete: Boolean get() = content > 0
         val resolvedData: Map<String, Any> by lazy {

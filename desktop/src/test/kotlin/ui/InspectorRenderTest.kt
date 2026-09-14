@@ -412,6 +412,36 @@ class InspectorRenderTest {
     }
 
     /**
+     * A row as a read returns it, where that differs from the file: `defaults`' first file
+     * predates `region` and `score`, so the section lists them from their initial defaults;
+     * `evolved`'s first file holds `name`, which the table has dropped, and lacks `note`. The
+     * metadata panel's schema table gains the two default columns on `defaults` alone.
+     */
+    @Test
+    fun `a row says what a read returns for it when the schema has moved on`() {
+        val defaults = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/defaults").absolutePath)),
+            showRows = true,
+        )
+        val old = defaults.nodes.filterIsInstance<GraphNode.RowNode>().first { it.resolvedData["id"]?.toString() == "1" }
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("row-node-read-as", width = 1400, height = 700, ready = settled::get) {
+            Column(Modifier.padding(16.dp)) { ReadAsSection(old) { settled.set(true) } }
+        }
+        val evolved = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/evolved").absolutePath)),
+            showRows = true,
+        )
+        val renamed = evolved.nodes.filterIsInstance<GraphNode.RowNode>().first { it.resolvedData["name"]?.toString() == "alpha" }
+        val evolvedSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("row-node-read-as-dropped", width = 1400, height = 700, ready = evolvedSettled::get) {
+            Column(Modifier.padding(16.dp)) { ReadAsSection(renamed) { evolvedSettled.set(true) } }
+        }
+        val metadata = defaults.nodes.filterIsInstance<GraphNode.MetadataNode>().first { it.fileName == "v6.metadata.json" }
+        renderInspector(defaults, metadata.id, "metadata-node-defaults", height = 5200)
+    }
+
+    /**
      * A partition statistics file, read: the record's table gains the size on disk beside the
      * size it claims, and below it one row per partition with the figures a planner reads. The
      * delete columns have to be judged against a row that has one, which `eu` is.

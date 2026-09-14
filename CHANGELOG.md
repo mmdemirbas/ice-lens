@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A row says what a read returns for it when the table's schema has moved on since the
+  file.** The row panel's `Read As` section projects the file's cells onto the current schema
+  by field id — a renamed column under its new name, a dropped one listed as not read, an
+  added one as its `initial-default` or null — and the metadata panel's schema table draws a
+  v3 column's initial and write defaults. The IDE strip fills a `Read as` row.
 - **The table panel reads the data files behind a second click under `Integrity`.** The
   metadata check opens no data file; the new button reads up to 64 of the current snapshot's
   live files — from the model, so files the graph folded away are read too — and lists each

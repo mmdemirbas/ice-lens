@@ -158,18 +158,20 @@ class IceLensPanel(private val project: Project, parent: Disposable) : Disposabl
             detailsModel.addRow(arrayOf(field, value))
         }
         if (!GraphTree.hasDeferredDetails(item.node)) return
-        // The eager rows are on screen; the history row is drawn reading and filled in when the
-        // scan lands — off the EDT, since it walks every retained snapshot's entries.
+        // The eager rows are on screen; the deferred row is drawn reading and filled in when the
+        // read lands — off the EDT, since a file's history walks every retained snapshot's
+        // entries and a row's projection opens its file's footer.
         val placeholder = detailsModel.rowCount
-        detailsModel.addRow(arrayOf(GraphTree.HISTORY, "reading…"))
+        val label = GraphTree.deferredLabel(item.node)
+        detailsModel.addRow(arrayOf(label, "reading…"))
         ProgressManager.getInstance().run(
-            object : Task.Backgroundable(project, "Reading file history", false) {
+            object : Task.Backgroundable(project, "Reading $label", false) {
                 private var rows: List<Pair<String, String>> = emptyList()
 
                 override fun run(indicator: ProgressIndicator) {
                     rows = runCatching { GraphTree.deferredDetails(item.node) }
-                        .onFailure { logger.warn("Could not read the history of ${item.node.id}", it) }
-                        .getOrDefault(listOf(GraphTree.HISTORY to "could not be read"))
+                        .onFailure { logger.warn("Could not read $label of ${item.node.id}", it) }
+                        .getOrDefault(listOf(label to "could not be read"))
                 }
 
                 override fun onSuccess() {

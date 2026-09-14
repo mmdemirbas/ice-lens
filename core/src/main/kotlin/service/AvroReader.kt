@@ -102,6 +102,15 @@ object AvroReader {
     }
 
     /**
+     * The `field-id` each top-level field of an Avro file's schema carries — what Iceberg's Avro
+     * writer records, and what a read places the column by. A field without one is left out.
+     */
+    fun fieldIdsOf(localPath: String): Map<String, Int> =
+        DataFileReader(ChannelInput(Files.newByteChannel(StorageLocation.pathOf(localPath))), GenericDatumReader<GenericRecord>())
+            // `getProp` answers string-valued props only; the id is a JSON number, so `getObjectProp`.
+            .use { reader -> reader.schema.fields.mapNotNull { f -> (f.getObjectProp("field-id") as? Number)?.toInt()?.let { f.name() to it } }.toMap() }
+
+    /**
      * The `avro.codec` an Avro file's header names — `null` when the header names none, which
      * the format reads as uncompressed. Opens the file and reads its header only.
      */
