@@ -26,6 +26,10 @@ data class IcebergMaintenanceInput(
     val current: GraphNode.SnapshotNode?,
 ) : MaintenanceInput
 
+/** The newest `metadata.json` the table node carries — what a read of the table is decided under — or null off an Iceberg table. */
+fun GraphModel.newestIcebergMetadata(): TableMetadata? =
+    (nodeById["table_root"] as? GraphNode.TableNode)?.let { (it.maintenance.value as? IcebergMaintenanceInput)?.metadata }
+
 data class PaimonMaintenanceInput(
     /** The latest snapshot on main; null on a table that has none. */
     val current: GraphNode.PaimonSnapshotNode?,

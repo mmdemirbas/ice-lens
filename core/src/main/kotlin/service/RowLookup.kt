@@ -60,7 +60,7 @@ object RowLookup {
             val deletes = input.deletesFor(file.recordedPath)
             matched.forEach { cells ->
                 val position = (cells[SampleRowReader.FILE_ROW_NUMBER] as? Number)?.toLong()
-                hits += decide(file, position, cells - SampleRowReader.FILE_ROW_NUMBER, deletes, vectors)
+                hits += decide(file, position, cells - SampleRowReader.FILE_ROW_NUMBER, deletes, vectors, input.schema, input.nameMapping)
             }
         }
         return RowLookupResult(outcomes, input.dataFiles.size - candidates.size, candidates.size - toRead.size, hits)
@@ -88,10 +88,14 @@ object RowLookup {
     /**
      * One row's fate under [deletes], the delete files a scan pairs with its file — what the
      * row panel asks for a sampled row, with its position and cells already in hand. The same
-     * decision the lookup makes for a hit, without the read that found it.
+     * decision the lookup makes for a hit, without the read that found it. [cells] are under
+     * the schema's names, and [schema] and [mapping] are what an equality delete file is read
+     * under — its own columns are named as the schema named them when it was written.
      */
-    fun fateOf(file: LookupDataFile, position: Long?, cells: Map<String, Any?>, deletes: List<LookupDeleteFile>): RowHit =
-        decide(file, position, cells, deletes, mutableMapOf())
+    fun fateOf(
+        file: LookupDataFile, position: Long?, cells: Map<String, Any?>, deletes: List<LookupDeleteFile>,
+        schema: IcebergSchemaModel? = null, mapping: NameMapping? = null,
+    ): RowHit = decide(file, position, cells, deletes, mutableMapOf(), schema, mapping)
 
     private fun decide(
         file: LookupDataFile,
@@ -99,6 +103,8 @@ object RowLookup {
         cells: Map<String, Any?>,
         deletes: List<LookupDeleteFile>,
         vectors: MutableMap<String, DeletionVector?>,
+        schema: IcebergSchemaModel?,
+        mapping: NameMapping?,
     ): RowHit {
         val path = file.recordedPath
         if (deletes.isEmpty()) return RowHit(path, position, cells, RowFate.LIVE)
@@ -131,7 +137,7 @@ object RowLookup {
                 }
                 DeleteFileKind.EQUALITY -> {
                     if (delete.equalityColumns.isEmpty()) { note = "an equality delete names fields the schema does not"; continue }
-                    val matched = runCatching { equalityMatches(delete, cells) }
+                    val matched = runCatching { equalityMatches(delete, cells, schema, mapping) }
                         .onFailure { logger.warn("Could not read {}: {}", delete.localPath, it.message) }.getOrNull()
                     if (matched == null) { note = "an equality delete could not be read"; continue }
                     if (matched) return RowHit(path, position, cells, RowFate.EQUALITY_DELETED, delete.recordedPath)
@@ -154,18 +160,25 @@ object RowLookup {
         }
     }
 
-    /** Whether the equality delete holds a row equal to [cells] on every one of its columns; a null matches only a null. */
-    private fun equalityMatches(delete: LookupDeleteFile, cells: Map<String, Any?>): Boolean {
+    /**
+     * Whether the equality delete holds a row equal to [cells] on every one of its columns; a
+     * null matches only a null. The delete file is read projected onto the schema like a data
+     * file, because its columns are named as the schema named them when it was written and a
+     * scan matches it by field id: `eqren`'s delete holds `name`, the table calls it `label`,
+     * and asked for `label` by name the file answers with an error rather than the row.
+     */
+    private fun equalityMatches(delete: LookupDeleteFile, cells: Map<String, Any?>, schema: IcebergSchemaModel?, mapping: NameMapping?): Boolean {
         val (safePath, ext) = SampleRowReader.resolveForQuery(delete.localPath)
+        val source = FileProjection.of(ext, SampleRowReader.fileColumnsOf(delete.localPath), schema, mapping)
         val where = delete.equalityColumns.joinToString(" AND ") { column ->
             val quoted = model.quoteSqlIdentifier(column)
             if (cells[column] == null) "$quoted IS NULL" else "CAST($quoted AS VARCHAR) = ?"
         }
         val bound = delete.equalityColumns.filter { cells[it] != null }.map { cells[it].toString() }
         return DuckDb.withConnection { conn ->
-            conn.prepareStatement("SELECT 1 FROM ${SampleRowReader.readerCall(ext)} WHERE $where LIMIT 1").use { pstmt ->
-                pstmt.setString(1, safePath)
-                bound.forEachIndexed { i, v -> pstmt.setString(i + 2, v) }
+            conn.prepareStatement("SELECT 1 FROM ${source.sql} WHERE $where LIMIT 1").use { pstmt ->
+                var i = source.bind(pstmt, 1, safePath)
+                bound.forEach { v -> pstmt.setString(i++, v) }
                 pstmt.executeQuery().use { it.next() }
             }
         }

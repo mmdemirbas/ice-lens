@@ -11,7 +11,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import model.IcebergMaintenanceInput
+import model.newestIcebergMetadata
 import model.nameMapping
 import model.deleteTargetsOf
 import model.effectiveMinSequenceNumber
@@ -1266,8 +1266,7 @@ internal fun ColumnScope.FilePanel(
                 )
             }
             // The name mapping places a registered file's columns, which record no field ids.
-            val nameMapping = (currentGraph.nodeById["table_root"] as? GraphNode.TableNode)
-                ?.let { (it.maintenance.value as? IcebergMaintenanceInput)?.metadata?.nameMapping() }
+            val nameMapping = currentGraph.newestIcebergMetadata()?.nameMapping()
             StatsCheckSection(node.id, node.localPath, node.recordedColumnStats(), node.data.recordCount, nameMapping = nameMapping)
         }
 

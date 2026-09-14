@@ -78,6 +78,20 @@ class RowLookupFixtureTest {
         for (id in listOf(1, 4, 5, 7)) assertEquals(RowFate.LIVE, byId("eqdel", id).hits.single().fate, "id $id")
     }
 
+    /** `eqren`: `eqdel`'s shape with `name` renamed to `label` after the equality delete on it was written, and id 8 (`label` bravo) inserted after — Spark reads 1, 4, 5, 7, 8. */
+    @Test
+    fun `an equality delete on a column renamed since decides by field id, and does not reach the row written after it`() {
+        val input = input("eqren")
+        val equality = input.deleteFiles.single { it.kind == DeleteFileKind.EQUALITY }
+        assertEquals(listOf("label"), equality.equalityColumns)
+        val bravos = RowLookup.lookup(input, ScanFilter.Term(ScanPredicate("label", PredicateOp.EQ, "bravo")), emptySet())
+        assertTrue(bravos.filesRead.all { it.error == null }, bravos.filesRead.toString())
+        assertEquals(mapOf("2" to RowFate.EQUALITY_DELETED, "8" to RowFate.LIVE), bravos.hits.associate { it.cells["id"].toString() to it.fate })
+        assertEquals(RowFate.EQUALITY_DELETED, byId("eqren", 6).hits.single().fate)
+        assertEquals(RowFate.POSITION_DELETED, byId("eqren", 3).hits.single().fate)
+        for (id in listOf(1, 4, 5, 7, 8)) assertEquals(RowFate.LIVE, byId("eqren", id).hits.single().fate, "id $id")
+    }
+
     @Test
     fun `a v3 vector decides by the position's bit, and an update leaves the old row marked beside the new one live`() {
         // Script: 1..3 then 4..5; 2 deleted by a vector; 4 updated — a vector on the old row, a new file with the new one.

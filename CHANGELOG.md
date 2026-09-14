@@ -58,6 +58,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is read whole when the filter left any file of it.
 
 ### Fixed
+- **An equality delete written before a column rename decides the row again.** The delete
+  file's columns are named as the schema named them when it was written; read by the schema's
+  current name the file answered with an error and the row came back *not decided* where the
+  engine deletes it. The row lookup and the row panel read the delete file projected onto the
+  schema by field id now, and the panel matches the row's cells under the schema's names.
 - **A filter on a column renamed or added since a file was written reads that file instead of
   failing on it.** Every DuckDB read under a filter addressed the file by its own column names;
   the row lookup on `evolved`'s `note` reported the two older files as errors, where a read

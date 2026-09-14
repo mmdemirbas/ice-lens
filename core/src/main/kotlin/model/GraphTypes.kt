@@ -696,6 +696,16 @@ sealed class GraphNode(
         /** This row's physical position in its file, once the row has been read. */
         val filePosition: Long? get() = (resolvedData[ROW_POSITION_KEY] as? Number)?.toLong()
 
+        /**
+         * The row's cells under the schema's names where the projection has them — an absent
+         * column null — else the card's own cells without the bookkeeping keys. What a delete
+         * file is matched against: an equality delete's columns are the schema's, the card's
+         * are the file's.
+         */
+        val cellsForRead: Map<String, Any?>
+            get() = readAs.value?.cells?.associate { it.name to it.value.takeUnless { _ -> it.source == ProjectedCellSource.ABSENT } }
+                ?: resolvedData.filterKeys { it != "file_no" && it != "row_idx" && it != ROW_POSITION_KEY && it != "local_file_path" }
+
         /** Why the file's rows could not be read, when they could not — see [ROW_READ_ERROR_KEY]. */
         val readError: String? get() = resolvedData[ROW_READ_ERROR_KEY] as? String
 

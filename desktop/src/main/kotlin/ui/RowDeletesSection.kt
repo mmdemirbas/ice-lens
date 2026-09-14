@@ -24,7 +24,10 @@ import model.RowFate
 import model.RowHit
 import model.asLookupDataFile
 import model.asLookupDeleteFile
+import model.currentSchemaModel
 import model.deleteCandidatesFor
+import model.nameMapping
+import model.newestIcebergMetadata
 import service.RowLookup
 
 /** The data file a sampled Iceberg row was read from, or null for a row of a delete file or of a Paimon file. */
@@ -70,8 +73,8 @@ internal fun RowDeletesSection(
             value = withContext(Dispatchers.IO) {
                 runCatching {
                     val file = requireNotNull(parent.asLookupDataFile()) { "the file records no path" }
-                    val cells = node.resolvedData.filterKeys { it != "file_no" && it != "row_idx" && it != GraphNode.RowNode.ROW_POSITION_KEY && it != "local_file_path" }
-                    RowLookup.fateOf(file, position, cells, candidates.mapNotNull { it.delete.asLookupDeleteFile() })
+                    val metadata = graph.newestIcebergMetadata()
+                    RowLookup.fateOf(file, position, node.cellsForRead, candidates.mapNotNull { it.delete.asLookupDeleteFile() }, metadata?.currentSchemaModel(), metadata?.nameMapping())
                 }
             }
             onSettled()

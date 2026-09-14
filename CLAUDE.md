@@ -664,7 +664,20 @@ intellij/src/main/kotlin/plugin/
   check's `SNAPSHOT_TOTALS` finds it (`0` against `916`, then `943` against `1859`), and
   `IntegrityFixtureTest` / `SnapshotTotalsTest` hold `migrated` to exactly that rather than to
   agreement. And the manifest `add_files` wrote still names field 2 `name`, so the *statistics*
-  check matched the file by name even before the mapping; it is a read that needs it
+  check matched the file by name even before the mapping; it is a read that needs it.
+  **An equality delete file is read the same way**, because it is a Parquet file whose columns
+  are named as the schema named them when it was written and a scan matches it by field id
+  (`equality_ids`): `eqren` is `eqdel` with `name` renamed to `label` *after* the equality
+  delete on it, and read by name the delete file answered `label` with an error, so id 2 and
+  6 came back *not decided* where Spark deletes them. `RowLookup.equalityMatches` projects the
+  delete file now, `decide` carries the schema and mapping for it, and the row panel puts the
+  row's cells under the schema's names — `RowNode.cellsForRead`, the projection's cells with an
+  absent column null, else the card's — since the delete's columns are the schema's and the
+  card's are the file's; `GraphModel.newestIcebergMetadata()` is where both panels get the
+  metadata to read under. `eqren`'s row 8 is the contrast: `label` bravo, written after the
+  delete at a higher sequence number, which Iceberg's own plan does not attach the delete to
+  (`deletes.txt`) — Spark reads `1 4 5 7 8`, and `RowLookupFixtureTest`, `RowFateFixtureTest`
+  and `LiveRowCountFixtureTest` hold the lookup, the panel's decision and the count to it
 - **A Paimon row is projected the same way, and its columns are placed by the schema the file's
   own `_SCHEMA_ID` names — never by an id inside the file.** Paimon evolves a read from the
   file's schema id (`SchemaEvolutionUtil`), so `paimonFileColumns` in `model/PaimonPruningBridge.kt`
@@ -1927,7 +1940,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,210 tests across 161 files (936 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,212 tests across 161 files (938 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2018,6 +2031,7 @@ container invocation and the traps in it:
 | `default/parted` | `PartitionDecodingTest` | eight partition fields, all transform shapes |
 | `default/mor` | `MergeOnReadFixtureTest` | positional deletes, a compaction, dangling deletes |
 | `default/eqdel` | `EqualityDeleteFixtureTest` | both delete kinds in one table |
+| `default/eqren` | `RowLookupFixtureTest`, `RowFateFixtureTest` | `eqdel` with the equality delete on `name`, then `RENAME COLUMN name TO label` and a row inserted after — the delete file holds `name`, the table calls it `label`, and Spark's read (`1 4 5 7 8`) is printed by the script |
 | `default/v3` | `FormatV3FixtureTest` | format-version 3 with deletion vectors |
 | `default/migrated` | `MigratedFixtureTest` | a plain-Spark Parquet file registered by `add_files` — no field ids, a `file:` URI outside the table, the name mapping the procedure set and a rename extended, and a `total-files-size` the procedure left short |
 | `default/defaults` | `ReadProjectionFixtureTest` | format-version 3 column defaults, written by Iceberg 1.10's `UpdateSchema` from spark-shell — `region` with `initial-default eu` and `write-default us` after an `updateColumnDefault`, `score` with `0`; a file written before both, and the writer's read of it printed in the script |

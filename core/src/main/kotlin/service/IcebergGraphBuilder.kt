@@ -51,7 +51,7 @@ object IcebergGraphBuilder {
         val newestMetadata = tableModel.metadatas.lastOrNull()?.metadata
         // What a read projects a row onto — the newest metadata's current schema, never the
         // manifest's — and the name mapping a file without field ids is placed through.
-        val currentSchema = newestMetadata?.let { m -> m.schemas.firstOrNull { it.schemaId == m.currentSchemaId } ?: m.schemas.lastOrNull() }?.let(::tableSchemaModel)
+        val currentSchema = newestMetadata?.currentSchemaModel()
         val nameMapping = newestMetadata?.nameMapping()
         val sortOrdersById = newestMetadata?.sortOrders.orEmpty()
             .mapNotNull { order -> order.orderId?.let { it to order } }.toMap()

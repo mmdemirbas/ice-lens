@@ -253,6 +253,10 @@ private fun collectFields(type: IcebergType, into: MutableMap<Int, NestedField>)
  * two can answer the same questions. A field whose id, name or type is missing is left out
  * rather than failing the schema, the way [parseNestedField] does.
  */
+/** The metadata's current schema as a model — `current-schema-id`, else the last listed — or null when it lists none. */
+fun TableMetadata.currentSchemaModel(): IcebergSchemaModel? =
+    (schemas.firstOrNull { it.schemaId == currentSchemaId } ?: schemas.lastOrNull())?.let(::tableSchemaModel)
+
 fun tableSchemaModel(schema: TableSchema): IcebergSchemaModel = IcebergSchemaModel(
     schemaId = schema.schemaId,
     struct = IcebergType.StructType(

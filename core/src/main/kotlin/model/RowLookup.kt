@@ -158,8 +158,7 @@ fun UnifiedTableModel.rowLookupInput(): RowLookupInput? {
 fun UnifiedTableModel.rowLookupInputOf(snapshot: UnifiedSnapshot, liveFiles: List<LiveFile>, reach: List<DeleteReach>): RowLookupInput? {
     val newest = metadatas.lastOrNull()?.metadata ?: return null
     val currentId = snapshot.metadata.snapshotId ?: return null
-    val schema = newest.schemas.firstOrNull { it.schemaId == newest.currentSchemaId }?.let(::tableSchemaModel)
-        ?: newest.schemas.lastOrNull()?.let(::tableSchemaModel)
+    val schema = newest.currentSchemaModel()
     val live = liveFiles.map { normalizeFilePath(it.path) }.toSet()
     val data = mutableMapOf<String, LookupDataFile>()
     val deletes = mutableMapOf<String, LookupDeleteFile>()
