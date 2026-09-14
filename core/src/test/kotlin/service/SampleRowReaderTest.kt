@@ -200,10 +200,10 @@ class SampleRowReaderTest {
     @Test
     fun `the transcode cache is bounded, evicts the least recently used copy, and refuses a file that cannot fit`() {
         val schema = org.apache.avro.Schema.Parser().parse("""{"type":"record","name":"r","fields":[{"name":"k","type":"int"}]}""")
-        fun write(name: String): File {
+        fun write(name: String, codec: org.apache.avro.file.CodecFactory = org.apache.avro.file.CodecFactory.zstandardCodec(3)): File {
             val f = File(tmpDir, name)
             org.apache.avro.file.DataFileWriter(org.apache.avro.generic.GenericDatumWriter<org.apache.avro.generic.GenericData.Record>(schema))
-                .setCodec(org.apache.avro.file.CodecFactory.zstandardCodec(3)).create(schema, f).use { w ->
+                .setCodec(codec).create(schema, f).use { w ->
                     repeat(10) { i -> w.append(org.apache.avro.generic.GenericData.Record(schema).apply { put("k", i) }) }
                 }
             return f
@@ -218,6 +218,10 @@ class SampleRowReaderTest {
         assertEquals(1, room.size, "b's copy took a's place")
         assertTrue(File(copyB).isFile, copyB)
         assertTrue(!File(copyA).exists(), "a's copy is deleted on eviction")
+        // bzip2 is the other refused codec, and Avro's own decoder for it is on the classpath (commons-compress).
+        val bz = write("bz.avro", org.apache.avro.file.CodecFactory.bzip2Codec())
+        assertEquals("bzip2", AvroReader.codecOf(bz.absolutePath))
+        assertEquals("deflate", AvroReader.codecOf(AvroTranscodeCache(maxBytes = 1L shl 20).readablePathOf(bz.absolutePath)))
         val none = AvroTranscodeCache(maxBytes = 10)
         val e = assertFailsWith<IllegalArgumentException> { none.readablePathOf(a.absolutePath) }
         assertTrue(e.message!!.startsWith("DuckDB's Avro reader does not read the zstandard codec"), e.message)
