@@ -103,7 +103,9 @@ fun paimonPartitionSummaries(node: GraphNode.PaimonManifestNode): List<Partition
         val high = max.values.getOrNull(index) ?: return@mapNotNull null
         val type = paimonTypeAsIceberg(low.type) ?: return@mapNotNull null
         PartitionSummary(
-            field = PartitionField(sourceId = index, fieldId = index, name = low.name, transform = JsonPrimitive("identity")),
+            // The source id is the key's field id, so a filter binds to it the way it binds to an
+            // Iceberg spec's; the partition field's own id is positional, which nothing reads.
+            field = PartitionField(sourceId = low.fieldId, fieldId = index, name = low.name, transform = JsonPrimitive("identity")),
             type = type,
             lower = decodedValue(low.value, type),
             upper = decodedValue(high.value, type),
@@ -171,6 +173,32 @@ fun paimonColumnStats(node: GraphNode.PaimonDataFileNode): List<ColumnStats> {
             columnSizeBytes = null,
         )
     }
+}
+
+/**
+ * What the scan evaluates a file's statistics against — the same per-column statistics evolved
+ * to the schema a filter is written in — by field id, with each column the file's own schema
+ * **lacks** placed [ColumnStats] that say it is null in every row. That is Paimon's reading of a
+ * file written before a column existed: `filterByStats` keeps a filter on such a field
+ * (`filterUnsafeFilter(…, keepNewFieldFilter = true)`, "add field 'c', 'c > 3': old files can
+ * be filtered") and `SimpleStatsEvolution` evolves the file's stats with `nullCount = rowCount`
+ * and no bounds for it — so `w = 7` skips a file written before `w` and `w IS NULL` keeps it
+ * (`pse`). Only a column the file's *schema* lacks: one the schema has and `stats-mode` recorded
+ * nothing for (`sm`) stays unevaluated, as the scan leaves it.
+ */
+fun paimonEvolvedColumnStats(node: GraphNode.PaimonDataFileNode, schema: IcebergSchemaModel?, fileSchema: PaimonSchema?): List<ColumnStats> {
+    val own = paimonColumnStats(node)
+    if (schema == null || fileSchema == null) return own
+    val rowCount = node.entry.file?.rowCount ?: return own
+    val fileIds = fileSchema.fields.mapNotNull { it.id }.toSet()
+    val allNull = schema.struct.fields.filter { it.id !in fileIds && own.none { s -> s.fieldId == it.id } }.map { field ->
+        ColumnStats(
+            fieldId = field.id, columnName = field.name, type = field.type,
+            lowerBound = null, upperBound = null,
+            valueCount = rowCount, nullValueCount = rowCount, nanValueCount = null, columnSizeBytes = null,
+        )
+    }
+    return own + allNull
 }
 
 /** A Paimon data file's `_KEY_STATS` as the statistics a key predicate is evaluated against, one per trimmed primary key. */
@@ -273,8 +301,11 @@ fun evaluatePaimonPrimaryKeyFiles(
     filter: ScanFilter,
     rule: PaimonScanRule,
     manifestSkipped: (String) -> Boolean,
+    binder: ColumnBinder = ColumnBinder.ByName,
 ): Map<String, FilePruneResult> {
     val normalized = filter.pushNegation()
+    val schema = scanSchemaOf(graph)
+    val schemasById = graph.nodes.filterIsInstance<GraphNode.PaimonSchemaNode>().associate { it.data.id to it.data }
     val keyFilter = keyConjunction(normalized, rule)
     val keyPredicates = keyFilter?.predicates().orEmpty().toSet()
     class Staged(val node: GraphNode.PaimonDataFileNode, val own: FilePruneResult)
@@ -290,8 +321,9 @@ fun evaluatePaimonPrimaryKeyFiles(
         // except under a `stats-mode` that records no value bound for the key, where `_KEY_STATS`
         // still has one, which is why the key bounds lead.
         val keyStats = paimonKeyColumnStats(node)
-        val stats = keyStats + paimonColumnStats(node).filter { v -> keyStats.none { it.columnName == v.columnName } }
-        var own = paimonAllNullNegations(evaluateFilePruning(stats, filter), filter, stats)
+        val evolved = paimonEvolvedColumnStats(node, schema, schemasById[node.entry.file?.schemaId?.toInt()])
+        val stats = keyStats + evolved.filter { v -> keyStats.none { it.fieldId == v.fieldId } }
+        var own = paimonAllNullNegations(evaluateFilePruning(stats, filter, binder), filter, stats)
         // The scan tests an embedded index beside the value bounds only under deletion vectors
         // (`KeyValueFileStore.newScan`); everything else about a file index waits for the read.
         if (rule.deletionVectors && node.entry.file?.embeddedFileIndex != null) {
@@ -306,7 +338,7 @@ fun evaluatePaimonPrimaryKeyFiles(
                 filter, "at level 0 of a table whose batch reads skip level 0, so never opened — see the file's own panel",
             ).copy(fate = FileFate.NOT_READ)
             rule.skipsLevel0 -> results[node.id] = own
-            keyFilter != null && evaluateFilePruning(keyStats, keyFilter).fate == FileFate.SKIPPED -> results[node.id] = own.copy(fate = FileFate.SKIPPED)
+            keyFilter != null && evaluateFilePruning(keyStats, keyFilter, binder).fate == FileFate.SKIPPED -> results[node.id] = own.copy(fate = FileFate.SKIPPED)
             else -> staged += Staged(node, own)
         }
     }

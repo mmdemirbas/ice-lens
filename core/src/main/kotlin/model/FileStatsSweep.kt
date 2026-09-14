@@ -70,8 +70,7 @@ fun UnifiedTableModel.fileStatsTargets(): List<FileStatsTarget> {
         ?.takeIf { !it.expired } ?: return emptyList()
     val live = liveFilesOf(snapshot).map { normalizeFilePath(it.path) }.toSet()
     val mapping = newest.metadata.nameMapping()
-    val tableFieldsById = metadatas.asReversed().flatMap { it.metadata.schemas }.flatMap { tableSchemaModel(it).struct.fields }
-        .associateBy { it.id }
+    val tableFieldsById = metadatas.lastOrNull()?.metadata?.fieldsEverDefined().orEmpty()
     val seen = mutableSetOf<String>()
     return snapshot.manifests.flatMap { m ->
         m.dataFiles.mapNotNull { unified ->

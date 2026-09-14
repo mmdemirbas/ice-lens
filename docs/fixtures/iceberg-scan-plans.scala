@@ -80,6 +80,22 @@ plan("evolved", "id = 2", E.equal("id", 2L))
 plan("evolved", "amount < 2", E.lessThan("amount", 2.0d))
 plan("evolved", "note = 'fifth'", E.equal("note", "fifth"))
 plan("evolved", "note IS NULL", E.isNull("note"))
+// eqren: `name` renamed to `label` after two files and an equality delete were written — a
+// filter on `label` binds to field 2 and prunes the files whose manifest still calls it `name`.
+plan("eqren", "no filter", null)
+plan("eqren", "label = 'alpha'", E.equal("label", "alpha"))
+plan("eqren", "label = 'bravo'", E.equal("label", "bravo"))
+plan("eqren", "label > 'f'", E.greaterThan("label", "f"))
+plan("eqren", "label IS NULL", E.isNull("label"))
+// deep: a struct, a list and a map; `addr.city` renamed to `addr.town` and `addr.country`
+// added after the first file — bounds are per leaf id, and a filter names a leaf by its path.
+plan("deep", "no filter", null)
+plan("deep", "addr.town = 'Izmir'", E.equal("addr.town", "Izmir"))
+plan("deep", "addr.town = 'Ankara'", E.equal("addr.town", "Ankara"))
+plan("deep", "addr.zip < 7000", E.lessThan("addr.zip", 7000))
+plan("deep", "addr.country = 'TR'", E.equal("addr.country", "TR"))
+plan("deep", "addr.country IS NULL", E.isNull("addr.country"))
+plan("deep", "name = 'delta'", E.equal("name", "delta"))
 
 // pstats: partitioned by p, a positional delete on eu
 plan("pstats", "no filter", null)

@@ -24,6 +24,8 @@ data class PaimonPartitionValue(
     val type: String,
     val value: Any?,
     val pathText: String,
+    /** The partition key's field id in the schema the row was decoded against; what a filter binds to. */
+    val fieldId: Int? = null,
 ) {
     val display: String get() = value?.toString() ?: "null"
 }
@@ -38,6 +40,8 @@ data class PaimonRowValue(
     val type: String,
     val value: Any?,
     val decoded: Boolean,
+    /** The field's id in the schema the row was decoded against. */
+    val fieldId: Int? = null,
 ) {
     val display: String get() = when {
         !decoded -> "not decoded ($type)"
@@ -99,6 +103,7 @@ fun decodePaimonPartition(
                 type = field.type,
                 value = field.value,
                 pathText = field.value?.let { escapePartitionValue(partitionPathText(it, legacyNames)) } ?: defaultName,
+                fieldId = field.fieldId,
             )
         },
     )
@@ -133,6 +138,7 @@ fun decodePaimonRow(bytes: ByteArray, fields: List<PaimonField>): List<PaimonRow
             type = type,
             value = value,
             decoded = isNull || value != null,
+            fieldId = field.id,
         )
     }
 }

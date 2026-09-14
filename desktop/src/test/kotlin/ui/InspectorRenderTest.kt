@@ -1602,6 +1602,18 @@ class InspectorRenderTest {
             NodeDetailsContent(graph, setOf(manifest.id), scanFilter = model.ScanFilter.of(predicates))
         }
 
+        // `deep`: the columns are the current schema's leaves by path — `addr.town`, not the
+        // `city` its first manifest records — and a filter on the renamed leaf skips the file
+        // whose bound was written under the old name.
+        val deep = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/deep").absolutePath)),
+            showRows = false,
+        )
+        val deepTable = deep.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        renderScene("scan-pruning-nested", width = 1400, height = 2600) {
+            NodeDetailsContent(deep, setOf(deepTable.id), scanFilter = model.ScanFilter.of(listOf(ScanPredicate("addr.town", PredicateOp.EQ, "Izmir"))))
+        }
+
         // A pattern, whose reasons are prose nothing else in these tables produces — and the one
         // filter where the same term reaches two partition fields of the same column with different
         // answers: `name` records `alpha … charlie` and `name_trunc` only its first three

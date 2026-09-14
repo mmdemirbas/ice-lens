@@ -18,7 +18,7 @@
 // Run with the Paimon Spark 3.5 runtime jar, version 1.3, over copies of the tables:
 //
 //   WH=$PWD/tmp/plans-wh; rm -rf "$WH"; mkdir -p "$WH/db.db"
-//   for t in pc lk pu ag dv sm pt fa fi ft fb; do cp -R example/paimon/db.db/$t "$WH/db.db/$t"; done
+//   for t in pc lk pu ag dv sm pt fa fi ft fb pse pkr; do cp -R example/paimon/db.db/$t "$WH/db.db/$t"; done
 //   JAR=~/code/spark-kit/lakelab/tasks/01_FlinkUpsertRead/.run/jars/paimon-spark-3.5-local.jar
 //   docker run --rm --entrypoint bash \
 //     -v "$WH:/wh" -v "$JAR:/opt/paimon-spark.jar:ro" \
@@ -211,6 +211,20 @@ indexes("ft", "ts = 2024-03-05 10:00:00.123", isEq("ts", ldt("2024-03-05 10:00:0
 // fb: an append table with a bitmap index on c and n and a bloom filter on n — file 1's index
 // embedded (red, green, a null), files 2 (all red) and 3 (all null) with a .index beside them.
 // The dictionary answers `=` exactly and `<>` / IS NULL / IS NOT NULL too.
+// pse: an append table whose `v` became `label` and gained `w` after the first file — a filter
+// on the new name is evolved to the old file's schema by field id, and one on a column the old
+// file's schema lacks keeps the file (`w IS NULL` reads it; `w = 7` cannot rule it out).
+plan("pse", "no filter", (b, t) => null)
+plan("pse", "label = 'a'", isEq("label", "a"))
+plan("pse", "label = 'd'", isEq("label", "d"))
+plan("pse", "w = 7", isEq("w", 7))
+plan("pse", "w IS NULL", isNull("w"))
+plan("pse", "k = 4", isEq("k", 4))
+// pkr: a primary key renamed between writes — `_KEY_k` in the first file, `_KEY_id` in the rest.
+plan("pkr", "no filter", (b, t) => null)
+plan("pkr", "id = 1", isEq("id", 1))
+plan("pkr", "id = 3", isEq("id", 3))
+plan("pkr", "v = 'a'", isEq("v", "a"))
 plan("fb", "no filter", (b, t) => null)
 plan("fb", "c = 'red'", isEq("c", "red"))
 plan("fb", "c = 'green'", isEq("c", "green"))

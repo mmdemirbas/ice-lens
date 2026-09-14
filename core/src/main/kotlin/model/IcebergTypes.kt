@@ -224,25 +224,44 @@ data class IcebergSchemaModel(
     val struct: IcebergType.StructType,
     val identifierFieldIds: Set<Int> = emptySet(),
 ) {
-    /** Flat field-id → field map, descending through structs, lists and maps. */
+    /**
+     * Flat field-id → field map, descending through structs, lists and maps — a list's element
+     * and a map's key and value included, as `element`, `key` and `value`, since a data file
+     * records bounds and counts for them under their own ids (`deep`).
+     */
     val fieldsById: Map<Int, NestedField> by lazy {
-        buildMap { collectFields(struct, this) }
+        buildMap { collectFields(struct, "", this, mutableMapOf()) }
     }
+
+    /**
+     * Field id → the field's path from the root, dotted — `addr.town`, `tags.element`,
+     * `props.value` — which is how Iceberg names a nested column in its metadata tables and in
+     * a filter, and the only name that says which struct a `zip` is in.
+     */
+    val pathsById: Map<Int, String> by lazy {
+        buildMap { collectFields(struct, "", mutableMapOf(), this) }
+    }
+
+    private val idsByPath: Map<String, Int> by lazy { pathsById.entries.associate { (id, path) -> path.lowercase() to id } }
 
     fun typeOf(fieldId: Int): IcebergType? = fieldsById[fieldId]?.type
     fun nameOf(fieldId: Int): String? = fieldsById[fieldId]?.name
+    fun pathOf(fieldId: Int): String? = pathsById[fieldId]
+    /** The field a path names, case-insensitively — `addr.town` or a top-level `id`; null for none. */
+    fun idOfPath(path: String): Int? = idsByPath[path.trim().lowercase()]
 }
 
-private fun collectFields(type: IcebergType, into: MutableMap<Int, NestedField>) {
+private fun collectFields(type: IcebergType, prefix: String, fields: MutableMap<Int, NestedField>, paths: MutableMap<Int, String>) {
+    fun put(field: NestedField) {
+        if (fields.putIfAbsent(field.id, field) == null) paths.putIfAbsent(field.id, prefix + field.name)
+        collectFields(field.type, prefix + field.name + ".", fields, paths)
+    }
     when (type) {
-        is IcebergType.StructType -> type.fields.forEach { field ->
-            into.putIfAbsent(field.id, field)
-            collectFields(field.type, into)
-        }
-        is IcebergType.ListType -> collectFields(type.element, into)
+        is IcebergType.StructType -> type.fields.forEach(::put)
+        is IcebergType.ListType -> put(NestedField(type.elementId, "element", type.element, type.elementRequired))
         is IcebergType.MapType -> {
-            collectFields(type.key, into)
-            collectFields(type.value, into)
+            put(NestedField(type.keyId, "key", type.key, required = true))
+            put(NestedField(type.valueId, "value", type.value, type.valueRequired))
         }
         else -> Unit
     }
@@ -256,6 +275,17 @@ private fun collectFields(type: IcebergType, into: MutableMap<Int, NestedField>)
 /** The metadata's current schema as a model — `current-schema-id`, else the last listed — or null when it lists none. */
 fun TableMetadata.currentSchemaModel(): IcebergSchemaModel? =
     (schemas.firstOrNull { it.schemaId == currentSchemaId } ?: schemas.lastOrNull())?.let(::tableSchemaModel)
+
+/**
+ * Every field any of the metadata's schemas defined, by id, the newest definition of each
+ * winning and each named by its path — so a bound for a column dropped before its manifest
+ * was rewritten still has a name and a type, and a nested one still says which struct it was
+ * in. A type only ever widens, so the newest definition is the widest and safe to decode with.
+ */
+fun TableMetadata.fieldsEverDefined(): Map<Int, NestedField> = schemas
+    .sortedBy { it.schemaId ?: -1 }
+    .flatMap { tableSchema -> tableSchemaModel(tableSchema).let { m -> m.fieldsById.values.map { f -> f.copy(name = m.pathOf(f.id) ?: f.name) } } }
+    .associateBy { it.id }
 
 fun tableSchemaModel(schema: TableSchema): IcebergSchemaModel = IcebergSchemaModel(
     schemaId = schema.schemaId,

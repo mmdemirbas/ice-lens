@@ -61,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is read whole when the filter left any file of it.
 
 ### Fixed
+- **Scan pruning binds a filter's column by field id, so a rename no longer hides a file's
+  bounds.** A file whose manifest still calls a column by its old name is pruned by a filter on
+  the new one, the way the engine prunes it, on both formats; the prunable columns are the
+  current schema's, each once; and a nested column is named by its path (`addr.town`,
+  `tags.element`, `props.value`) with its own bounds and counts. A Paimon file written before a
+  column existed prunes as the scan reads it — null in every row.
 - **An equality delete written before a column rename decides the row again.** The delete
   file's columns are named as the schema named them when it was written; read by the schema's
   current name the file answered with an error and the row came back *not decided* where the

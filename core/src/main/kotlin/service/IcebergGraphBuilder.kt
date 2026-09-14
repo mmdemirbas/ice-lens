@@ -58,10 +58,7 @@ object IcebergGraphBuilder {
         val defaultSortOrder = newestMetadata?.defaultSortOrderId?.let { sortOrdersById[it] }
         // Every field the table has ever defined, the newest definition of each id winning — so a
         // bound for a column dropped before its manifest was rewritten still has a name and a type.
-        val tableFieldsById = newestMetadata?.schemas.orEmpty()
-            .sortedBy { it.schemaId ?: -1 }
-            .flatMap { tableSchema -> tableSchemaModel(tableSchema).fieldsById.values }
-            .associateBy { it.id }
+        val tableFieldsById = newestMetadata?.fieldsEverDefined().orEmpty()
         logicalNodes[tableNodeId] = GraphNode.TableNode(
             tableNodeId,
             tableSummary,

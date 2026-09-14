@@ -79,7 +79,9 @@ fun columnStatsFor(
         val type = field?.type
         ColumnStats(
             fieldId = fieldId,
-            columnName = field?.name,
+            // The path, not the bare name: `addr.zip` says which struct the `zip` is in, and a
+            // list's `tags.element` is a column of its own to the file (`deep`).
+            columnName = if (inManifestSchema != null) schema.pathOf(fieldId) else droppedField?.name,
             type = type,
             lowerBound = lowers[fieldId]?.let { bytes -> type?.let { decodeSingleValue(bytes, it) } },
             upperBound = uppers[fieldId]?.let { bytes -> type?.let { decodeSingleValue(bytes, it) } },

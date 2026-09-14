@@ -824,11 +824,44 @@ intellij/src/main/kotlin/plugin/
   and `mor` — `ManifestEvaluator` over the partition summaries and `InclusiveMetricsEvaluator`
   over the file bounds, the two `evaluateScan` reproduces — and prints the data files each of 41
   plans opens; `IcebergScanPlanTest` requires every file a plan opens to be *would be read* here,
-  which is the direction that loses rows, and pins that all 36 filtered plans agree file for file.
+  which is the direction that loses rows, and pins that all 48 filtered plans agree file for file.
   Every other pruning test reads its expectation off the script that wrote the rows, which is an
   oracle for the rows and not for the planner: a wrong skip of a file holding no matching row
   passes it. An `Or` proved by one branch — the unsound reading — is caught by `id IN (1, 2)` on
   `parted` skipping the two files Iceberg opens
+- **A filter's column binds by field id through the current schema, the way a scan binds it,
+  and a nested leaf is named by its path.** `ColumnBinder` in `model/ScanPruning.kt`:
+  `BySchema` resolves a column to the current schema's field id (`IcebergSchemaModel.idOfPath`
+  — `label`, or `addr.town`) and a manifest's partition source and a file's statistics are then
+  matched by that id; `ByName` is what a graph with no schema drawn (the synthetic tests) falls
+  back to. Matching by name — the only rule until this — stopped pruning at the first rename:
+  `eqren`'s two older manifests still call field 2 `name`, so `label = 'alpha'` evaluated
+  nothing on them and the app read three files where Iceberg's plan opens one, and
+  `prunableColumns` listed `name` and `label` as two columns of one table. Now the columns are
+  the current schema's leaves by path, each once (`prunableColumnsOf`), and a column the schema
+  lacks is *not evaluated* with the reason on screen rather than matched against whatever an
+  old manifest called it. Nested columns arrived with the same change, and `deep` is their
+  fixture — a struct, a list and a map, `addr.city` renamed to `addr.town` and `addr.country`
+  added after the first file: Iceberg records bounds and counts per **leaf** id, so
+  `fieldsById` now descends into a list's element and a map's key and value (`tags.element`,
+  `props.key`, `props.value`, ids 8–10), `pathsById` / `pathOf` name every field by its dotted
+  path, `ColumnStats.columnName` is that path, and `TableMetadata.fieldsEverDefined()` is the
+  one definition of "every field any schema defined, newest winning, by path" that the builder
+  and the file-statistics sweep both take (they had drifted: the sweep's oldest definition won).
+  Two things `deep` recorded that a reading would not predict: **an empty list or map counts as
+  one null element** in `value_counts` / `null_value_counts` (`['a','b'], ['c'], []` is 4 and 1),
+  and a file written before a column existed records nothing for it, which Iceberg reads as
+  "cannot prune" (`addr.country = 'TR'` opens both files) — where **Paimon reads the same file
+  as null in every row**: `AppendOnlyFileStoreScan.filterByStats` keeps a filter on a field the
+  file predates (`keepNewFieldFilter = true`) and `SimpleStatsEvolution` evolves the stats with
+  `nullCount = rowCount` for it, so `w = 7` skips `pse`'s first file and `w IS NULL` keeps it;
+  `paimonEvolvedColumnStats` adds those all-null statistics for every column the file's own
+  schema lacks — its schema, not its `stats-mode`, so `sm` stays unevaluated. Paimon's
+  partition summaries bind by id too (`PaimonPartitionValue.fieldId`, carried out of
+  `decodePaimonRow`). Both oracles were rerun: `eqren` and `deep` on the Iceberg side (48 cases),
+  `pse` and `pkr` on the Paimon side, every case agreeing file for file. What a nested column
+  still cannot do is be *read*: the row lookup addresses a column by one quoted name, and the
+  projection renames at the top level only, so a filter on `addr.town` errors on the old file
 - **A filter is a boolean expression, and `NOT` is removed before anything is evaluated.**
   `model/ScanFilter.kt` holds `Term`/`And`/`Or`/`Not`; `evaluateScan`, `evaluatePruning` and
   `evaluateFilePruning` each take one, and the list form every existing caller passes is wrapped
@@ -1957,7 +1990,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,213 tests across 161 files (939 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,217 tests across 162 files (943 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2048,7 +2081,7 @@ container invocation and the traps in it:
 | `default/parted` | `PartitionDecodingTest` | eight partition fields, all transform shapes |
 | `default/mor` | `MergeOnReadFixtureTest` | positional deletes, a compaction, dangling deletes |
 | `default/eqdel` | `EqualityDeleteFixtureTest` | both delete kinds in one table |
-| `default/eqren` | `RowLookupFixtureTest`, `RowFateFixtureTest` | `eqdel` with the equality delete on `name`, then `RENAME COLUMN name TO label` and a row inserted after — the delete file holds `name`, the table calls it `label`, and Spark's read (`1 4 5 7 8`) is printed by the script |
+| `default/eqren` | `RowLookupFixtureTest`, `RowFateFixtureTest`, `IcebergScanPlanTest` | `eqdel` with the equality delete on `name`, then `RENAME COLUMN name TO label` and a row inserted after — the delete file holds `name`, the table calls it `label`, and Spark's read (`1 4 5 7 8`) is printed by the script |
 | `default/v3` | `FormatV3FixtureTest` | format-version 3 with deletion vectors |
 | `default/migrated` | `MigratedFixtureTest` | a plain-Spark Parquet file registered by `add_files` — no field ids, a `file:` URI outside the table, the name mapping the procedure set and a rename extended, and a `total-files-size` the procedure left short |
 | `default/defaults` | `ReadProjectionFixtureTest` | format-version 3 column defaults, written by Iceberg 1.10's `UpdateSchema` from spark-shell — `region` with `initial-default eu` and `write-default us` after an `updateColumnDefault`, `score` with `0`; a file written before both, and the writer's read of it printed in the script |
@@ -2060,6 +2093,7 @@ container invocation and the traps in it:
 | `default/stats` | `TableStatisticsTest` | a Puffin statistics file — four theta sketches, one per column |
 | `default/pstats` | `PartitionStatsFixtureTest` | a partition statistics file, written by Iceberg 1.10 — three partitions, one with a positional delete, checked against the writer's `.partitions` and this app's own live-file walk |
 | `default/branched3` | `SnapshotTracksTest` | three branches forked at three points, plus a tag on the trunk's tip |
+| `default/deep` | `DeepFixtureTest`, `IcebergScanPlanTest` | a struct, a list and a map, `addr.city` renamed to `addr.town` and `addr.country` added inside the struct after the first file — bounds and counts per leaf id, an empty list counted as one null element, and Iceberg's plan for filters on the leaves by path |
 | `default/nested` | `SnapshotTracksTest` | a branch cut from another branch's first commit and committing before it does again, written by `docs/fixtures/nested.scala` — the id `AS OF VERSION` needs read back from `.refs`; the metadata log is what says `b1` is the older line |
 | `default/wap` | `WapFixtureTest` | write-audit-publish — a staged snapshot on no ref, main moving past it, `publish_changes` cherry-picking it with `source-snapshot-id` and `published-wap-id` |
 | `default/rolled` | `RolledBackFixtureTest` | main set back to an earlier snapshot by `set_current_snapshot` — a second `snapshot-log` entry for the target, the abandoned commit retained on no ref, the next commit forking from the target |

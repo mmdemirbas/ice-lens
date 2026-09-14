@@ -259,6 +259,32 @@ data class ManifestPruneResult(
 }
 
 /**
+ * How a filter's column names bind to what the artifacts record. A scan binds a name to the
+ * current schema's **field id** and reads a manifest's partition source and a file's statistics
+ * by that id — which is what lets `label = 'alpha'` prune a file whose manifest still calls
+ * field 2 `name` (`eqren`), and `addr.town` a bound recorded as `city` (`deep`). Names are all
+ * there is where no schema is drawn to bind through ([ByName]); with one, a column the schema
+ * lacks binds to nothing, said rather than matched against whatever an old manifest called it.
+ */
+interface ColumnBinder {
+    /** The current schema's field id for [column] — a dotted path for a nested field — or null. */
+    fun fieldIdOf(column: String): Int?
+    /** Whether there is a schema to bind through. */
+    val bindsById: Boolean
+
+    /** No schema: a column matches a partition field, its source, or a statistic by name. */
+    object ByName : ColumnBinder {
+        override fun fieldIdOf(column: String): Int? = null
+        override val bindsById = false
+    }
+
+    class BySchema(private val schema: IcebergSchemaModel) : ColumnBinder {
+        override fun fieldIdOf(column: String): Int? = schema.idOfPath(column)
+        override val bindsById = true
+    }
+}
+
+/**
  * Evaluates a conjunction of predicates against one manifest's partition summaries.
  *
  * A predicate matches a partition field when it names either the field or the source column the
@@ -282,16 +308,19 @@ fun evaluatePruning(
 fun evaluatePruning(
     summaries: List<PartitionSummary>,
     filter: ScanFilter,
+    binder: ColumnBinder = ColumnBinder.ByName,
 ): ManifestPruneResult {
     val normalized = filter.pushNegation()
     val outcomes = normalized.predicates().flatMap { predicate ->
-        val matched = summaries.filter { it.matches(predicate.column) }
+        val bound = binder.bind(predicate.column)
+        val matched = if (bound is Binding.Unknown) emptyList() else summaries.filter { it.matches(predicate.column, bound) }
         if (matched.isEmpty()) {
             listOf(
                 PredicateOutcome(
                     predicate, fieldName = null, transform = null,
                     effect = TermEffect.NOT_EVALUATED,
-                    reason = "no partition field reads a column called '${predicate.column}', so a " +
+                    reason = if (bound is Binding.Unknown) bound.reason
+                    else "no partition field reads a column called '${predicate.column}', so a " +
                         "scan prunes nothing with this term and reads every file to apply it",
                 )
             )
@@ -308,7 +337,21 @@ fun evaluatePruning(
     return ManifestPruneResult(outcomes, verdict)
 }
 
-private fun PartitionSummary.matches(column: String): Boolean {
+/** What a filter column bound to: a field id through the schema, a name where there is none, or nothing. */
+internal sealed interface Binding {
+    data class ById(val fieldId: Int) : Binding
+    object ByName : Binding
+    data class Unknown(val reason: String) : Binding
+}
+
+internal fun ColumnBinder.bind(column: String): Binding = when {
+    !bindsById -> Binding.ByName
+    else -> fieldIdOf(column)?.let { Binding.ById(it) }
+        ?: Binding.Unknown("the table's current schema has no column called '${column.trim()}', so a scan cannot bind this term")
+}
+
+private fun PartitionSummary.matches(column: String, bound: Binding): Boolean {
+    if (bound is Binding.ById) return field.sourceId == bound.fieldId
     val wanted = column.trim()
     if (wanted.isEmpty()) return false
     return field.name.equals(wanted, ignoreCase = true) || sourceName.equals(wanted, ignoreCase = true)
@@ -768,15 +811,17 @@ fun evaluateFilePruning(stats: List<ColumnStats>, predicates: List<ScanPredicate
     evaluateFilePruning(stats, ScanFilter.of(predicates))
 
 /** The same, over a filter that may hold `OR`, `NOT` and grouping. See the manifest twin. */
-fun evaluateFilePruning(stats: List<ColumnStats>, filter: ScanFilter): FilePruneResult {
+fun evaluateFilePruning(stats: List<ColumnStats>, filter: ScanFilter, binder: ColumnBinder = ColumnBinder.ByName): FilePruneResult {
     val normalized = filter.pushNegation()
     val outcomes = normalized.predicates().map { predicate ->
-        val matched = stats.firstOrNull { it.matches(predicate.column) }
+        val bound = binder.bind(predicate.column)
+        val matched = if (bound is Binding.Unknown) null else stats.firstOrNull { it.matches(predicate.column, bound) }
         if (matched == null) {
             PredicateOutcome(
                 predicate, fieldName = null, transform = null,
                 effect = TermEffect.NOT_EVALUATED,
-                reason = "this file records no statistics for a column called " +
+                reason = if (bound is Binding.Unknown) bound.reason
+                else "this file records no statistics for a column called " +
                     "'${predicate.column}', so there is nothing here to rule the predicate out against",
             )
         } else {
@@ -803,7 +848,8 @@ internal fun foldFileOutcomes(normalized: ScanFilter, outcomes: List<PredicateOu
 /** The operators a column that is null in every row cannot satisfy, on both formats' own reading. */
 private val ALL_NULL_SKIPS = setOf(PredicateOp.EQ, PredicateOp.LT, PredicateOp.LTE, PredicateOp.GT, PredicateOp.GTE, PredicateOp.LIKE)
 
-private fun ColumnStats.matches(column: String): Boolean {
+private fun ColumnStats.matches(column: String, bound: Binding): Boolean {
+    if (bound is Binding.ById) return fieldId == bound.fieldId
     val wanted = column.trim()
     if (wanted.isEmpty()) return false
     return columnName?.equals(wanted, ignoreCase = true) == true
@@ -1013,11 +1059,13 @@ fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
     // Both formats, through one rule: a manifest is ruled out by the partition range its list
     // records, a file by the bounds it records about its own columns. Paimon's are read through
     // the bridge in PaimonPruningBridge.kt, which puts them in the vocabulary the rules use.
+    // The filter's columns bind by field id through the current schema, the way a scan binds them.
+    val binder = scanColumnBinder(graph)
     val manifests = graph.nodes.asSequence()
         .mapNotNull { node ->
             when (node) {
-                is GraphNode.ManifestNode -> node.id to evaluatePruning(node.partitionSummaries, filter)
-                is GraphNode.PaimonManifestNode -> node.id to evaluatePruning(paimonPartitionSummaries(node), filter)
+                is GraphNode.ManifestNode -> node.id to evaluatePruning(node.partitionSummaries, filter, binder)
+                is GraphNode.PaimonManifestNode -> node.id to evaluatePruning(paimonPartitionSummaries(node), filter, binder)
                 else -> null
             }
         }
@@ -1035,24 +1083,26 @@ fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
     // A Paimon primary-key table's file stage is not per file: a key predicate prunes a file on
     // its own, and the rest of the filter is decided per bucket, the way the scan decides it.
     val primaryKeyRule = paimonScanRule(graph)
-    val primaryKey = primaryKeyRule?.let { evaluatePaimonPrimaryKeyFiles(graph, filter, it, ::manifestSkipped) }
+    val primaryKey = primaryKeyRule?.let { evaluatePaimonPrimaryKeyFiles(graph, filter, it, ::manifestSkipped, binder) }
 
     // A Paimon table under data evolution reads a file stitched with the ones sharing its first
     // row id, so a column's bounds here may describe values a patch replaced; the scan consults
     // none of them, and neither does this.
     val withheld = paimonFileBoundsWithheld(graph)
     val columnTypes by lazy { paimonColumnTypes(graph) }
+    val scanSchema by lazy { scanSchemaOf(graph) }
+    val paimonSchemasById by lazy { graph.nodes.filterIsInstance<GraphNode.PaimonSchemaNode>().associate { it.data.id to it.data } }
     val files = graph.nodes.asSequence()
         .mapNotNull { node ->
             val stats = when (node) {
                 is GraphNode.FileNode -> node.columnStats
                 is GraphNode.PaimonDataFileNode -> {
                     primaryKey?.let { return@mapNotNull node.id to it.getValue(node.id) }
-                    if (withheld == null) paimonColumnStats(node) else null
+                    if (withheld == null) paimonEvolvedColumnStats(node, scanSchema, paimonSchemasById[node.entry.file?.schemaId?.toInt()]) else null
                 }
                 else -> return@mapNotNull null
             }
-            var own = if (stats != null) evaluateFilePruning(stats, filter) else unevaluatedFile(filter, withheld.orEmpty())
+            var own = if (stats != null) evaluateFilePruning(stats, filter, binder) else unevaluatedFile(filter, withheld.orEmpty())
             if (node is GraphNode.PaimonDataFileNode && stats != null) own = paimonAllNullNegations(own, filter, stats)
             // An append table's file index: the embedded one is tested when the scan plans, the
             // `.index` file beside the data file when the read opens it — see [FileIndexUse].
@@ -1123,7 +1173,15 @@ data class PrunableColumn(
  * the list still will not offer is a column nothing records anything about: a predicate on one
  * produces a page of "would be read" that looks like an answer and is not one.
  */
+/** The schema a scan of the drawn table binds a filter to: the newest Iceberg metadata's current schema, or Paimon's latest. */
+fun scanSchemaOf(graph: GraphModel): IcebergSchemaModel? =
+    graph.newestIcebergMetadata()?.currentSchemaModel()
+        ?: graph.nodes.asSequence().filterIsInstance<GraphNode.PaimonSchemaNode>().maxByOrNull { it.data.id ?: -1 }?.data?.let(::paimonSchemaAsIceberg)
+
+fun scanColumnBinder(graph: GraphModel): ColumnBinder = scanSchemaOf(graph)?.let { ColumnBinder.BySchema(it) } ?: ColumnBinder.ByName
+
 fun prunableColumns(graph: GraphModel): List<PrunableColumn> {
+    scanSchemaOf(graph)?.let { return prunableColumnsOf(graph, it) }
     val transformsByColumn = LinkedHashMap<String, MutableList<PartitionSummary>>()
     graph.nodes.asSequence()
         .flatMap { node ->
@@ -1165,6 +1223,47 @@ fun prunableColumns(graph: GraphModel): List<PrunableColumn> {
             type = summaries.firstOrNull()?.sourceType ?: boundedByColumn[name] ?: IcebergType.UnknownType,
             transforms = summaries.map { it.field.transformName.ifEmpty { "identity" } }.distinct(),
             hasFileBounds = name in boundedByColumn,
+        )
+    }
+}
+
+/**
+ * The prunable columns under the current schema's names — a nested leaf by its path — each
+ * matched to the partition sources and the statistics by **field id**, so a column renamed
+ * since a manifest was written is listed once, under the name a filter is written in, rather
+ * than once per name the manifests call it.
+ */
+private fun prunableColumnsOf(graph: GraphModel, schema: IcebergSchemaModel): List<PrunableColumn> {
+    val transformsById = LinkedHashMap<Int, MutableList<PartitionSummary>>()
+    graph.nodes.asSequence()
+        .flatMap { node ->
+            when (node) {
+                is GraphNode.ManifestNode -> node.partitionSummaries.asSequence()
+                is GraphNode.PaimonManifestNode -> paimonPartitionSummaries(node).asSequence()
+                else -> emptySequence()
+            }
+        }
+        .forEach { summary -> summary.field.sourceId?.let { transformsById.getOrPut(it) { mutableListOf() }.add(summary) } }
+    val boundedIds = mutableSetOf<Int>()
+    graph.nodes.asSequence()
+        .flatMap { node ->
+            when (node) {
+                is GraphNode.FileNode -> node.columnStats.asSequence()
+                is GraphNode.PaimonDataFileNode -> paimonColumnStats(node).asSequence()
+                else -> emptySequence()
+            }
+        }
+        .forEach { stats -> if (stats.lowerBound != null || stats.upperBound != null || stats.valueCount != null) boundedIds += stats.fieldId }
+    val leaves = schema.fieldsById.values.filter { it.type !is IcebergType.StructType && it.type !is IcebergType.ListType && it.type !is IcebergType.MapType }
+    val partitioned = leaves.filter { it.id in transformsById }
+    val bounded = leaves.filter { it.id !in transformsById && it.id in boundedIds }
+    return (partitioned + bounded).map { field ->
+        val summaries = transformsById[field.id].orEmpty()
+        PrunableColumn(
+            name = schema.pathOf(field.id) ?: field.name,
+            type = field.type,
+            transforms = summaries.map { it.field.transformName.ifEmpty { "identity" } }.distinct(),
+            hasFileBounds = field.id in boundedIds,
         )
     }
 }

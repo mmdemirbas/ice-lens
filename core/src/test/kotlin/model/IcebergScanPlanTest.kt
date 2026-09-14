@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
  * that loses rows. The `no filter` plan is each table's live set, which the other cases are
  * judged over; a file the plan opens must be "would be read" here, whatever else is. Reading
  * more than Iceberg would be allowed — a proof declined is not a wrong skip — and as it stands
- * no case does: all 36 agree with Iceberg's plan file for file, which the second assertion pins
+ * no case does: all 48 agree with Iceberg's plan file for file, which the second assertion pins
  * so a rule that stops proving something it proved is seen, with the case named.
  */
 class IcebergScanPlanTest {
@@ -120,6 +120,22 @@ val ICEBERG_PLANS: List<IcebergPlanCase> = listOf(
     Case("evolved", "amount < 2", setOf("00000-0-a6c9cccf-8be8-4bf0-b8b2-e04615ebabbb-0-00001.parquet")),
     Case("evolved", "note = 'fifth'", setOf("00000-0-a6c9cccf-8be8-4bf0-b8b2-e04615ebabbb-0-00001.parquet", "00000-2-d97e21b7-7c26-4140-8572-bec8986b8299-0-00001.parquet")),
     Case("evolved", "note IS NULL", setOf("00000-0-a6c9cccf-8be8-4bf0-b8b2-e04615ebabbb-0-00001.parquet")),
+    // eqren: `name` renamed to `label` after two files were written — the filter binds to field 2
+    // and prunes files whose manifest still calls it `name`
+    Case("eqren", "no filter", setOf("00000-0-06075099-35fc-447c-a728-a46639430370-0-00001.parquet", "00000-0-533395c9-97e2-418a-a9cd-2005e4a43e6e-0-00001.parquet", "00000-1-590e6e55-db01-4573-bfef-721a3ffbc54d-0-00001.parquet")),
+    Case("eqren", "label = 'alpha'", setOf("00000-0-06075099-35fc-447c-a728-a46639430370-0-00001.parquet")),
+    Case("eqren", "label = 'bravo'", setOf("00000-0-06075099-35fc-447c-a728-a46639430370-0-00001.parquet", "00000-0-533395c9-97e2-418a-a9cd-2005e4a43e6e-0-00001.parquet")),
+    Case("eqren", "label > 'f'", setOf("00000-1-590e6e55-db01-4573-bfef-721a3ffbc54d-0-00001.parquet")),
+    Case("eqren", "label IS NULL", setOf()),
+    // deep: bounds per leaf id, a filter naming the leaf by its path; `addr.city` became
+    // `addr.town` and `addr.country` was added after the first file, which records no stats for it
+    Case("deep", "no filter", setOf("00000-0-0248dde9-6dcb-4e95-972d-38314364f440-0-00001.parquet", "00000-1-f5bffcac-dc11-4c99-9c5e-3fd644479cef-0-00001.parquet")),
+    Case("deep", "addr.town = 'Izmir'", setOf("00000-1-f5bffcac-dc11-4c99-9c5e-3fd644479cef-0-00001.parquet")),
+    Case("deep", "addr.town = 'Ankara'", setOf("00000-0-0248dde9-6dcb-4e95-972d-38314364f440-0-00001.parquet")),
+    Case("deep", "addr.zip < 7000", setOf("00000-0-0248dde9-6dcb-4e95-972d-38314364f440-0-00001.parquet")),
+    Case("deep", "addr.country = 'TR'", setOf("00000-0-0248dde9-6dcb-4e95-972d-38314364f440-0-00001.parquet", "00000-1-f5bffcac-dc11-4c99-9c5e-3fd644479cef-0-00001.parquet")),
+    Case("deep", "addr.country IS NULL", setOf("00000-0-0248dde9-6dcb-4e95-972d-38314364f440-0-00001.parquet")),
+    Case("deep", "name = 'delta'", setOf("00000-1-f5bffcac-dc11-4c99-9c5e-3fd644479cef-0-00001.parquet")),
     Case("pstats", "no filter", setOf("00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00001.parquet", "00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00002.parquet", "00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00001.parquet", "00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00002.parquet")),
     Case("pstats", "p = 'eu'", setOf("00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00002.parquet", "00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00001.parquet")),
     Case("pstats", "p IN ('us', 'apac')", setOf("00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00001.parquet", "00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00002.parquet")),

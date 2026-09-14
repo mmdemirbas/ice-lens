@@ -64,6 +64,19 @@ class PaimonPrimaryKeyScanPruningTest {
         Case("pt", "no filter", setOf("data-783ed9fc-aa14-4175-813b-a954781ebe47-0.parquet", "data-23d56f02-c706-4f17-a6aa-2c07e95c282a-0.parquet", "data-aa4886f3-3f94-4209-a413-0a718d4e9ff4-0.parquet", "data-86810cb4-adeb-4b60-968a-2081768c6ed4-0.parquet", "data-5bfe465d-20c4-44d5-beb0-66f3e47741f1-0.parquet", "data-5cd37195-6938-4199-acb7-ce9b10081559-0.parquet", "data-69aee50c-75a2-4eaf-ac04-051b5d6eef57-0.parquet")),
         Case("pt", "k = 3", setOf("data-86810cb4-adeb-4b60-968a-2081768c6ed4-0.parquet")),
         Case("pt", "v = 'zzz'", setOf()),
+        // pse, an append table: `v` became `label` and `w` was added after the first file — a filter
+        // on the new name binds by field id, and a file whose schema lacks the column reads as null
+        Case("pse", "no filter", setOf("data-59098f85-61ea-42d6-8238-ac899a8e6c9a-0.parquet", "data-ac753669-352e-4eb3-bd7c-b9aff8e03339-0.parquet", "data-5fd8e304-d57a-4a9a-a827-c375e90e86b8-0.parquet")),
+        Case("pse", "label = 'a'", setOf("data-59098f85-61ea-42d6-8238-ac899a8e6c9a-0.parquet")),
+        Case("pse", "label = 'd'", setOf("data-5fd8e304-d57a-4a9a-a827-c375e90e86b8-0.parquet")),
+        Case("pse", "w = 7", setOf("data-5fd8e304-d57a-4a9a-a827-c375e90e86b8-0.parquet")),
+        Case("pse", "w IS NULL", setOf("data-59098f85-61ea-42d6-8238-ac899a8e6c9a-0.parquet")),
+        Case("pse", "k = 4", setOf("data-5fd8e304-d57a-4a9a-a827-c375e90e86b8-0.parquet")),
+        // pkr: the primary key renamed between writes — `_KEY_k` in the first file, `_KEY_id` after
+        Case("pkr", "no filter", setOf("data-4176255d-dc7e-45dc-8817-a706286bc55e-0.parquet", "data-9e86f2d3-14f6-42df-b8b0-4f490d2ecc1b-0.parquet", "data-bc50b7cf-ca8c-4e53-bc98-5cad4ccc31c5-0.parquet")),
+        Case("pkr", "id = 1", setOf("data-4176255d-dc7e-45dc-8817-a706286bc55e-0.parquet", "data-9e86f2d3-14f6-42df-b8b0-4f490d2ecc1b-0.parquet")),
+        Case("pkr", "id = 3", setOf("data-bc50b7cf-ca8c-4e53-bc98-5cad4ccc31c5-0.parquet")),
+        Case("pkr", "v = 'a'", setOf("data-4176255d-dc7e-45dc-8817-a706286bc55e-0.parquet", "data-9e86f2d3-14f6-42df-b8b0-4f490d2ecc1b-0.parquet", "data-bc50b7cf-ca8c-4e53-bc98-5cad4ccc31c5-0.parquet")),
     )
 
     private fun opened(fate: FileFate?) = fate == FileFate.WOULD_BE_READ || fate == FileFate.UNEVALUATED

@@ -1,0 +1,89 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "5cba9a52-f943-4623-a731-30dd35a68fdf",
+  "location" : "/wh/default/deep",
+  "last-sequence-number" : 0,
+  "last-updated-ms" : 1789352896277,
+  "last-column-id" : 10,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "addr",
+      "required" : false,
+      "type" : {
+        "type" : "struct",
+        "fields" : [ {
+          "id" : 6,
+          "name" : "city",
+          "required" : false,
+          "type" : "string"
+        }, {
+          "id" : 7,
+          "name" : "zip",
+          "required" : false,
+          "type" : "int"
+        } ]
+      }
+    }, {
+      "id" : 4,
+      "name" : "tags",
+      "required" : false,
+      "type" : {
+        "type" : "list",
+        "element-id" : 8,
+        "element" : "string",
+        "element-required" : false
+      }
+    }, {
+      "id" : 5,
+      "name" : "props",
+      "required" : false,
+      "type" : {
+        "type" : "map",
+        "key-id" : 9,
+        "key" : "string",
+        "value-id" : 10,
+        "value" : "int",
+        "value-required" : false
+      }
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "last-partition-id" : 999,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "root",
+    "write.merge.mode" : "merge-on-read",
+    "write.update.mode" : "merge-on-read",
+    "write.delete.mode" : "merge-on-read",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ ]
+}

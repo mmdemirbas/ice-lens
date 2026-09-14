@@ -17,6 +17,9 @@
 00000-5-f9a7e27c-bfd9-416b-91dc-6acfdce67c77-0-00001.parquet ->
 00000-9-795cfa60-b0f0-46b1-bd7e-f568bb0320e8-0-00001.parquet ->
 00001-1-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet ->
+-- deep
+00000-0-0248dde9-6dcb-4e95-972d-38314364f440-0-00001.parquet -> 00000-3-463703ba-c5c2-4ad9-9c80-57fe1b250b87-00001-deletes.parquet
+00000-1-f5bffcac-dc11-4c99-9c5e-3fd644479cef-0-00001.parquet ->
 -- defaults
 00000-0-a813262d-11ae-4f4f-8538-619f0a70995c-0-00001.parquet ->
 00000-1-31cc12be-7e28-44eb-b5c3-2da651172510-0-00001.parquet ->
