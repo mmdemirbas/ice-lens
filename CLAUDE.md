@@ -1707,6 +1707,37 @@ intellij/src/main/kotlin/plugin/
   everything and the bucket is still full" is the question; the table panel's `Expiry Files`
   section leads with that line, and `TableNode.paimonExpiryFiles` carries the model-built input
   for the reason `expiryFiles` does
+- **Which partitions a Paimon partition expiry drops is planned from `PartitionExpire.doExpire`,
+  and a `DATE` partition column is one it never drops by value.** `model/PaimonPartitionExpiryPlan.kt`
+  reads release-1.3.1: a table has a `PartitionExpire` only with `partition.expiration-time` set
+  and partition keys, a write checks it every `partition.expiration-check-interval` (1 h; the
+  `expire_partitions` procedure sets 0), and the run folds the latest snapshot's partitions the
+  way `readPartitionEntries` does — every entry of the base and delta manifests, a `DELETE`
+  subtracting, a partition at zero files not listed (`paimonPartitionEntriesOf`, carried as
+  `PaimonExpiryInput.partitions`). `values-time` (the default) reads a time off the values —
+  `partition.timestamp-pattern` with `$field` filled in, else the first field alone — through
+  `partition.timestamp-formatter` or the lenient default `yyyy-MM-dd[ HH:mm:ss[.n]]`
+  (`paimonPartitionTime`), and drops the partition when `now - expiration-time` is after it; a
+  value that does not parse, or a null, is warned about and kept. `update-time` drops a partition
+  whose greatest `_CREATION_TIME` — over every entry, removals included, since
+  `PartitionEntry.merge` takes the max whatever the kind — is before the cutoff. The expired
+  partitions go sorted by their values as text, at most `partition.expiration-max-num` (100), as
+  one `OVERWRITE` commit; the files stay on disk, still listed by the older snapshots, until a
+  snapshot expiry reaches that commit's `DELETE` entries. **The value the extractor sees is the
+  row getter's `toString`** (`paimonPartitionValueText`), which spells a `DATE` as its epoch day:
+  run on a copy of `pt` with `expiration_time => '1 d'`, with and without `timestamp_pattern =>
+  '$dt'`, Paimon warned `Can't extract datetime from partition dt:19788,region:eu` per entry and
+  printed `No expired partitions.` both times — so a `DATE`-partitioned table expires only under
+  `update-time`. `docs/fixtures/paimon-ppx.sql` is the oracle, the `pe`/`pea` shape: `ppx` before
+  and `ppxa` after a bare call on a `(region, dt)` string-partitioned table with a 1-day
+  expiration and `$dt` as the pattern — the two `eu` partitions dropped in value order, `2099-12-31`
+  kept as after the cutoff, `n-a` kept with the warning, snapshot 3 an `OVERWRITE` of
+  `deltaRecordCount -2`, and `update-time` on files written seconds earlier dropping nothing.
+  `PaimonPartitionExpiryFixtureTest` holds the plan from `ppx` to exactly what `ppxa` no longer
+  lists, the plan from `ppxa` to nothing, every fixture without the option to nothing, and the
+  extractor's default formatters, the pattern, a null and the cap in isolation. The table panel's
+  `Partition Expiry` section draws it on a partitioned table, and `Maintenance` carries an
+  `expire_partitions` line
 - **A Paimon bucket is drawn as the LSM tree its writer restores, and the next flush's compaction
   is planned the way `UniversalCompaction.pick()` plans it.** `model/PaimonCompaction.kt`:
   `paimonBucketLsms` groups a snapshot's live files by partition and bucket into sorted runs —
@@ -2494,7 +2525,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,342 tests across 180 files (1,057 in :core, 274 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,349 tests across 181 files (1,063 in :core, 275 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2646,6 +2677,7 @@ container invocation and the traps in it:
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |
 | `paimon/db.db/px`, `pxa` | `PaimonExpiryFixtureTest` | one table written twice — six commits, a tag on 2, a consumer at 4; `px` as it is, `pxa` after `expire_snapshots(retain_max = 2, retain_min = 1)` — the survivors the plan for `px` is checked against |
 | `paimon/db.db/pe`, `pea` | `PaimonExpiryFilePlanFixtureTest` | one table copied on disk before `expire_snapshots(retain_max => 2, retain_min => 1)` ran on the original — a changelog, a compaction, a tag on 3; the files the expiry freed, and the three the tag held |
+| `paimon/db.db/ppx`, `ppxa` | `PaimonPartitionExpiryFixtureTest` | an append table partitioned by `(region, dt)`, both strings, with `partition.expiration-time = 1 d` and `partition.timestamp-pattern = $dt`, copied on disk before a bare `expire_partitions` ran on the original — two `eu` partitions dropped as one `OVERWRITE`, `2099-12-31` kept, `n-a` kept as unreadable, `update-time` dropping nothing |
 | `paimon/db.db/pc` | `PaimonCompactionFixtureTest` | a primary-key table on every default, seven one-row inserts — the fifth flush is the one the writer compacted, by size amplification into level 5, and the COMPACT after it is the oracle |
 | `paimon/db.db/cl` | `PaimonChangelogFixtureTest` | a changelog manifest list on every append, an `OVERWRITE`, and an `ANALYZE` commit with column statistics |
 | `paimon/db.db/tg` | `PaimonTagFixtureTest` | a tag on a snapshot `expire_snapshots` has removed — a data file only the tag reaches, and the changelog the tag did not keep |

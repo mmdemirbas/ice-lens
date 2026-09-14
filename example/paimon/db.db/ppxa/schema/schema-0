@@ -1,0 +1,30 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT"
+  }, {
+    "id" : 1,
+    "name" : "v",
+    "type" : "STRING"
+  }, {
+    "id" : 2,
+    "name" : "region",
+    "type" : "STRING"
+  }, {
+    "id" : 3,
+    "name" : "dt",
+    "type" : "STRING"
+  } ],
+  "highestFieldId" : 3,
+  "partitionKeys" : [ "region", "dt" ],
+  "primaryKeys" : [ ],
+  "options" : {
+    "owner" : "root",
+    "partition.timestamp-pattern" : "$dt",
+    "partition.expiration-time" : "1 d"
+  },
+  "timeMillis" : 1789408243993
+}

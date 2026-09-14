@@ -98,6 +98,8 @@ data class PaimonExpiryInput(
     val tableOptions: Map<String, String>,
     /** `changelog/`'s contents — id to `timeMillis` — where the changelog lifecycle is decoupled; see [planChangelogExpiry]. */
     val changelogTimes: Map<Long, Long?> = emptyMap(),
+    /** The latest snapshot's partitions as `readPartitionEntries` folds them — what a partition expiry decides over; see [planPaimonPartitionExpiry]. */
+    val partitions: List<PaimonPartitionEntry> = emptyList(),
 )
 
 fun PaimonUnifiedTableModel.expiryInput(): PaimonExpiryInput = PaimonExpiryInput(
@@ -106,7 +108,12 @@ fun PaimonUnifiedTableModel.expiryInput(): PaimonExpiryInput = PaimonExpiryInput
     tagsBySnapshotId = tagNamesBySnapshotId,
     tableOptions = schemas.maxByOrNull { it.id ?: -1 }?.options.orEmpty(),
     changelogTimes = changelogs.mapNotNull { c -> c.metadata.id?.let { it to c.metadata.timeMillis } }.toMap(),
+    partitions = snapshots.maxByOrNull { it.metadata.id ?: -1 }?.let(::paimonPartitionEntriesOf).orEmpty(),
 )
+
+/** The partition expiry under the table's own options — see [planPaimonPartitionExpiry]. */
+fun PaimonExpiryInput.planPartitionExpiry(nowMs: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): PaimonPartitionExpiryPlan =
+    planPaimonPartitionExpiry(partitions, tableOptions, nowMs, zone)
 
 const val PAIMON_DEFAULT_RETAIN_MIN = 10
 const val PAIMON_DEFAULT_EXPIRE_LIMIT = 50

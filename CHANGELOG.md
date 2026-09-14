@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`expire_partitions` planned** — the table panel's `Partition Expiry` on a partitioned Paimon
+  table, the way `PartitionExpire.doExpire` decides it under the table's options: the latest
+  snapshot's partitions folded from every manifest entry, `values-time` through the pattern and
+  formatter or `update-time` off the newest file, the cap, and why each partition is kept — a
+  `DATE` partition column never parses, since the extractor sees its epoch day. Fixtures `ppx`
+  and `ppxa`, the table before and after a bare call; a `Maintenance` line for the procedure.
 - **A row lookup as of one snapshot, on the snapshot panel** — the table panel's filter read
   against the snapshot's own live files and delete pairing (Iceberg) or replay and merge rule
   (Paimon), under `Live Rows` / `Merged Rows`; what the table's history, which walks `main`,

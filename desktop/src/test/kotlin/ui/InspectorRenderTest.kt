@@ -1419,6 +1419,16 @@ class InspectorRenderTest {
         renderInspector(graph, "table_root", "paimon-table-changelog-expiry", height = 3000, sectionCollapse = onlyExpanded("Changelog Expiry", "Maintenance"))
     }
 
+    /** `ppx`'s table panel: the partition expiry under the table's own options — two dropped, one kept as future, one kept as unreadable — and the maintenance line for it. */
+    @Test
+    fun `a paimon table with a partition expiration time plans which partitions go`() {
+        val graph = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/ppx").absolutePath)),
+            showRows = false,
+        )
+        renderInspector(graph, "table_root", "paimon-table-partition-expiry", height = 3000, sectionCollapse = onlyExpanded("Partition Expiry", "Maintenance"))
+    }
+
     @Test
     fun `a paimon snapshot lists its index files`() {
         val graph = GraphLayoutService.layoutGraph(

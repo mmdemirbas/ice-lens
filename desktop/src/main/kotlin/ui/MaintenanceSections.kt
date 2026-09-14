@@ -48,6 +48,8 @@ import model.paimonAppendVerdict
 import model.planCompaction
 import model.PaimonExpiryOptions
 import model.planChangelogExpiry
+import model.planPartitionExpiry
+import model.PaimonPartitionExpireStrategy
 import model.paimonChangelogLifecycleDecoupled
 import model.TableMetadata
 import model.describe
@@ -376,6 +378,14 @@ internal fun MaintenanceSection(node: GraphNode.TableNode) {
                 else -> Row("nothing expires", "expire_changelogs", "${formatCounted(paimonExpiry.changelogTimes.size, "long-lived changelog")}, every one within the bounds", "table → Changelog Expiry", null)
             }
         }
+        if (paimonExpiry.partitions.isNotEmpty()) {
+            val partitions = paimonExpiry.planPartitionExpiry(nowMs)
+            rows += when {
+                partitions.expirationMs == null -> Row("not configured", "expire_partitions", "no partition.expiration-time is set: a write expires nothing and a bare call is refused; ${formatCounted(partitions.partitions.size, "partition")} listed", "table → Partition Expiry", null)
+                partitions.dropped.isNotEmpty() -> Row("would drop ${formatCounted(partitions.dropped.size, "partition")}", "expire_partitions", "of ${partitions.partitions.size} under ${partitions.strategySpelled}" + (if (partitions.heldBack > 0) ", ${partitions.heldBack} more past partition.expiration-max-num" else ""), "table → Partition Expiry", verdictSkippedColor())
+                else -> Row("nothing expires", "expire_partitions", "${formatCounted(partitions.partitions.size, "partition")}, none past the cutoff under ${partitions.strategySpelled}", "table → Partition Expiry", null)
+            }
+        }
     }
     if (rows.isEmpty()) return
     val acting = rows.count { it.color != null }
@@ -650,6 +660,66 @@ internal fun PaimonChangelogExpirySection(input: PaimonExpiryInput, nowMs: Long)
                 listOf(verdict(v), v.snapshotId.toString(), verdict(byAgeById.getValue(v.snapshotId)))
             },
             leadCellColors = byDefaults.changelogs.map { if (it.retained) null else colors.error },
+        )
+    }
+}
+
+/**
+ * Which partitions `expire_partitions` would drop — or a write would, once
+ * `partition.expiration-check-interval` has passed — under the table's own options; see
+ * [planPaimonPartitionExpiry]. Drawn on a partitioned table only. One column, like the rewrite
+ * section: the option a reader reaches for is `partition.expiration-time`, and a table without it
+ * has nothing a call could do.
+ */
+@Composable
+internal fun PaimonPartitionExpirySection(input: PaimonExpiryInput, nowMs: Long) {
+    val colors = MaterialTheme.colorScheme
+    if (input.partitions.isEmpty()) return
+    val plan = input.planPartitionExpiry(nowMs)
+    val title = "Partition Expiry" + if (plan.dropped.isNotEmpty()) " — ${plan.dropped.size} would go" else ""
+    CountedSection(title, plan.partitions.size, "partitions") {
+        val strategy = when (plan.strategy) {
+            PaimonPartitionExpireStrategy.VALUES_TIME -> "values-time reads a time off the partition's values — " +
+                (plan.pattern?.let { "partition.timestamp-pattern '$it' with each \$field filled in" } ?: "the first partition field's value, no partition.timestamp-pattern being set") +
+                ", through " + (plan.formatter?.let { "partition.timestamp-formatter '$it'" } ?: "the default yyyy-MM-dd[ HH:mm:ss] formatter") +
+                " — and a partition whose time is before the cutoff goes; a value that does not parse, or a null, is warned about and kept, which is every DATE partition column, since the row's getter spells one as its epoch day"
+            PaimonPartitionExpireStrategy.UPDATE_TIME -> "update-time drops a partition whose newest file — the greatest _CREATION_TIME over the manifests' entries, removals included — is before the cutoff"
+            PaimonPartitionExpireStrategy.CUSTOM -> "custom names a factory of the table's own, which is not read here"
+            null -> "'${plan.strategySpelled}' is not a strategy release-1.3.1 knows"
+        }
+        Text(
+            "What expire_partitions would drop, the way PartitionExpire decides it: the latest snapshot's partitions " +
+                "folded from every manifest entry, a removal subtracting; " +
+                (plan.expirationMs?.let { "the cutoff is now less partition.expiration-time (${formatRetentionMs(it).substringBefore(" (")}); " } ?: "no partition.expiration-time is set, so a write expires nothing and a bare call is refused; ") +
+                "$strategy. At most partition.expiration-max-num (${plan.maxNum}) go in one run, smallest values first, as one OVERWRITE commit removing their files from the manifests — the files stay on disk until a snapshot expiry reaches that commit's removals. " +
+                "A write checks this every partition.expiration-check-interval (${formatRetentionMs(plan.checkIntervalMs).substringBefore(" (")}); the procedure checks at once. A write-only table never runs it.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (plan.heldBack > 0) Text(
+            "${formatCounted(plan.heldBack, "more partition")} past the cutoff wait for a later run, past partition.expiration-max-num.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        val droppedPaths = plan.dropped.map { it.entry.partition.path }.toSet()
+        val rows = plan.partitions.sortedWith(compareBy({ !it.expired }, { it.entry.partition.path }))
+        WideTable(
+            headers = listOf("Verdict", "Partition", "Why", "Files", "Rows", "Bytes", "Newest File"),
+            columnWidths = listOf(120.dp, 220.dp, 360.dp, 60.dp, 80.dp, 100.dp, 200.dp),
+            rows = rows.map { v ->
+                listOf(
+                    if (v.entry.partition.path in droppedPaths) "DROPPED" else if (v.expired) "held back" else "kept",
+                    v.entry.partition.display,
+                    v.reason,
+                    formatCount(v.entry.fileCount),
+                    formatCount(v.entry.recordCount),
+                    formatBytes(v.entry.fileSizeBytes),
+                    v.entry.lastFileCreationTimeMs?.let(::formatAppTimestamp) ?: "—",
+                )
+            },
+            leadCellColors = rows.map { if (it.entry.partition.path in droppedPaths) colors.error else null },
         )
     }
 }
