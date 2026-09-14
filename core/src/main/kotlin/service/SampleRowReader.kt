@@ -49,9 +49,11 @@ data class PositionalDeleteTally(
  * bytes. Only Parquet answers `file_row_number`, so an Avro row has no position and the
  * readers that need one (a positional delete, a vector, a stitched split) say so rather than
  * count the result's order as one. An ORC file is refused at [resolveForQuery] with
- * [ORC_UNREADABLE], before any query is built, so every reader reports the same reason — and
- * so is a local Avro file whose header names a codec DuckDB was seen to refuse
- * ([AVRO_CODECS_REFUSED]), by the codec's name, since DuckDB's own line does not name it.
+ * [ORC_UNREADABLE], before any query is built, so every reader reports the same reason. An
+ * Avro file whose header names a codec DuckDB was seen to refuse ([AVRO_CODECS_REFUSED]) is
+ * resolved to a copy under `deflate` ([AvroTranscodeCache]) for the readers that run SQL over
+ * it, and read in this process for its sample rows ([AvroRows]); only a file no copy can be
+ * kept for is refused, by the codec's name, since DuckDB's own line does not name it.
  *
  * **Every `read_parquet` in this module passes `hive_partitioning = false`.** A table's files sit
  * under `name=value` directories — `dt=19787/region=eu/bucket-0/` on Paimon, `amount=98765.43/`
@@ -102,11 +104,12 @@ object SampleRowReader {
      */
     internal fun resolveForQuery(filePath: String): Pair<String, String> {
         val (path, ext) = resolveDataFile(filePath)
-        if (ext == "avro" && !StorageLocation.isRemote(path)) requireReadableCodec(path, path.substringAfterLast('/'))
+        // A codec DuckDB refuses is read through a copy under one it does not — see AvroTranscodeCache.
+        if (ext == "avro" && avroCodecRefused(path)) return AvroTranscodeCache.session.readablePathOf(path) to ext
         return path to ext
     }
 
-    /** [resolveForQuery] without the codec check — for a read that has its own way through a codec DuckDB refuses ([AvroRows]). */
+    /** [resolveForQuery] without the codec step — for a read that has its own way through a codec DuckDB refuses ([AvroRows]), and for the header reads. */
     private fun resolveDataFile(filePath: String): Pair<String, String> {
         if (StorageLocation.isRemote(filePath)) {
             val name = filePath.substringAfterLast('/')
@@ -121,16 +124,11 @@ object SampleRowReader {
         return canonicalFile.path.replace("\\", "/") to ext
     }
 
-    private fun requireReadableCodec(path: String, name: String) {
-        val codec = runCatching { AvroReader.codecOf(path) }.getOrNull() ?: return
-        require(codec !in AVRO_CODECS_REFUSED) { avroCodecUnreadable(codec, name) }
-    }
-
-    /** Whether an Avro file's header names a codec DuckDB refuses — the case [AvroRows] exists for. */
+    /** Whether an Avro file's header names a codec DuckDB refuses — the case [AvroRows] and [AvroTranscodeCache] exist for. */
     private fun avroCodecRefused(path: String): Boolean =
         runCatching { AvroReader.codecOf(path) }.getOrNull() in AVRO_CODECS_REFUSED
 
-    /** The one sentence every reader gives for an Avro file DuckDB cannot decompress. */
+    /** The one sentence every reader gives for an Avro file DuckDB cannot decompress and no copy can be kept for. */
     internal fun avroCodecUnreadable(codec: String, name: String): String =
         "DuckDB's Avro reader does not read the $codec codec this file is written with (it reads ${AVRO_CODECS_READ.joinToString(", ")}): $name"
 

@@ -181,9 +181,48 @@ class SampleRowReaderTest {
         val zstd = write("zstd.avro", org.apache.avro.file.CodecFactory.zstandardCodec(3))
         // The same rows, the same spelling of null, from the Avro library rather than DuckDB.
         assertEquals(rows, SampleRowReader.querySampleRows(zstd.absolutePath))
-        // The SQL readers have no such way through: the path they resolve refuses the codec by name.
-        val e = assertFailsWith<IllegalArgumentException> { SampleRowReader.resolveForQuery(zstd.absolutePath) }
+        // The SQL readers resolve it to a copy under deflate, keeping the name, made once.
+        val (copy, ext) = SampleRowReader.resolveForQuery(zstd.absolutePath)
+        assertEquals("avro", ext)
+        assertEquals("zstd.avro", copy.substringAfterLast('/'))
+        assertTrue(copy != zstd.absolutePath.replace("\\", "/"), copy)
+        assertEquals("deflate", AvroReader.codecOf(copy))
+        assertEquals(copy, SampleRowReader.resolveForQuery(zstd.absolutePath).first, "one copy per session")
+        val throughDuckDb = DuckDb.withConnection { conn ->
+            conn.prepareStatement("SELECT k, v FROM read_avro(?) ORDER BY k").use { st ->
+                st.setString(1, copy)
+                st.executeQuery().use { rs -> generateSequence { if (rs.next()) rs.getInt(1) to rs.getString(2) else null }.toList() }
+            }
+        }
+        assertEquals(listOf(0 to "v0", 1 to null, 2 to "v2"), throughDuckDb, "read_avro over the copy")
+    }
+
+    @Test
+    fun `the transcode cache is bounded, evicts the least recently used copy, and refuses a file that cannot fit`() {
+        val schema = org.apache.avro.Schema.Parser().parse("""{"type":"record","name":"r","fields":[{"name":"k","type":"int"}]}""")
+        fun write(name: String): File {
+            val f = File(tmpDir, name)
+            org.apache.avro.file.DataFileWriter(org.apache.avro.generic.GenericDatumWriter<org.apache.avro.generic.GenericData.Record>(schema))
+                .setCodec(org.apache.avro.file.CodecFactory.zstandardCodec(3)).create(schema, f).use { w ->
+                    repeat(10) { i -> w.append(org.apache.avro.generic.GenericData.Record(schema).apply { put("k", i) }) }
+                }
+            return f
+        }
+        val a = write("a.avro")
+        val b = write("b.avro")
+        val room = AvroTranscodeCache(maxBytes = a.length() * 3 / 2)
+        val copyA = room.readablePathOf(a.absolutePath)
+        assertTrue(File(copyA).isFile, copyA)
+        assertEquals(1, room.size)
+        val copyB = room.readablePathOf(b.absolutePath)
+        assertEquals(1, room.size, "b's copy took a's place")
+        assertTrue(File(copyB).isFile, copyB)
+        assertTrue(!File(copyA).exists(), "a's copy is deleted on eviction")
+        val none = AvroTranscodeCache(maxBytes = 10)
+        val e = assertFailsWith<IllegalArgumentException> { none.readablePathOf(a.absolutePath) }
         assertTrue(e.message!!.startsWith("DuckDB's Avro reader does not read the zstandard codec"), e.message)
+        assertTrue(e.message!!.contains("larger than the 10 bytes"), e.message)
+        assertEquals(0, none.size)
     }
 
     @Test

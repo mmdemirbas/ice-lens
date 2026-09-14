@@ -126,17 +126,14 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   on `file_row_number`, which DuckDB assigns in Parquet only — an Avro data-evolution table
   reports the split as unreadable rather than reading its files apart.
 
-- **ORC data files cannot be read, and a Paimon Avro table on its default codec is read for
-  its row cards only.** DuckDB 1.4.4 has no ORC table function, core or community, and its Avro
-  reader refuses `zstandard` — Paimon's `file.compression` default. The row cards of a zstd Avro
-  file are read in this process now (`service/AvroRows.kt`, a sample being the file's first
-  block); the lookup, the merged count, the live count and the statistics sweep run SQL over the
-  whole file through DuckDB and still say the codec (`paz`). The way through for those would be
-  transcoding the file once per session into a temp copy under a codec DuckDB reads
-  (`DataFileWriter.appendAllFrom(reader, recompress = true)`) — a full read and write per file,
-  which is about one extra scan for readers that scan anyway, and a cache to bound. An ORC
-  reader would be a second engine on the classpath (the ORC core jar with its Hadoop tail).
-  Neither started.
+- **ORC data files cannot be read.** DuckDB 1.4.4 has no ORC table function, core or community;
+  every reader says so (`orcfmt`). An ORC reader would be a second engine on the classpath (the
+  ORC core jar with its Hadoop tail), not started. A Paimon Avro table on its default zstd codec,
+  which DuckDB's Avro reader refuses, is read now: the row cards in this process
+  (`service/AvroRows.kt`) and the SQL readers through a copy under deflate made once per session
+  (`service/AvroTranscode.kt`, bounded at 2 GiB with the oldest copies evicted; a file larger
+  than that is refused by the codec's name). A remote file's copy pulls the object through the
+  channel, once, which is what its row cards already cost
 
 - **The whole-table integrity check reads the statistics files behind its second click, and
   stops its closure walks at fifty snapshots.** `model/Integrity.kt` runs the metadata-only

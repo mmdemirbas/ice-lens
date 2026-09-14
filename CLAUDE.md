@@ -99,6 +99,7 @@ core/src/main/kotlin/
 │   ├── PaimonReader.kt        # Paimon JSON snapshot/schema + Avro manifest list/manifest reading
 │   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet and Avro, the table function chosen by extension; ORC refused with the reason — max 50)
 │   ├── AvroRows.kt            # An Avro data file's first rows read in this process — the row cards' way through a codec DuckDB refuses
+│   ├── AvroTranscode.kt       # A copy of such a file under deflate, once per session, bounded — the SQL readers' way through the same
 │   ├── RowLookup.kt           # The rows a filter matches, read through DuckDB, and each one's fate under the delete files paired with its file
 │   ├── PaimonRowLookup.kt     # The same on Paimon: a record's fate under its file's vector, its own `_VALUE_KIND`, and the bucket's later writes for its key
 │   ├── RowHistoryTrace.kt     # Either lookup run at every retained snapshot on main, one file read per trace on Iceberg
@@ -503,19 +504,25 @@ intellij/src/main/kotlin/plugin/
   DuckDB's Avro reader decompresses `null`, `deflate` and `snappy` and refuses `zstandard` and
   `bzip2`** ("File header contains an unknown codec", a line that does not name the codec) —
   measured on files written with each; Iceberg's default is deflate and Paimon's `file.compression`
-  default is zstd, so a Paimon Avro table's SQL readers cannot open it as written unless the
-  table sets the codec. `resolveForQuery` reads a local Avro file's header and refuses a codec
-  on the refused list by name (`avroCodecUnreadable`); `pav` is written under `deflate` and
-  reads through the merge, the lookup and the check, and `paz` on the default is the refusal
-  on those three. **The row cards have their own way through**: a sample is the file's first
-  block, so `querySampleRows` reads such a file in this process through the Avro library that
-  reads the manifests (`service/AvroRows.kt`, `zstd-jni` already on the classpath), with the
-  file's logical types applied so a `date` is a `LocalDate` and a `decimal` a `BigDecimal` —
-  the shape DuckDB gives a Parquet row's, near enough for a card — and a null cell spelled
-  `"null"` as DuckDB's arrive, so the two readers give one shape of row (`paz` against `pav`).
-  Only the rows: a `WHERE` over rows read here would be a second query engine, so the readers
-  that scan the whole file still refuse the codec by name. `resolveDataFile` is the resolve
-  without the codec check, for that read and for `fileColumnsOf`
+  default is zstd, so a Paimon Avro table on its defaults is one DuckDB cannot open as written.
+  **Two ways through, one per cost.** The row cards' sample is the file's first block, so
+  `querySampleRows` reads such a file in this process through the Avro library that reads the
+  manifests (`service/AvroRows.kt`, `zstd-jni` already on the classpath), with the file's
+  logical types applied so a `date` is a `LocalDate` and a `decimal` a `BigDecimal` — the shape
+  DuckDB gives a Parquet row's, near enough for a card — and a null cell spelled `"null"` as
+  DuckDB's arrive, so the two readers give one shape of row (`paz` against `pav`). The readers
+  that run SQL over the whole file — the lookup, the merged count, the live count, the
+  statistics sweep — cannot take rows read here without becoming a second query engine, so
+  `resolveForQuery` hands them **a copy under `deflate`** (`service/AvroTranscode.kt`): made
+  block by block with `appendAllFrom(reader, recompress = true)`, no record decoded, the
+  header's metadata carried over, once per session, in a temp directory removed at exit. The
+  copy **keeps the file's name** in a directory of its own, because the Paimon readers tell a
+  `UNION ALL`'s files apart by the `filename` column's last segment. The cache is bounded
+  (`MAX_CACHE_BYTES`, 2 GiB, least recently used copies evicted) and a file no copy can be kept
+  for is refused by the codec's name (`avroCodecUnreadable`), since DuckDB's own line does not
+  name it. `pav` is written under `deflate` and `paz` on the default, and the count, the sweep
+  and the lookup answer the same on both. `resolveDataFile` is the resolve without the codec
+  step, for the in-process read and for `fileColumnsOf`
 - **A Paimon row is found the same way, and what decides it is the merge a read runs, applied
   to one record.** `model/PaimonRowLookup.kt` reads what it takes off the latest snapshot on
   `main` (`TableNode.paimonRowLookup`): the replay's live files with their partition and bucket,
@@ -2046,7 +2053,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,230 tests across 164 files (955 in :core, 266 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,231 tests across 164 files (956 in :core, 266 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2192,7 +2199,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pu`, `ag`, `fr` | `PaimonMergeEngineFixtureTest` | one primary-key table per merge engine other than the default — `partial-update` folding two writes and removing a key on `-D` until its re-insert, `aggregation` summing, and `first-row`, whose DELETE Spark ran as a file rewrite to level 0 that a batch read of a first-row table never reads: Paimon's own reads printed one row where the statements describe two |
 | `paimon/db.db/sgm` | `PaimonMergeEngineFixtureTest` | `partial-update` with a sequence group of two fields, `fields.g1,g2.sequence-group = a`, and `remove-record-on-sequence-group = g2` — an insert with a null in the tuple ordered below the row's, and Paimon's read at every snapshot |
 | `paimon/db.db/sg`, `sgd` | `PaimonMergeEngineFixtureTest` | `partial-update` with two sequence groups — `sg` inserts only, a lower group value not overriding a higher; `sgd` with `remove-record-on-sequence-group = ga`, a DELETE writing a `-D` that removes the key and an insert bringing it back, Paimon's read at every snapshot |
-| `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers refused by the codec's name |
+| `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
 starts a loopback-only MinIO and uploads `example/iceberg/default/mor` to `s3://warehouse/db/mor`;

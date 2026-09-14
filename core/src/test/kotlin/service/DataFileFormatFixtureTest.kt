@@ -104,14 +104,14 @@ class DataFileFormatFixtureTest {
 
     /**
      * Paimon's default `file.compression` is zstd, and DuckDB's Avro reader answers "File header
-     * contains an unknown codec" to a `zstandard` file — a line that does not name the codec. The
-     * row cards read the file in this process instead ([AvroRows]) — the script's two rows, their
-     * `_VALUE_KIND` and their key columns, the shape `read_avro` gives `pav`'s — and the readers
-     * that run SQL over the file read the header first and refuse by the codec's name: the merged
-     * count, the statistics sweep and the lookup alike.
+     * contains an unknown codec" to a `zstandard` file. The row cards read the file in this
+     * process instead ([AvroRows]) — the script's two rows, their `_VALUE_KIND` and their key
+     * columns, the shape `read_avro` gives `pav`'s — and the readers that run SQL over the file
+     * read a copy under deflate ([AvroTranscodeCache]): the merged count, the statistics sweep
+     * and the lookup answer what they answer on `pav`.
      */
     @Test
-    fun `a Paimon Avro table on the default codec draws its rows in process, and the SQL readers refuse by the codec's name`() {
+    fun `a Paimon Avro table on the default codec draws its rows in process and answers the SQL readers through a copy`() {
         val rows = rowNodes("paz", paimon = true)
         assertEquals(2, rows.size)
         rows.forEach { row ->
@@ -125,13 +125,17 @@ class DataFileFormatFixtureTest {
         assertEquals(pav.map { it.resolvedData.keys }.toSet(), rows.map { it.resolvedData.keys }.toSet(), "one shape of row under either reader")
         val model = FixtureCatalog.paimonModel("paz")
         val count = PaimonMergedCount.count(assertNotNull(model.paimonRowLookupInput()))
-        assertTrue(count.buckets.single().error.orEmpty().contains("zstandard codec"), "$count")
+        assertNull(count.buckets.single().error, "$count")
+        assertEquals(2L, count.merged, "$count")
         val sweep = sweepFileStats(model.fileStatsTargets()) { StatsCheckReader.check(it.localPath, it.recorded, it.recordedRows) }
-        assertEquals(1, sweep.unreadable.size, "$sweep")
-        assertTrue(sweep.unreadable.single().second.contains("zstandard codec"), "$sweep")
+        assertEquals(emptyList(), sweep.unreadable, "$sweep")
+        assertEquals(emptyList(), sweep.findings, "$sweep")
+        assertEquals(13, sweep.figures, "$sweep") // the row count and each of the three columns' min, max, nulls and value count, as on pav
         val lookup = PaimonRowLookup.lookup(assertNotNull(model.paimonRowLookupInput()), ScanFilter.Term(ScanPredicate("k", PredicateOp.EQ, "1")), emptySet())
-        assertEquals(emptyList(), lookup.hits)
-        assertTrue(lookup.filesRead.single().error.orEmpty().contains("zstandard codec"), "$lookup")
+        val hit = lookup.hits.single()
+        assertEquals(RowFate.LIVE, hit.fate, "$hit")
+        assertEquals("alpha", hit.cells["v"].toString())
+        assertNull(hit.position, "an Avro row has no position, through the copy as through the file")
     }
 
     @Test

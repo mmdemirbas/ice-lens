@@ -37,8 +37,8 @@ class PaimonMergedCountFixtureTest {
         // the other merge engines: partial-update, aggregation, and first-row — whose one row is
         // what Paimon's own read printed, the DELETE's rewritten file sitting at level 0 unread
         "pu" to 4, "ag" to 2, "fr" to 1,
-        // Avro data files, read through read_avro — the merge needs no row position
-        "pav" to 2,
+        // Avro data files, read through read_avro — the merge needs no row position; `paz` the same table under zstd, read through a copy
+        "pav" to 2, "paz" to 2,
         // a primary-key column renamed between writes: `_KEY_k` in one file, `_KEY_id` in two
         "pkr" to 3,
         // append tables, from the metadata
@@ -57,9 +57,8 @@ class PaimonMergedCountFixtureTest {
 
     /** A table added under `example/` gets a figure here or fails here — `test` is Flink-written, and no script printed its read. */
     @Test
-    fun `every Paimon fixture but the Flink-written one and the unreadable Avro one has a figure`() {
-        // `paz` is Avro under a codec DuckDB cannot read; DataFileFormatFixtureTest holds what the count says of it.
-        assertEquals(model.FixtureCatalog.paimon.toSet() - "test" - "paz", expected.keys)
+    fun `every Paimon fixture but the Flink-written one has a figure`() {
+        assertEquals(model.FixtureCatalog.paimon.toSet() - "test", expected.keys)
     }
 
     @Test
