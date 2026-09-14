@@ -74,6 +74,7 @@ core/src/main/kotlin/
 │   ├── FileStatsSweep.kt      # The same over the current snapshot's live files from the model, capped — the table panel's second click under Integrity
 │   ├── TimeTravel.kt          # Which snapshot a read as of a time lands on — Iceberg's last log entry at or before, Paimon's latest snapshot at or before
 │   ├── RowLookup.kt           # What finding a row takes, off the current snapshot: the live data files, the delete files, and their pairing — and the fates a hit can have, both formats
+│   ├── RowHistory.kt          # The retained snapshots on main with what looking a row up in each takes, and what each commit did to the matching rows — appeared, changed, gone
 │   ├── ReadProjection.kt      # A sampled row as a read returns it: the file's cells placed onto the current schema by field id, a renamed column under its new name, a dropped one not at all, an added one as its initial default
 │   ├── NameMapping.kt         # `schema.name-mapping.default`, and the one rule placing a file's columns — its own field ids first, the mapping for a column recording none
 │   ├── PaimonRowLookup.kt     # What reading a Paimon snapshot takes: the live files by bucket, the index manifest's vectors, the merge rule — for the row lookup and the merged count
@@ -99,6 +100,7 @@ core/src/main/kotlin/
 │   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet and Avro, the table function chosen by extension; ORC refused with the reason — max 50)
 │   ├── RowLookup.kt           # The rows a filter matches, read through DuckDB, and each one's fate under the delete files paired with its file
 │   ├── PaimonRowLookup.kt     # The same on Paimon: a record's fate under its file's vector, its own `_VALUE_KIND`, and the bucket's later writes for its key
+│   ├── RowHistoryTrace.kt     # Either lookup run at every retained snapshot on main, one file read per trace on Iceberg
 │   ├── PaimonMergedCount.kt   # What `SELECT count(*)` returns as of a Paimon snapshot: the merge over each bucket's files, less retractions and vector-marked keys
 │   ├── LiveRowCount.kt        # The same on Iceberg: each data file's record_count less the rows the delete files the scan pairs with it remove
 │   ├── FileProjection.kt      # A data file as a `FROM` under the schema's names — every column placed by field id or the mapping, a missing one its initial default or NULL — so a lookup, a count or a check names columns the way the schema does
@@ -532,6 +534,34 @@ intellij/src/main/kotlin/plugin/
   oracle. `PaimonRowLookupFixtureTest` holds `lk`, `dv`, `ad` and `pc` to their scripts, and
   both formats land in one `RowLookupResult` with one `RowFate`, which is why the section is one
   composable: `RETRACTION` and `SUPERSEDED` are the two fates Iceberg has no need of
+- **The same lookup run at every retained snapshot on `main` is a row's history, and the fate at
+  the current snapshot cannot stand in for it.** A row deleted three commits ago and one deleted
+  by the last commit look the same there; `model/RowHistory.kt` names the commit. The table node
+  carries `rowHistory`, a `DeferredRead<RowHistoryInputs>` both builders fill from the model —
+  Iceberg's current-ancestor chain (`currentAncestorIds`, newest first) with `rowLookupInputOf`
+  run for each, Paimon's `snapshot/` by descending id with `paimonReadInputOf` off each one's
+  replay — capped at `MAX_HISTORY_SNAPSHOTS` (20) with `onMain` beside it, since a trace that
+  stops at the cap has to say the horizon is the cap and not the table's first commit.
+  `RowLookupInput` and `PaimonReadInput` implement one `LookupInput` marker, so
+  `service/RowHistoryTrace.kt` dispatches on the type and the trace has no format in it. Each
+  step compares **the live rows a read returns, on the row's own columns**, with the step
+  before: `appeared`, `changed`, `gone`, `unchanged`, and null for the oldest traced, which has
+  nothing older to stand against. The row's own columns, because a Paimon record's
+  `_SEQUENCE_NUMBER` moves when the same value is written again, which is not a change a read
+  shows. On Iceberg every snapshot is read under the newest schema — the lookup input's rule —
+  so the rows compare column for column, and a data file's matching rows are the same at every
+  snapshot listing it: `RowLookup.lookup` takes a `reads` map and the trace passes one, so a
+  file is opened once per trace rather than once per snapshot. Paimon reads a file under its
+  snapshot's own schema, which an `ADD COLUMN` changes between two, so it reads per snapshot.
+  `RowHistoryFixtureTest` holds `mor`'s rows to the script commit by commit — 7 appears at the
+  second append and is gone at the last delete; 5 changes at the update and not at the
+  compaction that rewrote its file, where both versions are found, the old one deleted by
+  position; 2 is gone at the first delete and the compaction leaves nothing to find — `eqdel`'s
+  2 to gone at the equality delete with nothing to appear at, being in the first insert, and
+  `lk`'s key 2 to changed at the append that superseded its value and unchanged at every
+  `COMPACT`. The `History` stage sits under the lookup's result behind a second click, and its
+  change column marks the exception: `unchanged` is printed on the rest so a column of them reads
+  as a history rather than a table with holes
 - **The one question asked from the directory rather than from the metadata is "what is here that
   nothing names".** `model/UnreferencedFiles.kt` walks the table root and subtracts every path the
   model resolved — manifest lists, manifests, data and delete files, Puffin vectors and statistics,
@@ -2006,7 +2036,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,222 tests across 163 files (948 in :core, 265 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,229 tests across 164 files (954 in :core, 266 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

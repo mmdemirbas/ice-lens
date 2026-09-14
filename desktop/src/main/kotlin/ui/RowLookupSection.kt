@@ -18,7 +18,9 @@ import kotlinx.coroutines.withContext
 import model.FileFate
 import model.GraphModel
 import model.GraphNode
+import model.RowChange
 import model.RowFate
+import model.RowHistory
 import model.RowLookupResult
 import model.ScanFilter
 import model.evaluateScan
@@ -26,6 +28,7 @@ import model.isEmpty
 import model.normalizeFilePath
 import model.render
 import service.PaimonRowLookup
+import service.RowHistoryTrace
 import service.RowLookup
 
 /** Cells a hit's row prints before it stops. */
@@ -48,6 +51,10 @@ internal fun RowLookupSection(
     graph: GraphModel,
     filter: ScanFilter,
     startRequested: Boolean = false,
+    /** Runs the history trace under the lookup without a click — a capture's way in, like [startRequested]. */
+    historyRequested: Boolean = false,
+    onHistorySettled: () -> Unit = {},
+    /** Last, so a caller's trailing lambda is the lookup's. */
     onSettled: () -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
@@ -122,8 +129,110 @@ internal fun RowLookupSection(
                 fontSize = TypeScale.small,
                 color = colors.error,
             )
-            else -> ResultBody(result, paimon)
+            else -> {
+                ResultBody(result, paimon)
+                if (node.rowHistory.isPresent) RowHistoryStage(node, filter, ruledOut, paimon, historyRequested, onHistorySettled)
+            }
         }
+    }
+}
+
+/**
+ * The same lookup at every retained snapshot on `main`, behind a second click — see
+ * [RowHistory]. It answers the question the fate above cannot: a row deleted three commits ago
+ * and one deleted by the last commit look the same there, and this names the commit. The
+ * change column marks the commits that did something to the rows; the rest say `unchanged`
+ * so a column of them reads as a history and not as a table with holes.
+ */
+@Composable
+private fun RowHistoryStage(
+    node: GraphNode.TableNode,
+    filter: ScanFilter,
+    ruledOut: Set<String>,
+    paimon: Boolean,
+    startRequested: Boolean,
+    onSettled: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    var requested by remember(node.id, filter) { mutableStateOf(startRequested) }
+    val outcome by produceState<Result<RowHistory>?>(null, node.id, filter, requested) {
+        value = null
+        if (requested) {
+            value = withContext(Dispatchers.IO) {
+                runCatching { RowHistoryTrace.trace(requireNotNull(node.rowHistory.value) { "no snapshot to read" }, filter, ruledOut) }
+            }
+            onSettled()
+        }
+    }
+    val history = outcome?.getOrNull()
+    Text(
+        "History",
+        fontSize = TypeScale.small,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+    )
+    when {
+        !requested -> OutlinedButton(onClick = { requested = true }) {
+            Text("Trace these rows through the last ${model.MAX_HISTORY_SNAPSHOTS} snapshots on main")
+        }
+        outcome == null -> Text("Reading each snapshot…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+        history == null -> Text("Could not trace: ${outcome?.exceptionOrNull()?.message ?: "unknown error"}", fontSize = TypeScale.small, color = colors.error)
+        else -> HistoryBody(history, paimon)
+    }
+}
+
+@Composable
+private fun HistoryBody(history: RowHistory, paimon: Boolean) {
+    val colors = MaterialTheme.colorScheme
+    val changed = history.changedSteps
+    val traced = history.steps.size
+    Text(
+        (if (history.capped) "The last $traced of ${history.onMain} snapshots on main" else "All ${formatCounted(traced, "snapshot")} on main") +
+            (if (changed.isEmpty()) ": the matching rows are the same at every one traced." else
+                ": the rows changed at ${changed.asReversed().joinToString(", ") { step -> "snapshot ${step.snapshot.snapshotId} (${step.snapshot.operation ?: "?"}, ${history.changes[history.steps.indexOf(step)]?.label})" }}."),
+        fontSize = TypeScale.small,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(bottom = 4.dp),
+    )
+    Text(
+        (if (paimon) "Each snapshot is read under its own schema; " else "Every snapshot is read under the current schema; ") +
+            "a step compares the live rows a read returns with the snapshot before it, on the row's own columns" +
+            (if (history.capped) ". Older snapshots are not traced." else "."),
+        fontSize = TypeScale.small,
+        color = colors.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 4.dp),
+    )
+    WideTable(
+        headers = listOf("Change", "Snapshot", "Operation", "When", "Live", if (paimon) "Not live" else "Deleted", "Rows"),
+        columnWidths = listOf(120.dp, 190.dp, 110.dp, 190.dp, 60.dp, 80.dp, 600.dp),
+        rows = history.steps.mapIndexed { i, step ->
+            val result = step.result
+            listOf(
+                history.changes[i]?.label ?: "—",
+                step.snapshot.snapshotId.toString(),
+                step.snapshot.operation ?: "—",
+                step.snapshot.timestampMs?.let(::formatAppTimestamp) ?: "—",
+                result.live.toString(),
+                result.deleted.toString() + (result.undecided.takeIf { it > 0 }?.let { " ($it not decided)" } ?: ""),
+                step.liveRows.joinToString("; ") { row ->
+                    row.entries.take(MAX_ROW_CELLS).joinToString(", ") { "${it.key}=${it.value ?: "null"}" } + (if (row.size > MAX_ROW_CELLS) ", …" else "")
+                }.ifEmpty { "—" },
+            )
+        },
+        leadCellColors = history.steps.mapIndexed { i, _ ->
+            when (history.changes[i]) {
+                null, RowChange.UNCHANGED -> null
+                RowChange.GONE -> verdictSkippedColor()
+                RowChange.APPEARED, RowChange.CHANGED -> verdictUnevaluatedColor()
+            }
+        },
+    )
+    val unreadable = history.steps.count { step -> step.result.filesRead.any { it.error != null } }
+    if (unreadable > 0) {
+        Text("${formatCounted(unreadable, "snapshot")} had a file that could not be read; its rows may be incomplete.", fontSize = TypeScale.small, color = colors.error, modifier = Modifier.padding(top = 4.dp))
+    }
+    if (history.steps.any { it.result.filesLeft > 0 }) {
+        Text("A snapshot's files stop at ${RowLookup.MAX_FILES}; narrow the filter to read the rest.", fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
     }
 }
 

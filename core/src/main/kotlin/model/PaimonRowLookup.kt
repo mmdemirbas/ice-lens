@@ -68,7 +68,7 @@ data class PaimonReadInput(
     val rule: PaimonMergeRule,
     val files: List<PaimonLookupFile>,
     val vectors: List<PaimonVectorRange>,
-) {
+) : LookupInput {
     val hasPrimaryKey: Boolean get() = schema.primaryKeys.isNotEmpty()
     val mergeEngine: String get() = rule.engine
 

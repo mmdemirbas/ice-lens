@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A row's history: the lookup run at every retained snapshot on `main`.** Under the row
+  lookup's result a second click traces the matching rows through the last 20 snapshots on
+  `main` and names what each commit did to them — appeared, changed, gone — against the commit
+  before, comparing the live rows a read returns on the row's own columns; `mor`'s row 5 appears
+  at the second append, changes at the update and is untouched by the compaction that rewrote
+  its file. Both formats; on Iceberg a data file is read once per trace, not once per snapshot
 - **The table panel's second click under `Integrity` opens the statistics files too.** Each
   Iceberg statistics file's Puffin footer is put against the blob records in `metadata.json`,
   each partition statistics file's size and rows against its record and the live files of its

@@ -2064,6 +2064,26 @@ class InspectorRenderTest {
     }
 
     /**
+     * `mor`'s row 5 traced through its six commits: put in by the second append, changed by the
+     * update, kept by the compaction, untouched by both deletes — two marked steps in a column
+     * of `unchanged`, which is the shape the change column has to read in. The trace runs
+     * behind the lookup, so both reads are waited for.
+     */
+    @Test
+    fun `a table traces a row through the snapshots on main`() {
+        val mor = graphFor("mor")
+        val table = mor.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val filter = ScanFilter.Term(model.ScanPredicate("id", model.PredicateOp.EQ, "5"))
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        val traced = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("row-lookup-history", width = 1400, height = 1250, ready = { settled.get() && traced.get() }) {
+            Column(Modifier.padding(16.dp)) {
+                RowLookupSection(table, mor, filter, startRequested = true, historyRequested = true, onHistorySettled = { traced.set(true) }) { settled.set(true) }
+            }
+        }
+    }
+
+    /**
      * The live row count on `eqdel`'s current snapshot — 4 of 7, an equality delete and a positional
      * delete reaching two files — behind the click; and on `test`, whose snapshot lists no delete
      * manifest and is answered at once.

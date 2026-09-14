@@ -72,6 +72,7 @@ object IcebergGraphBuilder {
                 else DeferredRead.of { tableModel.checkStatisticsFiles(readStatisticsFooters(path, meta), readPartitionStatisticsFiles(path, meta)) }
             } ?: DeferredRead.none(),
             rowLookup = DeferredRead.of { tableModel.rowLookupInput() },
+            rowHistory = DeferredRead.of { tableModel.rowHistoryInputs() },
             // Closes over `logicalNodes` like the vector index below: it is read after the
             // traversal has filled it, so the current snapshot's node is there whether or not
             // aggregation goes on to draw it.

@@ -103,7 +103,7 @@ data class RowLookupInput(
     val reach: List<DeleteReach>,
     /** The table's name mapping, for a file recording no field ids — see [placeFileColumns]. */
     val nameMapping: NameMapping? = null,
-) {
+) : LookupInput {
     /** The delete files paired with a data file, proved or unsettled, in the order the reach lists them. */
     fun deletesFor(recordedPath: String): List<LookupDeleteFile> {
         val key = normalizeFilePath(recordedPath)

@@ -38,9 +38,14 @@ object RowLookup {
 
     /**
      * Reads the files the filter leaves — every live data file whose normalised recorded path is
-     * not in [ruledOut] — and decides each hit.
+     * not in [ruledOut] — and decides each hit. [reads] holds each file's matching rows by local
+     * path, for a caller looking the same files up at several snapshots ([RowHistoryTrace]):
+     * the rows a file holds do not change with the snapshot listing it, only their fates do.
      */
-    fun lookup(input: RowLookupInput, filter: ScanFilter, ruledOut: Set<String>): RowLookupResult {
+    fun lookup(
+        input: RowLookupInput, filter: ScanFilter, ruledOut: Set<String>,
+        reads: MutableMap<String, Result<List<Map<String, Any?>>>> = mutableMapOf(),
+    ): RowLookupResult {
         val candidates = input.dataFiles.filter { normalizeFilePath(it.recordedPath) !in ruledOut }
         val toRead = candidates.take(MAX_FILES)
         val predicate = filter.toSql { column -> input.schema?.let { s -> s.idOfPath(column)?.let(s::typeOf) } }
@@ -48,7 +53,7 @@ object RowLookup {
         val outcomes = mutableListOf<LookupFileOutcome>()
         val hits = mutableListOf<RowHit>()
         for (file in toRead) {
-            val rows = runCatching { readMatches(file, predicate.sql, predicate.params, input.schema, input.nameMapping) }
+            val rows = reads.getOrPut(file.localPath) { runCatching { readMatches(file, predicate.sql, predicate.params, input.schema, input.nameMapping) } }
             val error = rows.exceptionOrNull()
             if (error != null) {
                 logger.warn("Could not read {}: {}", file.localPath, error.message)

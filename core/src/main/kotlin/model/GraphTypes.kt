@@ -383,6 +383,8 @@ sealed class GraphNode(
         val rowLookup: DeferredRead<RowLookupInput> = DeferredRead.none(),
         /** The same for a Paimon table's latest snapshot — see [PaimonReadInput]. Nothing on Iceberg. */
         val paimonRowLookup: DeferredRead<PaimonReadInput> = DeferredRead.none(),
+        /** The retained snapshots on `main` with what looking a row up in each takes — see [RowHistoryInputs]; both formats. */
+        val rowHistory: DeferredRead<RowHistoryInputs> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 240.0, 96.0)
