@@ -2601,7 +2601,9 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   up when it differs from the location (the same prefix the resolver takes the recorded
   table directory from), the table panel draws it as `Metadata Kept At` with a line under
   the identity, and the IDE strip lists it only where present — a `write.metadata.path`
-  layout has the same shape
+  layout has the same shape. And the location re-rooted the same way, when it is a directory
+  with `snapshot/` and `schema/`, is `TableSummary.locationIsPaimonTable`: the panel's
+  `Export Of Paimon Table` row and the IDE's, which is what says whose export this is
 - **A tag is a snapshot file under `tag/`, read as one, and it is what keeps files on disk after
   the snapshot is gone.** `PaimonUnifiedTableModel.tags` reads `tag/tag-<name>` through the same
   reader and manifest cache as `snapshot/`; `tagOnlySnapshots` is the tagged snapshots `snapshot/`

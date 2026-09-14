@@ -154,13 +154,14 @@ class GraphTreeTest {
     @Test
     fun `optional facts are listed only where the table has them`() {
         val plain = flatten(GraphTree.build(graphOf("test"))).flatMap { GraphTree.details(it) }.map { it.first }.toSet()
-        listOf("Next row id", "Row ids", "WAP id", "Published from", "Sort order", "Rolled back", "Columns", "Metadata kept at").forEach {
+        listOf("Next row id", "Row ids", "WAP id", "Published from", "Sort order", "Rolled back", "Columns", "Metadata kept at", "Export of Paimon table").forEach {
             assertTrue(it !in plain, "$it listed on a table that has none")
         }
         // The Iceberg export a Paimon table writes in catalog storage: its metadata is at
         // /wh/iceberg/db/pih and the table it describes at /wh/db.db/pih, and the row says so.
         val export = flatten(GraphTree.build(icebergGraphAt("example/paimon/iceberg/db/pih"))).flatMap { GraphTree.details(it) }
         assertTrue(export.any { it.first == "Metadata kept at" && it.second == "/wh/iceberg/db/pih" }, export.filter { it.first == "Location" || it.first == "Metadata kept at" }.toString())
+        assertTrue(export.any { it.first == "Export of Paimon table" && it.second.endsWith("example/paimon/db.db/pih") }, export.filter { it.first == "Export of Paimon table" }.toString())
         val lineage = flatten(GraphTree.build(graphOf("lineage"))).flatMap { GraphTree.details(it) }
         assertTrue(lineage.any { it.first == "Next row id" && it.second == "14" })
         assertTrue(lineage.any { it.first == "Row ids" && it.second.startsWith("6..8 (3 ids for 1 added record —") }, "the UPDATE's snapshot took three ids for one record")

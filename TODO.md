@@ -141,10 +141,9 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   only and never drawn — its snapshots, manifests and files are a second graph, and a node for
   them would have to say which table they belong to. The catalog-storage export
   (`hadoop-catalog`, `hive-catalog`, `rest-catalog`) is found beside the warehouse (`pih`), and
-  opened from its own directory it says its metadata is kept apart from its location — but not
-  that the location is a Paimon table, which it could: the location, re-rooted the way the data
-  files are, is a directory with `snapshot/` and `schema/`. A Hive or REST export also has a
-  catalog entry this never sees. No fixture reaches a compacted table's export either, where
+  opened from its own directory it says its metadata is kept apart from its location and
+  names the Paimon table the location is. A Hive or REST export also has a catalog entry this
+  never sees. No fixture reaches a compacted table's export either, where
   the level rule lists a level-5 file rather than explaining an absence.
 
 - **ORC data files cannot be read.** DuckDB 1.4.4 has no ORC table function, core or community;

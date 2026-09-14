@@ -135,6 +135,7 @@ object GraphTree {
             // layout, or a Paimon table's export in catalog storage — so every other table's
             // strip is the strip it was.
             node.summary.metadataKeptApartAt?.let { "Metadata kept at" to it },
+            node.summary.locationIsPaimonTable?.let { "Export of Paimon table" to it },
         ) + listOf(
             "Format version" to (node.summary.formatVersion?.toString() ?: "—"),
             "Snapshots" to node.summary.snapshotCount.toString(),

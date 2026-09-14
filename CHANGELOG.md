@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **An Iceberg table whose metadata is kept apart from its location says where.** A
   `write.metadata.path` layout, or the catalog-storage export a Paimon table writes, holds the
   metadata in one directory and the data under the location; the table panel and the IDE
-  strip name the directory the metadata records itself under, only where it differs
+  strip name the directory the metadata records itself under, only where it differs — and
+  the Paimon table the location is, when it is one
 
 ### Fixed
 - **A data-evolution split is stitched by field id, and the latest snapshot is read under the

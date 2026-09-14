@@ -299,6 +299,13 @@ data class TableSummary(
      * records either.
      */
     val metadataKeptApartAt: String? = null,
+    /**
+     * When the metadata is kept apart and the [location], re-rooted the way the data files are
+     * (`rebuildBesideTable`), is a directory with `snapshot/` and `schema/`: that Paimon table's
+     * local path. This Iceberg table is then the export a Paimon table writes in catalog
+     * storage (`pih`), and the panel can name the table it belongs to. Null otherwise.
+     */
+    val locationIsPaimonTable: String? = null,
 ) {
     /**
      * The table as it is now: the manifest closure of `current-snapshot-id`, live entries

@@ -84,6 +84,7 @@ internal fun ColumnScope.TablePanel(
             // location and this directory holds the metadata alone — a `write.metadata.path`
             // layout, or the catalog-storage export a Paimon table writes (`pih`).
             summary.metadataKeptApartAt?.let { DetailRow("Metadata Kept At", it, copyable = true) }
+            summary.locationIsPaimonTable?.let { DetailRow("Export Of Paimon Table", it, copyable = true) }
             DetailRow("Table UUID", summary.tableUuid ?: "N/A", copyable = true)
             DetailRow("Format Version", "${summary.formatVersion ?: "N/A"}")
             DetailRow("Current Snapshot ID", currentSnapshotLabel(summary.currentSnapshotId))
@@ -96,9 +97,15 @@ internal fun ColumnScope.TablePanel(
         }
         if (summary.metadataKeptApartAt != null) {
             Text(
-                "The metadata is kept apart from the table's location: this directory holds the metadata " +
-                    "and the data files are under the location — a write.metadata.path layout, or the " +
-                    "Iceberg metadata a Paimon table writes in catalog storage.",
+                if (summary.locationIsPaimonTable != null) {
+                    "This is the Iceberg metadata a Paimon table writes in catalog storage (metadata.iceberg.storage): " +
+                        "the location is that Paimon table, and the data files are its own. Open the Paimon table for " +
+                        "its snapshots, levels and merge engine, and for the export checked against it."
+                } else {
+                    "The metadata is kept apart from the table's location: this directory holds the metadata " +
+                        "and the data files are under the location — a write.metadata.path layout, or the " +
+                        "Iceberg metadata a Paimon table writes in catalog storage."
+                },
                 fontSize = TypeScale.small,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),

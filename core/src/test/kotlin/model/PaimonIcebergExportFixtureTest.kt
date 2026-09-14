@@ -119,6 +119,7 @@ class PaimonIcebergExportFixtureTest {
         // The table panel's row for it: the metadata says it is under /wh/iceberg/db/pih and the table is at /wh/db.db/pih.
         val summary = service.IcebergGraphBuilder.buildGraph(export).nodes.filterIsInstance<GraphNode.TableNode>().single().summary
         assertEquals("/wh/iceberg/db/pih", summary.metadataKeptApartAt)
+        assertEquals(pih.path.toAbsolutePath().normalize(), summary.locationIsPaimonTable?.let { java.nio.file.Paths.get(it).toAbsolutePath().normalize() }, "the location, re-rooted beside this directory, is the Paimon table")
         assertEquals(null, FixtureCatalog.icebergModel("mor").let { service.IcebergGraphBuilder.buildGraph(it).nodes.filterIsInstance<GraphNode.TableNode>().single().summary.metadataKeptApartAt }, "a table whose metadata sits under its location lists no such row")
     }
 

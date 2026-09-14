@@ -781,6 +781,12 @@ object IcebergGraphBuilder {
             ?.firstOrNull { it.snapshotId == latestMetadata.currentSnapshotId }?.manifestList
             ?.let { normalizeFilePath(it).substringBeforeLast('/').substringBeforeLast('/') }
             ?.takeIf { dir -> dir.isNotEmpty() && location != null && normalizeFilePath(location).trimEnd('/') != dir }
+        // The location re-rooted beside this directory, the way a data file under it is — and
+        // asked whether it is a Paimon table, which is what an export's location is.
+        val locationIsPaimonTable = metadataKeptApartAt?.let { dir ->
+            rebuildBesideTable(normalizeFilePath(location.orEmpty()).trimEnd('/'), dir, tableModel.path)
+                ?.takeIf { TableFormatDetector.isPaimonTable(it) }?.toString()
+        }
 
         // The table as it is now: the manifest closure of the current snapshot, live entries
         // only. Absent when the table has never been committed to, or when the snapshot the
@@ -801,6 +807,7 @@ object IcebergGraphBuilder {
             tablePath = tableModel.path.toString(),
             location = location,
             metadataKeptApartAt = metadataKeptApartAt,
+            locationIsPaimonTable = locationIsPaimonTable,
             tableUuid = latestMetadata?.tableUuid,
             formatVersion = latestMetadata?.formatVersion,
             currentSnapshotId = latestMetadata?.currentSnapshotId,
