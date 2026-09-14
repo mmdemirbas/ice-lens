@@ -689,6 +689,9 @@ sealed class GraphNode(
         /** This row's physical position in its file, once the row has been read. */
         val filePosition: Long? get() = (resolvedData[ROW_POSITION_KEY] as? Number)?.toLong()
 
+        /** Why the file's rows could not be read, when they could not — see [ROW_READ_ERROR_KEY]. */
+        val readError: String? get() = resolvedData[ROW_READ_ERROR_KEY] as? String
+
         /**
          * Whether a deletion vector removes this row.
          *
@@ -721,6 +724,13 @@ sealed class GraphNode(
 
             /** Where [filePosition] is carried in [resolvedData]. Filtered out of the card. */
             const val ROW_POSITION_KEY = "row_pos"
+
+            /**
+             * Where a failed read of the file is carried in [resolvedData], as its message — so a
+             * card with no cells says why rather than drawing empty, which is what a DuckDB error
+             * looked like before: five blank cards per file and a line in the log.
+             */
+            const val ROW_READ_ERROR_KEY = "read_error"
         }
     }
 

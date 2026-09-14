@@ -75,7 +75,7 @@ so and the inspector lists all of them.
 | Metadata | metadata.json (v1–v3), snapshot log with rollbacks marked, metadata log, refs with retention, partition specs, sort orders, table and partition statistics files, row lineage (`next-row-id`, `first-row-id`, `added-rows`) | `snapshot/snapshot-N`, `schema/schema-N`, tags, branches, consumers, the index manifest (hash indexes and deletion vectors), `ANALYZE` statistics |
 | Manifests | manifest list (Avro) → manifest (Avro), data / delete split, partition summaries decoded against each manifest's own spec | base / delta / changelog manifest lists → manifests, replayed delta-over-base |
 | Files | data, positional-delete, equality-delete, v3 deletion vectors (Puffin, decoded), partition tuples and column bounds decoded against the manifest's own schema, inherited sequence numbers and row ids | data files with LSM level and bucket, key and value bounds, file indexes, external paths, row tracking, data-evolution patch files paired with the file they patch, deletion vectors decoded from the index file |
-| Rows | Parquet / ORC / Avro via DuckDB, capped at 50 per file, with `_row_id` and deleted rows marked | same, with `_ROW_ID`, the `+I` / `-U` / `+U` / `-D` kind of each key-value row, and rows a deletion vector marks struck |
+| Rows | Parquet and Avro via DuckDB (ORC has no DuckDB reader, and the card says so), capped at 50 per file, with `_row_id` and deleted rows marked | same, with `_ROW_ID`, the `+I` / `-U` / `+U` / `-D` kind of each key-value row, and rows a deletion vector marks struck |
 
 Paimon has no Iceberg-style positional or equality delete files; removals are `_KIND=1`
 manifest entries, reported as *entries recording a removal* rather than as delete files, and

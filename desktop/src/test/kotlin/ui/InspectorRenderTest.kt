@@ -2406,8 +2406,13 @@ class InspectorRenderTest {
         val deletedRow = v3.nodes.filterIsInstance<GraphNode.RowNode>().first { it.isDeletedByVector }
         val liveRow = v3.nodes.filterIsInstance<GraphNode.RowNode>()
             .first { !it.isDeletedByVector && it.filePosition != null }
+        val unreadRow = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/orcfmt").absolutePath)),
+            showRows = true,
+        ).nodes.filterIsInstance<GraphNode.RowNode>().first { it.content == 0 }
+        assertTrue(unreadRow.readError != null, "orcfmt's rows are not readable: ${unreadRow.resolvedData}")
 
-        renderScene("graph-cards", width = 700, height = 2400) {
+        renderScene("graph-cards", width = 700, height = 2500) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 TableCard(table)
                 MetadataCard(metadata)
@@ -2434,6 +2439,9 @@ class InspectorRenderTest {
                 // The same row shape, in the file a deletion vector covers. The strike and the
                 // word only read as a state next to a row that does not carry them.
                 RowCard(deletedRow)
+                // A row whose file DuckDB cannot read — orcfmt's, ORC — which drew as a blank card
+                // before the reason was carried; the reason has to fit the card's three lines.
+                RowCard(unreadRow)
             }
         }
     }

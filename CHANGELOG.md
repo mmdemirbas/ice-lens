@@ -43,6 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is read whole when the filter left any file of it.
 
 ### Fixed
+- **A non-Parquet data file is read by the right DuckDB table function, or refused with the
+  reason.** Every reader called `read_parquet` on whatever file it was given, under a comment
+  saying DuckDB detected Parquet, ORC and Avro; an Avro file failed on its magic bytes and drew
+  blank row cards, and an ORC file did the same for a reason DuckDB cannot help with — it has no
+  ORC reader. `read_avro` reads Avro now (without row positions, which the row's fate, the
+  live-row count and the merged count say rather than guess), an ORC file and an Avro file
+  under a codec DuckDB refuses (`zstandard`, Paimon's default) are refused before any query with
+  one sentence, and a row card whose file could not be read prints it in place of the cells.
 - **A partitioned table's columns are read from the file, never from the path.** DuckDB read
   `dt=19787/` and `amount=98765.43/` directories as Hive partitions, typing the column from the
   path text over the file's own — a Paimon `DATE` arrived as a `BIGINT`, an Iceberg `DECIMAL`

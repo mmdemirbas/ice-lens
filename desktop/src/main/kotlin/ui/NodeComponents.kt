@@ -81,6 +81,8 @@ private fun rowCardDetailEntries(node: GraphNode.RowNode): List<Map.Entry<String
         // The physical position is drawn as part of the row's identity line, not as one of its
         // columns — the table does not declare a column by that name.
         GraphNode.RowNode.ROW_POSITION_KEY,
+        // A failed read is drawn as its own line, in the error colour.
+        GraphNode.RowNode.ROW_READ_ERROR_KEY,
     )
     // A format's own columns — Paimon's `_KEY_*`, `_SEQUENCE_NUMBER`, `_VALUE_KIND`, Iceberg's
     // `_row_id` — go after the table's, because the card shows three lines and a reader
@@ -840,6 +842,15 @@ fun RowCard(node: GraphNode.RowNode, isSelected: Boolean = false) {
                 )
             }
             Spacer(Modifier.height(2.dp))
+            node.readError?.let { error ->
+                Text(
+                    "Not read: $error",
+                    fontSize = TypeScale.micro,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             detailEntries
                 .take(3)
                 .forEach { (k, v) ->

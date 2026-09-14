@@ -102,6 +102,14 @@ object AvroReader {
     }
 
     /**
+     * The `avro.codec` an Avro file's header names — `null` when the header names none, which
+     * the format reads as uncompressed. Opens the file and reads its header only.
+     */
+    fun codecOf(localPath: String): String? =
+        DataFileReader(ChannelInput(Files.newByteChannel(StorageLocation.pathOf(localPath))), GenericDatumReader<GenericRecord>())
+            .use { it.getMetaString("avro.codec") }
+
+    /**
      * The shared read loop. [decode] carries the reified type from the inlined caller, so this
      * stays a single implementation rather than one copy per entry point.
      */

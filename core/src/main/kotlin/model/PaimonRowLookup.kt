@@ -35,6 +35,8 @@ data class PaimonLookupFile(
     /** `_WRITE_COLS` — the columns the file holds; null for every column of its schema. */
     val writeCols: List<String>? = null,
 ) {
+    /** The file's format by its name — what decides which DuckDB table function reads it. */
+    val extension: String get() = fileName.substringAfterLast('.', "").lowercase()
     /** Whether the file holds [column] — every column when `_WRITE_COLS` is not recorded. */
     fun holds(column: String): Boolean = writeCols?.contains(column) ?: true
 }

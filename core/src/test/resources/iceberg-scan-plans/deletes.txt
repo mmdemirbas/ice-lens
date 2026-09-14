@@ -2,6 +2,9 @@
 # `FileScanTask.deletes()`, printed by docs/fixtures/iceberg-scan-plans.scala (run 2026-09-14). One section per
 # table; `<data file> -> <delete files, comma-joined>`; a `!` line is a table that Iceberg could not open.
 
+-- avrofmt
+00000-0-b2b28d71-9742-46e1-aea8-17484fb15ab0-0-00001.avro -> 00000-3-eb682071-31d1-426e-a690-e5d6ec8f0b3c-00001-deletes.avro
+00000-1-ccc6b252-ed6c-4c6b-8365-5fe79b3aa54e-0-00001.avro -> 00000-3-eb682071-31d1-426e-a690-e5d6ec8f0b3c-00001-deletes.avro
 -- branched
 00000-0-2fd1963b-64cc-4bba-8b58-97facea2c987-0-00001.parquet ->
 00000-1-99c7c333-bbe5-4b3b-a1b5-b5c6a55104cf-0-00001.parquet ->
@@ -62,6 +65,9 @@
 00000-0-96ef5809-8e36-4842-8e7d-9b6f7f224bcf-0-00001.parquet ->
 00000-1-74cd4e79-8fb4-42a9-a996-18347ada2af8-0-00001.parquet ->
 00000-6-dd38bf99-15d9-4f2e-a070-62d2122d6db5-0-00001.parquet ->
+-- orcfmt
+00000-0-b22a234d-8bad-4c71-aea8-980bc8f4c8f8-0-00001.orc -> 00000-3-14316332-7c2a-4df8-8869-712b5f4a8de2-00001-deletes.orc
+00000-1-eddf5e6f-b258-42b9-a2a3-e67f9e5c3d8b-0-00001.orc ->
 -- parted
 00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00001.parquet ->
 00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00002.parquet ->

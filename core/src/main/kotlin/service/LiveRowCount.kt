@@ -97,7 +97,7 @@ object LiveRowCount {
     /** The distinct positions every reaching delete removes from one data file, the file opened once. */
     private fun removedFrom(file: LookupDataFile, deletes: List<LookupDeleteFile>, vectors: MutableMap<String, BitSet?>): Long {
         val (dataPath, ext) = SampleRowReader.resolveForQuery(file.localPath)
-        require(ext == "parquet") { "positions are known for Parquet only; this file is $ext" }
+        require(SampleRowReader.hasRowPositions(ext)) { "positions are known for Parquet only; this file is $ext" }
         val bits = BitSet()
         deletes.filter { it.kind == DeleteFileKind.DELETION_VECTOR }.forEach { vector ->
             val positions = vectors.getOrPut(vector.recordedPath) {
@@ -115,27 +115,29 @@ object LiveRowCount {
         if (positional.isEmpty() && equality.isEmpty()) return bits.cardinality().toLong()
 
         val conditions = mutableListOf<String>()
+        val positionalPaths = positional.map { SampleRowReader.resolveForQuery(it.localPath) }
+        val equalityPaths = equality.map { SampleRowReader.resolveForQuery(it.localPath) }
         if (positional.isNotEmpty()) {
-            val branches = positional.joinToString(" UNION ALL ") { "SELECT pos FROM read_parquet(?, hive_partitioning = false) WHERE file_path = ?" }
+            val branches = positionalPaths.joinToString(" UNION ALL ") { (_, deleteExt) -> "SELECT pos FROM ${SampleRowReader.readerCall(deleteExt)} WHERE file_path = ?" }
             conditions += "d.${SampleRowReader.FILE_ROW_NUMBER} IN ($branches)"
         }
-        equality.forEach { delete ->
+        equality.forEachIndexed { index, delete ->
             val on = delete.equalityColumns.joinToString(" AND ") { column ->
                 "e.${quoteSqlIdentifier(column)} IS NOT DISTINCT FROM d.${quoteSqlIdentifier(column)}"
             }
-            conditions += "EXISTS (SELECT 1 FROM read_parquet(?, hive_partitioning = false) e WHERE $on)"
+            conditions += "EXISTS (SELECT 1 FROM ${SampleRowReader.readerCall(equalityPaths[index].second)} e WHERE $on)"
         }
-        val sql = "SELECT d.${SampleRowReader.FILE_ROW_NUMBER} FROM read_parquet(?, file_row_number = true, hive_partitioning = false) d " +
+        val sql = "SELECT d.${SampleRowReader.FILE_ROW_NUMBER} FROM ${SampleRowReader.readerCall(ext, rowNumber = true)} d " +
             "WHERE ${conditions.joinToString(" OR ")}"
         DuckDb.withConnection { conn ->
             conn.prepareStatement(sql).use { pstmt ->
                 var i = 1
                 pstmt.setString(i++, dataPath)
-                positional.forEach {
-                    pstmt.setString(i++, SampleRowReader.resolveForQuery(it.localPath).first)
+                positionalPaths.forEach { (path, _) ->
+                    pstmt.setString(i++, path)
                     pstmt.setString(i++, file.recordedPath)
                 }
-                equality.forEach { pstmt.setString(i++, SampleRowReader.resolveForQuery(it.localPath).first) }
+                equalityPaths.forEach { (path, _) -> pstmt.setString(i++, path) }
                 pstmt.executeQuery().use { rs ->
                     while (rs.next()) {
                         val position = rs.getLong(1)

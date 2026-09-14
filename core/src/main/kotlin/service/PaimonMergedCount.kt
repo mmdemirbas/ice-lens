@@ -148,6 +148,9 @@ object PaimonMergedCount {
         val vectored = files.filter { input.vectorFor(it.fileName) != null }
         var marked = 0L
         if (vectored.isNotEmpty()) {
+            vectored.firstOrNull { !SampleRowReader.hasRowPositions(it.extension) }?.let {
+                throw IllegalStateException("the vector on ${it.fileName} marks positions, which DuckDB numbers in Parquet only")
+            }
             val bits = vectored.associate { file ->
                 val range = requireNotNull(input.vectorFor(file.fileName))
                 file.fileName to vectors.getOrPut(file.fileName) {

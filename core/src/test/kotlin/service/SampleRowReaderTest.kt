@@ -149,19 +149,38 @@ class SampleRowReaderTest {
     }
 
     @Test
-    fun `querySampleRows accepts orc extension`() {
-        // We can't easily create a real ORC file, but we can verify the extension is accepted
-        // and it fails at query time (not validation time)
+    fun `querySampleRows refuses an ORC file before any query, saying DuckDB has no ORC reader`() {
+        // DuckDB 1.4 has no ORC table function, core or community, so the refusal is this
+        // reader's own and names the reason; the fixture `orcfmt` holds it end to end.
         val file = File(tmpDir, "test.orc")
-        file.writeText("fake orc") // Not a real ORC file
-        // Should pass extension validation but fail at DuckDB query
-        assertFailsWith<Exception> {
-            SampleRowReader.querySampleRows(file.absolutePath)
-        }.also { e ->
-            // Should be a DuckDB/SQL error, not IllegalArgumentException
-            assertFalse(e is IllegalArgumentException,
-                "ORC extension should pass validation; error should be from DuckDB: ${e.message}")
+        file.writeText("fake orc")
+        val e = assertFailsWith<IllegalArgumentException> { SampleRowReader.querySampleRows(file.absolutePath) }
+        assertTrue(e.message!!.startsWith(ORC_UNREADABLE), e.message)
+    }
+
+    @Test
+    fun `querySampleRows reads an Avro file through read_avro, and refuses a codec DuckDB cannot read by name`() {
+        val schema = org.apache.avro.Schema.Parser().parse(
+            """{"type":"record","name":"r","fields":[{"name":"k","type":"int"},{"name":"v","type":["null","string"],"default":null}]}""",
+        )
+        fun write(name: String, codec: org.apache.avro.file.CodecFactory): File {
+            val f = File(tmpDir, name)
+            org.apache.avro.file.DataFileWriter(org.apache.avro.generic.GenericDatumWriter<org.apache.avro.generic.GenericData.Record>(schema))
+                .setCodec(codec).create(schema, f).use { w ->
+                    repeat(3) { i -> w.append(org.apache.avro.generic.GenericData.Record(schema).apply { put("k", i); put("v", if (i == 1) null else "v$i") }) }
+                }
+            return f
         }
+        val deflate = write("deflate.avro", org.apache.avro.file.CodecFactory.deflateCodec(6))
+        val rows = SampleRowReader.querySampleRows(deflate.absolutePath)
+        assertEquals(3, rows.size)
+        assertEquals(listOf("0", "1", "2"), rows.map { it["k"].toString() })
+        assertEquals("null", rows[1]["v"].toString(), "a null cell is the string \"null\", as for a Parquet row")
+        assertTrue(rows.none { SampleRowReader.FILE_ROW_NUMBER in it }, "read_avro has no file_row_number: ${rows.first().keys}")
+
+        val zstd = write("zstd.avro", org.apache.avro.file.CodecFactory.zstandardCodec(3))
+        val e = assertFailsWith<IllegalArgumentException> { SampleRowReader.querySampleRows(zstd.absolutePath) }
+        assertTrue(e.message!!.startsWith("DuckDB's Avro reader does not read the zstandard codec"), e.message)
     }
 
     // ═══════════════════════════════════════════════════════════════

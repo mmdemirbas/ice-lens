@@ -110,8 +110,16 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   inside a partial-update group, which changes the row's values and never whether the key is a
   row. Two edges on the reads: the bucket's other files are read for a hit's key without pruning on their
   `_MIN_KEY`/`_MAX_KEY`, which a large bucket would want; and a data-evolution split is stitched
-  on `file_row_number`, which DuckDB assigns in Parquet only — an ORC data-evolution table
+  on `file_row_number`, which DuckDB assigns in Parquet only — an Avro data-evolution table
   reports the split as unreadable rather than reading its files apart.
+
+- **ORC data files cannot be read, and a Paimon Avro table on its default codec cannot either.**
+  DuckDB 1.4.4 has no ORC table function, core or community, and its Avro reader refuses
+  `zstandard` — Paimon's `file.compression` default. Every reader says which of the two it hit
+  (`orcfmt`, `paz`); nothing reads the rows. An ORC reader would be a second engine on the
+  classpath (the ORC core jar with its Hadoop tail), and a zstd Avro file would need the rows
+  decoded in this process through the Avro library already here, which is a second row reader
+  beside DuckDB's — both real work, neither started.
 
 - **The whole-table integrity check leaves the statistics-file reads out.** `model/Integrity.kt`
   runs the metadata-only comparisons everywhere; the statistics and partition-statistics files

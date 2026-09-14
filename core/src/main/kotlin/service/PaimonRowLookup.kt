@@ -125,7 +125,7 @@ object PaimonRowLookup {
 
     private fun readMatches(file: PaimonLookupFile, where: String, params: List<String>): List<Map<String, Any?>> {
         val (safePath, ext) = SampleRowReader.resolveForQuery(file.localPath)
-        val source = if (ext == "parquet") "read_parquet(?, file_row_number = true, hive_partitioning = false)" else "read_parquet(?, hive_partitioning = false)"
+        val source = SampleRowReader.readerCall(ext, rowNumber = true)
         return DuckDb.withConnection { conn ->
             conn.prepareStatement("SELECT * FROM $source WHERE $where LIMIT ${RowLookup.MAX_HITS_PER_FILE}").use { pstmt ->
                 pstmt.setString(1, safePath)
@@ -174,7 +174,7 @@ object PaimonRowLookup {
         params: List<String>,
     ): List<Map<String, Any?>> {
         val paths = split.map { SampleRowReader.resolveForQuery(it.localPath) }
-        require(paths.all { it.second == "parquet" }) { "a split is stitched on row numbers, which DuckDB assigns in Parquet only" }
+        require(paths.all { SampleRowReader.hasRowPositions(it.second) }) { "a split is stitched on row numbers, which DuckDB assigns in Parquet only" }
         val rowNumber = SampleRowReader.FILE_ROW_NUMBER
         val select = (listOf("f0.$rowNumber AS $rowNumber") + columns.map { c ->
             val i = sources[c]
@@ -277,9 +277,9 @@ object PaimonRowLookup {
         val keyList = keyColumns.joinToString(", ", transform = ::quoteSqlIdentifier)
         val fields = groups.flatten().distinct()
         val fieldList = fields.joinToString("") { ", " + quoteSqlIdentifier(it) }
-        val branches = files.joinToString(" UNION ALL ") {
+        val branches = files.joinToString(" UNION ALL ") { file ->
             "SELECT $keyList, ${quoteSqlIdentifier(SEQUENCE_NUMBER)} AS s, ${quoteSqlIdentifier(PaimonRowKind.COLUMN)} AS k, " +
-                "filename AS f$fieldList FROM read_parquet(?, filename = true, file_row_number = true, hive_partitioning = false)"
+                "filename AS f$fieldList FROM ${SampleRowReader.readerCall(file.extension, filename = true)}"
         }
         val tuple = "(" + casts.joinToString(", ") { cast -> if (cast == null) "?" else "CAST(? AS $cast)" } + ")"
         val asked = if (keys.isEmpty()) "" else " AND ($keyList) IN (${keys.joinToString(", ") { tuple }})"
@@ -363,9 +363,12 @@ object PaimonRowLookup {
      */
     internal fun latestPerKeySql(files: List<PaimonLookupFile>, keyColumns: List<String>, removingKinds: Set<Int>): String {
         val keyList = keyColumns.joinToString(", ", transform = ::quoteSqlIdentifier)
-        val branches = files.joinToString(" UNION ALL ") {
+        // An Avro file has no row number to select, and its `p` is null: the merged count checks
+        // [SampleRowReader.hasRowPositions] before putting a position to a vector.
+        val branches = files.joinToString(" UNION ALL ") { file ->
+            val position = if (SampleRowReader.hasRowPositions(file.extension)) SampleRowReader.FILE_ROW_NUMBER else "CAST(NULL AS BIGINT)"
             "SELECT $keyList, ${quoteSqlIdentifier(SEQUENCE_NUMBER)} AS s, ${quoteSqlIdentifier(PaimonRowKind.COLUMN)} AS k, " +
-                "filename AS f, ${SampleRowReader.FILE_ROW_NUMBER} AS p FROM read_parquet(?, filename = true, file_row_number = true, hive_partitioning = false)"
+                "filename AS f, $position AS p FROM ${SampleRowReader.readerCall(file.extension, rowNumber = true, filename = true)}"
         }
         val retractions = "(${PaimonRowKind.UPDATE_BEFORE}, ${PaimonRowKind.DELETE})"
         val removing = removingKinds.takeIf { it.isNotEmpty() }?.joinToString(", ", "(", ")") ?: "(-1)"

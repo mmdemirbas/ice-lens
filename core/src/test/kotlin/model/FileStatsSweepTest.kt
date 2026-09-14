@@ -51,6 +51,8 @@ class FileStatsSweepTest {
     fun `every Iceberg fixture's targets are the current snapshot's live files, and every one agrees with its rows`() {
         var files = 0
         for (fixture in FixtureCatalog.iceberg) {
+            // orcfmt's files are unreadable by design — DuckDB has no ORC reader — and DataFileFormatFixtureTest holds what the sweep says of them.
+            if (fixture == "orcfmt") continue
             val model = FixtureCatalog.icebergModel(fixture)
             val targets = model.fileStatsTargets()
             val current = model.metadatas.last().metadata.currentSnapshotId
@@ -71,6 +73,8 @@ class FileStatsSweepTest {
     fun `every Paimon fixture's targets are the latest snapshot's live files, and every one agrees with its rows`() {
         var files = 0
         for (fixture in FixtureCatalog.paimon) {
+            // paz's file is Avro under a codec DuckDB cannot read; DataFileFormatFixtureTest holds what the sweep says of it.
+            if (fixture == "paz") continue
             val model = FixtureCatalog.paimonModel(fixture)
             val targets = model.fileStatsTargets()
             val live = model.snapshots.lastOrNull()?.let { replayPaimonSnapshot(it).liveEntries.values.map { e -> e.path.toString() }.toSet() } ?: emptySet()

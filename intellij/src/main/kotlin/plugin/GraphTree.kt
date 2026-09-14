@@ -163,9 +163,12 @@ object GraphTree {
             },
         )
         is GraphNode.RowNode -> node.resolvedData.entries.map { (key, value) ->
-            // The one cell whose number means nothing on its own.
-            if (key == PaimonRowKind.COLUMN) "Row kind" to ((value as? Number)?.toInt()?.let(PaimonRowKind::describe) ?: value.toString())
-            else key to value.toString()
+            when (key) {
+                // The one cell whose number means nothing on its own.
+                PaimonRowKind.COLUMN -> "Row kind" to ((value as? Number)?.toInt()?.let(PaimonRowKind::describe) ?: value.toString())
+                GraphNode.RowNode.ROW_READ_ERROR_KEY -> "Not read" to value.toString()
+                else -> key to value.toString()
+            }
         }
         is GraphNode.ErrorNode -> listOf("Error" to node.title, "Detail" to node.message)
         is GraphNode.PaimonSnapshotNode -> listOf(

@@ -98,21 +98,25 @@ class IcebergDeletePairingPlanTest {
     }
 
     @Test
-    fun `the pairing is exact where the partition decides nothing, and unsettled only for equality deletes`() {
-        // On every checked-in table the metadata settles every positional delete and vector —
-        // none is left unsettled — so the plan's deletes are exactly the proved ones, plus an
+    fun `the pairing is exact where the partition decides nothing, and unsettled only for equality deletes and a delete recording no bounds`() {
+        // On every checked-in table the metadata settles every positional delete and vector that
+        // records `file_path` bounds, so the plan's deletes are exactly the proved ones, plus an
         // equality delete, which no metadata can aim at a file and which the plan attaches by
-        // sequence and partition alone.
+        // sequence and partition alone. `avrofmt` is the one exception: Iceberg's Avro writer
+        // records no column metrics at all, so its positional delete has no bounds either, and
+        // the plan attaches it to every file of the partition — which is what "unsettled" means.
         for (pairing in oracle()) {
             val expected = pairing.deletesByFile ?: continue
             val reach = deleteReach(currentSnapshot(pairing.table))
             for (d in reach) {
-                if (d.kind != DeleteFileKind.EQUALITY) assertEquals(emptyList(), d.mayReach, "${pairing.table}: ${tail(d.deletePath)} is a ${d.kind} the metadata left unsettled")
+                val unaimed = d.kind == DeleteFileKind.EQUALITY || (d.targets.referenced == null && d.targets.low == null && d.targets.high == null)
+                if (!unaimed) assertEquals(emptyList(), d.mayReach, "${pairing.table}: ${tail(d.deletePath)} is a ${d.kind} the metadata left unsettled")
+                if (d.kind == DeleteFileKind.POSITIONAL && d.targets.low == null) assertEquals("avrofmt", pairing.table, "${tail(d.deletePath)} records no file_path bounds")
             }
             for ((file, applied) in expected) {
                 val proved = reach.filter { d -> d.reaches.any { tail(it) == file } }.map { tail(it.deletePath) }.toSet()
-                val equality = reach.filter { it.kind == DeleteFileKind.EQUALITY && it.mayReach.any { p -> tail(p) == file } }.map { tail(it.deletePath) }.toSet()
-                assertEquals(applied, proved + equality, "${pairing.table}: $file")
+                val unsettled = reach.filter { d -> (d.kind == DeleteFileKind.EQUALITY || d.targets.low == null && d.targets.referenced == null) && d.mayReach.any { p -> tail(p) == file } }.map { tail(it.deletePath) }.toSet()
+                assertEquals(applied, proved + unsettled, "${pairing.table}: $file")
             }
         }
     }

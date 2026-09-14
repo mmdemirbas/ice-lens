@@ -416,7 +416,7 @@ object PaimonGraphBuilder {
                             } else emptyMap()
                         } catch (e: Exception) {
                             logger.warn("Failed to load rows for file {}: {}", dataFile.path, e.message)
-                            emptyMap()
+                            mapOf("file_no" to simpleId, "row_idx" to rowIndex, GraphNode.RowNode.ROW_READ_ERROR_KEY to (e.message ?: e.javaClass.simpleName))
                         }
                     }
                 )

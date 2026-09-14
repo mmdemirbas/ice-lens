@@ -387,8 +387,9 @@ internal fun ColumnScope.RowPanel(
             // emits before any file is opened — file_no and row_idx and nothing
             // else — and listing it here left the panel without a single cell of
             // the row that was selected, while the card beside it drew five.
+            node.readError?.let { DetailRow("Not Read", it) }
             node.resolvedData.entries
-                .filterNot { it.key == "file_no" || it.key == "row_idx" || it.key == GraphNode.RowNode.ROW_POSITION_KEY || it.key == "local_file_path" }
+                .filterNot { it.key == "file_no" || it.key == "row_idx" || it.key == GraphNode.RowNode.ROW_POSITION_KEY || it.key == "local_file_path" || it.key == GraphNode.RowNode.ROW_READ_ERROR_KEY }
                 .sortedBy { it.key }
                 .forEach { (k, v) -> DetailRow(k, "$v") }
         }

@@ -6,7 +6,20 @@ import java.io.File
 private val logger = LoggerFactory.getLogger(SampleRowReader::class.java)
 
 /** Allowed file extensions for data file queries. */
-private val ALLOWED_DATA_FILE_EXTENSIONS = setOf("parquet", "orc", "avro")
+/** The data file formats DuckDB reads: `read_parquet` and the `avro` extension's `read_avro`. */
+private val READABLE_DATA_FILE_EXTENSIONS = setOf("parquet", "avro")
+
+/** What a reader says of an ORC file — DuckDB 1.4 has no ORC table function, core or community. */
+internal const val ORC_UNREADABLE = "DuckDB has no ORC reader, so the rows of an ORC file cannot be read"
+
+/**
+ * The Avro codecs DuckDB 1.4.4's `avro` extension was seen to read (`null`; `deflate`, Iceberg's
+ * default; `snappy`) and seen to refuse with "File header contains an unknown codec"
+ * (`zstandard`, Paimon's default under `file.compression = zstd`; `bzip2`). A codec in neither
+ * set goes to DuckDB, whose own answer then stands.
+ */
+internal val AVRO_CODECS_READ = setOf("null", "deflate", "snappy")
+internal val AVRO_CODECS_REFUSED = setOf("zstandard", "bzip2")
 
 /**
  * What one positional delete file removes from one data file.
@@ -30,7 +43,15 @@ data class PositionalDeleteTally(
 /**
  * Reads sample rows from data files using DuckDB.
  *
- * DuckDB supports Parquet, ORC, and Avro via `read_parquet()` which auto-detects format.
+ * **DuckDB reads Parquet and Avro, and not ORC, and the table function is chosen by the file's
+ * extension** ([readerCall]): `read_parquet` for one, `read_avro` for the other — neither
+ * detects the other's format, and an Avro file handed to `read_parquet` fails on its magic
+ * bytes. Only Parquet answers `file_row_number`, so an Avro row has no position and the
+ * readers that need one (a positional delete, a vector, a stitched split) say so rather than
+ * count the result's order as one. An ORC file is refused at [resolveForQuery] with
+ * [ORC_UNREADABLE], before any query is built, so every reader reports the same reason — and
+ * so is a local Avro file whose header names a codec DuckDB was seen to refuse
+ * ([AVRO_CODECS_REFUSED]), by the codec's name, since DuckDB's own line does not name it.
  *
  * **Every `read_parquet` in this module passes `hive_partitioning = false`.** A table's files sit
  * under `name=value` directories — `dt=19787/region=eu/bucket-0/` on Paimon, `amount=98765.43/`
@@ -83,18 +104,55 @@ object SampleRowReader {
         if (StorageLocation.isRemote(filePath)) {
             val name = filePath.substringAfterLast('/')
             val ext = name.substringAfterLast('.', "").lowercase()
-            require(ext in ALLOWED_DATA_FILE_EXTENSIONS) {
-                "Unsupported file extension '$ext'. Allowed: $ALLOWED_DATA_FILE_EXTENSIONS"
-            }
+            requireReadable(ext, name)
             return filePath to ext
         }
         val canonicalFile = File(filePath).canonicalFile
         require(canonicalFile.isFile) { "Not a regular file: $canonicalFile" }
         val ext = canonicalFile.extension.lowercase()
-        require(ext in ALLOWED_DATA_FILE_EXTENSIONS) {
-            "Unsupported file extension '$ext'. Allowed: $ALLOWED_DATA_FILE_EXTENSIONS"
-        }
+        requireReadable(ext, canonicalFile.name)
+        if (ext == "avro") requireReadableCodec(canonicalFile.path, canonicalFile.name)
         return canonicalFile.path.replace("\\", "/") to ext
+    }
+
+    private fun requireReadableCodec(path: String, name: String) {
+        val codec = runCatching { AvroReader.codecOf(path) }.getOrNull() ?: return
+        require(codec !in AVRO_CODECS_REFUSED) { avroCodecUnreadable(codec, name) }
+    }
+
+    /** The one sentence every reader gives for an Avro file DuckDB cannot decompress. */
+    internal fun avroCodecUnreadable(codec: String, name: String): String =
+        "DuckDB's Avro reader does not read the $codec codec this file is written with (it reads ${AVRO_CODECS_READ.joinToString(", ")}): $name"
+
+    private fun requireReadable(ext: String, name: String) {
+        require(ext != "orc") { "$ORC_UNREADABLE: $name" }
+        require(ext in READABLE_DATA_FILE_EXTENSIONS) {
+            "Unsupported file extension '$ext' on $name. DuckDB reads $READABLE_DATA_FILE_EXTENSIONS"
+        }
+    }
+
+    /** Whether DuckDB can say a row's physical position in a file of this format — Parquet's `file_row_number`. */
+    internal fun hasRowPositions(ext: String): Boolean = ext == "parquet"
+
+    /**
+     * The table function that reads a file of [ext], with `?` for its path: `read_parquet` or
+     * `read_avro`, `hive_partitioning = false` on both (see the class note), `filename = true`
+     * where the caller unions files and needs to know which row came from which, and
+     * `file_row_number = true` where [rowNumber] is asked and the format answers it — an Avro
+     * file is read without one, and the caller checks [hasRowPositions] before relying on it.
+     */
+    internal fun readerCall(ext: String, rowNumber: Boolean = false, filename: Boolean = false): String {
+        val function = when (ext) {
+            "parquet" -> "read_parquet"
+            "avro" -> "read_avro"
+            else -> throw IllegalArgumentException("no DuckDB reader for .$ext")
+        }
+        val options = buildList {
+            if (filename) add("filename = true")
+            if (rowNumber && hasRowPositions(ext)) add("file_row_number = true")
+            add("hive_partitioning = false")
+        }
+        return "$function(?, ${options.joinToString(", ")})"
     }
 
     /**
@@ -117,12 +175,7 @@ object SampleRowReader {
             // and so the coordinate a positional delete and a deletion vector both address. It is
             // asked for rather than inferred from the result order: a scan may return rows in any
             // order it likes, and the reader would have no way to tell that it had.
-            val sql = if (ext == "parquet") {
-                "SELECT * FROM read_parquet(?, file_row_number = true, hive_partitioning = false) " +
-                    "LIMIT ${GraphLayoutService.MAX_PARQUET_SAMPLE_ROWS}"
-            } else {
-                "SELECT * FROM read_parquet(?, hive_partitioning = false) LIMIT ${GraphLayoutService.MAX_PARQUET_SAMPLE_ROWS}"
-            }
+            val sql = "SELECT * FROM ${readerCall(ext, rowNumber = true)} LIMIT ${GraphLayoutService.MAX_PARQUET_SAMPLE_ROWS}"
             conn.prepareStatement(sql).use { pstmt ->
                 pstmt.setString(1, safePath)
                 val rs = pstmt.executeQuery()
@@ -227,16 +280,16 @@ object SampleRowReader {
         require(deleteFilePaths.size <= MAX_DELETE_FILES_PER_COUNT) {
             "Too many delete files to count at once: ${deleteFilePaths.size}"
         }
-        val resolved = deleteFilePaths.map { resolveForQuery(it).first }
+        val resolved = deleteFilePaths.map { resolveForQuery(it) }
 
         return DuckDb.withConnection { conn ->
             // One branch per delete file, every value bound. The text is generated because
-            // `read_parquet` takes a file per call, not because anything here is interpolated.
-            val branches = resolved.joinToString(" UNION ALL ") {
-                "SELECT pos FROM read_parquet(?, hive_partitioning = false) WHERE file_path = ?"
+            // the table function takes a file per call, not because anything here is interpolated.
+            val branches = resolved.joinToString(" UNION ALL ") { (_, ext) ->
+                "SELECT pos FROM ${readerCall(ext)} WHERE file_path = ?"
             }
             conn.prepareStatement("SELECT count(DISTINCT pos) FROM ($branches)").use { pstmt ->
-                resolved.forEachIndexed { index, path ->
+                resolved.forEachIndexed { index, (path, _) ->
                     pstmt.setString(index * 2 + 1, path)
                     pstmt.setString(index * 2 + 2, dataFilePath)
                 }
@@ -246,11 +299,11 @@ object SampleRowReader {
     }
 
     fun queryPositionalDeleteTargets(filePath: String): List<PositionalDeleteTally> {
-        val (safePath, _) = resolveForQuery(filePath)
+        val (safePath, ext) = resolveForQuery(filePath)
 
         return DuckDb.withConnection { conn ->
             val sql = "SELECT file_path, count(*) AS positions, min(pos) AS lowest, max(pos) AS highest " +
-                "FROM read_parquet(?, hive_partitioning = false) GROUP BY file_path ORDER BY positions DESC, file_path"
+                "FROM ${readerCall(ext)} GROUP BY file_path ORDER BY positions DESC, file_path"
             conn.prepareStatement(sql).use { pstmt ->
                 pstmt.setString(1, safePath)
                 pstmt.executeQuery().use { rs ->

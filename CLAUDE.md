@@ -8,7 +8,7 @@
 
 - **Kotlin 2.3.10** + **JetBrains Compose Desktop 1.10.1** + **Material3**
 - **Apache Avro 1.12.1** / **Avro4k 2.10.0** — manifest list & manifest file deserialization
-- **DuckDB JDBC 1.4.4.0** — Parquet/ORC/Avro sample row queries
+- **DuckDB JDBC 1.4.4.0** — Parquet and Avro sample row queries (no ORC reader exists for it)
 - **Eclipse ELK 0.11.0** — layered graph layout engine
 - **Kotlinx Serialization 1.10.0** — JSON metadata parsing
 - **Gradle 9.0.0** with Kotlin DSL; requires **Java 17+**
@@ -94,7 +94,7 @@ core/src/main/kotlin/
 │   ├── PuffinReader.kt        # Puffin footer + deletion-vector blob → the row positions it marks
 │   ├── IcebergReader.kt       # Iceberg JSON/Avro reading (delegates Avro to AvroReader)
 │   ├── PaimonReader.kt        # Paimon JSON snapshot/schema + Avro manifest list/manifest reading
-│   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet, ORC, Avro — max 50)
+│   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet and Avro, the table function chosen by extension; ORC refused with the reason — max 50)
 │   ├── RowLookup.kt           # The rows a filter matches, read through DuckDB, and each one's fate under the delete files paired with its file
 │   ├── PaimonRowLookup.kt     # The same on Paimon: a record's fate under its file's vector, its own `_VALUE_KIND`, and the bucket's later writes for its key
 │   ├── PaimonMergedCount.kt   # What `SELECT count(*)` returns as of a Paimon snapshot: the merge over each bucket's files, less retractions and vector-marked keys
@@ -470,10 +470,36 @@ intellij/src/main/kotlin/plugin/
   the rows each script's final table holds, by id, are found live exactly and no others —
   `mor` 1,3,4,5,6 (2 compacted away without a trace, 7 by position, 5 as `echo-updated`),
   `eqdel` 1,4,5,7 (2 and 6 by equality across both files, 3 by position), `v3` 1,3,4,5 (2 by a
-  vector; 4 twice, the old row marked and `delta-updated` live). An ORC or Avro hit has no
+  vector; 4 twice, the old row marked and `delta-updated` live). An Avro hit has no
   position and its fate is `not decided`, said rather than guessed — as is a hit whose delete file
   could not be read or whose vector was decoded past `MAX_POSITIONS`, since "no delete proved it
   gone" is not "live" when one was never applied
+- **DuckDB reads Parquet and Avro and not ORC, and every reader chooses its table function by
+  the file's extension.** `SampleRowReader.readerCall` is the one place that choice is made —
+  `read_parquet` or `read_avro`, `hive_partitioning = false` on both — and every DuckDB read in
+  `service/` goes through it. Before it, every reader called `read_parquet` under a comment
+  saying DuckDB "auto-detects Parquet, ORC and Avro": it does not, an Avro file fails on its
+  magic bytes, and no ORC table function exists for 1.4.4 (`INSTALL orc FROM community` is a
+  404) — a claim that stood because every fixture was Parquet. Three things follow, each with a
+  fixture. **Only Parquet answers `file_row_number`**, so an Avro row has no position
+  (`hasRowPositions`): a sampled row's `Position` is absent, a hit's fate against a positional
+  delete is `not decided`, the live-row count reports the file uncounted, a vector's positions
+  cannot be put to a Paimon record, and a data-evolution split cannot be stitched — said, never
+  guessed from the result's order. `avrofmt` settled one more: **Iceberg's Avro writer records
+  no column metrics**, so its positional delete has no `file_path` bounds and Iceberg's own plan
+  attaches it to every file of the partition (`deletes.txt`), which is what the pairing calls
+  `mayReach`; the statistics check finds the row count and nothing else to compare. **An ORC
+  file is refused at `resolveForQuery` with `ORC_UNREADABLE`**, before any query, so the row
+  cards (`RowNode.readError`, a red line where the cells would be — the cards drew blank
+  before, with the DuckDB error in the log), the row panel, the IDE strip, the live-row count,
+  the row lookup and the statistics sweep all say the same sentence; `orcfmt` holds that. **And
+  DuckDB's Avro reader decompresses `null`, `deflate` and `snappy` and refuses `zstandard` and
+  `bzip2`** ("File header contains an unknown codec", a line that does not name the codec) —
+  measured on files written with each; Iceberg's default is deflate and Paimon's `file.compression`
+  default is zstd, so a Paimon Avro table is unreadable as written unless the table sets the
+  codec. `resolveForQuery` reads a local Avro file's header and refuses a codec on the refused
+  list by name (`avroCodecUnreadable`); `pav` is written under `deflate` and reads through the
+  merge, the lookup and the check, and `paz` on the default is the refusal seen everywhere
 - **A Paimon row is found the same way, and what decides it is the merge a read runs, applied
   to one record.** `model/PaimonRowLookup.kt` reads what it takes off the latest snapshot on
   `main` (`TableNode.paimonRowLookup`): the replay's live files with their partition and bucket,
@@ -1824,7 +1850,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,190 tests across 157 files (918 in :core, 264 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,197 tests across 158 files (925 in :core, 264 in :desktop, 8 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -1937,6 +1963,8 @@ container invocation and the traps in it:
 | `default/fupp` | `FlinkUpsertPartitionedFixtureTest` | `fup` partitioned by `p`, with `p` in the key — commit 2's equality delete in `p=y` never weighed against the `p=x` files, and its delete in `p=x` for a new key dangling by its own bounds; `(1, x, a2), (2, y, b2), (4, x, d)` read back |
 | `default/eqpart` | `EqualityPartitionFixtureTest` | two equality deletes on `id` alone written with `EqualityDeleteWriter` over three files that all hold ids 1..2 — one under the partitioned spec in `p=y`, keyed to that partition; one under the unpartitioned spec the table started with, global; `(1, x), (1, x)` read back |
 | `default/sweep`, `swept`, `sweepb`, `sweptb` | `ExpiryFilePlanFixtureTest` | two tables copied on disk before `expire_snapshots` ran on the original — `swept` with one ref (incremental cleanup: a removed file and a rolled-back commit's file freed), `sweptb` with a branch (reachable: a manifest freed, no file) |
+| `default/avrofmt` | `DataFileFormatFixtureTest` | `write.format.default = avro` — two Avro data files and an Avro positional delete, read through `read_avro` without positions; the writer records no column metrics, so the delete has no `file_path` bounds and Iceberg's plan attaches it to both files |
+| `default/orcfmt` | `DataFileFormatFixtureTest` | the same table in ORC, which DuckDB cannot read — the fixture for what every reader says instead |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
 | `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest`, `PaimonFileBoundsFixtureTest`, `PaimonScanPruningTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
@@ -1962,6 +1990,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pu`, `ag`, `fr` | `PaimonMergeEngineFixtureTest` | one primary-key table per merge engine other than the default — `partial-update` folding two writes and removing a key on `-D` until its re-insert, `aggregation` summing, and `first-row`, whose DELETE Spark ran as a file rewrite to level 0 that a batch read of a first-row table never reads: Paimon's own reads printed one row where the statements describe two |
 | `paimon/db.db/sgm` | `PaimonMergeEngineFixtureTest` | `partial-update` with a sequence group of two fields, `fields.g1,g2.sequence-group = a`, and `remove-record-on-sequence-group = g2` — an insert with a null in the tuple ordered below the row's, and Paimon's read at every snapshot |
 | `paimon/db.db/sg`, `sgd` | `PaimonMergeEngineFixtureTest` | `partial-update` with two sequence groups — `sg` inserts only, a lower group value not overriding a higher; `sgd` with `remove-record-on-sequence-group = ga`, a DELETE writing a `-D` that removes the key and an insert bringing it back, Paimon's read at every snapshot |
+| `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses, named by its codec |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
 starts a loopback-only MinIO and uploads `example/iceberg/default/mor` to `s3://warehouse/db/mor`;
