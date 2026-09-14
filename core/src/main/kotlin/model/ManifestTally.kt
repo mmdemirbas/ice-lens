@@ -26,7 +26,8 @@ data class ManifestTally(
 }
 
 /**
- * The six counts `manifest_file` carries, each against the entries it summarises.
+ * The six counts `manifest_file` carries, each against the entries it summarises, then the
+ * lowest data sequence number among its live entries, then the file's length.
  *
  * Rows come from `data_file.record_count`, which for a delete manifest is the number of delete
  * records rather than table rows — that is the spec's own definition of `added_rows_count`, so
@@ -44,6 +45,19 @@ fun manifestTallies(recorded: ManifestListEntry, entries: List<ManifestEntry>, s
         ManifestTally("Added rows", recorded.addedRowsCount, rows(ManifestEntryStatus.ADDED)),
         ManifestTally("Existing rows", recorded.existingRowsCount, rows(ManifestEntryStatus.EXISTING)),
         ManifestTally("Deleted rows", recorded.deletedRowsCount, rows(ManifestEntryStatus.DELETED)),
+        // `min_sequence_number` is folded by `ManifestWriter.addEntry` from the live entries'
+        // data sequence numbers — an added entry recording none takes the commit's, which is
+        // what `V2Metadata` assigns the figure itself where no live entry recorded one (1.8.1)
+        // — and it is what the next commit prunes delete files by: `MergingSnapshotProducer.apply`
+        // takes the lowest over the data manifests it keeps and `dropDeleteFilesOlderThan`
+        // removes every delete file whose number is below it, as one that "cannot match any
+        // existing rows". A figure above the oldest live file's number lets a delete that still
+        // reaches that file be dropped, and its rows come back. Null in a v1 list: not compared.
+        ManifestTally(
+            "Min sequence number", recorded.minSequenceNumber,
+            entries.filter { it.status != ManifestEntryStatus.DELETED }
+                .minOfOrNull { effectiveSequenceNumber(it, recorded.sequenceNumber) } ?: recorded.effectiveSequenceNumber,
+        ),
     ) + listOfNotNull(
         // `manifest_length` is the length `FileIO.newInputFile(ManifestFile)` opens the manifest
         // at (1.8.1), never stat-ed, so it is a seventh figure a reader takes on trust — against

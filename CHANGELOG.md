@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`min_sequence_number` checked on every manifest** — against the lowest data sequence
+  number among the manifest's live entries, on the manifest panel's tallies, in the integrity
+  check and on the IDE strip's `Checks` row. It is the figure the next commit drops delete
+  files by, so one recorded too high lets a delete that still applies be removed.
 - **A Paimon snapshot's recorded lengths checked against the files** — `baseManifestListSize`
   and siblings, which the reader opens each manifest list at, on the snapshot panel's
   `Recorded Figures` and in the integrity check; and each index file's `_FILE_SIZE` on its
@@ -21,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   snapshot's files and a tag-only Paimon snapshot's changelog are gone by design and not
   counted. The IDE strip prints the same as a `Missing Files` row.
 - **The IDE strip carries the metadata-only checks as one `Checks` row** on the metadata,
-  manifest and file rows and their Paimon twins — `all 39 figures agree`, or the figures that
+  manifest and file rows and their Paimon twins — `all 40 figures agree`, or the figures that
   differ named with both sides.
 - **`metadata.json`'s own figures folded from its contents, on the metadata panel and in the
   integrity check.** `last-column-id` and `last-partition-id` against the highest ids in use —

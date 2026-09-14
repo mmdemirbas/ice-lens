@@ -69,7 +69,7 @@ class ManifestTallyTest {
     }
 
     @Test
-    fun `the manifest's length is a seventh tally, against the file rather than the entries`() {
+    fun `the manifest's length is a tally against the file rather than the entries`() {
         val manifest = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/mor").absolutePath))
             .metadatas.last().snapshots.last().manifests.first()
         val recorded = manifest.metadata.manifestLength!!
@@ -81,8 +81,38 @@ class ManifestTallyTest {
         val short = manifestTallies(manifest.metadata, manifest.dataFiles.map { it.metadata }, recorded - 1).single { it.label == "Manifest length" }
         assertEquals(false, short.agrees)
         assertEquals(recorded - 1, short.counted)
-        // A file that could not be measured adds no tally: there is no seventh figure to be wrong about.
-        assertEquals(6, manifestTallies(manifest.metadata, manifest.dataFiles.map { it.metadata }).size)
+        // A file that could not be measured adds no tally: there is no length figure to be wrong about.
+        assertEquals(7, manifestTallies(manifest.metadata, manifest.dataFiles.map { it.metadata }).size)
+    }
+
+    /**
+     * `min_sequence_number` is the figure the next commit prunes delete files by, so it is the
+     * lowest number among the *live* entries: a rewritten manifest carries older files under a
+     * newer number, a DELETED-only manifest has no live entry and takes the commit's own, and a
+     * figure above the oldest live file's would let a delete that still reaches it be dropped.
+     */
+    @Test
+    fun `min_sequence_number is the lowest live entry's, the manifest's own where none is live, and a raised one is named`() {
+        val maint = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/maint").absolutePath)).metadatas.last().snapshots.last()
+        val rewritten = maint.manifests.first { m -> m.dataFiles.any { it.metadata.status == ManifestEntryStatus.EXISTING && it.metadata.sequenceNumber != null } }
+        val liveMin = rewritten.dataFiles.filter { it.metadata.status != ManifestEntryStatus.DELETED }.minOf { effectiveSequenceNumber(it.metadata, rewritten.metadata.sequenceNumber) }
+        assertTrue(liveMin < rewritten.metadata.effectiveSequenceNumber, "a rewritten manifest lists files older than itself")
+        val tally = manifestTallies(rewritten.metadata, rewritten.dataFiles.map { it.metadata }).single { it.label == "Min sequence number" }
+        assertEquals(liveMin, tally.counted)
+        assertEquals(true, tally.agrees)
+
+        val raised = manifestTallies(rewritten.metadata.copy(minSequenceNumber = liveMin + 1), rewritten.dataFiles.map { it.metadata }).single { it.label == "Min sequence number" }
+        assertEquals(false, raised.agrees)
+
+        // `lineage`'s DELETED-only manifests: the writer assigns the commit's number where no live entry recorded one.
+        val deletedOnly = UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/lineage").absolutePath)).metadatas.last().snapshots
+            .flatMap { it.manifests }.first { m -> m.dataFiles.isNotEmpty() && m.dataFiles.all { it.metadata.status == ManifestEntryStatus.DELETED } }
+        val own = manifestTallies(deletedOnly.metadata, deletedOnly.dataFiles.map { it.metadata }).single { it.label == "Min sequence number" }
+        assertEquals(deletedOnly.metadata.effectiveSequenceNumber, own.counted)
+        assertEquals(true, own.agrees)
+
+        // A v1 list records none, and the v1 rule reads every number as 0: nothing to compare.
+        assertNull(manifestTallies(ManifestListEntry(manifestPath = "m.avro"), listOf(added(rows = 1))).single { it.label == "Min sequence number" }.agrees)
     }
 
     @Test

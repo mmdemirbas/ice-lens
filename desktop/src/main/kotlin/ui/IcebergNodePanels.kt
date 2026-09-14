@@ -815,8 +815,10 @@ internal fun ColumnScope.ManifestPanel(
             Text(
                 "The manifest list carries these counts so a scan can plan without opening this " +
                     "manifest, and nothing on the read path checks them. Each one sits beside the " +
-                    "same figure counted from the entries — and the manifest's length, which a " +
-                    "reader opens the file at, beside the file's own.",
+                    "same figure counted from the entries; the min sequence number beside the lowest " +
+                    "live entry's, since the next commit drops every delete file below the lowest " +
+                    "such figure among the data manifests it keeps; and the manifest's length, which " +
+                    "a reader opens the file at, beside the file's own.",
                 fontSize = TypeScale.small,
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 4.dp)
@@ -827,7 +829,7 @@ internal fun ColumnScope.ManifestPanel(
                 // here to find out whether anything disagrees, not to read six pairs
                 // of numbers and compare them by eye.
                 headers = listOf("Agrees", "Figure", "In the file", "Recorded"),
-                columnWidths = listOf(110.dp, 150.dp, 130.dp, 130.dp),
+                columnWidths = listOf(110.dp, 190.dp, 130.dp, 130.dp),
                 rows = tallies.map { tally ->
                     listOf(
                         when (tally.agrees) {

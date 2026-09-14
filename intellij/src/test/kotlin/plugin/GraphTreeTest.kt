@@ -202,8 +202,8 @@ class GraphTreeTest {
         assertEquals(setOf("MetadataNode", "ManifestNode", "FileNode"), kinds)
         val lines = parted.flatMap { GraphTree.details(it) }.filter { it.first == GraphTree.CHECKS }.map { it.second }
         assertTrue(lines.all { it.startsWith("all ") && it.contains(" figures agree") }, lines.toString())
-        // A manifest's line folds the six counts, the length and four figures for each of eight partition fields; a file's the eight partition fields.
-        assertTrue(parted.filterIsInstance<GraphNode.ManifestNode>().all { n -> GraphTree.details(n).first { it.first == GraphTree.CHECKS }.second.startsWith("all 39 figures agree") }, lines.toString())
+        // A manifest's line folds the six counts, the min sequence number, the length and four figures for each of eight partition fields; a file's the eight partition fields.
+        assertTrue(parted.filterIsInstance<GraphNode.ManifestNode>().all { n -> GraphTree.details(n).first { it.first == GraphTree.CHECKS }.second.startsWith("all 40 figures agree") }, lines.toString())
         assertTrue(parted.filterIsInstance<GraphNode.FileNode>().any { n -> GraphTree.details(n).first { it.first == GraphTree.CHECKS }.second == "all 8 figures agree" }, lines.toString())
         // An unpartitioned file lists no row — there is nothing to hold its partition to.
         assertTrue(flatten(GraphTree.build(graphOf("test"))).filterIsInstance<GraphNode.FileNode>().none { n -> GraphTree.details(n).any { it.first == GraphTree.CHECKS } })

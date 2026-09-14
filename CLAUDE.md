@@ -746,7 +746,18 @@ intellij/src/main/kotlin/plugin/
   own entries add up to. A scan trusts those counts without opening the manifest and nothing on
   the read path checks them, so the inspector does. It is also the suite's only assertion that
   compares what this code decoded against what Iceberg recorded about the same bytes — a status
-  misread or an entry dropped shows up as a disagreement on a checked-in table. **A seventh
+  misread or an entry dropped shows up as a disagreement on a checked-in table. **The seventh
+  figure is `min_sequence_number`, and it is the one a wrong value loses rows through.**
+  `ManifestWriter.addEntry` folds it from the *live* entries' data sequence numbers (1.8.1), an
+  added entry recording none taking the commit's — `V2Metadata` assigns the commit's number
+  where no live entry recorded one, so a DELETED-only manifest carries its own — and the next
+  commit prunes delete files by it: `MergingSnapshotProducer.apply` takes the lowest over the
+  data manifests it keeps and `dropDeleteFilesOlderThan` removes every delete file below it as
+  one that "cannot match any existing rows". A figure above the oldest live file's lets a delete
+  that still reaches that file be dropped, and its rows come back, with nothing failing. The
+  status-blind fold disagrees with the writer on `expired`, `lineage` and every compaction
+  manifest — 1,460 recorded figures across 42 tables hold the live-only one — and a v1 list
+  records none, so nothing is compared there. **A seventh
   tally is the manifest's length against the file**, because `manifest_length` is not a count a
   scan plans with but the length a reader opens the manifest at — `FileIO.newInputFile(ManifestFile)`
   is `newInputFile(path, manifest.length())` at 1.8.1, never a stat — so a wrong one fails the
@@ -1861,7 +1872,7 @@ intellij/src/main/kotlin/plugin/
   than written under the wrong node. **A check that costs no read is one `Checks` row**
   (`GraphTree.CHECKS`): the metadata file's figures, a manifest's counts, length and partition
   ranges, a file's partition against its bounds, and their Paimon twins — every figure with
-  both sides folded into `all 39 figures agree` or `2 of 39 DIFFER — last-column-id: 1 recorded,
+  both sides folded into `all 40 figures agree` or `2 of 40 DIFFER — last-column-id: 1 recorded,
   7 folded`, since the strip's reader wants the exception findable without the desktop, and a
   figure with one side only is counted apart rather than as agreement
 - **The tree follows structural edges only.** An `affectsLayout = false` edge is an annotation —
@@ -2346,7 +2357,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,296 tests across 176 files (1,019 in :core, 266 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,297 tests across 176 files (1,020 in :core, 266 in :desktop, 11 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
