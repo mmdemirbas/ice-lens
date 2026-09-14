@@ -176,6 +176,10 @@ class GraphTreeTest {
         assertTrue(levels.filter { !it.startsWith("0") }.none { "not read" in it }, levels.toString())
         val pc = flatten(GraphTree.build(paimonGraphOf("pc"))).flatMap { GraphTree.details(it) }
         assertTrue(pc.filter { it.first == "Level" }.none { "not read" in it.second }, "a deduplicate table on the defaults reads level 0")
+
+        // A Paimon schema node says what it changed from the one before it; the first schema lists no such row.
+        val pse = flatten(GraphTree.build(paimonGraphOf("pse"))).filterIsInstance<GraphNode.PaimonSchemaNode>()
+        assertEquals(listOf(null, "added w: INT", "renamed label: v → label", "default changed w: none → 7"), pse.sortedBy { it.data.id }.map { n -> GraphTree.details(n).firstOrNull { it.first.startsWith("Changes from schema") }?.second })
     }
 
     private fun paimonGraphOf(name: String): GraphModel {

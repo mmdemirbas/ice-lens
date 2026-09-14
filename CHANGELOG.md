@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Schema evolution by field id, with the snapshot first written under each schema.** The
+  table panel's `Schema Evolution` lists every change from each schema to the one before it —
+  added, dropped, renamed, moved, type changed, nullability, default, identifier fields; on
+  Paimon the keys, the options and the comment — nested fields as the leaves they are, a move
+  as the fewest columns whose move explains the new order, and beside each step the first
+  snapshot written under it or that none was. A Paimon schema node lists its own step, and the
+  IDE strip prints it. Replaces a section that diffed the drawn metadata nodes' top-level
+  fields, which aggregation could fold and a nested rename never reached
 - **The data-file sweep under `Integrity` reads a table past its cap a page at a time.** Each
   click reads the next 64 live files on top of the ones read, the pages fold into one line and
   one findings table, and the button says how many files are left

@@ -66,6 +66,7 @@ core/src/main/kotlin/
 │   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
 │   ├── BucketTransform.kt     # Iceberg's bucket[N], via the same Guava murmur3 the writer uses
 │   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
+│   ├── SchemaEvolution.kt     # Each schema against the one before it, by field id — added, dropped, renamed, moved, promoted — with the first snapshot written under it, both formats
 │   ├── ManifestMergePlan.kt   # What the next commit does to the manifest list — ManifestMergeManager's bins and verdicts
 │   ├── MaintenanceInput.kt    # The newest metadata and the current snapshot's node, carried on the table node for the planners — never read off the drawn graph
 │   ├── FileHistory.kt         # One file across the retained snapshots — added by, removed by, still listed live by — on either format
@@ -551,6 +552,28 @@ intellij/src/main/kotlin/plugin/
   oracle. `PaimonRowLookupFixtureTest` holds `lk`, `dv`, `ad` and `pc` to their scripts, and
   both formats land in one `RowLookupResult` with one `RowFate`, which is why the section is one
   composable: `RETRACTION` and `SUPERSEDED` are the two fates Iceberg has no need of
+- **A schema's changes are read by field id against the schema before it, and the first
+  snapshot written under each is named beside them.** `model/SchemaEvolution.kt` walks a
+  table's schemas in id order and answers each step as a list of `SchemaChange` — added,
+  dropped, renamed, moved, type changed, nullability, default, identifier fields; on Paimon the
+  keys, the options and the comment too — decided by **id**, which is what makes `evolved`'s
+  `name → label` a rename and `promoted`'s `label` a drop rather than a drop and an add twice
+  over. Nested fields are compared as the leaves they are (`deep`: `addr.city → addr.town`,
+  said of the leaf and not of the struct), and a **move** is the fewest columns whose move
+  turns one sibling order into the other — everything outside a longest common subsequence of
+  the ids both schemas keep (`movedIds`) — so a drop or an add beside a column is not a move
+  of it, and `a b c → c a b` is one move of `c` and not three neighbours changing. Each step
+  names the first snapshot written under it (`schema-id` on the snapshot, the lowest sequence
+  number), which is the reader's question — which data was written under which shape — and
+  is null for a schema DDL wrote between two inserts. `TableNode.schemaEvolution` carries the
+  steps from the **model** on both formats (the section it replaces read the *drawn* metadata
+  nodes, which aggregation folds, and diffed top-level fields with an algorithm its test
+  duplicated rather than called); the table panel draws one table of every step's changes with
+  a drop in the error colour and a type change that is not a promotion the spec allows, a
+  Paimon schema node draws its own step, and the IDE strip prints it as a row.
+  `SchemaEvolutionFixtureTest` holds `evolved`, `deep`, `defaults`, `pse` and `pkr` to their
+  scripts' DDL step by step, and every Iceberg fixture to a first step of columns and a change
+  on every later one, since a schema id is assigned only when the schema differs
 - **The same lookup run at every retained snapshot on `main` is a row's history, and the fate at
   the current snapshot cannot stand in for it.** A row deleted three commits ago and one deleted
   by the last commit look the same there; `model/RowHistory.kt` names the commit. The table node
@@ -2060,7 +2083,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,231 tests across 164 files (956 in :core, 266 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,231 tests across 164 files (962 in :core, 260 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

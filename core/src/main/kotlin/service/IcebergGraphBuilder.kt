@@ -73,6 +73,7 @@ object IcebergGraphBuilder {
             } ?: DeferredRead.none(),
             rowLookup = DeferredRead.of { tableModel.rowLookupInput() },
             rowHistory = DeferredRead.of { tableModel.rowHistoryInputs() },
+            schemaEvolution = newestMetadata?.schemaEvolution().orEmpty(),
             // Closes over `logicalNodes` like the vector index below: it is read after the
             // traversal has filled it, so the current snapshot's node is there whether or not
             // aggregation goes on to draw it.

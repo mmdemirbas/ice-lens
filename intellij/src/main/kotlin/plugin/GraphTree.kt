@@ -198,7 +198,9 @@ object GraphTree {
         is GraphNode.PaimonSchemaNode -> listOf(
             "Schema id" to node.data.id.toString(),
             "Fields" to node.data.fields.size.toString(),
-        )
+        ) + (node.step?.takeIf { it.fromId != null }?.let { step ->
+            listOf("Changes from schema ${step.fromId}" to step.changes.joinToString("; ") { "${it.kind.label} ${it.column}: ${it.detail}".trim() })
+        } ?: emptyList())
         is GraphNode.PaimonManifestListNode -> listOf(
             "Kind" to node.kind,
             "Manifests" to node.manifestCount.toString(),

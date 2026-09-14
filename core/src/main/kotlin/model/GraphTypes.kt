@@ -385,6 +385,8 @@ sealed class GraphNode(
         val paimonRowLookup: DeferredRead<PaimonReadInput> = DeferredRead.none(),
         /** The retained snapshots on `main` with what looking a row up in each takes — see [RowHistoryInputs]; both formats. */
         val rowHistory: DeferredRead<RowHistoryInputs> = DeferredRead.none(),
+        /** Each schema against the one before it, with the first snapshot written under it — see [schemaEvolution]; both formats, from the model. */
+        val schemaEvolution: List<SchemaStep> = emptyList(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 240.0, 96.0)
@@ -845,6 +847,8 @@ sealed class GraphNode(
         val data: PaimonSchema,
         val simpleId: Int,
         val localPath: String? = null,
+        /** This schema against the one before it — see [schemaEvolution]; null where the table's evolution does not list it. */
+        val step: SchemaStep? = null,
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 220.0, 54.0)

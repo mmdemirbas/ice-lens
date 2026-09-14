@@ -456,6 +456,24 @@ class InspectorRenderTest {
     }
 
     /**
+     * The schema evolution as one table of changes: `evolved`'s two promotions, rename, add and
+     * drop, each on its step with the insert first written under it — a drop in the error colour
+     * and a promotion not, since the column marks what can lose a reader data. The Paimon twin is
+     * on the schema node that made the change: `pse`'s schema 2, the rename.
+     */
+    @Test
+    fun `a table lists its schema changes by field id, and a Paimon schema node its own`() {
+        val evolved = graphFor("evolved")
+        val table = evolved.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        renderScene("schema-evolution", width = 1400, height = 560) {
+            Column(Modifier.padding(16.dp)) { SchemaEvolutionSection(table.schemaEvolution) }
+        }
+        val pse = GraphLayoutService.layoutGraph(PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pse").absolutePath)), showRows = false)
+        val renamed = pse.nodes.filterIsInstance<GraphNode.PaimonSchemaNode>().first { it.data.id == 2 }
+        renderInspector(pse, renamed.id, "paimon-schema-node-changes", height = 900)
+    }
+
+    /**
      * A partition statistics file, read: the record's table gains the size on disk beside the
      * size it claims, and below it one row per partition with the figures a planner reads. The
      * delete columns have to be judged against a row that has one, which `eu` is.

@@ -327,7 +327,7 @@ internal fun ColumnScope.TablePanel(
             }
         }
 
-        SchemaEvolutionSection(metadataChildren)
+        SchemaEvolutionSection(node.schemaEvolution)
         PropertiesEvolutionSection(metadataChildren)
 }
 

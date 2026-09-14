@@ -42,6 +42,8 @@ object PaimonGraphBuilder {
         val tableNodeId = "table_root"
 
         val tableSummary = buildTableSummary(tableModel)
+        // Every schema against the one before it, once; the table node lists them and each schema node carries its own.
+        val schemaSteps = tableModel.schemaEvolution()
         logicalNodes[tableNodeId] = GraphNode.TableNode(
             tableNodeId,
             tableSummary,
@@ -51,6 +53,7 @@ object PaimonGraphBuilder {
             fileStats = DeferredRead.of { tableModel.fileStatsTargets() },
             paimonRowLookup = DeferredRead.of { tableModel.paimonRowLookupInput() },
             rowHistory = DeferredRead.of { tableModel.rowHistoryInputs() },
+            schemaEvolution = schemaSteps,
             // Read after the traversal fills `logicalNodes`, so the latest snapshot's node is
             // found whether or not aggregation goes on to draw it.
             maintenance = DeferredRead.of {
@@ -136,6 +139,7 @@ object PaimonGraphBuilder {
                     id = sId,
                     data = schema,
                     simpleId = simpleId,
+                    step = schemaSteps.firstOrNull { it.toId == schema.id },
                 )
                 schemaNodeById[schema.id] = sId
             }

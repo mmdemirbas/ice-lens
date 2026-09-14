@@ -75,6 +75,7 @@ internal fun ColumnScope.PaimonSchemaPanel(
             DetailRow("Primary Keys", node.data.primaryKeys.joinToString(", ").ifEmpty { "N/A" })
             DetailRow("Comment", node.data.comment ?: "N/A")
         }
+        node.step?.let { SchemaStepSection(it) }
         if (node.data.fields.isNotEmpty()) {
             Section("Fields") {
                 // A default is write-time — `ALTER COLUMN … SET DEFAULT` — so a file written

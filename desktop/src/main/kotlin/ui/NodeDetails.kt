@@ -75,7 +75,8 @@ import model.LiveFile
 import model.describe
 import model.KeyValuePairLong
 import model.MetadataLogEntry
-import model.TableSchema
+import model.SchemaChangeKind
+import model.SchemaStep
 import model.metadataVersionFromFileName
 import java.awt.Desktop
 import java.io.File
@@ -987,77 +988,6 @@ fun NodeDetailsContent(
 }
 
 // --- Schema Evolution ---
-
-private data class FieldInfo(
-    val id: Int,
-    val name: String,
-    val required: Boolean,
-    val type: String,
-)
-
-private fun extractFields(schema: TableSchema): Map<Int, FieldInfo> =
-    schema.fields.mapNotNull { field ->
-        val id = field.id ?: return@mapNotNull null
-        id to FieldInfo(
-            id = id,
-            name = field.name ?: "field_$id",
-            required = field.required ?: false,
-            type = field.type?.toString()?.removeSurrounding("\"") ?: "unknown"
-        )
-    }.toMap()
-
-private sealed class SchemaChange(val fieldId: Int, val fieldName: String) {
-    class Added(id: Int, name: String, val type: String, val required: Boolean) : SchemaChange(id, name) {
-        override fun toString() = "Added: $fieldName ($type${if (required) ", required" else ""})"
-    }
-    class Dropped(id: Int, name: String, val type: String) : SchemaChange(id, name) {
-        override fun toString() = "Dropped: $fieldName ($type)"
-    }
-    class TypeChanged(id: Int, name: String, val oldType: String, val newType: String) : SchemaChange(id, name) {
-        override fun toString() = "Type changed: $fieldName ($oldType \u2192 $newType)"
-    }
-    class Renamed(id: Int, val oldName: String, val newName: String) : SchemaChange(id, newName) {
-        override fun toString() = "Renamed: $oldName \u2192 $newName"
-    }
-    class RequiredChanged(id: Int, name: String, val wasRequired: Boolean) : SchemaChange(id, name) {
-        override fun toString() = if (wasRequired) "Made optional: $fieldName" else "Made required: $fieldName"
-    }
-}
-
-private fun diffSchemas(oldSchema: TableSchema, newSchema: TableSchema): List<SchemaChange> {
-    val oldFields = extractFields(oldSchema)
-    val newFields = extractFields(newSchema)
-    val changes = mutableListOf<SchemaChange>()
-
-    // Added fields
-    (newFields.keys - oldFields.keys).forEach { id ->
-        val f = newFields[id]!!
-        changes.add(SchemaChange.Added(id, f.name, f.type, f.required))
-    }
-
-    // Dropped fields
-    (oldFields.keys - newFields.keys).forEach { id ->
-        val f = oldFields[id]!!
-        changes.add(SchemaChange.Dropped(id, f.name, f.type))
-    }
-
-    // Changed fields
-    (oldFields.keys intersect newFields.keys).forEach { id ->
-        val old = oldFields[id]!!
-        val new = newFields[id]!!
-        if (old.name != new.name) {
-            changes.add(SchemaChange.Renamed(id, old.name, new.name))
-        }
-        if (old.type != new.type) {
-            changes.add(SchemaChange.TypeChanged(id, new.name, old.type, new.type))
-        }
-        if (old.required != new.required) {
-            changes.add(SchemaChange.RequiredChanged(id, new.name, old.required))
-        }
-    }
-
-    return changes.sortedBy { it.fieldId }
-}
 
 /**
  * The rows a v3 deletion vector marks, decoded from the Puffin blob it lives in.
@@ -2586,93 +2516,91 @@ internal fun CountedSection(title: String, count: Int, nothing: String, content:
     }
 }
 
+/**
+ * What changed from each schema to the next, by field id, with the first snapshot written
+ * under it — see [model.schemaEvolution]. Format-agnostic: the steps ride `TableNode.schemaEvolution`,
+ * filled by both builders from the model, never from the drawn metadata nodes, which aggregation
+ * folds past the page size. One table for every step, because the reader's question is "when
+ * was this column renamed", which a table per step answers only by scrolling; the first schema
+ * is a line, since its "changes" are the columns it started with. The change column marks the
+ * two kinds that can lose a reader data — a drop, and a type change that is not a promotion the
+ * format allows — and leaves the rest at body weight.
+ */
 @Composable
-internal fun SchemaEvolutionSection(metadataChildren: List<GraphNode.MetadataNode>) {
-    // Collect all unique schemas across metadata versions
-    val allSchemas = metadataChildren.flatMap { meta ->
-        meta.data.schemas.map { schema -> meta to schema }
-    }
-    val uniqueSchemas = allSchemas
-        .distinctBy { it.second.schemaId }
-        .sortedBy { it.second.schemaId ?: Int.MAX_VALUE }
-
-    if (uniqueSchemas.size < 2) return // No evolution to show
-
-    Section("Schema Evolution") {
-
-        val changes = mutableListOf<Triple<Int, Int, List<SchemaChange>>>() // fromSchemaId, toSchemaId, changes
-        for (i in 0 until uniqueSchemas.size - 1) {
-            val oldSchema = uniqueSchemas[i].second
-            val newSchema = uniqueSchemas[i + 1].second
-            val diff = diffSchemas(oldSchema, newSchema)
-            if (diff.isNotEmpty()) {
-                changes.add(Triple(oldSchema.schemaId ?: i, newSchema.schemaId ?: (i + 1), diff))
-            }
-        }
-
-        if (changes.isEmpty()) {
-            DetailTable {
-                DetailRow("Status", "No field changes detected between schema versions")
-            }
-            return@Section
-        }
-
-        val colors = MaterialTheme.colorScheme
-
-        changes.forEach { (fromId, toId, diffs) ->
-            Text(
-                "Schema $fromId \u2192 $toId",
-                fontWeight = FontWeight.SemiBold,
-                fontSize = TypeScale.small,
-                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-            )
-            DetailTable {
-                diffs.forEach { change ->
-                    val changeColor = when (change) {
-                        is SchemaChange.Added -> colors.secondary
-                        is SchemaChange.Dropped -> colors.error
-                        else -> colors.onSurface
-                    }
-                    DetailRow(
-                        key = when (change) {
-                            is SchemaChange.Added -> "+ Added"
-                            is SchemaChange.Dropped -> "- Dropped"
-                            is SchemaChange.TypeChanged -> "\u0394 Type"
-                            is SchemaChange.Renamed -> "\u0394 Rename"
-                            is SchemaChange.RequiredChanged -> "\u0394 Required"
-                        },
-                        value = change.toString().substringAfter(": ")
-                    )
-                }
-            }
-        }
-
-        // Show current schema fields
-        val latestSchema = uniqueSchemas.last().second
-        Spacer(Modifier.height(8.dp))
+internal fun SchemaEvolutionSection(steps: List<SchemaStep>) {
+    if (steps.isEmpty()) return
+    val colors = MaterialTheme.colorScheme
+    val first = steps.first()
+    val later = steps.drop(1)
+    val changes = later.sumOf { it.changes.size }
+    Section("Schema Evolution (${formatCount(later.size)})") {
         Text(
-            "Current Schema (ID ${latestSchema.schemaId ?: "?"}): ${latestSchema.fields.size} fields",
-            fontWeight = FontWeight.Medium,
+            "Schema ${first.toId} started with ${formatCounted(first.changes.size, "column")}" +
+                (if (later.isEmpty()) " and is the only schema." else "; ${formatCounted(changes, "change")} across ${formatCounted(later.size, "later schema")}, each by field id — a rename keeps the id, a drop and an add do not.") +
+                (first.firstSnapshotId?.let { " First written by snapshot $it." } ?: ""),
             fontSize = TypeScale.small,
-            modifier = Modifier.padding(bottom = 4.dp)
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 8.dp),
         )
-        val identifierIds = latestSchema.identifierFieldIds.toSet()
-        DetailTable {
-            DetailRow("ID", "Name / Type / Required", isHeader = true)
-            latestSchema.fields.forEach { field ->
-                val isIdentifier = (field.id ?: -1) in identifierIds
-                val typeStr = field.type?.toString()?.removeSurrounding("\"") ?: "unknown"
-                val suffix = buildString {
-                    if (field.required == true) append(", required")
-                    if (isIdentifier) append(", identifier")
-                }
-                DetailRow(
-                    "${field.id ?: "?"}",
-                    "${field.name ?: "?"} ($typeStr$suffix)"
-                )
-            }
+        if (later.isNotEmpty()) {
+            val rows = later.flatMap { step -> step.changes.map { step to it } }
+            WideTable(
+                headers = listOf("Change", "Column", "Detail", "Schema", "First Written By"),
+                columnWidths = listOf(150.dp, 200.dp, 320.dp, 130.dp, 420.dp),
+                rows = rows.map { (step, change) ->
+                    listOf(
+                        change.kind.label,
+                        change.column.ifEmpty { "—" },
+                        change.detail,
+                        step.label,
+                        step.firstSnapshotId?.let { id ->
+                            "snapshot $id" + (step.firstSnapshotOperation?.let { " ($it" } ?: "") +
+                                (step.firstSnapshotTimestampMs?.let { ", ${formatAppTimestamp(it)}" } ?: "") + (if (step.firstSnapshotOperation != null) ")" else "")
+                        } ?: "no snapshot written under it",
+                    )
+                },
+                leadCellColors = rows.map { (_, change) ->
+                    when (change.kind) {
+                        SchemaChangeKind.DROPPED -> colors.error
+                        SchemaChangeKind.TYPE_CHANGED -> if (isPromotion(change.detail)) null else colors.error
+                        else -> null
+                    }
+                },
+            )
         }
     }
+}
+
+/**
+ * One step on its own schema's panel — what this schema changed from the one before it, and the
+ * first snapshot written under it — the same rows the table's section lists for every step.
+ */
+@Composable
+internal fun SchemaStepSection(step: SchemaStep) {
+    val colors = MaterialTheme.colorScheme
+    val written = step.firstSnapshotId?.let { id -> "First written by snapshot $id" + (step.firstSnapshotOperation?.let { " ($it)" } ?: "") + "." } ?: "No snapshot written under it."
+    if (step.fromId == null) {
+        Section("Changes") {
+            Text("The first schema: ${formatCounted(step.changes.size, "column")}. $written", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+        }
+        return
+    }
+    Section("Changes from schema ${step.fromId} (${formatCount(step.changes.size)})") {
+        Text(written, fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+        WideTable(
+            headers = listOf("Change", "Column", "Detail"),
+            columnWidths = listOf(150.dp, 200.dp, 420.dp),
+            rows = step.changes.map { listOf(it.kind.label, it.column.ifEmpty { "—" }, it.detail) },
+            leadCellColors = step.changes.map { if (it.kind == SchemaChangeKind.DROPPED) colors.error else null },
+        )
+    }
+}
+
+/** The type changes Iceberg's spec allows on a column: a widening, and a decimal's precision growing. */
+private fun isPromotion(detail: String): Boolean {
+    val (from, to) = detail.split(" → ").takeIf { it.size == 2 } ?: return false
+    return (from == "int" && to == "long") || (from == "float" && to == "double") ||
+        (from.startsWith("decimal(") && to.startsWith("decimal(") && from.substringAfter(", ") == to.substringAfter(", "))
 }
 
 // --- Properties Evolution ---
