@@ -117,6 +117,26 @@ class RowHistoryFixtureTest {
         assertEquals(RowFate.RETRACTION, three.steps[1].result.hits.first { it.fate != RowFate.SUPERSEDED }.fate)
     }
 
+    /**
+     * `der` renames `a` to `aa` between its two commits and `b` to `bb` after the last one, so
+     * the history of `aa = 1` is asked in names snapshot 1 never had. Every step is read under
+     * the table's newest schema, the Iceberg rule, with each file placed by its own `_SCHEMA_ID`
+     * — so the row is found at snapshot 1 under `aa` and compares column for column with the
+     * same row at snapshot 2, where the patch changed `bb`. Read under each snapshot's own
+     * schema, as the first version did, the filter named a column snapshot 1's schema lacks and
+     * the row read as appearing at the commit that only patched it.
+     */
+    @Test
+    fun `der traces a row across the renames under the table's current names`() {
+        val one = paimon("der", "aa", "1")
+        assertEquals(2, one.onMain)
+        assertEquals(listOf("APPEND" to null, "APPEND" to RowChange.CHANGED), one.timeline())
+        assertEquals(listOf(mapOf("id" to 1, "aa" to 1, "bb" to 1)), one.steps.last().liveRows)
+        assertEquals(listOf(mapOf("id" to 1, "aa" to 1, "bb" to 11)), one.steps.first().liveRows)
+        val two = paimon("der", "bb", "2")
+        assertEquals(listOf("APPEND" to null, "APPEND" to RowChange.UNCHANGED), two.timeline())
+    }
+
     @Test
     fun `the trace is capped and says so`() {
         assertTrue(MAX_HISTORY_SNAPSHOTS in 5..100)

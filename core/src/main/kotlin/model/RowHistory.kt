@@ -102,13 +102,21 @@ fun UnifiedTableModel.rowHistoryInputs(): RowHistoryInputs? {
     return RowHistoryInputs(snapshots, chain.size)
 }
 
-/** The snapshots under `snapshot/`, newest first, each with its read input off its own replay. */
+/**
+ * The snapshots under `snapshot/`, newest first, each with its read input off its own replay —
+ * and every one read under the table's **newest** schema, the Iceberg rule: the question is
+ * asked in the table's current names, and a file is placed by its own `_SCHEMA_ID` onto
+ * whichever schema it is read under, so a column renamed between two commits (`der`) is one
+ * column at every step and the rows compare column for column. Read under each snapshot's own
+ * schema — a time travel's rule — the filter names a column the older schema lacks, and a row
+ * that was only patched reads as appearing at the patch.
+ */
 fun PaimonUnifiedTableModel.rowHistoryInputs(): RowHistoryInputs? {
     if (snapshots.isEmpty()) return null
     val ordered = snapshots.sortedByDescending { it.metadata.id ?: Long.MIN_VALUE }
     val traced = ordered.asSequence().take(MAX_HISTORY_SNAPSHOTS).mapNotNull { snapshot ->
         val id = snapshot.metadata.id ?: return@mapNotNull null
-        val input = paimonReadInputOf(snapshot, replayPaimonSnapshot(snapshot)) ?: return@mapNotNull null
+        val input = paimonReadInputOf(snapshot, replayPaimonSnapshot(snapshot), latestSchema) ?: return@mapNotNull null
         HistorySnapshot(id, snapshot.metadata.timeMillis, snapshot.metadata.commitKind, input)
     }.toList()
     return RowHistoryInputs(traced, snapshots.size)

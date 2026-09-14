@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   goes through its projection now, and which file holds a column is decided by id. A rename
   written after the last commit is what a read shows, as Paimon opens a table under the newest
   schema file and switches to a snapshot's own only on time travel. `der` is the fixture
+- **A Paimon row's history is traced under the table's current names.** Every step is read
+  under the newest schema, as on Iceberg, so a column renamed between two commits is one
+  column throughout; read under each snapshot's own schema, a row that was only patched read
+  as appearing at the patch
 - **A directory carrying both formats' markers opens as the Paimon table.** Such a directory is
   a Paimon table whose Iceberg metadata is its export, and opened as Iceberg its `snapshot/`,
   `schema/` and `manifest/` read as orphans and its snapshots, levels and merge engine are

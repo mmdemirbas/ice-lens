@@ -597,11 +597,16 @@ intellij/src/main/kotlin/plugin/
   before: `appeared`, `changed`, `gone`, `unchanged`, and null for the oldest traced, which has
   nothing older to stand against. The row's own columns, because a Paimon record's
   `_SEQUENCE_NUMBER` moves when the same value is written again, which is not a change a read
-  shows. On Iceberg every snapshot is read under the newest schema — the lookup input's rule —
-  so the rows compare column for column, and a data file's matching rows are the same at every
-  snapshot listing it: `RowLookup.lookup` takes a `reads` map and the trace passes one, so a
-  file is opened once per trace rather than once per snapshot. Paimon reads a file under its
-  snapshot's own schema, which an `ADD COLUMN` changes between two, so it reads per snapshot.
+  shows. On both formats every snapshot is read under the newest schema — the question is
+  asked in the table's current names, and a file is placed by its own ids onto whichever
+  schema it is read under — so a column renamed between two commits is one column at every
+  step and the rows compare column for column; read under each snapshot's own schema, a
+  time travel's rule, `der`'s `aa = 1` named a column snapshot 1 lacks and the row read as
+  appearing at the commit that only patched it. On Iceberg a data file's matching rows are
+  therefore the same at every snapshot listing it: `RowLookup.lookup` takes a `reads` map and
+  the trace passes one, so a file is opened once per trace rather than once per snapshot.
+  Paimon reads per snapshot, since a record's fate depends on the bucket's other files as of
+  that snapshot.
   `RowHistoryFixtureTest` holds `mor`'s rows to the script commit by commit — 7 appears at the
   second append and is gone at the last delete; 5 changes at the update and not at the
   compaction that rewrote its file, where both versions are found, the old one deleted by
@@ -2171,7 +2176,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,257 tests across 170 files (986 in :core, 262 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,258 tests across 170 files (987 in :core, 262 in :desktop, 9 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -2311,7 +2316,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pne` | `PaimonNestedEvolutionFixtureTest` | `pse` one level down — a struct and a list of structs, a rename and an add inside the struct and a rename inside the list's element between two writes; the nested type object every schema of such a table carries, and Paimon's read of the old file under the new names |
 | `paimon/db.db/pic` | `PaimonIcebergExportFixtureTest` | `metadata.iceberg.storage = table-location` — a primary-key table writing Iceberg metadata under its own `metadata/` on every commit, so the directory carries both formats' markers; two appends, neither compacted, and the export lists one of the two live files: snapshot 1 rebuilt it from the snapshot and snapshot 2 went through the level rule |
 | `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest`, `PaimonRowLookupFixtureTest`, `PaimonScanPruningTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted; the stitched read `(1, 11, 1)` the lookup is held to, and the file bounds pruning must not consult |
-| `paimon/db.db/der` | `PaimonRowLookupFixtureTest` | `de` with a column renamed on either side of the patch — `a` to `aa` before the `MERGE INTO`, `b` to `bb` after it, the last rename written under no snapshot; the stitch placed by field id, and the read of the latest snapshot under the latest schema file, to Paimon's `1 1 11 / 2 2 2` |
+| `paimon/db.db/der` | `PaimonRowLookupFixtureTest`, `RowHistoryFixtureTest` | `de` with a column renamed on either side of the patch — `a` to `aa` before the `MERGE INTO`, `b` to `bb` after it, the last rename written under no snapshot; the stitch placed by field id, and the read of the latest snapshot under the latest schema file, to Paimon's `1 1 11 / 2 2 2` |
 | `paimon/db.db/lk` | `PaimonRowKindTest` | `changelog-producer = lookup` — the `-U` / `+U` pair a re-inserted key produces, carried by the COMPACT snapshot the lookup ran in, and a `-D` with the value it removed |
 | `paimon/db.db/ad` | `PaimonAppendDeletionVectorFixtureTest` | an append table with `deletion-vectors.enabled` — a DELETE that commits as a COMPACT adding only an index manifest, one vector per touched file, both files untouched |
 | `paimon/db.db/px`, `pxa` | `PaimonExpiryFixtureTest` | one table written twice — six commits, a tag on 2, a consumer at 4; `px` as it is, `pxa` after `expire_snapshots(retain_max = 2, retain_min = 1)` — the survivors the plan for `px` is checked against |
