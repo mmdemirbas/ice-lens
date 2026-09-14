@@ -15,6 +15,7 @@ import model.MAIN_BRANCH
 import model.PaimonFileSource
 import model.fieldRows
 import model.paimonManifestTallies
+import model.paimonPartitionBoundsChecks
 import java.io.File
 
 // The inspector panels for Paimon's node kinds: a snapshot, a schema, a manifest list, a manifest, a
@@ -316,6 +317,9 @@ internal fun ColumnScope.PaimonDataFilePanel(
         PaimonDeletionVectorSection(node)
         // The file's own bounds, the same section the Iceberg data file has: a
         // scan skips a file whose bounds exclude the predicate without opening it.
+        node.partition?.takeIf { it.values.isNotEmpty() }?.let { partition ->
+            PartitionBoundsSection(paimonPartitionBoundsChecks(partition, node.columnBounds, file?.rowCount))
+        }
         val bounds = node.columnBounds
         if (bounds != null) {
             Section("Column Bounds (${formatCount(bounds.size)})") {

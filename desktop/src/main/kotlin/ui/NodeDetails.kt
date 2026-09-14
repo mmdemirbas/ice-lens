@@ -69,6 +69,8 @@ import model.SnapshotChange
 import model.snapshotTotals
 import model.FileChange
 import model.manifestTallies
+import model.PartitionFieldCheck
+import model.PartitionFieldVerdict
 import model.partialRows
 import model.partitionBreakdown
 import model.stepComparableSnapshot
@@ -2818,5 +2820,55 @@ internal fun PropertiesEvolutionSection(versions: List<MetadataVersionInfo>) {
                 rows = changes.map { listOf(it.key, it.from, it.to, it.oldValue ?: "(not set)", it.newValue ?: "(removed)") },
             )
         }
+    }
+}
+
+/**
+ * A file's partition tuple against its own column bounds — the one pair of recorded figures
+ * about a file that no read path compares, and the one that decides which files a scan
+ * opens. Metadata only, drawn at once under the partition on both file panels; a
+ * disagreement is the file a partition filter skips for the value its rows hold.
+ */
+@Composable
+internal fun PartitionBoundsSection(checks: List<PartitionFieldCheck>) {
+    val colors = MaterialTheme.colorScheme
+    val disagreeing = checks.count { it.verdict == PartitionFieldVerdict.DISAGREES }
+    Section("Partition Against Bounds" + if (disagreeing > 0) " — $disagreeing disagree" else "") {
+        Text(
+            "A scan prunes on the partition before it looks at a bound, so a file registered under " +
+                "the wrong partition is skipped for the value its rows hold, with nothing failing. " +
+                "Every row's source value transforms to the partition value, so both bounds must — " +
+                "exactly for a number or a date; a string bound is truncated, so the value is held " +
+                "to lie within it; a bucket only where the bounds are one value.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WideTable(
+            headers = listOf("Verdict", "Field", "Recorded", "From Bounds", "Transform", "Source", "Why"),
+            columnWidths = listOf(100.dp, 130.dp, 150.dp, 190.dp, 110.dp, 120.dp, 420.dp),
+            leadCellColors = checks.map {
+                when (it.verdict) {
+                    PartitionFieldVerdict.DISAGREES -> colors.error
+                    PartitionFieldVerdict.NOT_CHECKED -> verdictUnevaluatedColor()
+                    PartitionFieldVerdict.AGREES -> null
+                }
+            },
+            rows = checks.map { c ->
+                listOf(
+                    when (c.verdict) {
+                        PartitionFieldVerdict.AGREES -> "agrees"
+                        PartitionFieldVerdict.DISAGREES -> "DISAGREES"
+                        PartitionFieldVerdict.NOT_CHECKED -> "not checked"
+                    },
+                    c.field,
+                    c.recorded,
+                    c.fromBounds ?: "N/A",
+                    c.transform.ifEmpty { "N/A" },
+                    c.source,
+                    c.reason,
+                )
+            },
+        )
     }
 }

@@ -30,6 +30,8 @@ enum class IntegrityCheck(val label: String) {
     STATISTICS_FILES("statistics files"),
     /** A partition statistics file's size and rows against the live files of its snapshot — see [checkStatisticsFiles]. */
     PARTITION_STATISTICS("partition statistics"),
+    /** A data file's partition tuple against its own column bounds — see [partitionBoundsChecks]. */
+    FILE_PARTITIONS("file partitions"),
 }
 
 data class IntegrityFinding(
@@ -72,6 +74,8 @@ private class Tallying {
 
 fun UnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_CHECKS): IntegrityReport {
     val t = Tallying()
+    // A field a rewritten manifest's schema no longer has is named by the newest schema that had it — the file panel's rule for its bounds.
+    val tableFieldsById = metadatas.lastOrNull()?.metadata?.fieldsEverDefined().orEmpty()
     // One copy per snapshot, the newest metadata's, newest first — the closures the cap leaves
     // unchecked are the oldest, which are the ones a reader is least likely to be asking about.
     val retained = metadatas.asReversed().flatMap { it.snapshots }
@@ -90,6 +94,14 @@ fun UnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_CHECKS
             }
             partitionSummaryTallies(m.partitionSummaries, m.dataFiles.map { it.partition }).forEach {
                 t.count(IntegrityCheck.PARTITION_SUMMARIES, path.substringAfterLast('/'), "${it.field}: ${it.figure.lowercase()}", it.recorded, it.counted, it.agrees)
+            }
+            // Each entry's partition against its own bounds — per entry, since a rewritten manifest carries its own copy of both.
+            m.dataFiles.forEach { file ->
+                val partition = file.partition?.takeIf { !it.isUnpartitioned } ?: return@forEach
+                val data = file.metadata.dataFile ?: return@forEach
+                partitionBoundsChecks(partition, columnStatsFor(data, m.schema, tableFieldsById)).forEach {
+                    t.count(IntegrityCheck.FILE_PARTITIONS, data.filePath?.substringAfterLast('/') ?: path.substringAfterLast('/'), "partition ${it.field}", it.recorded, it.fromBounds ?: it.reason, it.agrees)
+                }
             }
         }
         snapshotChangeOf(s).tallies.forEach { t.count(IntegrityCheck.COMMIT_SUMMARY, name(s), it.label, it.recorded, it.counted, it.agrees) }
@@ -124,6 +136,12 @@ fun PaimonUnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_
             val views = m.entries.mapIndexed { i, e -> PaimonManifestEntryView(i + 1, e.metadata, e.path.toString(), e.partition) }
             paimonManifestTallies(m.metadata, views, m.partitionMin, m.partitionMax, m.sizeOnDisk).forEach {
                 t.count(IntegrityCheck.MANIFEST_COUNTS, "${m.metadata.fileName ?: m.path.fileName}" + (line.branch?.let { b -> " on $b" } ?: ""), it.label, it.recorded, it.counted, it.agrees)
+            }
+            m.entries.forEach { e ->
+                val partition = e.partition?.takeIf { it.values.isNotEmpty() } ?: return@forEach
+                paimonPartitionBoundsChecks(partition, e.columnBounds, e.metadata.file?.rowCount).forEach {
+                    t.count(IntegrityCheck.FILE_PARTITIONS, e.metadata.file?.fileName ?: e.path.fileName.toString(), "partition ${it.field}", it.recorded, it.fromBounds ?: it.reason, it.agrees)
+                }
             }
         }
     }

@@ -30,6 +30,7 @@ import model.ManifestEntryStatus
 import model.TermEffect
 import model.evaluatePruning
 import model.manifestTallies
+import model.partitionBoundsChecks
 import model.snapshotAsOf
 import model.partitionSummaryTallies
 import model.sourceSnapshotId
@@ -1136,6 +1137,7 @@ internal fun ColumnScope.FilePanel(
                     }
                 )
             }
+            PartitionBoundsSection(partitionBoundsChecks(partition, node.columnStats))
         }
 
         FileHistorySection(node.history, currentGraph)

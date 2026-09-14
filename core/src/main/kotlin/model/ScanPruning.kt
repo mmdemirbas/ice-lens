@@ -616,7 +616,7 @@ private fun evaluateTerm(summary: PartitionSummary, predicate: ScanPredicate): P
  * The function that turns a source value into the value a manifest records for it, or null when
  * the transform has no order-preserving bridge — see the class comment for which and why.
  */
-private fun transformBridge(transform: String): ((Any) -> Comparable<*>?)? {
+internal fun transformBridge(transform: String): ((Any) -> Comparable<*>?)? {
     truncateWidth(transform)?.let { width -> return { value -> truncate(value, width) } }
     return when (transform.trim()) {
         "identity" -> { value -> value as? Comparable<*> }

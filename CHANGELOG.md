@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A data file's partition checked against its own column bounds, on both file panels and
+  in the integrity check.** A scan prunes on the partition before it looks at a bound, so a
+  file registered under the wrong partition is skipped for the value its rows hold with
+  nothing failing; every row's source value transforms to the partition value, so both bounds
+  must — exactly for a number or a date, within the bounds for a truncated string, and for a
+  bucket where the bounds are one value. A null partition holds only nulls and a non-null one
+  none, which is the disagreement a file with nulls under `region=eu` gets.
 - **Every recorded length a reader opens a metadata file at is checked against the file.**
   An Iceberg manifest's `manifest_length` is a seventh tally on the manifest panel and in the
   integrity check, beside the six counts; a Paimon manifest's `_FILE_SIZE` likewise; and a

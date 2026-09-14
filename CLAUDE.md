@@ -90,6 +90,7 @@ core/src/main/kotlin/
 │   ├── SnapshotFilter.kt      # Snapshot filter options and graph filtering (pure graph work — core, not UI)
 │   ├── ManifestTally.kt       # manifest_file's six counts against the same figures folded from its entries
 │   ├── PartitionSummaryTally.kt # manifest_file's partition summaries — the bounds a scan prunes on — against the entries' decoded partitions
+│   ├── PartitionBoundsCheck.kt # A data file's partition tuple against its own column bounds — the pair no read path compares, both formats
 │   ├── ManifestLedger.kt      # Per-entry: what it added to a manifest's figures, or which rule dropped it
 │   ├── ScanPruning.kt         # Predicate → which manifests a scan would skip, and which term did it
 │   ├── GraphNavigation.kt     # Arrow keys → the next node, decided from where the nodes are drawn
@@ -747,6 +748,30 @@ intellij/src/main/kotlin/plugin/
   across every transform the corpus carries, moves one bound by hand to see one figure
   disagree, and holds `lineage`'s DELETED-only manifests to recording their removed files'
   partitions as bounds — the status-blind fold seen, not read
+- **A file's partition tuple is checked against its own column bounds, and it is the one pair
+  of recorded figures about a file that no read path compares.** A scan prunes on the partition
+  before it looks at a bound, so a file registered under the wrong partition — `add_files` takes
+  the partition from the directory a file sits in, a hand-built `DataFile` from whatever it was
+  given — is skipped for the value its rows hold and read for one they do not, with nothing
+  failing. `model/PartitionBoundsCheck.kt`: every row's source value transforms to the partition
+  value, so the transform of the lower bound and of the upper bound must both be it —
+  `transformBridge` (the pruning bridge, `internal` now) for `identity`, `year`, `month`, `day`,
+  `hour` and `truncate`; `BucketTransform.bucketOf` for `bucket[N]` where the bounds are one
+  value, since a range of values says nothing about a bucket; `void` records nothing. Exact
+  for a number, a date or a timestamp; **contained for a string**, whose bound is a sixteen-
+  character prefix and an incremented one, so the value is held to lie between them — the
+  statistics check's one-sidedness, said in the reason. A null partition value means every
+  row's source is null, and a non-null one that no row's is: a file with `null_value_count > 0`
+  under `region=eu` is a disagreement, since Iceberg files a null under the null partition.
+  Paimon's `_PARTITION` is identity by name against `_VALUE_STATS`, with the row count as the
+  value count. Both file panels draw `Partition Against Bounds` under the partition (metadata
+  only, no click; `partition-bounds-disagreeing` is the planted capture), and the integrity
+  report lists a difference under `FILE_PARTITIONS` per entry — per entry, since a rewritten
+  manifest carries its own copy of both figures. `PartitionBoundsCheckTest` holds every
+  partitioned entry of every fixture on both formats to agreement, requires every transform the
+  corpus carries on the agreeing side (`parted`'s one-row files make even `bucket` decidable),
+  and plants each way the two can disagree; a bucket count off by one and a containment rule
+  applied to numbers were each run and caught
 - **What a positional delete file removes is counted by DuckDB, behind a button.**
   `SampleRowReader.queryPositionalDeleteTargets` runs `GROUP BY file_path` over the delete file's
   own rows, so what crosses back is one row per targeted data file whether the file holds one
@@ -1311,7 +1336,7 @@ intellij/src/main/kotlin/plugin/
   small enough to draw whole. Data files first and in the error colour, `MAX_EXPIRY_FILE_ROWS`
   (200) listed
 - **"Is this table consistent" is one click, and it runs the panels' own checks.**
-  `model/Integrity.kt` runs `manifestTallies` and `partitionSummaryTallies` on every distinct manifest, each commit's
+  `model/Integrity.kt` runs `manifestTallies`, `partitionSummaryTallies` and `partitionBoundsChecks` on every distinct manifest, each commit's
   `snapshotChangeOf(...).tallies` and `snapshotTotals` on its closure (Iceberg), and
   `paimonManifestTallies` on every distinct manifest with `paimonRecordTallies` on every
   snapshot's replay across main, the branches and the tag-only snapshots (Paimon), and lists the
@@ -2256,7 +2281,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,279 tests across 173 files (1,005 in :core, 264 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,284 tests across 174 files (1,009 in :core, 265 in :desktop, 10 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

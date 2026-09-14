@@ -1844,6 +1844,28 @@ class InspectorRenderTest {
     }
 
     /**
+     * A file's partition against its own bounds, with the recorded day moved past the bounds and
+     * a null count under a non-null partition — `file-node` shows the section agreeing on
+     * `parted`; a verdict column is judged by the exception it has to make findable.
+     */
+    @Test
+    fun `the partition-against-bounds section renders a planted disagreement`() {
+        val graph = graphFor("parted")
+        val file = graph.nodes.filterIsInstance<GraphNode.FileNode>().first { it.partition?.isUnpartitioned == false && it.columnStats.isNotEmpty() }
+        val agreeing = model.partitionBoundsChecks(file.partition!!, file.columnStats)
+        val planted = agreeing.map { c ->
+            when (c.field) {
+                "d_day" -> model.checkPartitionField(c.field, c.transform, c.source, java.time.LocalDate.of(2024, 3, 6), "2024-03-06", lower = java.time.LocalDate.of(2024, 3, 5), upper = java.time.LocalDate.of(2024, 3, 5), nullCount = 0, valueCount = 1)
+                "name" -> model.checkPartitionField(c.field, c.transform, c.source, "alpha", "alpha", lower = "alpha", upper = "alpha", nullCount = 1, valueCount = 3)
+                else -> c
+            }
+        }
+        renderScene("partition-bounds-disagreeing", width = 1400, height = 700) {
+            Column(Modifier.padding(16.dp)) { PartitionBoundsSection(planted) }
+        }
+    }
+
+    /**
      * The same section on the one file with several row groups — `rgs`'s 5,000 rows in
      * thirteen — where the row-groups line has thirteen offsets to put beside the thirteen
      * recorded, and once more with the recorded size off by one and one offset moved, the two
