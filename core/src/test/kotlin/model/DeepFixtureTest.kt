@@ -70,6 +70,9 @@ class DeepFixtureTest {
         val plan = evaluateScan(graph, ScanFilter.Term(ScanPredicate("addr.town", PredicateOp.EQ, "Izmir")))
         assertEquals(FileFate.SKIPPED, plan.files.getValue(fileNamed("00000-0-").id).fate)
         assertEquals(FileFate.WOULD_BE_READ, plan.files.getValue(fileNamed("00000-1-").id).fate)
+        // The positional delete is applied to the file it names, never opened or skipped as a data file.
+        assertEquals(setOf(fileNamed("00000-0-").id, fileNamed("00000-1-").id), plan.files.keys)
+        assertEquals(1, graph.nodes.filterIsInstance<GraphNode.FileNode>().count { !it.isScanDataFile })
         val unknown = evaluateScan(graph, ScanFilter.Term(ScanPredicate("addr.city", PredicateOp.EQ, "Ankara")))
         assertEquals(FileFate.UNEVALUATED, unknown.files.getValue(fileNamed("00000-0-").id).fate, "the old name is not a column of the table")
         assertTrue(unknown.files.getValue(fileNamed("00000-0-").id).outcomes.single().reason.contains("no column called 'addr.city'"))

@@ -1095,7 +1095,10 @@ fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
     val files = graph.nodes.asSequence()
         .mapNotNull { node ->
             val stats = when (node) {
-                is GraphNode.FileNode -> node.columnStats
+                // The file stage is over data files: a delete file is applied to the data files
+                // the pairing attaches it to, never opened or skipped by its own bounds, which are
+                // over `file_path` and `pos`.
+                is GraphNode.FileNode -> if (node.isScanDataFile) node.columnStats else return@mapNotNull null
                 is GraphNode.PaimonDataFileNode -> {
                     primaryKey?.let { return@mapNotNull node.id to it.getValue(node.id) }
                     if (withheld == null) paimonEvolvedColumnStats(node, scanSchema, paimonSchemasById[node.entry.file?.schemaId?.toInt()]) else null
@@ -1173,6 +1176,9 @@ data class PrunableColumn(
  * the list still will not offer is a column nothing records anything about: a predicate on one
  * produces a page of "would be read" that looks like an answer and is not one.
  */
+/** Whether the scan's file stage has anything to say about the node: a data file, not a delete file. */
+val GraphNode.FileNode.isScanDataFile: Boolean get() = data.content == DataFileContent.DATA
+
 /** The schema a scan of the drawn table binds a filter to: the newest Iceberg metadata's current schema, or Paimon's latest. */
 fun scanSchemaOf(graph: GraphModel): IcebergSchemaModel? =
     graph.newestIcebergMetadata()?.currentSchemaModel()
@@ -1200,7 +1206,7 @@ fun prunableColumns(graph: GraphModel): List<PrunableColumn> {
     graph.nodes.asSequence()
         .flatMap { node ->
             when (node) {
-                is GraphNode.FileNode -> node.columnStats.asSequence()
+                is GraphNode.FileNode -> if (node.isScanDataFile) node.columnStats.asSequence() else emptySequence()
                 is GraphNode.PaimonDataFileNode -> paimonColumnStats(node).asSequence()
                 else -> emptySequence()
             }
@@ -1248,7 +1254,7 @@ private fun prunableColumnsOf(graph: GraphModel, schema: IcebergSchemaModel): Li
     graph.nodes.asSequence()
         .flatMap { node ->
             when (node) {
-                is GraphNode.FileNode -> node.columnStats.asSequence()
+                is GraphNode.FileNode -> if (node.isScanDataFile) node.columnStats.asSequence() else emptySequence()
                 is GraphNode.PaimonDataFileNode -> paimonColumnStats(node).asSequence()
                 else -> emptySequence()
             }

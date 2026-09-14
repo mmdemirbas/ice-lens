@@ -61,6 +61,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is read whole when the filter left any file of it.
 
 ### Fixed
+- **The scan-pruning file stage is over data files only.** A delete file was evaluated and
+  counted as a data file the scan would read — "2 of 3 data files" on a table with two — where
+  a scan applies it to the data files it is paired with and never opens it on its own.
 - **Scan pruning binds a filter's column by field id, so a rename no longer hides a file's
   bounds.** A file whose manifest still calls a column by its old name is pruned by a filter on
   the new one, the way the engine prunes it, on both formats; the prunable columns are the

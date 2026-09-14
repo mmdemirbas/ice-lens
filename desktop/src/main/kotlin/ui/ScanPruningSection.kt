@@ -24,6 +24,7 @@ import model.ScanFilterParse
 import model.ScanPredicate
 import model.asConjunction
 import model.isEmpty
+import model.isScanDataFile
 import model.parseScanFilter
 import model.render
 import model.TermEffect
@@ -184,7 +185,7 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
         val files = remember(graph) {
             graph.nodes.mapNotNull { node ->
                 when (node) {
-                    is GraphNode.FileNode -> node.id to "FILE ${node.simpleId}"
+                    is GraphNode.FileNode -> if (node.isScanDataFile) node.id to "FILE ${node.simpleId}" else null
                     is GraphNode.PaimonDataFileNode -> node.id to "FILE ${node.simpleId}"
                     else -> null
                 }
