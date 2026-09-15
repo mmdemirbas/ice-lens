@@ -52,6 +52,12 @@ import model.planPaimonManifestCompaction
 import model.planPaimonManifestMerge
 import model.RewriteOptions
 import model.planRewrite
+import model.planDanglingDeletes
+import model.DataFileContent
+import model.ScanFilter
+import model.evaluateScan
+import model.normalizeFilePath
+import model.renderSparkSql
 import model.PositionDeleteRewriteOptions
 import model.ManifestRewriteOptions
 import model.planManifestRewrite
@@ -1531,10 +1537,13 @@ internal fun PaimonPurgeSection(node: GraphNode.TableNode) {
  * unpartitioned.
  *
  * One column, unlike the expiry sections: the only option a reader reaches for is
- * `min-input-files`, and the row already says how many files the group has against it.
+ * `min-input-files`, and the row already says how many files the group has against it. With the
+ * table panel's filter set, a second table plans `where => <filter>`: the files the scan under
+ * it leaves, which is [evaluateScan] over the drawn graph — a live file not drawn is considered,
+ * and said to be.
  */
 @Composable
-internal fun RewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel) {
+internal fun RewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel, scanFilter: ScanFilter = ScanFilter.of(emptyList())) {
     val colors = MaterialTheme.colorScheme
     val latest = graph.newestMetadata()
     val options = RewriteOptions.forTable(latest?.properties.orEmpty(), latest?.defaultSpecId)
@@ -1574,6 +1583,86 @@ internal fun RewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel) {
                     )
                 },
                 leadCellColors = plan.groups.map { if (it.rewritten) verdictSkippedColor() else null },
+            )
+        }
+        if (plan != null && !scanFilter.isEmpty()) {
+            // `where => …` goes through the scan: the files its pruning leaves are the only ones considered.
+            val scan = remember(graph, scanFilter) { evaluateScan(graph, scanFilter) }
+            val ruledOut = remember(scan) { scan.ruledOutFileKeys(graph) }
+            val drawn = remember(graph) {
+                graph.nodes.asSequence().filterIsInstance<GraphNode.FileNode>().mapNotNull { it.data.filePath?.let(::normalizeFilePath) }.toSet()
+            }
+            val where = planRewrite(live, node.deleteReach.orEmpty(), options, ruledOut)
+            val considered = where.filesByPartition.values.sumOf { it.size }
+            val undrawn = where.filesByPartition.values.flatten().count { normalizeFilePath(it.path) !in drawn }
+            val whereRewritten = where.rewrittenGroups
+            Text(
+                "With where => \"${scanFilter.renderSparkSql()}\" (in spark-sql a quote inside the string is \\', since '' is two literals joined): " +
+                    "the rewrite plans the files a scan under the filter opens " +
+                    "(RewriteDataFilesSparkAction.planFileGroups: newScan().filter(where).ignoreResiduals(), so a " +
+                    "file left is rewritten whole) — ${formatCounted(considered, "file")} considered, " +
+                    "${formatCounted(where.filteredOut.size, "file")} ruled out by the partition summaries or the bounds" +
+                    (if (undrawn > 0) ", $undrawn not drawn and so considered without a verdict" else "") + ". " +
+                    (if (whereRewritten.isEmpty()) "Nothing is rewritten: ${if (where.groups.isEmpty()) "no candidate among them" else "no group of them reaches min-input-files, the target, or a delete threshold"}."
+                    else "${formatCounted(whereRewritten.sumOf { it.files.size }, "file")} in ${formatCounted(whereRewritten.size, "group")} would go."),
+                fontSize = TypeScale.small,
+                color = if (whereRewritten.isNotEmpty() && whereRewritten.sumOf { it.files.size } != rewritten.sumOf { it.files.size }) verdictUnevaluatedColor() else colors.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+            )
+            if (where.groups.isNotEmpty()) {
+                WideTable(
+                    headers = listOf("Verdict", "Partition", "Files", "Bytes", "Output Files", "Highest Delete Ratio"),
+                    columnWidths = listOf(190.dp, 190.dp, 70.dp, 110.dp, 100.dp, 150.dp),
+                    rows = where.groups.map { g ->
+                        listOf(
+                            if (g.rewritten) "REWRITTEN — " + g.reasons.joinToString("; ") { it.label }
+                            else "left alone — ${g.files.size} of ${options.minInputFiles} files",
+                            g.partition.ifEmpty { "(unpartitioned)" },
+                            "${g.files.size}",
+                            formatBytes(g.inputBytes),
+                            if (g.rewritten) "${g.outputFiles}" else "—",
+                            g.files.maxOfOrNull { it.deleteRatio }?.let { "${(it * 100).toInt()}%" } ?: "0%",
+                        )
+                    },
+                    leadCellColors = where.groups.map { if (it.rewritten) verdictSkippedColor() else null },
+                )
+            }
+        }
+        // remove-dangling-deletes, after whichever rewrite is planned above.
+        val deletes = live?.filter { it.content != DataFileContent.DATA }.orEmpty()
+        if (plan != null && deletes.isNotEmpty()) {
+            val planned = if (!scanFilter.isEmpty()) planRewrite(live, node.deleteReach.orEmpty(), options, evaluateScan(graph, scanFilter).ruledOutFileKeys(graph)) else plan
+            val unpartitionedSingleSpec = latest?.let { it.partitionSpecs.size == 1 && it.partitionSpecs.single().fields.isEmpty() } == true
+            val dangling = planDanglingDeletes(live, planned, node.data.sequenceNumber ?: 0L, unpartitionedSingleSpec)
+            val byRule = dangling.files.count { it.removed }
+            Text(
+                "With remove-dangling-deletes: " + when {
+                    dangling.skipped != null -> "nothing — ${dangling.skipped}." + (if (byRule > 0) " The rule itself would take ${formatCounted(byRule, "delete file")}." else "")
+                    dangling.removed.isEmpty() -> "nothing — every delete file is at or above its partition's floor after the rewrite."
+                    else -> "${formatCounted(dangling.removed.size, "delete file")} of ${deletes.size} removed in a second replace — RemoveDanglingDeletesSparkAction: a positional delete below its partition's lowest data sequence number after the rewrite, an equality delete at or below it; the rewritten groups' output lands at this snapshot's number, ${node.data.sequenceNumber}, which is what moves the floor."
+                },
+                fontSize = TypeScale.small,
+                color = if (dangling.removed.isNotEmpty()) verdictUnevaluatedColor() else colors.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+            )
+            WideTable(
+                headers = listOf("Verdict", "Delete File", "Kind", "Seq", "Partition Floor", "Partition"),
+                columnWidths = listOf(190.dp, 260.dp, 100.dp, 60.dp, 110.dp, 190.dp),
+                rows = dangling.files.map { d ->
+                    listOf(
+                        when {
+                            dangling.skipped != null && d.removed -> "kept — by the rule, gone"
+                            d.removed -> "REMOVED — ${d.reason}"
+                            else -> "kept — ${d.reason}"
+                        },
+                        fileNameFromPath(d.path),
+                        if (d.content == DataFileContent.EQUALITY_DELETES) "equality" else "positional",
+                        "${d.sequenceNumber}",
+                        d.floor?.toString() ?: "no data file",
+                        d.partition.ifEmpty { "(unpartitioned)" },
+                    )
+                },
+                leadCellColors = dangling.files.map { if (dangling.skipped == null && it.removed) verdictSkippedColor() else null },
             )
         }
     }

@@ -26,6 +26,14 @@ import kotlin.math.ceil
  *
  * The first rule is why every small file is a candidate and the third is why a lone one is
  * still left alone: it takes five of them, or a delete file that marks a third of one.
+ *
+ * **`where => …` picks the files the way a scan does.** `planFileGroups` plans
+ * `table.newScan().filter(filter).ignoreResiduals().planFiles()` (1.8.1, lines 199–206), so the
+ * files a rewrite considers are the ones `ManifestEvaluator` and `InclusiveMetricsEvaluator`
+ * leave — `evaluateScan`, held to Iceberg's own plans — and every file left is rewritten whole
+ * (`ignoreResiduals`). A file the filter rules out is no candidate and fills no group, so a
+ * `where` reaching one small file leaves it alone whatever the rest of the partition holds
+ * ([RewritePlan.filteredOut]); `docs/fixtures/rewrite-where.sql` records the runs.
  */
 data class RewriteOptions(
     /** `target-file-size-bytes`, else the table's `write.target-file-size-bytes`, else 512 MB. */
@@ -104,9 +112,11 @@ data class RewriteGroup(
 
 data class RewritePlan(
     val options: RewriteOptions,
-    /** Every live data file, candidate or not, by partition in scan order. */
+    /** Every live data file the rewrite considers, candidate or not, by partition in scan order. */
     val filesByPartition: Map<String, List<LiveFile>>,
     val groups: List<RewriteGroup>,
+    /** The live data files a `where` ruled out — never candidates, never counted toward a group; empty on a bare call. */
+    val filteredOut: List<LiveFile> = emptyList(),
 ) {
     val rewrittenGroups: List<RewriteGroup> get() = groups.filter { it.rewritten }
     val rewrittenPaths: Set<String> get() = rewrittenGroups.flatMap { g -> g.files.map { it.path } }.toSet()
@@ -117,8 +127,8 @@ data class RewritePlan(
  * Plans the rewrite over [live] — a snapshot's live files, data files taken, delete files used only
  * through [reach], which pairs each with the data files it applies to.
  */
-fun planRewrite(live: List<LiveFile>, reach: List<DeleteReach>, options: RewriteOptions): RewritePlan {
-    val data = live.filter { it.content == DataFileContent.DATA }
+fun planRewrite(live: List<LiveFile>, reach: List<DeleteReach>, options: RewriteOptions, ruledOut: Set<String> = emptySet()): RewritePlan {
+    val (filteredOut, data) = live.filter { it.content == DataFileContent.DATA }.partition { normalizeFilePath(it.path) in ruledOut }
     // Per data file: how many delete files the scan pairs with it, and the rows its file-scoped
     // ones mark. `mayReach` counts — the scan pairs an equality delete by sequence alone.
     val deleteCount = mutableMapOf<String, Int>()
@@ -162,7 +172,7 @@ fun planRewrite(live: List<LiveFile>, reach: List<DeleteReach>, options: Rewrite
             RewriteGroup(partition, bin, reasons, numOutputFiles(input, options.targetFileSizeBytes, options.minFileSizeBytes, options.maxFileSizeBytes))
         }
     }
-    return RewritePlan(options, byPartition, groups)
+    return RewritePlan(options, byPartition, groups, filteredOut)
 }
 
 /** `BinPacking.ListPacker(target, lookback = 1, largestBinFirst = false)`: one open bin, closed by the first item that does not fit. Shared with [planPositionDeleteRewrite]. */
@@ -195,4 +205,83 @@ internal fun numOutputFiles(inputSize: Long, target: Long, minFileSize: Long, ma
         avgWithoutRemainder < minOf(1.1 * target, writeMax.toDouble()) -> withoutRemainder
         else -> withRemainder
     }
+}
+
+/**
+ * What `rewrite_data_files(options => map('remove-dangling-deletes', 'true'))` removes after the
+ * rewrite — `RemoveDanglingDeletesSparkAction` at 1.8.1, run by `RewriteDataFilesSparkAction.execute`
+ * only once at least one group was planned. Per spec and partition it takes the lowest data
+ * sequence number over the live data files **as the rewrite leaves them** — a rewritten group's
+ * output carries the starting snapshot's sequence number (`use-starting-sequence-number`, true by
+ * default), so a partition whose old files all went has its floor moved up to it — and removes a
+ * positional delete or vector **below** that floor, an equality delete **at or below** it, and
+ * every delete in a partition left with no data file. By sequence alone, never by target.
+ *
+ * Two things the runs settled (`docs/fixtures/rewrite-where.sql`). **On an unpartitioned table
+ * with one spec the action returns nothing** — `execute` says the commit's `ManifestFilterManager`
+ * already drops such deletes, but `dropDeleteFilesOlderThan` is applied only inside a delete
+ * manifest the commit opens for a delete file it removes by path, and a data-file rewrite removes
+ * none: `mor` rewritten whole under the option kept all three delete files, two of them below the
+ * new file's sequence number. **On a partitioned table it removes by the rule**: `fupp` rewritten
+ * whole lost all five, in a second `replace` of its own.
+ */
+data class DanglingDeleteFile(
+    val path: String,
+    /** [DataFileContent.POSITION_DELETES] or [DataFileContent.EQUALITY_DELETES]. */
+    val content: Int,
+    val sequenceNumber: Long,
+    val partition: String,
+    /** The partition's lowest data sequence number after the rewrite; null where no data file is left in it. */
+    val floor: Long?,
+    val removed: Boolean,
+    val reason: String,
+)
+
+data class DanglingDeletePlan(
+    /** Why the action would not run, or null where it would. */
+    val skipped: String?,
+    val files: List<DanglingDeleteFile>,
+) {
+    val removed: List<DanglingDeleteFile> get() = if (skipped == null) files.filter { it.removed } else emptyList()
+}
+
+/**
+ * [live] and [rewrite] at one snapshot; [newFileSequenceNumber] is what the rewritten groups'
+ * output is committed at — the starting snapshot's under `use-starting-sequence-number`.
+ */
+fun planDanglingDeletes(
+    live: List<LiveFile>,
+    rewrite: RewritePlan,
+    newFileSequenceNumber: Long,
+    unpartitionedSingleSpec: Boolean,
+): DanglingDeletePlan {
+    data class Scope(val specId: Int?, val partition: String?)
+    val rewritten = rewrite.rewrittenPaths.map(::normalizeFilePath).toSet()
+    val data = live.filter { it.content == DataFileContent.DATA }
+    // The floor per scope after the rewrite: the kept files' numbers, and the new file's where any went.
+    val floors = mutableMapOf<Scope, Long>()
+    data.forEach { f ->
+        val scope = Scope(f.specId, f.partition)
+        val seq = if (normalizeFilePath(f.path) in rewritten) newFileSequenceNumber else f.sequenceNumber ?: return@forEach
+        floors[scope] = minOf(floors[scope] ?: Long.MAX_VALUE, seq)
+    }
+    val files = live.filter { it.content != DataFileContent.DATA }.map { d ->
+        val floor = floors[Scope(d.specId, d.partition)]
+        val seq = d.sequenceNumber ?: 0L
+        val equality = d.content == DataFileContent.EQUALITY_DELETES
+        val (removed, reason) = when {
+            floor == null -> true to "no data file left in its partition"
+            equality && seq <= floor -> true to "an equality delete at $seq, at or below the partition's floor $floor"
+            !equality && seq < floor -> true to "a positional delete at $seq, below the partition's floor $floor"
+            equality -> false to "an equality delete at $seq, above the partition's floor $floor"
+            else -> false to "a positional delete at $seq, at or above the partition's floor $floor"
+        }
+        DanglingDeleteFile(d.path, d.content, seq, d.partition ?: UNDECODED_PARTITION, floor, removed, reason)
+    }
+    val skipped = when {
+        unpartitionedSingleSpec -> "the action returns nothing on an unpartitioned table with one spec — it defers to the commit, which drops a delete below the floor only inside a delete manifest it opens for a delete file it removes, and a data-file rewrite removes none"
+        rewrite.rewrittenGroups.isEmpty() -> "the action runs only after a rewrite that planned a group; nothing is rewritten here"
+        else -> null
+    }
+    return DanglingDeletePlan(skipped, files)
 }

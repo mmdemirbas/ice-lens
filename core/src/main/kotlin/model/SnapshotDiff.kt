@@ -28,6 +28,8 @@ data class LiveFile(
     val partition: String? = null,
     /** The partition spec the file's manifest was written under; null for Paimon and where unrecorded. */
     val specId: Int? = null,
+    /** The entry's data sequence number, inherited from the manifest where it recorded none — [effectiveSequenceNumber]; null for Paimon. */
+    val sequenceNumber: Long? = null,
     /**
      * What the ledger told the file by — the path, with the referenced data file on a deletion
      * vector, whose Puffin container holds a blob per data file (`UnifiedDataFile.ledgerFileKey`).
@@ -195,6 +197,7 @@ fun liveFilesOf(snapshot: UnifiedSnapshot): List<LiveFile> {
                     chargedSizeBytes = entry.chargedSizeBytes,
                     partition = unified.partition?.path,
                     specId = manifest.metadata.partitionSpecId,
+                    sequenceNumber = effectiveSequenceNumber(unified.metadata, manifest.metadata.sequenceNumber),
                 )
             }
     }

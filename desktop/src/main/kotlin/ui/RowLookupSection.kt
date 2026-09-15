@@ -16,7 +16,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import model.FileFate
 import model.GraphModel
 import model.DeferredRead
 import model.GraphNode
@@ -34,7 +33,6 @@ import model.RowLookupResult
 import model.ScanFilter
 import model.evaluateScan
 import model.isEmpty
-import model.normalizeFilePath
 import model.render
 import service.PaimonRowLookup
 import service.RowHistoryTrace
@@ -135,18 +133,7 @@ private fun LookupSection(
     stages: @Composable (ruledOut: Set<String>) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    val ruledOut = remember(graph, filter) {
-        val plan = evaluateScan(graph, filter)
-        plan.files.filter { it.value.fate == FileFate.SKIPPED }.keys
-            .mapNotNull { id ->
-                when (val file = graph.nodeById[id]) {
-                    is GraphNode.FileNode -> file.data.filePath?.let(::normalizeFilePath)
-                    is GraphNode.PaimonDataFileNode -> file.entry.file?.fileName
-                    else -> null
-                }
-            }
-            .toSet()
-    }
+    val ruledOut = remember(graph, filter) { evaluateScan(graph, filter).ruledOutFileKeys(graph) }
     var requestedFor by remember(id) { mutableStateOf<ScanFilter?>(if (startRequested) filter else null) }
     // A table past the cap is read a page per click, the pages folded with `plus` — the same
     // shape as the integrity panel's file sweep. A new filter starts the pages over.

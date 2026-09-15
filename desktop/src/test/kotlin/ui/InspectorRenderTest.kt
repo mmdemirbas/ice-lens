@@ -640,6 +640,18 @@ class InspectorRenderTest {
         val third = sorted.nodes.filterIsInstance<GraphNode.SnapshotNode>()
             .filter { it.data.summary["operation"] == "append" }.maxBy { it.data.sequenceNumber ?: 0L }
         renderInspector(sorted, third.id, "snapshot-node-rewrite-left-alone", height = 3400)
+        // `where => label = 'bravo'` on eqren under the defaults: two of three files considered
+        // and left alone at min-input-files 5; the dangling table under it stands down on an
+        // unpartitioned table. `fupp`'s current snapshot is the partitioned case, where a rewrite
+        // whole would take every delete file below the new floor.
+        val eqren = graphFor("eqren")
+        val eqrenTip = eqren.nodes.filterIsInstance<GraphNode.SnapshotNode>().maxBy { it.data.sequenceNumber ?: 0L }
+        renderScene("snapshot-node-rewrite-where", width = 1400, height = 3000) {
+            InspectorUnderTest(eqren, eqrenTip.id, onlyExpanded("Rewrite"), scanFilter = ScanFilter.of(listOf(ScanPredicate("label", PredicateOp.EQ, "bravo"))))
+        }
+        val fupp = graphFor("fupp")
+        val fuppTip = fupp.nodes.filterIsInstance<GraphNode.SnapshotNode>().maxBy { it.data.sequenceNumber ?: 0L }
+        renderInspector(fupp, fuppTip.id, "snapshot-node-rewrite-dangling", height = 3000, sectionCollapse = onlyExpanded("Rewrite"))
     }
 
     /**

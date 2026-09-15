@@ -1041,6 +1041,24 @@ data class ScanPlan(
     val unevaluatedFiles: Int get() = files.values.count { it.fate == FileFate.UNEVALUATED }
     /** Reached and never opened — level 0 on a table whose batch reads skip it. */
     val unreadFiles: Int get() = files.values.count { it.fate == FileFate.NOT_READ }
+
+    /**
+     * The drawn data files a scan under this filter never plans — under a manifest the partition
+     * summaries ruled out, or ruled out by their own bounds or index — as the key the readers
+     * match a file by: an Iceberg path normalised, a Paimon file name. What the row lookup opens
+     * around, and what `rewrite_data_files(where => …)` never considers. A file not drawn is not
+     * in the plan and so not here; the callers say so.
+     */
+    fun ruledOutFileKeys(graph: GraphModel): Set<String> =
+        files.filter { it.value.fate == FileFate.SKIPPED || it.value.fate == FileFate.NOT_REACHED }.keys
+            .mapNotNull { id ->
+                when (val file = graph.nodeById[id]) {
+                    is GraphNode.FileNode -> file.data.filePath?.let(::normalizeFilePath)
+                    is GraphNode.PaimonDataFileNode -> file.entry.file?.fileName
+                    else -> null
+                }
+            }
+            .toSet()
 }
 
 /**

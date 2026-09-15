@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`where => …` and `remove-dangling-deletes` under `Rewrite`** on the Iceberg snapshot panel —
+  with the table panel's filter set, what `rewrite_data_files(where => …)` considers, rules out
+  and rewrites, the files picked the way a scan picks them; under both plans, which delete files
+  the dangling pass removes by the partition's sequence floor after the rewrite, and why it
+  stands down on an unpartitioned table. `Delete Reach` gains a `Partition Floor` column, the
+  sequence rule beside the target rule. `docs/fixtures/rewrite-where.sql` records the runs
 - **`Expire By Id`** on the Iceberg snapshot panel — what `expire_snapshots(snapshot_ids =>
   array(id))` does to this snapshot, the way `RemoveSnapshots.expireSnapshotId` decides it:
   refused with the refs that still name it, or removed whatever its age and its place under a

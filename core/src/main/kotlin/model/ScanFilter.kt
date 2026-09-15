@@ -133,3 +133,27 @@ private fun ScanFilter.wrapped(parent: ScanFilter): String {
     val needs = this is ScanFilter.Or && parent !is ScanFilter.Or
     return if (needs) "(${render()})" else render()
 }
+
+/**
+ * The filter as Spark SQL — what `rewrite_data_files(where => …)` takes: a literal that is not a
+ * number, a boolean or NULL is quoted, since the parser keeps every literal as text and the
+ * clause syntax lets a bare word stand for a string where Spark reads it as a column.
+ */
+fun ScanFilter.renderSparkSql(): String = when (this) {
+    is ScanFilter.Term -> predicate.let { p ->
+        if (p.op.takesLiteral) "${p.column} ${p.op.symbol} ${sparkSqlLiteral(p.literal)}" else "${p.column} ${p.op.symbol}"
+    }
+    is ScanFilter.And -> terms.joinToString(" AND ") { it.wrappedSparkSql(this) }
+    is ScanFilter.Or -> terms.joinToString(" OR ") { it.wrappedSparkSql(this) }
+    is ScanFilter.Not -> "NOT ${term.wrappedSparkSql(this)}"
+}
+
+private fun ScanFilter.wrappedSparkSql(parent: ScanFilter): String {
+    val needs = this is ScanFilter.Or && parent !is ScanFilter.Or
+    return if (needs) "(${renderSparkSql()})" else renderSparkSql()
+}
+
+private fun sparkSqlLiteral(literal: String): String {
+    val bare = literal.toBigDecimalOrNull() != null || literal.equals("true", ignoreCase = true) || literal.equals("false", ignoreCase = true) || literal.equals("null", ignoreCase = true)
+    return if (bare) literal else "'" + literal.replace("'", "\\'") + "'"
+}

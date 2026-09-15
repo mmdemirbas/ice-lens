@@ -1698,6 +1698,33 @@ intellij/src/main/kotlin/plugin/
   `sorted` left alone, `mor` still rewritten by both rules. `LiveFile.specId` exists for the
   spec rule; the snapshot panel's `Rewrite` section takes the target size and the current spec
   off the latest metadata node
+- **`where => …` picks the rewrite's files the way a scan does, and `remove-dangling-deletes`
+  removes by sequence, never by target.** `RewriteDataFilesSparkAction.planFileGroups` (1.8.1)
+  plans `newScan().filter(where).ignoreResiduals().planFiles()`, so `planRewrite` takes the
+  files `evaluateScan` rules out (`ScanPlan.ruledOutFileKeys` — `SKIPPED` or `NOT_REACHED`, the
+  key the readers match a file by; the row lookup opens around the same set now, where it took
+  `SKIPPED` alone) as `RewritePlan.filteredOut`: no candidate, no group, and a file left is
+  rewritten whole. `planDanglingDeletes` is `RemoveDanglingDeletesSparkAction`, run only after a
+  rewrite that planned a group: per spec and partition the lowest data sequence number over the
+  data files *as the rewrite leaves them* — a rewritten group's output lands at the starting
+  snapshot's number (`use-starting-sequence-number`), which is what moves the floor — and a
+  positional delete or vector below it, an equality delete at or below it, or any delete in a
+  partition with no data file, goes in a `replace` of its own. `DeleteReach.partitionMinDataSequence`
+  / `.isDanglingBySequence` is the same rule on the table as it stands, drawn as `Partition
+  Floor` beside the pairing's dangling verdict, since the two separate on `mor`: one of its two
+  target-dangling deletes sits at the floor. Two things the runs settled
+  (`docs/fixtures/rewrite-where.sql`): **on an unpartitioned table with one spec the action
+  returns nothing** — its comment says the commit's `ManifestFilterManager` drops such deletes,
+  but `dropDeleteFilesOlderThan` is applied only inside a delete manifest the commit opens for a
+  delete file it removes by path, and a data-file rewrite removes none, so `mor` rewritten whole
+  under the option kept all three delete files, two of them below the new file's number 6; and
+  **`fupp` rewritten whole lost all five**. `RewriteWhereFixtureTest` holds `evolved` (`id = 2`
+  nothing; `note = 'fifth'` and `id > 1000` two files each into one), `eqren` (`label = 'bravo'`
+  two files with their deletes applied; `label > 'f'` nothing), `mor` and `fupp` to the runs, and
+  every fixture to a removed delete reaching no kept data file. The section renders the where
+  as Spark SQL (`ScanFilter.renderSparkSql`, strings quoted) because in `spark-sql` a quote
+  inside the string is `\'` — `''` is two literals joined, and `note = ''fifth''` arrived as
+  `note = fifth` and failed on a column named `fifth`
 - **`rewrite_position_delete_files` is planned the same way, and what it drops is read.**
   `model/PositionDeleteRewritePlan.kt` reads `RewritePositionDeleteFilesSparkAction` and
   `SizeBasedPositionDeletesRewriter` at 1.8.1: the current snapshot's live positional delete
@@ -2869,7 +2896,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,418 tests across 195 files (1,121 in :core, 285 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,428 tests across 196 files (1,131 in :core, 285 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

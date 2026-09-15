@@ -626,7 +626,7 @@ internal fun ColumnScope.SnapshotPanel(
 
         PartitionsSection(node)
 
-        RewriteSection(node, currentGraph)
+        RewriteSection(node, currentGraph, scanFilter)
         PositionDeleteRewriteSection(node, currentGraph)
         ManifestMergeSection(node, currentGraph)
         ManifestRewriteSection(node, currentGraph)

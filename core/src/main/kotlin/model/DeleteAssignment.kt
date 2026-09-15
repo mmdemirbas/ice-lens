@@ -61,6 +61,11 @@ data class DeleteReach(
     val mayReach: List<String>,
     /** What the metadata says about the paths it can target — the range, or the one file it names. */
     val targets: DeleteTargets,
+    /**
+     * The lowest data sequence number among the live data files under the delete's own spec and
+     * partition; null where that partition holds no data file. What [isDanglingBySequence] reads.
+     */
+    val partitionMinDataSequence: Long? = null,
 ) {
     /**
      * True when no live data file in this snapshot passes both rules.
@@ -69,6 +74,22 @@ data class DeleteReach(
      * out. A delete file with candidates left at [mayReach] is not dangling, it is unsettled.
      */
     val isDangling: Boolean get() = reaches.isEmpty() && mayReach.isEmpty()
+
+    /**
+     * What `rewrite_data_files(options => map('remove-dangling-deletes', 'true'))` removes —
+     * `RemoveDanglingDeletesSparkAction.findDanglingDeletes` (1.8.1): per spec and partition, the
+     * lowest data sequence number over the live data files; a positional delete or a vector
+     * **below** it, an equality delete **at or below** it, or any delete in a partition holding no
+     * data file. By sequence alone, never by target — so a positional delete whose only target a
+     * rewrite took away stays listed while an older data file remains in the partition, which
+     * `eqren` shows (`docs/fixtures/rewrite-where.sql`): the rewrite that removed the file it
+     * names left both delete files in place under that option.
+     */
+    val isDanglingBySequence: Boolean
+        get() {
+            val min = partitionMinDataSequence ?: return true
+            return if (kind == DeleteFileKind.EQUALITY) sequenceNumber <= min else sequenceNumber < min
+        }
 }
 
 enum class DeleteFileKind { DELETION_VECTOR, POSITIONAL, EQUALITY }
@@ -170,6 +191,7 @@ fun deleteReach(snapshot: UnifiedSnapshot): List<DeleteReach> {
         }
     }
 
+    val minSequenceByScope = data.groupBy { it.scope }.mapValues { (_, files) -> files.minOf { it.sequence } }
     return deletes.map { delete ->
         val file = delete.file
         val sequence = delete.sequence
@@ -197,6 +219,7 @@ fun deleteReach(snapshot: UnifiedSnapshot): List<DeleteReach> {
             reaches = reaches.sorted(),
             mayReach = mayReach.sorted(),
             targets = targets,
+            partitionMinDataSequence = minSequenceByScope[delete.scope],
         )
     }.sortedBy { it.deleteKey }
 }

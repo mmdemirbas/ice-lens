@@ -2525,14 +2525,17 @@ internal fun DeleteReachSection(node: GraphNode.SnapshotNode, children: List<Gra
                 "opening either: the delete file's sequence number must be at or above the data " +
                 "file's — strictly above, for an equality delete — and its recorded targets must " +
                 "not rule the path out. \"Reaches nothing\" is a proof, and it means the file is " +
-                "dangling: still read during planning, deleting rows that are no longer here.",
+                "dangling: still read during planning, deleting rows that are no longer here. " +
+                "Partition Floor is the other rule, the one remove-dangling-deletes removes by: the " +
+                "lowest data sequence number in the delete's partition — a positional delete below " +
+                "it, an equality delete at or below it, is dangling by sequence, whatever its targets.",
             fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
         )
         WideTable(
-            headers = listOf("Reaches", "Delete File", "Kind", "Seq", "Records", "Recorded Targets"),
-            columnWidths = listOf(150.dp, 260.dp, 130.dp, 60.dp, 90.dp, 300.dp),
+            headers = listOf("Reaches", "Delete File", "Kind", "Seq", "Partition Floor", "Records", "Recorded Targets"),
+            columnWidths = listOf(150.dp, 260.dp, 130.dp, 60.dp, 190.dp, 90.dp, 300.dp),
             leadCellColors = reach.map { if (it.isDangling) danglingDeleteColor() else null },
             rows = reach.map { file ->
                 listOf(
@@ -2552,6 +2555,7 @@ internal fun DeleteReachSection(node: GraphNode.SnapshotNode, children: List<Gra
                         DeleteFileKind.EQUALITY -> "equality"
                     },
                     "${file.sequenceNumber}",
+                    file.partitionMinDataSequence?.let { floor -> "$floor — " + (if (file.isDanglingBySequence) "dangling by sequence" else "not by sequence") } ?: "no data file — dangling by sequence",
                     formatCount(file.recordCount ?: 0L),
                     file.targets.onlyPath?.let { "names ${fileNameFromPath(it)}" }
                         ?: file.targets.low?.let { low ->
