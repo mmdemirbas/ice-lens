@@ -35,6 +35,10 @@ class PaimonFileIndexPruningTest {
     private val fbs2 = "data-9aec0cc6-8d86-462b-832c-701daf318d13-0.parquet"  // a thousand rows, n 100..1099; .index beside it
     private val fbs3 = "data-93aa7e5d-3634-4ce3-a95a-5bfcfb8e8e59-0.parquet"  // every row 7; .index beside it
     private val fbs4 = "data-45f79f1b-a157-4ecb-9a2f-bf4fada5db8c-0.parquet"  // every value null; .index beside it
+    private val frb1 = "data-adebd5bf-cf86-44c2-af1b-75073ff05533-0.parquet"  // n -5, 3, 10, null, 3; s alpha, bravo, charlie, null, bravo; range bitmap embedded
+    private val frb2 = "data-57249fd9-5816-4bde-8307-55b7c7b3b8c1-0.parquet"  // a thousand rows, n 100..1099, s v0000..v0999; .index beside it
+    private val frb3 = "data-62d80f60-80d2-4d8d-bc0a-c5a3427edd18-0.parquet"  // every row 7 / 'seven' / true; .index beside it
+    private val frb4 = "data-e26ca310-b75a-42d9-805b-e90652db74e0-0.parquet"  // every value null, three rows; .index beside it
 
     /** [planned] is what the plan opened; [rawSkipped] the planned files a raw read's index then ruled out; [merged] the planned files read through a merge, index unconsulted. */
     private class Case(val fixture: String, val filter: String, val planned: Set<String>, val rawSkipped: Set<String> = emptySet(), val merged: Set<String> = emptySet())
@@ -92,6 +96,17 @@ class PaimonFileIndexPruningTest {
         Case("fbs", "ts BETWEEN '2024-03-01 10:00:00.000002' AND '2024-03-01 10:00:00.000003'", emptySet()),
         Case("fbs", "n = 3 AND amt = 99.99", emptySet()),
         Case("fbs", "n = 3 OR amt = 99.99", setOf(fbs1)),
+        // frb: the range bitmap, on the types the bsi refuses too. File 1's is embedded, so the
+        // plan skips it where the dictionary and the slices do; file 3's one value and file 4's
+        // nulls are the statistics' skips, and `b = false` on file 3 is the index's own.
+        Case("frb", "n BETWEEN 4 AND 6", emptySet()),
+        Case("frb", "s > 'bravo'", setOf(frb1, frb2, frb3)),
+        Case("frb", "s BETWEEN 'b' AND 'c'", setOf(frb1)),
+        Case("frb", "x < 0", setOf(frb1, frb2)),
+        Case("frb", "b = false", setOf(frb1, frb2)),
+        Case("frb", "n = 3 AND s = 'charlie'", emptySet()),
+        Case("frb", "n <> 7", setOf(frb1, frb2)),
+        Case("frb", "s IS NULL", setOf(frb1, frb4)),
     )
 
     private fun fileNodes(graph: GraphModel) = graph.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
@@ -104,7 +119,7 @@ class PaimonFileIndexPruningTest {
             val graph = graphs.getValue(case.fixture)
             val plan = evaluateScan(graph, (parseScanFilter(case.filter) as ScanFilterParse.Parsed).filter)
             val nodes = fileNodes(graph)
-            assertEquals(when (case.fixture) { "ft" -> 1; "fb" -> 3; "fbs" -> 4; else -> 2 }, nodes.size, case.fixture)
+            assertEquals(when (case.fixture) { "ft" -> 1; "fb" -> 3; "fbs", "frb" -> 4; else -> 2 }, nodes.size, case.fixture)
             for ((name, node) in nodes) {
                 val result = plan.files.getValue(node.id)
                 val label = "${case.fixture}: ${case.filter} — $name: $result"
@@ -194,6 +209,57 @@ class PaimonFileIndexPruningTest {
         // File 4, every value null: `n IS NOT NULL` is the statistics' (null count is the row count), `n IS NULL` keeps it.
         assertEquals(FileFate.SKIPPED, outcome("n IS NOT NULL", fbs4).fate)
         assertEquals(FileFate.WOULD_BE_READ, outcome("n IS NULL", fbs4).fate)
+    }
+
+    /**
+     * The range bitmap through the pruning path: a string order and a float order the bounds keep
+     * inside a file's range, answered per row and folded across the terms; a key the dictionary
+     * lacks inside the bounds, which is the index's own skip — at read, since file 2's index is
+     * beside it; and a boolean, whose bounds settle a term before the index is asked.
+     */
+    @Test
+    fun `a range bitmap answers a comparison per row on a string, a double and a boolean`() {
+        val graph = graphOf("frb")
+        val nodes = fileNodes(graph)
+        fun outcome(filter: String, file: String) = evaluateScan(graph, (parseScanFilter(filter) as ScanFilterParse.Parsed).filter)
+            .files.getValue(nodes.getValue(file).id)
+        val above = outcome("s > 'bravo'", frb1)
+        assertEquals(FileFate.WOULD_BE_READ, above.fate)
+        assertTrue(above.outcomes.single().reason.contains("reaches above"), "the bounds answered first, and the index is not asked after them: ${above.outcomes.single().reason}")
+        val gap = outcome("n BETWEEN 4 AND 6", frb1)
+        assertEquals(FileFate.SKIPPED, gap.fate)
+        assertTrue(gap.byIndex && gap.note.orEmpty().contains("meet in none"), "$gap")
+        assertTrue(gap.outcomes.none { it.effect == TermEffect.SKIPS }, "no term alone: $gap")
+        assertTrue(gap.outcomes.any { it.reason.contains("range bitmap (embedded in the entry) has 1 of its 5 rows >= '4'") } && gap.outcomes.any { it.reason.contains("has 3 of its 5 rows <= '6'") }, "$gap")
+        val prefix = outcome("s BETWEEN 'b' AND 'c'", frb1)
+        assertEquals(FileFate.WOULD_BE_READ, prefix.fate)
+        assertFalse(prefix.byIndex, "the two terms' rows meet in bravo's two: $prefix")
+        assertEquals(FileFate.WOULD_BE_READ, outcome("x < 0", frb1).fate)
+        val across = outcome("n = 3 AND s = 'charlie'", frb1)
+        assertEquals(FileFate.SKIPPED, across.fate)
+        assertTrue(across.byIndex && across.note.orEmpty().contains("meet in none"), "$across")
+        assertTrue(across.outcomes.any { it.reason.contains("has 2 of its 5 rows = '3'") } && across.outcomes.any { it.reason.contains("has 1 of its 5 rows = 'charlie'") }, "$across")
+        // File 3, every row true: a boolean has bounds too, and true..true settles `b = false` before the index is asked.
+        val allTrue = outcome("b = false", frb3)
+        assertEquals(FileFate.SKIPPED, allTrue.fate)
+        assertFalse(allTrue.byIndex, "$allTrue")
+        assertEquals(FileFate.WOULD_BE_READ, outcome("b = false", frb2).fate)
+        // File 2, x at eighths from -10: 0.3 sits inside the bounds and the dictionary has no such key —
+        // the index's own skip, and the read's, since the file's index is beside it. A string between
+        // two entries the same, and `>=` on it is answered from the code it would take.
+        val eighths = outcome("x = 0.3", frb2)
+        assertEquals(FileFate.SKIPPED, eighths.fate)
+        assertTrue(eighths.byIndex && eighths.note.orEmpty().contains("when read"), "$eighths")
+        assertTrue(eighths.outcomes.single().reason.contains("range bitmap (in the .index beside it, opened by the read) has no row = '0.3' among its 1000"), eighths.outcomes.single().reason)
+        assertEquals(FileFate.WOULD_BE_READ, outcome("x = 0.375", frb2).fate)
+        val between = outcome("s = 'v0500a'", frb2)
+        assertEquals(FileFate.SKIPPED, between.fate)
+        assertTrue(between.byIndex && between.outcomes.single().reason.contains("has no row = 'v0500a' among its 1000"), "$between")
+        assertEquals(FileFate.WOULD_BE_READ, outcome("s >= 'v0500a'", frb2).fate)
+        assertEquals(FileFate.SKIPPED, outcome("s >= 'v0500a' AND s < 'v0501'", frb2).fate, "499 rows at or above v0500a, none below v0501")
+        // File 4, every value null: `IS NOT NULL` is the statistics' skip, `IS NULL` keeps it.
+        assertEquals(FileFate.SKIPPED, outcome("s IS NOT NULL", frb4).fate)
+        assertEquals(FileFate.WOULD_BE_READ, outcome("s IS NULL", frb4).fate)
     }
 
     @Test

@@ -1,0 +1,48 @@
+{
+  "version" : 3,
+  "id" : 0,
+  "fields" : [ {
+    "id" : 0,
+    "name" : "k",
+    "type" : "INT"
+  }, {
+    "id" : 1,
+    "name" : "n",
+    "type" : "INT"
+  }, {
+    "id" : 2,
+    "name" : "s",
+    "type" : "STRING"
+  }, {
+    "id" : 3,
+    "name" : "amt",
+    "type" : "DECIMAL(10, 2)"
+  }, {
+    "id" : 4,
+    "name" : "d",
+    "type" : "DATE"
+  }, {
+    "id" : 5,
+    "name" : "ts",
+    "type" : "TIMESTAMP(6)"
+  }, {
+    "id" : 6,
+    "name" : "x",
+    "type" : "DOUBLE"
+  }, {
+    "id" : 7,
+    "name" : "b",
+    "type" : "BOOLEAN"
+  } ],
+  "highestFieldId" : 7,
+  "partitionKeys" : [ ],
+  "primaryKeys" : [ ],
+  "options" : {
+    "file-index.range-bitmap.columns" : "n,s,amt,d,ts,x,b",
+    "owner" : "root",
+    "file-index.range-bitmap.s.chunk-size" : "64b",
+    "file-index.range-bitmap.n.chunk-size" : "32b",
+    "file-index.in-manifest-threshold" : "64kb"
+  },
+  "timeMillis" : 1789436080183
+}

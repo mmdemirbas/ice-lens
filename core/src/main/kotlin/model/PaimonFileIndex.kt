@@ -12,8 +12,8 @@ import java.time.Instant
  * One entry per indexed column, in the order the head lists them; a column may carry several
  * index types. What each index's bytes mean is decided by [PaimonColumnIndex.type]: a
  * `bloom-filter` is [PaimonBloomFilter], a `bitmap` is [PaimonBitmapIndex], a `bsi` is
- * [PaimonBsiIndex], and `range-bitmap` (release-1.3.1's fourth) is named and left undecoded,
- * which the pruning reports rather than guesses at.
+ * [PaimonBsiIndex] and a `range-bitmap` is [PaimonRangeBitmapIndex] — release-1.3.1's four. A
+ * type this does not know is named, and the pruning leaves its terms to the bounds.
  */
 data class PaimonFileIndex(
     val columns: Map<String, List<PaimonColumnIndex>>,
@@ -44,10 +44,17 @@ data class PaimonFileIndex(
         ?.firstOrNull { it.type == BSI }?.bytes
         ?.let { PaimonBsiIndex.decode(it) }
 
+    /** The range bitmap over [column], decoded against its [paimonType], or null when the column has none or its bytes are empty. */
+    fun rangeBitmapIndex(column: String, paimonType: String): PaimonRangeBitmapIndex? = columns.entries
+        .firstOrNull { it.key.equals(column.trim(), ignoreCase = true) }?.value
+        ?.firstOrNull { it.type == RANGE_BITMAP }?.bytes
+        ?.let { PaimonRangeBitmapIndex.decode(it, paimonType) }
+
     companion object {
         const val BLOOM_FILTER = "bloom-filter"
         const val BITMAP = "bitmap"
         const val BSI = "bsi"
+        const val RANGE_BITMAP = "range-bitmap"
     }
 }
 

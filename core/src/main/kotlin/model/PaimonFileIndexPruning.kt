@@ -26,7 +26,7 @@ enum class FileIndexUse { AT_PLAN, AT_READ }
 fun paimonFileIndexRule(graph: GraphModel, rule: PaimonScanRule?): String? {
     if (graph.nodes.none { it is GraphNode.PaimonDataFileNode && it.hasFileIndex }) return null
     val base = "Files here carry a file index, and a term on an indexed column is asked of it — a bloom filter " +
-        "answers an equality as a maybe, a bitmap dictionary answers it exactly, a bit-sliced index answers every comparison"
+        "answers an equality as a maybe, a bitmap dictionary answers it exactly, a bit-sliced index or a range bitmap answers every comparison"
     return when {
         rule == null -> "$base: an index embedded in the entry is tested when the scan plans, and a .index file beside the " +
             "data file when the read opens it — a file the latter rules out is still listed by the plan, and yields no row"
@@ -52,14 +52,16 @@ val GraphNode.PaimonDataFileNode.hasFileIndex: Boolean
  *
  * A bloom filter answers `=` only — `IN` is a disjunction of them by the time it arrives — with
  * a maybe; a bitmap index answers `=`, `<>`, `IS NULL` and `IS NOT NULL` with the rows that
- * hold the value; a bit-sliced index answers those and every comparison with rows too. Nothing
+ * hold the value; a bit-sliced index and a range bitmap answer those and every comparison with
+ * rows too. Nothing
  * is asked where the bounds already settled the term, since a bound's proof needs no second
  * one. A column carrying several indexes is ruled out by any one of them, which is
  * `FileIndexPredicate` and-ing their results; and the terms' rows are then folded up the
  * filter — an `And` intersects, an `Or` unites, a term no index answers is every row — so
  * `n BETWEEN 4 AND 6` skips a file holding 3 and 10 though neither `n >= 4` nor `n <= 6` rules
- * it out alone ([IndexRows]). An index the writer left empty holds no non-null value, which
- * `EmptyFileIndexReader` reads as a skip for any equality, and so does this. A term the indexes
+ * it out alone ([IndexRows]). An index the writer left empty holds no value at all, which
+ * `EmptyFileIndexReader` reads as a skip for an equality, a comparison and `IS NOT NULL`, and
+ * so does this ([emptyIndexAnswer]). A term the indexes
  * cannot decide keeps the outcome the bounds gave it, except that an index which *may* hold the
  * value turns "no statistics" into an evaluation — the index looked, and that is the answer.
  */
@@ -181,12 +183,22 @@ private class IndexAnswer(val rows: IndexRows, val reason: String) {
 }
 
 /**
+ * What an index the writer left empty says: `EmptyFileIndexReader` skips the file for `=`, `IN`,
+ * every comparison and `IS NOT NULL` — no value was ever written to the column — and answers
+ * `<>` and `IS NULL` with the default, a maybe.
+ */
+private fun emptyIndexAnswer(op: PredicateOp, column: String, where: String): IndexAnswer? =
+    if (op == PredicateOp.NOT_EQ || op == PredicateOp.IS_NULL) null
+    else IndexAnswer(IndexRows.Skip, "$column's file index ($where) is empty: no $column was ever written here")
+
+/**
  * What one index says about one term, or null when it cannot answer the operator or the type.
  * A bloom filter answers `=` with a maybe or a skip; a bitmap index answers `=`, `<>` and the
  * null tests with rows, the way `BitmapFileIndex.Reader` does — `<>` is the value's rows flipped
  * over the row count, so it is empty only when every row holds the value, nulls included in the
  * count; a bit-sliced index answers those and the four comparisons with rows too
- * (`BitSliceIndexBitmapFileIndex.Reader`), its `<>` over the non-null rows alone.
+ * (`BitSliceIndexBitmapFileIndex.Reader`), its `<>` over the non-null rows alone; a range bitmap
+ * answers the same set, on every type the writer takes (`RangeBitmapFileIndex.Reader`).
  */
 private fun indexAnswer(
     ix: PaimonColumnIndex,
@@ -199,8 +211,8 @@ private fun indexAnswer(
     consulted: String,
 ): IndexAnswer? = when (ix.type) {
     PaimonFileIndex.BLOOM_FILTER -> {
-        if (op != PredicateOp.EQ) null
-        else if (ix.bytes == null) IndexAnswer(IndexRows.Skip, "$column's file index ($where) is empty: no non-null $column here")
+        if (ix.bytes == null) emptyIndexAnswer(op, column, where)
+        else if (op != PredicateOp.EQ) null
         else {
             val hash = paimonFastHash(type, value!!)
             val filter = ix.bytes.let(PaimonBloomFilter::decode)
@@ -210,9 +222,8 @@ private fun indexAnswer(
         }
     }
     PaimonFileIndex.BITMAP -> {
-        if (ix.bytes == null) {
-            if (op == PredicateOp.EQ) IndexAnswer(IndexRows.Skip, "$column's file index ($where) is empty: no non-null $column here") else null
-        } else {
+        if (ix.bytes == null) emptyIndexAnswer(op, column, where)
+        else {
             val bitmap = PaimonBitmapIndex.decode(ix.bytes, type)
             val key = value?.let { paimonBitmapKey(type, it) }
             val rows = if (bitmap == null || (op.takesLiteral && key == null)) null else bitmap.rowsMatching(op, key)
@@ -234,25 +245,45 @@ private fun indexAnswer(
         }
     }
     PaimonFileIndex.BSI -> {
-        if (ix.bytes == null) {
-            if (op == PredicateOp.EQ) IndexAnswer(IndexRows.Skip, "$column's file index ($where) is empty: no non-null $column here") else null
-        } else {
+        if (ix.bytes == null) emptyIndexAnswer(op, column, where)
+        else {
             val bsi = PaimonBsiIndex.decode(ix.bytes)
             val long = value?.let { paimonBsiValue(type, it) }
             val rows = if (bsi == null || (op.takesLiteral && long == null)) null else bsi.rowsMatching(op, long)
-            val term = when (op) {
-                PredicateOp.IS_NULL -> "null"
-                PredicateOp.IS_NOT_NULL -> "non-null"
-                else -> "${op.symbol} $literal"
-            }
-            when {
-                rows == null -> null
-                rows.isEmpty -> IndexAnswer(IndexRows.Rows(rows), "$column's bit-sliced index ($where, $consulted) has no row $term among its ${bsi!!.rowCount}")
-                else -> IndexAnswer(IndexRows.Rows(rows), "$column's bit-sliced index ($where) has ${rows.cardinality()} of its ${bsi!!.rowCount} rows $term")
-            }
+            rowsAnswer(rows, bsi?.rowCount, "bit-sliced index", op, column, literal, where, consulted)
+        }
+    }
+    PaimonFileIndex.RANGE_BITMAP -> {
+        if (ix.bytes == null) emptyIndexAnswer(op, column, where)
+        else {
+            val range = PaimonRangeBitmapIndex.decode(ix.bytes, type)
+            val key = value?.let { paimonRangeBitmapKey(type, it) }
+            val rows = if (range == null || (op.takesLiteral && key == null)) null else range.rowsMatching(op, key)
+            rowsAnswer(rows, range?.rowCount, "range bitmap", op, column, literal, where, consulted)
         }
     }
     else -> null
+}
+
+/** An index that answered [op] with the rows it keeps, or null where it could not answer. */
+private fun rowsAnswer(
+    rows: java.util.BitSet?,
+    rowCount: Int?,
+    kind: String,
+    op: PredicateOp,
+    column: String,
+    literal: String,
+    where: String,
+    consulted: String,
+): IndexAnswer? {
+    if (rows == null || rowCount == null) return null
+    val term = when (op) {
+        PredicateOp.IS_NULL -> "null"
+        PredicateOp.IS_NOT_NULL -> "non-null"
+        else -> "${op.symbol} $literal"
+    }
+    return if (rows.isEmpty) IndexAnswer(IndexRows.Rows(rows), "$column's $kind ($where, $consulted) has no row $term among its $rowCount")
+    else IndexAnswer(IndexRows.Rows(rows), "$column's $kind ($where) has ${rows.cardinality()} of its $rowCount rows $term")
 }
 
 internal fun joinNotes(vararg notes: String?): String? = notes.filterNotNull().takeIf { it.isNotEmpty() }?.joinToString("; ")

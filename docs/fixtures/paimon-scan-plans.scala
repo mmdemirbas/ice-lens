@@ -18,7 +18,7 @@
 // Run with the Paimon Spark 3.5 runtime jar, version 1.3, over copies of the tables:
 //
 //   WH=$PWD/tmp/plans-wh; rm -rf "$WH"; mkdir -p "$WH/db.db"
-//   for t in pc lk pu ag dv sm pt fa fi ft fb fbs pse pkr; do cp -R example/paimon/db.db/$t "$WH/db.db/$t"; done
+//   for t in pc lk pu ag dv sm pt fa fi ft fb fbs frb pse pkr; do cp -R example/paimon/db.db/$t "$WH/db.db/$t"; done
 //   JAR=~/code/spark-kit/lakelab/tasks/01_FlinkUpsertRead/.run/jars/paimon-spark-3.5-local.jar
 //   docker run --rm --entrypoint bash \
 //     -v "$WH:/wh" -v "$JAR:/opt/paimon-spark.jar:ro" \
@@ -102,6 +102,33 @@ def indexAll(name: String, label: String, mk: (PredicateBuilder, org.apache.paim
   }
 }
 
+// The index's own ROWS, asked for every data file whatever the plan did with it: a bitmap-shaped
+// result (a bitmap or range-bitmap index, or a bsi) prints its cardinality, which is the oracle
+// for a decoder that answers per row; any other result prints REMAIN or SKIP as `indexAll` does.
+// Printed per file as `<file> rows=<n>` or `<file> index=<REMAIN|SKIP|none>`.
+def indexRows(name: String, label: String, mk: (PredicateBuilder, org.apache.paimon.types.RowType) => Predicate): Unit = {
+  val options = new Options()
+  options.set("path", s"/wh/db.db/$name")
+  val table = FileStoreTableFactory.create(CatalogContext.create(options))
+  val rowType = table.rowType()
+  val predicate = mk(new PredicateBuilder(rowType), rowType)
+  val splits = table.newReadBuilder().newScan().plan().splits().asScala.map(_.asInstanceOf[DataSplit])
+  println(s"-- $name: $label [index-rows]")
+  def verdict(r: org.apache.paimon.fileindex.FileIndexResult): String = r match {
+    case b: org.apache.paimon.fileindex.bitmap.BitmapIndexResult => s"rows=${b.get().getCardinality}"
+    case other => if (other.remain()) "index=REMAIN" else "index=SKIP"
+  }
+  for (s <- splits; f <- s.dataFiles().asScala) {
+    val embedded = f.embeddedIndex()
+    val indexFile = f.extraFiles().asScala.find(_.endsWith(".index"))
+    val out =
+      if (embedded != null) { val p = new FileIndexPredicate(embedded, rowType); try verdict(p.evaluate(predicate)) finally p.close() }
+      else if (indexFile.isDefined) { val p = new FileIndexPredicate(new Path(s.bucketPath(), indexFile.get), table.fileIO(), rowType); try verdict(p.evaluate(predicate)) finally p.close() }
+      else "index=none"
+    println(s"${f.fileName()} $out")
+  }
+}
+
 def lit(v: Any): AnyRef = v match {
   case s: String => BinaryString.fromString(s)
   case i: Int => Int.box(i)
@@ -109,6 +136,8 @@ def lit(v: Any): AnyRef = v match {
   case t: java.time.LocalDateTime => org.apache.paimon.data.Timestamp.fromLocalDateTime(t)
   case i: java.time.Instant => org.apache.paimon.data.Timestamp.fromInstant(i)
   case d: java.time.LocalDate => Int.box(d.toEpochDay.toInt)
+  case d: Double => Double.box(d)
+  case b: Boolean => Boolean.box(b)
   case other => other.asInstanceOf[AnyRef]
 }
 def ldt(s: String) = java.time.LocalDateTime.parse(s.replace(' ', 'T'))
@@ -313,3 +342,86 @@ indexAll("fbs", "d BETWEEN 2024-03-02 AND 2024-03-04", between("d", date("2024-0
 indexAll("fbs", "ts < 2024-03-01 10:00:00.000005", isLt("ts", ldt("2024-03-01 10:00:00.000005")))
 indexAll("fbs", "ts >= 2024-03-01 10:00:00.000009", isGte("ts", ldt("2024-03-01 10:00:00.000009")))
 indexAll("fbs", "ts BETWEEN 2024-03-01 10:00:00.000002 AND 2024-03-01 10:00:00.000003", between("ts", ldt("2024-03-01 10:00:00.000002"), ldt("2024-03-01 10:00:00.000003")))
+
+// frb: an append table with a range bitmap on n (INT), s (STRING), amt (DECIMAL(10,2)), d (DATE),
+// ts (TIMESTAMP(6)), x (DOUBLE) and b (BOOLEAN) — file 1 embedded (n -5, 3, 10, null, 3; s alpha,
+// bravo, charlie, null, bravo), file 2 a thousand rows in a .index (n 100..1099, s v0000..v0999,
+// the n and s dictionaries cut into 32- and 64-byte chunks), file 3 every row 7 / 'seven' and
+// file 4 every value null over three rows. A range bitmap orders any of these types, so `s >
+// 'bravo'` and `x < 0` are answered per row where a bsi refuses the column; the rows are printed
+// so the decoder is held to the count, not only to the verdict — and file 4 under `IS NULL` is
+// where `RangeBitmap.isNull` at cardinality 0 answers two rows of three.
+plan("frb", "no filter", (b, t) => null)
+plan("frb", "n BETWEEN 4 AND 6", between("n", 4, 6))
+plan("frb", "s > 'bravo'", isGt("s", "bravo"))
+plan("frb", "s BETWEEN 'b' AND 'c'", between("s", "b", "c"))
+plan("frb", "x < 0", isLt("x", 0.0))
+plan("frb", "b = false", isEq("b", false))
+plan("frb", "n = 3 AND s = 'charlie'", and(isEq("n", 3), isEq("s", "charlie")))
+plan("frb", "n <> 7", isNotEq("n", 7))
+plan("frb", "s IS NULL", isNull("s"))
+indexRows("frb", "n < 0", isLt("n", 0))
+indexRows("frb", "n <= -5", isLte("n", -5))
+indexRows("frb", "n < -5", isLt("n", -5))
+indexRows("frb", "n = 3", isEq("n", 3))
+indexRows("frb", "n <> 3", isNotEq("n", 3))
+indexRows("frb", "n = 4", isEq("n", 4))
+indexRows("frb", "n > 3", isGt("n", 3))
+indexRows("frb", "n >= 4", isGte("n", 4))
+indexRows("frb", "n > 4", isGt("n", 4))
+indexRows("frb", "n <= 6", isLte("n", 6))
+indexRows("frb", "n < 4", isLt("n", 4))
+indexRows("frb", "n BETWEEN 4 AND 6", between("n", 4, 6))
+indexRows("frb", "n BETWEEN 4 AND 8", between("n", 4, 8))
+indexRows("frb", "n > 1000", isGt("n", 1000))
+indexRows("frb", "n >= 1099", isGte("n", 1099))
+indexRows("frb", "n > 1099", isGt("n", 1099))
+indexRows("frb", "n BETWEEN 250 AND 749", between("n", 250, 749))
+indexRows("frb", "n = 7", isEq("n", 7))
+indexRows("frb", "n <> 7", isNotEq("n", 7))
+indexRows("frb", "n IS NULL", isNull("n"))
+indexRows("frb", "n IS NOT NULL", isNotNull("n"))
+indexRows("frb", "n IN (3, 10)", isIn("n", 3, 10))
+indexRows("frb", "n IN (4, 5, 6)", isIn("n", 4, 5, 6))
+indexRows("frb", "n = 3 AND s = 'charlie'", and(isEq("n", 3), isEq("s", "charlie")))
+indexRows("frb", "n = 3 OR s = 'charlie'", or(isEq("n", 3), isEq("s", "charlie")))
+indexRows("frb", "s = 'bravo'", isEq("s", "bravo"))
+indexRows("frb", "s <> 'bravo'", isNotEq("s", "bravo"))
+indexRows("frb", "s > 'bravo'", isGt("s", "bravo"))
+indexRows("frb", "s >= 'bravo'", isGte("s", "bravo"))
+indexRows("frb", "s < 'bravo'", isLt("s", "bravo"))
+indexRows("frb", "s > 'b'", isGt("s", "b"))
+indexRows("frb", "s < 'b'", isLt("s", "b"))
+indexRows("frb", "s BETWEEN 'b' AND 'c'", between("s", "b", "c"))
+indexRows("frb", "s > 'v0500'", isGt("s", "v0500"))
+indexRows("frb", "s >= 'v0500a'", isGte("s", "v0500a"))
+indexRows("frb", "s BETWEEN 'v0123' AND 'v0456'", between("s", "v0123", "v0456"))
+indexRows("frb", "s = 'v0999'", isEq("s", "v0999"))
+indexRows("frb", "s = 'seven'", isEq("s", "seven"))
+indexRows("frb", "s <> 'seven'", isNotEq("s", "seven"))
+indexRows("frb", "s IS NULL", isNull("s"))
+indexRows("frb", "s IS NOT NULL", isNotNull("s"))
+indexRows("frb", "amt > 50", isGt("amt", dec("50")))
+indexRows("frb", "amt < 0", isLt("amt", dec("0")))
+indexRows("frb", "amt = 0.75", isEq("amt", dec("0.75")))
+indexRows("frb", "amt = 7.00", isEq("amt", dec("7.00")))
+indexRows("frb", "amt BETWEEN 1 AND 5", between("amt", dec("1"), dec("5")))
+indexRows("frb", "d < 2024-03-05", isLt("d", date("2024-03-05")))
+indexRows("frb", "d = 2024-03-05", isEq("d", date("2024-03-05")))
+indexRows("frb", "d > 2024-03-07", isGt("d", date("2024-03-07")))
+indexRows("frb", "d BETWEEN 2024-03-02 AND 2024-03-04", between("d", date("2024-03-02"), date("2024-03-04")))
+indexRows("frb", "ts < 2024-03-01 10:00:00.000005", isLt("ts", ldt("2024-03-01 10:00:00.000005")))
+indexRows("frb", "ts = 2024-03-01 10:00:00.000005", isEq("ts", ldt("2024-03-01 10:00:00.000005")))
+indexRows("frb", "ts >= 2024-03-01 10:00:00.000009", isGte("ts", ldt("2024-03-01 10:00:00.000009")))
+indexRows("frb", "ts BETWEEN 2024-03-01 10:00:00.000002 AND 2024-03-01 10:00:00.000003", between("ts", ldt("2024-03-01 10:00:00.000002"), ldt("2024-03-01 10:00:00.000003")))
+indexRows("frb", "x < 0", isLt("x", 0.0))
+indexRows("frb", "x <= 0.25", isLte("x", 0.25))
+indexRows("frb", "x = 0.25", isEq("x", 0.25))
+indexRows("frb", "x > 100", isGt("x", 100.0))
+indexRows("frb", "x BETWEEN -1 AND 1", between("x", -1.0, 1.0))
+indexRows("frb", "x <> 7.0", isNotEq("x", 7.0))
+indexRows("frb", "b = true", isEq("b", true))
+indexRows("frb", "b = false", isEq("b", false))
+indexRows("frb", "b <> true", isNotEq("b", true))
+indexRows("frb", "b > false", isGt("b", false))
+indexRows("frb", "b IS NULL", isNull("b"))

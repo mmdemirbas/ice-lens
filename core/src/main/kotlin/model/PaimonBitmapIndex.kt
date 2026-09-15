@@ -140,7 +140,11 @@ class PaimonBitmapIndex private constructor(
     }
 }
 
-/** The eight key encodings `BitmapTypeVisitor` maps every indexable Paimon type onto. */
+/**
+ * The eight key encodings `BitmapTypeVisitor` maps every indexable Paimon type onto — and the
+ * range bitmap's `KeyFactory` too, whose serializers write the same bytes and whose one addition
+ * is a decimal as a long ([ofRangeBitmap]).
+ */
 internal enum class PaimonBitmapKeyType {
     STRING, BYTE, SHORT, INT, LONG, FLOAT, DOUBLE, BOOLEAN;
 
@@ -153,6 +157,18 @@ internal enum class PaimonBitmapKeyType {
         FLOAT -> input.readFloat()
         DOUBLE -> input.readDouble()
         BOOLEAN -> input.readBoolean()
+    }
+
+    /** The same off a big-endian buffer, from its position. */
+    fun read(buffer: java.nio.ByteBuffer): Any = when (this) {
+        STRING -> ByteArray(buffer.getInt()).also(buffer::get)
+        BYTE -> buffer.get()
+        SHORT -> buffer.getShort()
+        INT -> buffer.getInt()
+        LONG -> buffer.getLong()
+        FLOAT -> buffer.getFloat()
+        DOUBLE -> buffer.getDouble()
+        BOOLEAN -> buffer.get() == 1.toByte()
     }
 
     /** The serialised size of a key already read, for keeping the position. */
@@ -196,6 +212,20 @@ internal enum class PaimonBitmapKeyType {
                 "DOUBLE" -> DOUBLE
                 "BOOLEAN" -> BOOLEAN
                 else -> null
+            }
+        }
+
+        /**
+         * `KeyFactory.create`: the bitmap's encodings plus a decimal as its unscaled long, and
+         * null for what the factory refuses — a decimal past precision 18, a timestamp past
+         * precision 6, or a type it has no case for.
+         */
+        fun ofRangeBitmap(paimonType: String): PaimonBitmapKeyType? {
+            val head = Regex("""^([A-Z_]+)(?:\((\d+)(?:,\s*(\d+))?\))?""").find(paimonType.trim().uppercase()) ?: return null
+            return when (head.groupValues[1]) {
+                "DECIMAL" -> LONG.takeIf { (head.groupValues[2].toIntOrNull() ?: 10) <= 18 }
+                "TIMESTAMP", "TIMESTAMP_LTZ" -> LONG.takeIf { (head.groupValues[2].toIntOrNull() ?: 6) <= 6 }
+                else -> of(paimonType)
             }
         }
     }

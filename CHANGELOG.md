@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The `range-bitmap` file index is read**, release-1.3.0's fourth and the one that orders any
+  type — a dictionary of the column's distinct values with a bit-sliced index over their codes,
+  so `<`, `<=`, `>`, `>=`, `BETWEEN`, `=`, `<>` and the null tests are answered per row on a
+  string, a float, a boolean, a decimal or a timestamp as well as the integers. The scan panel's
+  file stage asks it where the bounds leave a term open, folds the terms' rows across the filter
+  and names the count per term; the section's rule sentence names it. `frb` is the fixture —
+  seven indexed columns, a dictionary cut into a hundred-odd chunks — held to `FileIndexPredicate`'s
+  row counts over every file for seventy filters
 - **`Metadata Cleanup`** on the Iceberg metadata panel — which partition specs and schemas
   `expire_snapshots(clean_expired_metadata => true)` drops besides the snapshots: the specs no
   retained snapshot's manifest records and the schemas none was written under, the default and
@@ -258,6 +266,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Paimon table the location is, when it is one
 
 ### Fixed
+- **An empty file index skips every operator `EmptyFileIndexReader` skips.** A column index the
+  writer left empty was read as a skip for `=` alone; Paimon reads it as a skip for `=`, `IN`,
+  every comparison and `IS NOT NULL`, and a maybe for `<>` and `IS NULL`, which it is now
 - **`Expiry Files` plans the Spark procedure's cleanup, and says what the core API's would
   leave.** The section, the file history line and the `Maintenance` row picked the cleanup rule
   by the ref count — incremental with one ref, reachable with more — which is

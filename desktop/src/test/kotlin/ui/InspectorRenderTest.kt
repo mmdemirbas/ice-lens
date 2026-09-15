@@ -2048,6 +2048,20 @@ class InspectorRenderTest {
                 ScanPruningSection(fbs, (parseScanFilter("n BETWEEN 4 AND 8") as ScanFilterParse.Parsed).filter) {}
             }
         }
+        // frb: the range bitmap, on a double — a type the bsi refuses. `x < 0 AND x > -1` is
+        // inside file 1's -1.5..2.5 bounds and each term keeps a row; the two are different rows,
+        // which the embedded index answers when the scan plans — that file skipped with the count
+        // per term, the thousand-row file read for its seven eighths between -1 and 0, the all-7
+        // file skipped by its bounds, and the all-null one.
+        val frb = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/frb").absolutePath)),
+            showRows = false,
+        )
+        renderScene("scan-pruning-paimon-frb", width = 1400, height = 3800) {
+            Column(Modifier.padding(16.dp)) {
+                ScanPruningSection(frb, (parseScanFilter("x < 0 AND x > -1") as ScanFilterParse.Parsed).filter) {}
+            }
+        }
     }
 
     /**
