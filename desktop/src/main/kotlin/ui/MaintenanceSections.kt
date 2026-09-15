@@ -406,9 +406,16 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: Unrefer
             val snapshotPanel = "snapshot ${current.simpleId}"
             val rewrite = current.liveFiles?.let { planRewrite(it, current.deleteReach.orEmpty(), RewriteOptions.forTable(meta.properties, meta.defaultSpecId)) }
             val rewritten = rewrite?.rewrittenGroups.orEmpty()
+            // What remove-dangling-deletes would take after that rewrite — only said where it takes something.
+            val danglingLine = rewrite?.let { plan ->
+                val live = current.liveFiles ?: return@let ""
+                val unpartitionedSingleSpec = meta.partitionSpecs.size == 1 && meta.partitionSpecs.single().fields.isEmpty()
+                val dangling = planDanglingDeletes(live, plan, current.data.sequenceNumber ?: 0L, unpartitionedSingleSpec)
+                if (dangling.removed.isEmpty()) "" else "; remove-dangling-deletes would then take ${formatCounted(dangling.removed.size, "delete file")}"
+            }.orEmpty()
             rows += when {
                 rewrite == null -> Row("not readable", "rewrite_data_files", "the current snapshot's manifests are not retained", "$snapshotPanel → Rewrite", null)
-                rewritten.isNotEmpty() -> Row("would rewrite ${formatCounted(rewritten.sumOf { it.files.size }, "file")}", "rewrite_data_files", "${rewritten.size} of ${formatCounted(rewrite.groups.size, "group")}, ${formatBytes(rewritten.sumOf { it.inputBytes })}", "$snapshotPanel → Rewrite", verdictSkippedColor())
+                rewritten.isNotEmpty() -> Row("would rewrite ${formatCounted(rewritten.sumOf { it.files.size }, "file")}", "rewrite_data_files", "${rewritten.size} of ${formatCounted(rewrite.groups.size, "group")}, ${formatBytes(rewritten.sumOf { it.inputBytes })}$danglingLine", "$snapshotPanel → Rewrite", verdictSkippedColor())
                 rewrite.candidateCount > 0 -> Row("left alone", "rewrite_data_files", "${formatCounted(rewrite.candidateCount, "candidate")} in ${formatCounted(rewrite.groups.size, "group")}, none reaching min-input-files (${rewrite.options.minInputFiles})", "$snapshotPanel → Rewrite", null)
                 else -> Row("nothing to do", "rewrite_data_files", "every live file is within the size range and under the delete ratio", "$snapshotPanel → Rewrite", null)
             }
@@ -454,7 +461,9 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: Unrefer
             )
         }
         val expiry = meta.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs))
-        val freed = node.expiryFiles.value?.planExpiryFiles(expiry.removed.toSet())
+        val expiryInput = node.expiryFiles.value
+        val freed = expiryInput?.planExpiryFiles(expiry.removed.toSet())
+        val cleanup = expiryInput?.planMetadataCleanup(expiry.removed.toSet())?.takeIf { it.removesAnything }
         rows += Row(
             if (expiry.removed.isEmpty()) "nothing expires" else "would remove ${formatCounted(expiry.removed.size, "snapshot")}",
             "expire_snapshots (older_than = now)",
@@ -462,9 +471,10 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: Unrefer
                 meta.snapshots.isEmpty() -> "the table has no snapshots"
                 expiry.removed.isEmpty() -> "every snapshot is kept by a ref"
                 freed == null -> "what that frees is not readable here"
-                else -> "frees ${freed.describe} — ${formatBytes(freed.knownBytes)} the metadata accounts for, ${freed.cleanup.label}"
+                else -> "frees ${freed.describe} — ${formatBytes(freed.knownBytes)} the metadata accounts for, ${freed.cleanup.label}" +
+                    (cleanup?.let { "; clean_expired_metadata ${it.describe()}" } ?: "")
             },
-            "${input.metadataFileName} → Expiry, Expiry Files",
+            "${input.metadataFileName} → Expiry, Expiry Files, Metadata Cleanup",
             if (expiry.removed.isEmpty()) null else verdictSkippedColor(),
         )
         if (meta.refs.size > 1) {
