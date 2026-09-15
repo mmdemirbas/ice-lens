@@ -88,6 +88,7 @@ core/src/main/kotlin/
 │   ├── PaimonRowLookup.kt     # What reading a Paimon snapshot takes: the live files by bucket, the index manifest's vectors, the merge rule — for the row lookup and the merged count
 │   ├── PaimonMergeRule.kt     # What a read does with a key's records under each merge engine, and which level-0 files it never reads
 │   ├── ScanFilterSql.kt       # A ScanFilter as DuckDB's WHERE clause, every literal bound and cast to its column's type
+│   ├── MetadataCleanupPlan.kt # Which partition specs and schemas clean_expired_metadata drops — the ones no retained snapshot reaches
 │   ├── ExpiryFilePlan.kt      # Which files an expiry frees — the Spark procedure's reachable diff, and the core API's incremental cleanup at one ref
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonPurgePlan.kt     # What sys.purge_files takes and keeps — FileStoreTable.purgeFiles's six steps, folded to one file list
@@ -1567,6 +1568,23 @@ intellij/src/main/kotlin/plugin/
   the graph, and those are exactly the older lists an expiry removes; the first version read the
   graph and was complete only on tables small enough to draw whole. Data files first and in the
   error colour, `MAX_EXPIRY_FILE_ROWS` (200) listed
+- **`clean_expired_metadata` drops the specs no retained manifest records and the schemas no
+  retained snapshot was written under.** `model/MetadataCleanupPlan.kt` reads
+  `RemoveSnapshots.apply` at 1.10.0: reachable specs are the default plus every retained
+  snapshot's manifests' `partition_spec_id` — data and delete manifests alike, whatever their
+  entries' statuses, so a spec lives on through a filtered manifest of `DELETED` entries until
+  the next commit drops that manifest from the list — and reachable schemas the current plus
+  every retained snapshot's `schema-id`; the rest go. At 1.8.1 the core API cleans specs alone
+  and the Spark procedure has no such parameter, so the runs are on the 1.10.0 runtime
+  (`docs/fixtures/clean-expired-metadata.sql`): `respec` rewritten whole, written to once more
+  and expired to that commit kept spec 3 alone of four; `evolved` under `retain_last => 2` kept
+  schemas 4 and 5 of six; `promoted` under `retain_last => 1` kept 5. `planMetadataCleanup`
+  reads the manifest lists `ExpiryFileInput` already holds, `MetadataCleanupFixtureTest` holds
+  the three tables to the runs (`respec` on the checked-in table drops 1 and 2 alone, its current
+  snapshot still carrying a spec-0 manifest; the run's end state is the same input with the
+  current list filtered to spec 3) and every fixture to the default and current never going and a
+  removed spec in no retained list. The metadata panel's `Metadata Cleanup` sits under `Expiry
+  Files`, drawn only on a table holding more than one spec or schema
 - **Expiring one snapshot by id is refused by the refs and cuts the history before it.**
   `ExpiryOptions.snapshotIds` follows `RemoveSnapshots.expireSnapshotId` (1.8.1): a listed id a
   *surviving* ref names — after the ref-age rule — refuses the whole call with `Cannot expire
@@ -2896,7 +2914,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,428 tests across 196 files (1,131 in :core, 285 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,433 tests across 197 files (1,136 in :core, 285 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

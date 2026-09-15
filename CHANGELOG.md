@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Metadata Cleanup`** on the Iceberg metadata panel — which partition specs and schemas
+  `expire_snapshots(clean_expired_metadata => true)` drops besides the snapshots: the specs no
+  retained snapshot's manifest records and the schemas none was written under, the default and
+  current always kept, with what keeps each. `docs/fixtures/clean-expired-metadata.sql` records
+  the runs on the 1.10.0 runtime
 - **`where => …` and `remove-dangling-deletes` under `Rewrite`** on the Iceberg snapshot panel —
   with the table panel's filter set, what `rewrite_data_files(where => …)` considers, rules out
   and rewrites, the files picked the way a scan picks them; under both plans, which delete files

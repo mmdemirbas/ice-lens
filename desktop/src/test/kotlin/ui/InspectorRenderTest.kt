@@ -707,6 +707,13 @@ class InspectorRenderTest {
         val latestB = sweepb.nodes.filterIsInstance<GraphNode.MetadataNode>().maxBy { metadataVersionFromFileName(it.fileName) ?: -1 }
         renderInspector(sweepb, latestB.id, "metadata-node-expiry-files-reachable", height = 5400)
         renderInspector(sweepb, latestB.id, "metadata-node-expiry-log-cut", height = 3400, sectionCollapse = onlyExpanded("Expiry"))
+        // clean_expired_metadata: respec's two specs nothing wrote under go; evolved's four unreached schemas.
+        val respec = graphFor("respec")
+        val latestR = respec.nodes.filterIsInstance<GraphNode.MetadataNode>().maxBy { metadataVersionFromFileName(it.fileName) ?: -1 }
+        renderInspector(respec, latestR.id, "metadata-node-metadata-cleanup", height = 2600, sectionCollapse = onlyExpanded("Metadata Cleanup"))
+        val evolved = graphFor("evolved")
+        val latestE = evolved.nodes.filterIsInstance<GraphNode.MetadataNode>().maxBy { metadataVersionFromFileName(it.fileName) ?: -1 }
+        renderInspector(evolved, latestE.id, "metadata-node-metadata-cleanup-schemas", height = 2600, sectionCollapse = onlyExpanded("Metadata Cleanup"))
     }
 
     /**

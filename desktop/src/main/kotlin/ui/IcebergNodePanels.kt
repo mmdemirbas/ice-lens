@@ -215,6 +215,7 @@ internal fun ColumnScope.MetadataPanel(
         IcebergFastForwardSection(node)
         ExpirySection(node.data, nowMs = expiryClock())
         ExpiryFilesSection(node.data, currentGraph, nowMs = expiryClock())
+        MetadataCleanupSection(node.data, currentGraph, nowMs = expiryClock())
 
         CountedSection("Snapshots", node.data.snapshots.size, "snapshots") {
             val snapshots = node.data.snapshots.sortedBy { it.timestampMs ?: Long.MAX_VALUE }

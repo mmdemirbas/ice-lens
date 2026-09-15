@@ -21,6 +21,7 @@ import model.ExpiryCleanup
 import model.ExpiryFileKind
 import model.ExpiryOptions
 import model.planExpiryFiles
+import model.planMetadataCleanup
 import model.coreApiCleanup
 import model.PaimonExpiryFileKind
 import model.PaimonExpiryFilePlan
@@ -742,6 +743,50 @@ internal fun ExpiryFilesSection(metadata: TableMetadata, graph: GraphModel, nowM
                 }
             }
         }
+    }
+}
+
+/**
+ * What `clean_expired_metadata => true` on the `older_than = now` expiry above would drop from
+ * `metadata.json` besides the snapshots — [planMetadataCleanup]: the specs no retained
+ * snapshot's manifest records and the schemas none was written under. One table, specs first,
+ * the verdict leading; drawn only where the table holds more than one of either, since a
+ * one-spec one-schema table has nothing to drop and the section would say so on every panel.
+ */
+@Composable
+internal fun MetadataCleanupSection(metadata: TableMetadata, graph: GraphModel, nowMs: Long) {
+    val colors = MaterialTheme.colorScheme
+    if (metadata.partitionSpecs.size <= 1 && metadata.schemas.size <= 1) return
+    val removed = metadata.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs)).removed.toSet()
+    val input = graph.tableNode()?.expiryFiles?.value?.copy(metadata = metadata)
+    val plan = input?.planMetadataCleanup(removed)
+    val title = "Metadata Cleanup" + (plan?.let { " — ${it.describe()}" } ?: "")
+    Section(title) {
+        Text(
+            "What expire_snapshots(older_than = now, clean_expired_metadata => true) drops from metadata.json " +
+                "besides the snapshots, the way RemoveSnapshots.apply does it at 1.10: a partition spec no " +
+                "retained snapshot's manifest records — data or delete, whatever its entries' statuses, so a " +
+                "spec lives on through a filtered manifest of DELETED entries until the next commit drops it " +
+                "from the list — and a schema no retained snapshot was written under; the default spec and " +
+                "the current schema always stay. At 1.8.1 the core API cleans specs alone and the Spark " +
+                "procedure has no such parameter.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (plan == null) {
+            Text("Not readable here — the table's manifest lists could not be read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            return@Section
+        }
+        val rows = plan.specs.map { Triple("spec", it, "partition-specs") } + plan.schemas.map { Triple("schema", it, "schemas") }
+        WideTable(
+            headers = listOf("Verdict", "Kind", "ID", "Kept By"),
+            columnWidths = listOf(190.dp, 90.dp, 60.dp, 420.dp),
+            rows = rows.map { (kind, item, _) ->
+                listOf(if (item.removed) "REMOVED" else "kept", kind, "${item.id}", item.keptBy ?: "nothing retained reaches it")
+            },
+            leadCellColors = rows.map { (_, item, _) -> if (item.removed) verdictSkippedColor() else null },
+        )
     }
 }
 
