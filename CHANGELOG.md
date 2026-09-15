@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`Expire By Id`** on the Iceberg snapshot panel — what `expire_snapshots(snapshot_ids =>
+  array(id))` does to this snapshot, the way `RemoveSnapshots.expireSnapshotId` decides it:
+  refused with the refs that still name it, or removed whatever its age and its place under a
+  branch, with the children left naming it, the snapshot log cut before it — every entry before
+  the removed one goes, so the earliest `TIMESTAMP AS OF` that resolves moves up to the child —
+  and the files the procedure frees. `docs/fixtures/expire-by-id.sql` records the runs on
+  `branched`, `mor` and `rolled`
 - **`Full Compaction`** on the Paimon snapshot panel — what `sys.compact` (the default `full`
   strategy) does to each primary-key bucket: which files are rewritten together, which are
   upgraded to the top level by a rename, which are left, and why, the way `pickFullCompaction`
@@ -240,6 +247,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Paimon table the location is, when it is one
 
 ### Fixed
+- **`Expiry Files` plans the Spark procedure's cleanup, and says what the core API's would
+  leave.** The section, the file history line and the `Maintenance` row picked the cleanup rule
+  by the ref count — incremental with one ref, reachable with more — which is
+  `RemoveSnapshots.cleanExpiredSnapshots`, the core API. `expire_snapshots` from Spark deletes
+  the reachability diff whatever the ref count (`ExpireSnapshotsSparkAction.expireFiles`), and
+  on `mor` the two differ: expiring the overwrite by id freed a data file the incremental rule
+  leaves on disk, named by nothing. The sections plan the procedure's diff now and, with one ref,
+  name the files a Java, Flink or Trino expiry would leave behind
 - **A Paimon `TIMESTAMP` bound past millisecond precision decodes.** Its `BinaryRow` slot is
   the tail offset in the high 32 bits and the nanos within the millisecond in the low 32, the
   tail holding the millis — read as a variable-width field it decoded to nothing, so a

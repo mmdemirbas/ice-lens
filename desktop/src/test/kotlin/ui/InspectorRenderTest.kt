@@ -680,10 +680,11 @@ class InspectorRenderTest {
 
     /**
      * `sweep` is `swept` before its expiry, complete: under `older_than = now` the plan removes the
-     * four older snapshots and frees the two data files the incremental cleanup frees — one
-     * removed on the live line, one added off it — beside the manifests and lists, so the
-     * section has both a coloured row and a plain one. `sweepb` is the reachable case, where the
-     * same removal frees no data file.
+     * four older snapshots and frees two data files — one removed on the live line, one added off
+     * it — beside the manifests and lists, so the section has both a coloured row and a plain one;
+     * the core API's incremental cleanup frees the same there, and the line says so. `sweepb` is
+     * the branch case, where the same removal frees no data file, and where the bare expiry cuts
+     * a retained snapshot's log entry — the `Expiry` section's last line.
      */
     @Test
     fun `a metadata file says what its expiry would free`() {
@@ -693,6 +694,7 @@ class InspectorRenderTest {
         val sweepb = graphFor("sweepb")
         val latestB = sweepb.nodes.filterIsInstance<GraphNode.MetadataNode>().maxBy { metadataVersionFromFileName(it.fileName) ?: -1 }
         renderInspector(sweepb, latestB.id, "metadata-node-expiry-files-reachable", height = 5400)
+        renderInspector(sweepb, latestB.id, "metadata-node-expiry-log-cut", height = 3400, sectionCollapse = onlyExpanded("Expiry"))
     }
 
     /**
@@ -1475,6 +1477,20 @@ class InspectorRenderTest {
         // Cherry-pick: audit's tip publishes; wap's staged snapshot is a duplicate of the id its publish carried.
         renderInspector(branched, "snap_1183816113347240589", "snapshot-node-cherry-pick", height = 2600, sectionCollapse = onlyExpanded("Cherry-Pick"))
         renderInspector(graphFor("wap"), "snap_4204024477256586588", "snapshot-node-cherry-pick-duplicate", height = 2600, sectionCollapse = onlyExpanded("Cherry-Pick"))
+    }
+
+    /**
+     * `expire_snapshots(snapshot_ids => array(id))`: `mor`'s overwrite in the middle of main goes
+     * with its manifest and a data file the procedure's diff frees and the core API's incremental
+     * rule would leave — the one capture where the two rules differ on screen; `branched`'s
+     * `v1`-tagged first-line commit is refused, and its untagged first commit goes with its list alone.
+     */
+    @Test
+    fun `an iceberg snapshot plans its own expiry by id`() {
+        renderInspector(graphFor("mor"), "snap_6495533870975959056", "snapshot-node-expire-by-id", height = 2600, sectionCollapse = onlyExpanded("Expire By Id"))
+        val branched = graphFor("branched")
+        renderInspector(branched, "snap_1466525117601214788", "snapshot-node-expire-by-id-refused", height = 2600, sectionCollapse = onlyExpanded("Expire By Id"))
+        renderInspector(branched, "snap_6979025444437793121", "snapshot-node-expire-by-id-list-only", height = 2600, sectionCollapse = onlyExpanded("Expire By Id"))
     }
 
     /**

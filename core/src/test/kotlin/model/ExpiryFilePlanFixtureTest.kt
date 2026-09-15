@@ -36,20 +36,31 @@ class ExpiryFilePlanFixtureTest {
         return expiry to m.expiryFileInput().planExpiryFiles(expiry.removed.toSet())
     }
 
+    /**
+     * `swept` was written by the Spark procedure, whose cleanup is the reachable diff whatever
+     * the ref count; the core API would have run the incremental one here, and on this table the
+     * two agree file for file — which is why the difference went unseen until `mor` (see
+     * `ExpireByIdFixtureTest`).
+     */
     @Test
-    fun `with one ref, the incremental cleanup frees a deleted file and a reverted one, and keeps the carried manifest`() {
+    fun `with one ref, the procedure frees a deleted file and a reverted one, and the core API's incremental cleanup agrees here`() {
         val (expiry, plan) = planFor("sweep")
         assertEquals(4, expiry.removed.size)
-        assertEquals(ExpiryCleanup.INCREMENTAL, plan.cleanup)
+        assertEquals(ExpiryCleanup.REACHABLE, plan.cleanup)
         assertEquals(4, plan.ofKind(ExpiryFileKind.MANIFEST_LIST).size)
         assertEquals(3, plan.ofKind(ExpiryFileKind.MANIFEST).size)
-        assertEquals(setOf(ExpiryFileReason.DELETED_BY_EXPIRED, ExpiryFileReason.REVERTED), plan.ofKind(ExpiryFileKind.DATA_FILE).map { it.reason }.toSet())
         assertEquals("4 manifest lists, 3 manifests, 2 data files", plan.describe)
 
         val gone = namesOnDisk("sweep") - namesOnDisk("swept")
         assertEquals(gone, plan.files.map { it.path.substringAfterLast('/') }.toSet())
         // and every metadata version stays — the expiry writes one more, and deletes none.
         assertTrue(gone.none { it.endsWith(".metadata.json") })
+
+        val input = model("sweep").expiryFileInput()
+        assertEquals(ExpiryCleanup.INCREMENTAL, input.coreApiCleanup(expiry.removed.toSet()))
+        val incremental = input.planExpiryFiles(expiry.removed.toSet(), ExpiryCleanup.INCREMENTAL)
+        assertEquals(setOf(ExpiryFileReason.DELETED_BY_EXPIRED, ExpiryFileReason.REVERTED), incremental.ofKind(ExpiryFileKind.DATA_FILE).map { it.reason }.toSet())
+        assertEquals(plan.paths, incremental.paths, "the same files by both rules on this table")
     }
 
     @Test
@@ -82,7 +93,7 @@ class ExpiryFilePlanFixtureTest {
         val ids = m.metadatas.last().metadata.snapshots.sortedBy { it.sequenceNumber }.map { it.snapshotId!! }
         // Drop the branch from the metadata: one ref, so the plan runs incremental over the same lists.
         val single = input.copy(metadata = input.metadata.copy(refs = input.metadata.refs.filterKeys { it == "main" }))
-        val plan = single.planExpiryFiles(ids.dropLast(1).toSet())
+        val plan = single.planExpiryFiles(ids.dropLast(1).toSet(), single.coreApiCleanup(ids.dropLast(1).toSet()))
         assertEquals(ExpiryCleanup.INCREMENTAL, plan.cleanup)
         assertEquals(1, plan.ofKind(ExpiryFileKind.DATA_FILE).size, "the deleted file goes once nothing but expired commits could read it")
         assertEquals(ExpiryFileReason.DELETED_BY_EXPIRED, plan.ofKind(ExpiryFileKind.DATA_FILE).single().reason)
@@ -96,7 +107,8 @@ class ExpiryFilePlanFixtureTest {
         val m = model("wap")
         val meta = m.metadatas.last().metadata
         val staged = meta.snapshots.first { it.wapId != null && it.publishedWapId == null }
-        val plan = m.expiryFileInput().planExpiryFiles(setOf(staged.snapshotId!!))
+        val input = m.expiryFileInput()
+        val plan = input.planExpiryFiles(setOf(staged.snapshotId!!), input.coreApiCleanup(setOf(staged.snapshotId!!)))
         assertEquals(ExpiryCleanup.INCREMENTAL, plan.cleanup)
         assertEquals(emptyList(), plan.files)
     }

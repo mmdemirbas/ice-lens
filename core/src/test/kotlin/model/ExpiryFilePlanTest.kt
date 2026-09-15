@@ -63,25 +63,26 @@ class ExpiryFilePlanTest {
             "m4" to listOf(entry(ManifestEntryStatus.ADDED, 4, "f4")),
         )
         val input = ExpiryFileInput(meta, lists) { entries[it] }
-        val onlyTwo = input.planExpiryFiles(setOf(2))
-        assertEquals(ExpiryCleanup.INCREMENTAL, onlyTwo.cleanup)
+        val onlyTwo = input.planExpiryFiles(setOf(2), input.coreApiCleanup(setOf(2)))
+        assertEquals(ExpiryCleanup.INCREMENTAL, onlyTwo.cleanup, "the core API at one ref")
         assertEquals(listOf("m1"), onlyTwo.ofKind(ExpiryFileKind.MANIFEST).map { it.path }, "m1 is listed by nothing retained")
         assertEquals(emptyList(), onlyTwo.ofKind(ExpiryFileKind.DATA_FILE), "f1's removal belongs to 3, which stays")
         // Expire 3 as well and the removal's snapshot is gone: f1 goes, read from m1' in 4's list.
-        val both = input.planExpiryFiles(setOf(2, 3))
+        val both = input.planExpiryFiles(setOf(2, 3), ExpiryCleanup.INCREMENTAL)
         assertEquals(listOf("f1"), both.ofKind(ExpiryFileKind.DATA_FILE).map { it.path }, "f9 stays with snapshot 4")
         assertEquals(ExpiryFileReason.DELETED_BY_EXPIRED, both.ofKind(ExpiryFileKind.DATA_FILE).single().reason)
         assertEquals(setOf("m1"), both.ofKind(ExpiryFileKind.MANIFEST).map { it.path }.toSet(), "m1' stays: 4 still lists it")
     }
 
     @Test
-    fun `a tag on an expiring snapshot goes with it, and the ref count that picks the strategy is the one after`() {
+    fun `a tag on an expiring snapshot goes with it, and the ref count that picks the core API's strategy is the one after`() {
         val meta = metadata(
             mapOf("main" to SnapshotRef(snapshotId = 2, type = "branch"), "old" to SnapshotRef(snapshotId = 1, type = "tag")),
             snapshot(1, null, "list-1"), snapshot(2, 1, "list-2"),
         )
         val input = ExpiryFileInput(meta, mapOf(1L to listOf(listed("m1", 1, 1, 0, 0)), 2L to listOf(listed("m2", 2, 1, 0, 0), listed("m1", 1, 1, 0, 0)))) { emptyList() }
-        assertEquals(ExpiryCleanup.INCREMENTAL, input.planExpiryFiles(setOf(1)).cleanup)
+        assertEquals(ExpiryCleanup.INCREMENTAL, input.coreApiCleanup(setOf(1)), "the tag goes with its snapshot, leaving main alone")
+        assertEquals(ExpiryCleanup.REACHABLE, input.planExpiryFiles(setOf(1)).cleanup, "the procedure's diff, whatever the count")
         assertEquals("1 manifest list", input.planExpiryFiles(setOf(1)).describe)
     }
 }

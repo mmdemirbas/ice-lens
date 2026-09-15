@@ -21,6 +21,7 @@ import model.ExpiryCleanup
 import model.ExpiryFileKind
 import model.ExpiryOptions
 import model.planExpiryFiles
+import model.coreApiCleanup
 import model.PaimonExpiryFileKind
 import model.PaimonExpiryFilePlan
 import model.PaimonCompactionOptions
@@ -349,6 +350,20 @@ internal fun ExpirySection(metadata: TableMetadata, nowMs: Long) {
                 if (byDefaults.snapshots.first { it.snapshotId == id }.retained) null else colors.error
             },
         )
+        // What the older_than = now column leaves of the snapshot log — the cut runs before the
+        // last removed entry, so a retained snapshot can lose its entry too.
+        if (byAge.logEntriesDropped > 0) {
+            val retainedCut = byAge.logAfter.let { after -> metadata.snapshotLog.count { it.snapshotId !in byAge.removed } - after.size }
+            val earliestAfter = byAge.logAfter.firstOrNull()?.timestampMs
+            Text(
+                "With older_than = now the snapshot log keeps ${formatCounted(byAge.logAfter.size, "entry", "entries")} of ${metadata.snapshotLog.size}" +
+                    (if (retainedCut > 0) ", and ${formatCounted(retainedCut, "retained snapshot")} ${if (retainedCut == 1) "loses its entry" else "lose their entries"}, cut with the removed ones after ${if (retainedCut == 1) "it" else "them"} (TableMetadata.updateSnapshotLog cuts the history before a removed entry rather than leave a gap)" else "") +
+                    (if (earliestAfter != null) "; the earliest TIMESTAMP AS OF that resolves becomes ${formatAppTimestamp(earliestAfter)}." else "; no TIMESTAMP AS OF resolves afterwards."),
+                fontSize = TypeScale.small,
+                color = if (retainedCut > 0) verdictUnevaluatedColor() else colors.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
     }
 }
 
@@ -606,7 +621,7 @@ internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: Unrefer
         rows += when {
             unexistingPlan == null -> Row("not checked", "remove_unexisting_files", "stat the files the retained snapshots need under Missing Files to plan it", "table → Missing Files", null)
             unexistingPlan.rows.isEmpty() -> Row("nothing to do", "remove_unexisting_files", "every file the retained snapshots need is there", "table → Missing Files", null)
-            unexistingPlan.commits -> Row("would remove ${formatCounted(unexistingPlan.removed.size, "entry")}", "remove_unexisting_files", "an APPEND with a DELETE entry per missing data file of snapshot ${unexistingPlan.snapshotId}, deltaRecordCount ${unexistingPlan.deltaRecordCount}" + (if (unexistingPlan.notReached.size + unexistingPlan.unread.size > 0) "; ${unexistingPlan.notReached.size + unexistingPlan.unread.size} missing it does not list" else ""), "table → Missing Files", verdictSkippedColor())
+            unexistingPlan.commits -> Row("would remove ${formatCounted(unexistingPlan.removed.size, "entry", "entries")}", "remove_unexisting_files", "an APPEND with a DELETE entry per missing data file of snapshot ${unexistingPlan.snapshotId}, deltaRecordCount ${unexistingPlan.deltaRecordCount}" + (if (unexistingPlan.notReached.size + unexistingPlan.unread.size > 0) "; ${unexistingPlan.notReached.size + unexistingPlan.unread.size} missing it does not list" else ""), "table → Missing Files", verdictSkippedColor())
             else -> Row("nothing on a call", "remove_unexisting_files", "${formatCounted(unexistingPlan.rows.size, "missing file")}, none a data file the latest snapshot's batch scan opens", "table → Missing Files", null)
         }
     }
@@ -658,16 +673,21 @@ internal fun ExpiryFilesSection(metadata: TableMetadata, graph: GraphModel, nowM
     // folds older snapshots and manifests out of the graph, which are the ones an expiry removes.
     val input = graph.tableNode()?.expiryFiles?.value?.copy(metadata = metadata)
     val plan = input?.planExpiryFiles(removed)
+    // The core API's cleanup differs from the procedure's diff only with one ref: what it leaves is
+    // the answer to "why did my Flink or Java expiry leave files behind".
+    val apiCleanup = input?.coreApiCleanup(removed)
+    val leftByApi = if (plan != null && input != null && apiCleanup == ExpiryCleanup.INCREMENTAL) plan.paths - input.planExpiryFiles(removed, apiCleanup).paths else emptySet()
     CountedSection("Expiry Files — ${plan?.describe ?: "not readable"}", plan?.files?.size ?: 0, "files") {
         Text(
-            "What the older_than = now expiry above would delete, the way RemoveSnapshots cleans " +
-                "up: every expired snapshot's manifest list; every manifest no retained snapshot lists; " +
-                "and data files by the strategy the ref count picks. With one ref (incremental) a file " +
-                "goes when an expired commit on the live line removed it, or when an expired commit off " +
-                "the live line — rolled back, or on no ref — added it. With more refs (reachable) a file " +
-                "goes only when it is live in a manifest that goes and live in none that stays, so a " +
-                "removal frees nothing while another ref can still read the file. Statistics files go " +
-                "with their snapshot either way.",
+            "What the older_than = now expiry above would delete, the way the Spark procedure deletes " +
+                "it: every file an expired snapshot reaches — its manifest list, its manifests, the data " +
+                "and delete files live in them, its statistics — except what a retained snapshot still " +
+                "reaches the same way (ExpireSnapshotsSparkAction's diff, whatever the ref count). The " +
+                "core API — table.expireSnapshots().commit() from Java, Flink or Trino — cleans up by the " +
+                "ref count instead: with more than one ref the same reachable rule; with exactly one, " +
+                "RemoveSnapshots' incremental rule, which frees a file only when an expired commit on the " +
+                "live line removed it or an expired commit off the live line added it — and so leaves a " +
+                "file an expired commit added and a retained one removed on disk, named by nothing.",
             fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
@@ -678,9 +698,14 @@ internal fun ExpiryFilesSection(metadata: TableMetadata, graph: GraphModel, nowM
             else -> {
                 Text(
                     "Cleanup: ${plan.cleanup.label}. ${formatBytes(plan.knownBytes)} the metadata can account for" +
-                        " — a manifest list records no size.",
+                        " — a manifest list records no size." +
+                        when {
+                            apiCleanup != ExpiryCleanup.INCREMENTAL -> ""
+                            leftByApi.isEmpty() -> " The core API's incremental cleanup (one ref) frees the same files here."
+                            else -> " The core API's incremental cleanup (one ref) would leave ${leftByApi.size} of these on disk, named by nothing: ${leftByApi.joinToString(", ") { it.substringAfterLast('/') }}."
+                        },
                     fontSize = TypeScale.small,
-                    color = colors.onSurfaceVariant,
+                    color = if (leftByApi.isEmpty()) colors.onSurfaceVariant else verdictUnevaluatedColor(),
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
                 if (plan.files.isEmpty()) Text("Every file of the expired snapshots is still read by a retained one.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
@@ -1079,6 +1104,95 @@ internal fun PaimonRollbackSection(node: GraphNode.PaimonSnapshotNode, graph: Gr
  * expiry frees the reverted commits' files. Drawn on every retained, unexpired snapshot; the
  * current one says a rollback to it does nothing.
  */
+/**
+ * What `expire_snapshots(snapshot_ids => array(<id>))` does with this snapshot — `expireSnapshotId`
+ * in `RemoveSnapshots` at 1.8.1: refused when a surviving ref names it (`Cannot expire %s. Still
+ * referenced by refs: %s`), else removed whatever its age or place on a branch, its children left
+ * naming a parent the table no longer holds; the age rules run beside it, held at the epoch here so
+ * the line is this snapshot's alone. What the removal frees is the same cleanup the `Expiry Files`
+ * section plans, over this one id.
+ */
+@Composable
+internal fun ExpireByIdSection(node: GraphNode.SnapshotNode, graph: GraphModel, nowMs: Long) {
+    val colors = MaterialTheme.colorScheme
+    if (node.expired) return
+    val meta = graph.newestMetadata() ?: return
+    val id = node.data.snapshotId ?: return
+    val plan = meta.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = 0L, snapshotIds = setOf(id)))
+    val refusal = plan.refusal
+    val verdict = plan.snapshots.firstOrNull { it.snapshotId == id }
+    val files = if (refusal == null) graph.tableNode()?.expiryFiles?.value?.copy(metadata = meta)?.planExpiryFiles(setOf(id)) else null
+    val children = meta.snapshots.filter { it.parentSnapshotId == id }.mapNotNull { it.snapshotId }
+    val title = "Expire By Id" + when {
+        refusal != null -> " — refused"
+        files != null -> " — ${files.describe} would go"
+        else -> ""
+    }
+    Section(title) {
+        Text(
+            "What expire_snapshots(snapshot_ids => array($id)) does, the way RemoveSnapshots.expireSnapshotId does " +
+                "it: the id is refused while a surviving ref names it, and otherwise removed whatever its age or its " +
+                "place on a branch — within min-snapshots-to-keep or not — with the age rules running beside it. The " +
+                "commits after it keep a parent-snapshot-id the table no longer holds, so the line reads as starting " +
+                "at the child. The files freed are the same cleanup Expiry Files plans, over this one id.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        if (refusal != null) {
+            Text("REFUSED — $refusal", fontSize = TypeScale.small, fontWeight = FontWeight.Bold, color = colors.error)
+            return@Section
+        }
+        val kept = verdict?.keptBy.orEmpty()
+        Text(
+            "REMOVES it" + (if (kept.isNotEmpty()) " — a bare call would keep it, ${verdict!!.describeKeptBy()}" else " — on no ref, which a bare call under older_than = now removes too") +
+                (if (children.isNotEmpty()) "; ${formatCounted(children.size, "child")} (${children.joinToString(", ")}) left naming it as parent" else "; no child names it") + ".",
+            fontSize = TypeScale.small,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        // The snapshot log is cut before the removed entry: what a TIMESTAMP AS OF can still reach.
+        if (refusal == null && plan.logEntriesDropped > 0) {
+            val earliestBefore = plan.snapshotLog.firstOrNull()?.timestampMs
+            val earliestAfter = plan.logAfter.firstOrNull()?.timestampMs
+            val retainedBefore = plan.logEntriesDropped - 1
+            Text(
+                "Cuts the snapshot log: ${formatCounted(plan.logEntriesDropped, "entry", "entries")} of ${plan.snapshotLog.size} ${if (plan.snapshotLog.size == 1) "goes" else "go"} — its own" +
+                    (if (retainedBefore > 0) " and the ${formatCounted(retainedBefore, "entry", "entries")} before it, which ${if (retainedBefore == 1) "names a retained snapshot" else "name retained snapshots"}" else "") +
+                    " (TableMetadata.updateSnapshotLog: a gap would read the child as current over the removed commit's time). " +
+                    when {
+                        earliestAfter == null -> "No TIMESTAMP AS OF resolves afterwards."
+                        retainedBefore > 0 -> "The earliest TIMESTAMP AS OF that resolves moves from ${formatAppTimestamp(earliestBefore)} to ${formatAppTimestamp(earliestAfter)}; VERSION AS OF still reads the retained snapshots before it."
+                        else -> "The earliest TIMESTAMP AS OF that resolves moves from ${formatAppTimestamp(earliestBefore)} to ${formatAppTimestamp(earliestAfter)}."
+                    },
+                fontSize = TypeScale.small,
+                color = if (retainedBefore > 0) verdictUnevaluatedColor() else colors.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
+        when {
+            files == null -> Text("What it frees is not readable here: the manifest lists could not be read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            files.files.isEmpty() -> Text("Frees nothing but the snapshot's entry: its manifest list and manifests are still listed by a retained snapshot, and no data file was live in it alone.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            else -> {
+                Text(
+                    "Frees ${files.describe} by the reachable diff — the procedure's, and the core API's too once an id is specified — ${formatBytes(files.knownBytes)} the metadata accounts for" +
+                        (if (files.knownBytes == 0L) " (a manifest list records no size)" else "") + ":",
+                    fontSize = TypeScale.small,
+                    color = verdictUnevaluatedColor(),
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                WideTable(
+                    headers = listOf("Kind", "File", "Bytes", "Why"),
+                    columnWidths = listOf(120.dp, 520.dp, 100.dp, 420.dp),
+                    rows = files.files.take(MAX_EXPIRY_FILE_ROWS).map { f -> listOf(f.kind.label, f.path, f.sizeBytes?.let(::formatBytes) ?: "—", f.reason.label) },
+                    leadCellColors = files.files.take(MAX_EXPIRY_FILE_ROWS).map { if (it.kind == ExpiryFileKind.DATA_FILE || it.kind == ExpiryFileKind.DELETE_FILE) colors.error else null },
+                )
+                if (files.files.size > MAX_EXPIRY_FILE_ROWS) Text("${files.files.size - MAX_EXPIRY_FILE_ROWS} more not listed.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            }
+        }
+    }
+}
+
 @Composable
 internal fun IcebergRollbackSection(node: GraphNode.SnapshotNode, graph: GraphModel, nowMs: Long) {
     val colors = MaterialTheme.colorScheme

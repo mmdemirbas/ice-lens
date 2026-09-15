@@ -69,13 +69,16 @@ class IcebergRollbackFixtureTest {
         val files = FixtureCatalog.icebergModel("sweep").expiryFileInput().copy(metadata = plan.after!!).planExpiryFiles(expiry.removed.toSet())
         assertEquals(ExpiryCleanup.REACHABLE, files.cleanup)
         assertEquals(2, files.files.count { it.kind == ExpiryFileKind.DATA_FILE })
-        // Without the tag — the table as it stands now — the same rollback's expiry is incremental,
+        // Without the tag — the table as it stands now — the core API's expiry is incremental,
         // and reverts the left-behind commit's file alone: the removed file's DELETED entry sits in
-        // the retained third commit, which that rule leaves alone.
+        // the retained third commit, which that rule leaves alone. The Spark procedure's diff
+        // would free both, as above.
         val bare = plan.after!!.copy(refs = plan.after!!.refs.filterKeys { it == "main" })
-        val bareFiles = FixtureCatalog.icebergModel("sweep").expiryFileInput().copy(metadata = bare)
-            .planExpiryFiles(bare.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs)).removed.toSet())
+        val bareInput = FixtureCatalog.icebergModel("sweep").expiryFileInput().copy(metadata = bare)
+        val bareRemoved = bare.planExpiry(ExpiryOptions(nowMs = nowMs, olderThanMs = nowMs)).removed.toSet()
+        val bareFiles = bareInput.planExpiryFiles(bareRemoved, bareInput.coreApiCleanup(bareRemoved))
         assertEquals(ExpiryCleanup.INCREMENTAL, bareFiles.cleanup)
+        assertEquals(2, bareInput.planExpiryFiles(bareRemoved).files.count { it.kind == ExpiryFileKind.DATA_FILE }, "the procedure's diff frees both")
         assertEquals(1, bareFiles.files.count { it.kind == ExpiryFileKind.DATA_FILE && it.reason == ExpiryFileReason.REVERTED })
     }
 

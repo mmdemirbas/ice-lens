@@ -1,13 +1,23 @@
 package model
 
 /**
- * Which files an `expire_snapshots` would delete along with the snapshots [planExpiry] removes —
- * decided the way `RemoveSnapshots.cleanExpiredSnapshots` decides it at Iceberg 1.8.1, and
- * checked against two expiries run on tables copied on disk beforehand (`sweep`/`swept`,
- * `sweepb`/`sweptb`, from `docs/fixtures/cleanup.sql`).
+ * Which files an `expire_snapshots` would delete along with the snapshots [planExpiry] removes,
+ * at Iceberg 1.8.1, checked against the expiries run on tables copied on disk beforehand
+ * (`sweep`/`swept`, `sweepb`/`sweptb` from `docs/fixtures/cleanup.sql`; `mor`, `rolled` and
+ * `branched` by id from `docs/fixtures/expire-by-id.sql`).
  *
- * The strategy is chosen by the **ref count after the expiry**: exactly one ref runs
- * `IncrementalFileCleanup`, more run `ReachableFileCleanup`, and the two free different things.
+ * **Two engines, two rules.** The Spark procedure (`ExpireSnapshotsSparkAction.expireFiles`)
+ * commits the expiry with `cleanExpiredFiles(false)` and deletes **a diff**: every content file
+ * live in a manifest of an expired snapshot, every manifest, list and statistics file of one,
+ * *except* what the retained snapshots still reach the same way — which is [ExpiryCleanup.REACHABLE]
+ * whatever the ref count. The core API — `table.expireSnapshots().commit()` from Java, Flink or
+ * Trino — runs `RemoveSnapshots.cleanExpiredSnapshots`, which picks by the **ref count after the
+ * expiry**: exactly one ref runs `IncrementalFileCleanup`, more run `ReachableFileCleanup`. The
+ * two free different things, and `mor` is where they part: expiring the overwrite in the middle
+ * of main by id, the procedure freed the file the compaction after it had removed, which the
+ * incremental rule leaves on disk — its `ADDED` manifest is an ancestor's and its `DELETED` entry
+ * a retained commit's. [planExpiryFiles] plans the procedure's rule unless told otherwise;
+ * [coreApiCleanup] is the API's pick.
  *
  * **Incremental** (one ref, so the ancestry of its tip is the whole live history): every expired
  * snapshot's manifest list goes; a manifest goes when no retained snapshot lists it; a **data file
@@ -28,8 +38,8 @@ package model
  * treated alike throughout — both strategies read the whole manifest list.
  */
 enum class ExpiryCleanup(val label: String) {
-    INCREMENTAL("incremental — one ref"),
-    REACHABLE("reachable — more than one ref"),
+    INCREMENTAL("incremental — the core API with one ref"),
+    REACHABLE("reachable — the Spark procedure's diff, or the core API with more than one ref"),
     NONE("none — nothing expires"),
 }
 
@@ -97,19 +107,28 @@ fun UnifiedTableModel.expiryFileInput(): ExpiryFileInput {
 }
 
 /**
- * Plans the files for the snapshots in [removed] — the ids [planExpiry] would drop, or any set
- * — from [input], the table as it stands.
+ * The cleanup `RemoveSnapshots.cleanExpiredSnapshots` runs for the core API (1.8.1): reachable
+ * whenever a snapshot id was specified (`expireSnapshotId`, [byId]), else incremental with
+ * exactly one ref left after [removed] go and reachable with more.
  */
-fun ExpiryFileInput.planExpiryFiles(removed: Set<Long>): ExpiryFilePlan {
+fun ExpiryFileInput.coreApiCleanup(removed: Set<Long>, byId: Boolean = false): ExpiryCleanup {
+    if (byId) return ExpiryCleanup.REACHABLE
+    // The refs the expiry leaves: one on a removed snapshot goes with it.
+    val refsAfter = metadata.refs.filterValues { it.snapshotId != null && it.snapshotId !in removed }
+    return if (refsAfter.size == 1) ExpiryCleanup.INCREMENTAL else ExpiryCleanup.REACHABLE
+}
+
+/**
+ * Plans the files for the snapshots in [removed] — the ids [planExpiry] would drop, or any set
+ * — from [input], the table as it stands, under [cleanup]: the Spark procedure's diff
+ * ([ExpiryCleanup.REACHABLE]) by default, or the core API's pick from [coreApiCleanup].
+ */
+fun ExpiryFileInput.planExpiryFiles(removed: Set<Long>, cleanup: ExpiryCleanup = ExpiryCleanup.REACHABLE): ExpiryFilePlan {
     val snapshots = metadata.snapshots.filter { it.snapshotId != null }
     val expired = snapshots.filter { it.snapshotId in removed }
     val retained = snapshots.filter { it.snapshotId !in removed }
     if (expired.isEmpty()) return ExpiryFilePlan(ExpiryCleanup.NONE, removed, emptyList())
     val retainedIds = retained.mapNotNull { it.snapshotId }.toSet()
-
-    // The refs the expiry leaves: one on a removed snapshot goes with it.
-    val refsAfter = metadata.refs.filterValues { it.snapshotId != null && it.snapshotId !in removed }
-    val cleanup = if (refsAfter.size == 1) ExpiryCleanup.INCREMENTAL else ExpiryCleanup.REACHABLE
 
     val files = mutableListOf<ExpiryFile>()
     val seen = mutableSetOf<String>()

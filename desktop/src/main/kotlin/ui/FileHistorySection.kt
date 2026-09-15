@@ -131,7 +131,7 @@ private fun expiryLineFor(h: FileHistory, graph: GraphModel, nowMs: Long): Strin
         freed = h.fileKey in files.paths
         val retained = plan.snapshots.filter { it.retained }.associateBy { it.snapshotId }
         kept = h.liveIn.firstNotNullOfOrNull { e -> retained[e.snapshotId]?.let { "snapshot ${e.snapshotId} lists it live and is kept — ${it.describeKeptBy()}" } }
-            ?: "the ${files.cleanup.label} cleanup still reaches it"
+            ?: "a retained snapshot still reaches it (${files.cleanup.label})"
     } else {
         val plan = runCatching { paimonExpiry.planExpiry(PaimonExpiryOptions(nowMs = nowMs, retainMin = 1, olderThanMs = nowMs)) }.getOrNull() ?: return null
         val files = table.paimonExpiryFiles.value?.planExpiryFiles(plan.removed.map { it.snapshotId }.toSet()) ?: return null

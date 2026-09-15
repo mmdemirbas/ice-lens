@@ -88,7 +88,7 @@ core/src/main/kotlin/
 │   ├── PaimonRowLookup.kt     # What reading a Paimon snapshot takes: the live files by bucket, the index manifest's vectors, the merge rule — for the row lookup and the merged count
 │   ├── PaimonMergeRule.kt     # What a read does with a key's records under each merge engine, and which level-0 files it never reads
 │   ├── ScanFilterSql.kt       # A ScanFilter as DuckDB's WHERE clause, every literal bound and cast to its column's type
-│   ├── ExpiryFilePlan.kt      # Which files an expiry frees — RemoveSnapshots' incremental and reachable cleanups
+│   ├── ExpiryFilePlan.kt      # Which files an expiry frees — the Spark procedure's reachable diff, and the core API's incremental cleanup at one ref
 │   ├── PaimonExpiryFilePlan.kt # Which files a Paimon expiry frees — ExpireSnapshotsImpl's four passes, and what a tag holds
 │   ├── PaimonPurgePlan.kt     # What sys.purge_files takes and keeps — FileStoreTable.purgeFiles's six steps, folded to one file list
 │   ├── PaimonFullCompaction.kt # What sys.compact does to a primary-key bucket — pickFullCompaction and MergeTreeCompactTask's sections, upgrades and rewrites
@@ -1531,33 +1531,61 @@ intellij/src/main/kotlin/plugin/
   defaults and `older_than = now`, because the reader's question is "what protects this snapshot"
   and only the age rule moves between them; ages are measured from `LocalExpiryClock`, which the
   render tests pin to the table's last write so a capture does not change with the calendar
-- **Which files an expiry frees is a second plan over the first, and the strategy is chosen by
-  the ref count.** `model/ExpiryFilePlan.kt` takes the snapshot ids `ExpiryPlan` would drop and
+- **Which files an expiry frees is a second plan over the first, and there are two engines with
+  two rules.** `model/ExpiryFilePlan.kt` takes the snapshot ids `ExpiryPlan` would drop and
   reads the manifest lists and manifest entries of the table *as it stands* — which is why it is
   planned before the expiry and cannot be checked on `expired` or `retained`, whose removed
-  manifests are gone. `RemoveSnapshots.cleanExpiredSnapshots` picks `IncrementalFileCleanup`
-  when exactly one ref is left and `ReachableFileCleanup` otherwise, and they free different
-  things: both delete every expired snapshot's manifest list and every manifest no retained
-  snapshot lists, but **incremental** frees a data file when an expired commit on the live line
-  recorded it `DELETED` (the entry's own snapshot gone too) or when an expired commit *off* the
-  live line — rolled back, or on no ref — recorded it `ADDED`, while **reachable** frees a file
-  only when it is live in a manifest that goes and live in none that stays, so a `DELETED` entry
-  frees nothing while another ref can read the file. A cherry-picked commit, or one picked from
-  the live line, is left entirely alone. The oracle is `docs/fixtures/cleanup.sql`, which copies
-  each table on disk *before* running `expire_snapshots` on the original in place — same file
-  names in both — so `ExpiryFilePlanFixtureTest` requires the plan from `sweep` to name exactly
-  the files missing from `swept` (four lists, three manifests, a file removed on the live line and
-  a file added by the rolled-back commit) and the plan from `sweepb` to name what `sweptb` lost
-  (three lists and the delete's rewritten manifest, no data file — the branch still reads it).
-  The sweep every fixture is held to is the one wrong the planner must not do: no planned data or
-  delete file is live in a retained snapshot, which is where the ancestor rule earns its keep on
-  the two tables with a `rewrite_manifests`. The metadata panel's `Expiry Files` section plans
-  the `older_than = now` column's removals from `TableNode.expiryFiles`, a `DeferredRead` the
-  builder fills from the **model** — never from the drawn nodes, because aggregation folds the
-  snapshots and manifests past the page size out of the graph, and those are exactly the older
-  lists an expiry removes; the first version read the graph and was complete only on tables
-  small enough to draw whole. Data files first and in the error colour, `MAX_EXPIRY_FILE_ROWS`
-  (200) listed
+  manifests are gone. **The Spark procedure's cleanup is a reachability diff whatever the ref
+  count**: `ExpireSnapshotsSparkAction.expireFiles` commits with `cleanExpiredFiles(false)` and
+  deletes `fileDS(original, expiredIds) EXCEPT fileDS(updated)` — every manifest list, manifest,
+  statistics file and *live* content file (`BaseSparkAction.ReadManifest` iterates the live
+  entries) the expired snapshots reach that no retained snapshot reaches (`ExpiryCleanup.REACHABLE`,
+  the default). **The core API** — `table.expireSnapshots().commit()` from Java, Flink or Trino,
+  `RemoveSnapshots.cleanExpiredSnapshots` — picks that same rule with more than one ref, or
+  whenever a snapshot id was specified, and `IncrementalFileCleanup` for an age-based call with
+  exactly one ref (`coreApiCleanup`), which frees a data file only when
+  an expired commit on the live line recorded it `DELETED` (the entry's own snapshot gone too) or
+  an expired commit *off* the live line — rolled back, or on no ref — recorded it `ADDED`. The
+  first version of this bullet said the ref count picked the rule for both; `mor` is where the
+  two separate, and it was run to find out: `expire_snapshots(snapshot_ids => array(<the
+  overwrite>))` freed `00000-7-a310efbe…-00001.parquet`, added by an ancestor's manifest and
+  removed by the retained compaction's, which neither incremental branch reaches
+  (`docs/fixtures/expire-by-id.sql`). Both sections say which rule they show and what the other
+  would leave on disk, named by nothing. A cherry-picked commit, or one picked from the live line,
+  is left entirely alone. The oracle is `docs/fixtures/cleanup.sql`, which copies each table on
+  disk *before* running `expire_snapshots` on the original in place — same file names in both —
+  so `ExpiryFilePlanFixtureTest` requires the plan from `sweep` to name exactly the files missing
+  from `swept` (four lists, three manifests, a file removed on the live line and a file added by
+  the rolled-back commit — the two rules agree there, and the test says so) and the plan from
+  `sweepb` to name what `sweptb` lost (three lists and the delete's rewritten manifest, no data
+  file — the branch still reads it). The sweep every fixture is held to is the one wrong the
+  planner must not do: no planned data or delete file is live in a retained snapshot, which is
+  where the ancestor rule earns its keep on the two tables with a `rewrite_manifests`. The
+  metadata panel's `Expiry Files` section plans the `older_than = now` column's removals from
+  `TableNode.expiryFiles`, a `DeferredRead` the builder fills from the **model** — never from the
+  drawn nodes, because aggregation folds the snapshots and manifests past the page size out of
+  the graph, and those are exactly the older lists an expiry removes; the first version read the
+  graph and was complete only on tables small enough to draw whole. Data files first and in the
+  error colour, `MAX_EXPIRY_FILE_ROWS` (200) listed
+- **Expiring one snapshot by id is refused by the refs and cuts the history before it.**
+  `ExpiryOptions.snapshotIds` follows `RemoveSnapshots.expireSnapshotId` (1.8.1): a listed id a
+  *surviving* ref names — after the ref-age rule — refuses the whole call with `Cannot expire
+  <id>. Still referenced by refs: [...]` (`ExpiryPlan.refusal`; the ref order printed is a
+  `HashMap`'s, so the test compares a set) and nothing is removed; otherwise the id goes whatever
+  its age or its place under a branch's `min-snapshots-to-keep`, the age rules running beside it,
+  and its children keep a `parent-snapshot-id` the table no longer holds. **The snapshot log is
+  cut, not gapped**: `TableMetadata.Builder.updateSnapshotLog` drops the removed entry *and every
+  entry before it*, since `[(t1, s1), (t3, s3)]` would read s3 as current between t2 and t3 —
+  `List<SnapshotLogEntry>.afterRemoving`, `ExpiryPlan.logAfter` — so a bare expiry, which mostly
+  removes the oldest snapshots, loses little more, while an id expired from the middle of the line
+  moves the earliest `TIMESTAMP AS OF` that resolves up to its child's commit, with `VERSION AS
+  OF` still reading the retained snapshots before it (`mor`'s `.history` afterwards: two entries
+  of six). The four expiries the corpus ran hold the rule, and `sweepb` is the bare call that
+  shows it: the branch keeps a snapshot whose entry sits before three removed ones, and `sweptb`'s
+  log is its tip alone. `ExpireByIdFixtureTest` holds `branched`'s three refusals and its first
+  commit's list-only removal, `mor`'s overwrite and `rolled`'s abandoned commit to the run, and
+  every snapshot of every fixture to refused-iff-named. The Iceberg snapshot panel's `Expire By Id`
+  section, under `Cherry-Pick`, says the verdict, the children, the log cut and the files
 - **"Is this table consistent" is one click, and it runs the panels' own checks.**
   `model/Integrity.kt` runs `metadataTallies` on the newest metadata, `manifestTallies`, `partitionSummaryTallies` and `partitionBoundsChecks` on every distinct manifest, each commit's
   `snapshotChangeOf(...).tallies` and `snapshotTotals` on its closure (Iceberg), and
@@ -2841,7 +2869,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,412 tests across 194 files (1,116 in :core, 284 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,418 tests across 195 files (1,121 in :core, 285 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
