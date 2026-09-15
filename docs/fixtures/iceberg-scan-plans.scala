@@ -14,10 +14,25 @@
 //   docker run --rm --entrypoint bash \
 //     -v "$WH:/wh" -v "$PWD/docs/fixtures/iceberg-scan-plans.scala:/tmp/plans.scala:ro" \
 //     tabulario/spark-iceberg:latest \
-//     -c "/opt/spark/bin/spark-shell --master 'local[1]' --conf spark.ui.enabled=false -I /tmp/plans.scala <<< 'System.exit(0)'"
+//     -c "/opt/spark/bin/spark-shell --master 'local[1]' --conf spark.ui.enabled=false \
+//           --conf spark.sql.catalog.lens=org.apache.iceberg.spark.SparkCatalog \
+//           --conf spark.sql.catalog.lens.type=hadoop --conf spark.sql.catalog.lens.warehouse=/wh --conf spark.sql.defaultCatalog=lens \
+//           -I /tmp/plans.scala <<< 'System.exit(0)'"
+//
+// The `lens` catalog is for the third half's DataFrame read alone — and it has to be the default
+// catalog too, since `spark.table` initialises the current catalog first and the image's is a
+// REST catalog with no server behind it; the plans go through HadoopTables.
 //
 // Observed (2026-09-14), one line per file the plan opens; the file names per case are carried
 // by IcebergScanPlanTest.
+//
+// The third half prints, for every table, the tasks a read takes (`planTasks()` —
+// `BaseContentScanTask.split` by `split_offsets` or by the target size, then
+// `TableScanUtil.planTasks`'s bin packing with the open-file cost) under the table's own
+// `read.split.*`, under an 8 MiB target, and under a 32 KiB target with no open-file cost; then
+// the partition count a Spark DataFrame read of the table plans at this session's parallelism,
+// which is `read.split.adaptive-size.enabled` shrinking the target. ScanTaskPlanTest holds
+// `planScanTasks` to `src/test/resources/iceberg-scan-plans/tasks.txt` (run 2026-09-15).
 //
 // The second half prints, for every table, which delete files the unfiltered plan attaches to
 // each data file of the current snapshot (`FileScanTask.deletes()` — DeleteFileIndex's pairing
@@ -125,3 +140,28 @@ def deletes(name: String): Unit = {
   } catch { case e: Throwable => println(s"! ${e.getClass.getSimpleName}: ${e.getMessage}") }
 }
 new java.io.File("/wh/default").listFiles().filter(_.isDirectory).map(_.getName).sorted.foreach(deletes)
+
+// Every table's current snapshot: the tasks under three option sets — one line per task, its
+// splits as `<file>:<start>+<length>` in packing order — printed twice under the defaults, since
+// a plan over several manifests returns files in the worker pool's order and the packing follows
+// it; then Spark's own partition count for a DataFrame read.
+def tasks(name: String): Unit = {
+  try {
+    val table = tables.load(s"/wh/default/$name")
+    if (table.currentSnapshot() == null) { println(s"-- $name: tasks (no snapshot)"); return }
+    def run(label: String, scan: org.apache.iceberg.TableScan): Unit = {
+      println(s"-- $name: tasks $label")
+      val groups = scan.planTasks().asScala.toList
+      for (g <- groups) println(g.files().asScala.map(t => s"${t.file().path().toString.split("/").last}:${t.start()}+${t.length()}").mkString(","))
+      println(s"-- $name: tasks $label = ${groups.size} tasks")
+    }
+    run("default", table.newScan())
+    run("default again", table.newScan())
+    run("split=8MiB", table.newScan().option("read.split.target-size", (8L * 1024 * 1024).toString))
+    run("split=32KiB cost=0", table.newScan().option("read.split.target-size", (32L * 1024).toString).option("read.split.open-file-cost", "0"))
+    val df = spark.table(s"lens.default.$name")
+    val parallelism = math.max(spark.sparkContext.defaultParallelism, spark.sessionState.conf.numShufflePartitions)
+    println(s"-- $name: spark partitions = ${df.rdd.getNumPartitions} (parallelism $parallelism)")
+  } catch { case e: Throwable => println(s"! ${e.getClass.getSimpleName}: ${e.getMessage}") }
+}
+new java.io.File("/wh/default").listFiles().filter(_.isDirectory).map(_.getName).sorted.foreach(tasks)

@@ -30,6 +30,10 @@ data class LiveFile(
     val specId: Int? = null,
     /** The entry's data sequence number, inherited from the manifest where it recorded none — [effectiveSequenceNumber]; null for Paimon. */
     val sequenceNumber: Long? = null,
+    /** The file's `file_format` as recorded; what [planScanTasks] decides splittability by. Null for Paimon. */
+    val format: String? = null,
+    /** The file's `split_offsets` as recorded — a split per offset when well defined ([planScanTasks]). Null for Paimon. */
+    val splitOffsets: List<Long>? = null,
     /**
      * What the ledger told the file by — the path, with the referenced data file on a deletion
      * vector, whose Puffin container holds a blob per data file (`UnifiedDataFile.ledgerFileKey`).
@@ -198,6 +202,8 @@ fun liveFilesOf(snapshot: UnifiedSnapshot): List<LiveFile> {
                     partition = unified.partition?.path,
                     specId = manifest.metadata.partitionSpecId,
                     sequenceNumber = effectiveSequenceNumber(unified.metadata, manifest.metadata.sequenceNumber),
+                    format = unified.metadata.dataFile?.fileFormat,
+                    splitOffsets = unified.metadata.dataFile?.splitOffsets,
                 )
             }
     }

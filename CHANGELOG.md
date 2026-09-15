@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The tasks a read takes are planned**, the way `TableScanUtil.planTasks` plans them at 1.8.1
+  (`model/ScanTaskPlan.kt`): a Parquet, ORC or Avro file with well-defined `split_offsets` is one
+  split per row group whatever the target size, any other file is cut into `read.split.target-size`
+  slices, each split weighs its bytes plus its delete files' content bytes or `(1 + deletes) ×
+  read.split.open-file-cost`, whichever is more, and the splits are bin-packed with
+  `read.split.planning-lookback` bins open, the heaviest closed first. Spark's adaptive split size
+  (`read.split.adaptive-size.enabled`) is planned beside it. Held to Iceberg's own task counts on
+  every checked-in table under three option sets (`iceberg-scan-plans/tasks.txt`), to the packing
+  where the table has one data manifest, and to Spark's partition count at parallelism 200.
+  `rgs`'s thirteen row groups are fourteen splits and one task; on a table with several manifests
+  the packing order is the worker pool's, so the count can move by a task between runs.
 - **The `range-bitmap` file index is read**, release-1.3.0's fourth and the one that orders any
   type — a dictionary of the column's distinct values with a bit-sliced index over their codes,
   so `<`, `<=`, `>`, `>=`, `BETWEEN`, `=`, `<>` and the null tests are answered per row on a

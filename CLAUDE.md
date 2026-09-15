@@ -67,6 +67,7 @@ core/src/main/kotlin/
 │   ├── PartitionDecoder.kt    # partition-spec parsing, transform result types, DecodedPartition
 │   ├── BucketTransform.kt     # Iceberg's bucket[N], via the same Guava murmur3 the writer uses
 │   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
+│   ├── ScanTaskPlan.kt        # How many tasks a read takes — TableScanUtil.planTasks's row-group splits, the open-file cost and the scan's bin packing, and Spark's adaptive split size
 │   ├── SchemaEvolution.kt     # Each schema against the one before it, by field id — added, dropped, renamed, moved, promoted — with the first snapshot written under it, both formats
 │   ├── ManifestMergePlan.kt   # What the next commit does to the manifest list — ManifestMergeManager's bins and verdicts
 │   ├── MaintenanceInput.kt    # The newest metadata and the current snapshot's node, carried on the table node for the planners — never read off the drawn graph
@@ -2914,7 +2915,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,437 tests across 198 files (1,140 in :core, 285 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,443 tests across 199 files (1,146 in :core, 285 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
