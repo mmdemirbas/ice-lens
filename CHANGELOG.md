@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The Iceberg export section names each file with the export's verdict on it**: a table
+  under the rule sentences, one row per live file with its level and one per file the export
+  lists that is not live, the verdict leading — not exported against the rule, listed but not
+  live, not exported by the level rule, exported by the rebuild path, exported — coloured only
+  where it is not the ordinary case, and ordered with the disagreements first so a table past
+  the cap still lists every file that is wrong (`IcebergExportCheck.fileVerdicts`, the one
+  reading the check's four sets are filters of). On `pil` the two rows differ in level; the
+  per-file "live here, not in the export" lines it replaces could not say which level a file was at
 - **`pil`, the compacted Paimon table whose Iceberg export leaves a level-4 file out**
   (`docs/fixtures/paimon-pil.sql`): `pic` written until the writer's compactions leave a
   1,004-row file at level 5 and a four-row file at level 4, no deletion vectors; the export

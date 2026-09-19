@@ -163,10 +163,10 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   listed under the `level > 0` rule the vectors bring — and exports the vectors as Iceberg
   v3 vectors; `pil` is the compacted table *without* exported vectors, where the level rule
   lists the level-5 file and leaves the level-4 one out — Iceberg's own read of its export
-  prints two rows short and two updates behind. What the table panel does not say is *which*
-  live file the rule left out: the check knows each file's level, and the Paimon file panel
-  could carry a row for it, but the check is a read of the export behind a click on the table
-  panel and a per-file row would need it run first.
+  prints two rows short and two updates behind — and the table panel's file table names each
+  file with the export's verdict on it. What the Paimon *file* panel does not say is whether
+  its own file is in the export: the check is a read of the export behind a click on the table
+  panel, and a per-file row would need it run first.
 
 - **ORC data files cannot be read.** DuckDB 1.4.4 has no ORC table function, core or community;
   every reader says so (`orcfmt`). An ORC reader would be a second engine on the classpath (the

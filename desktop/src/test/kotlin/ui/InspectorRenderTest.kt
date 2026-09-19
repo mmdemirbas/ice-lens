@@ -2679,13 +2679,15 @@ class InspectorRenderTest {
     }
 
     /**
-     * The Iceberg metadata a Paimon table writes beside its own, on `pic`.
+     * The Iceberg metadata a Paimon table writes beside its own, on `pic`, `pid` and `pil`.
      *
-     * The section has three things to say at once and this is the table that says all three: the
+     * The section has three things to say at once and `pic` is the table that says all three: the
      * export is current, one live file is in it, and the other is not — one by the rebuild path
      * that ignores the level rule, one by the level rule itself. A capture where the two lines
      * read as the same kind of absence would be the defect, so it is rendered rather than only
-     * asserted. Waits for the read the way the delete-file sections do.
+     * asserted; the file table under them names which file each sentence is about, and `pil` is
+     * where its two rows differ in level — the level-5 file exported, the level-4 one left out by
+     * the rule, amber against plain. Waits for the read the way the delete-file sections do.
      */
     @Test
     fun `a Paimon table's Iceberg export is drawn against the table it exports`() {
@@ -2695,7 +2697,7 @@ class InspectorRenderTest {
         )
         val picTable = pic.nodes.filterIsInstance<GraphNode.TableNode>().single()
         val settled = java.util.concurrent.atomic.AtomicBoolean(false)
-        renderUntil("paimon-iceberg-export", width = 1400, height = 660, ready = settled::get) {
+        renderUntil("paimon-iceberg-export", width = 1400, height = 840, ready = settled::get) {
             Column(Modifier.padding(16.dp)) {
                 IcebergExportSection(picTable, startRequested = true) { settled.set(true) }
             }
@@ -2709,9 +2711,23 @@ class InspectorRenderTest {
         )
         val pidTable = pid.nodes.filterIsInstance<GraphNode.TableNode>().single()
         val pidSettled = java.util.concurrent.atomic.AtomicBoolean(false)
-        renderUntil("paimon-iceberg-export-vectors", width = 1400, height = 560, ready = pidSettled::get) {
+        renderUntil("paimon-iceberg-export-vectors", width = 1400, height = 740, ready = pidSettled::get) {
             Column(Modifier.padding(16.dp)) {
                 IcebergExportSection(pidTable, startRequested = true) { pidSettled.set(true) }
+            }
+        }
+
+        // And `pil`, compacted without vectors: one row at level 5 exported, one at level 4 left
+        // out by the rule — the table's verdict column judged against two levels.
+        val pil = GraphLayoutService.layoutGraph(
+            PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/pil").absolutePath)),
+            showRows = false,
+        )
+        val pilTable = pil.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val pilSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-iceberg-export-compacted", width = 1400, height = 760, ready = pilSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                IcebergExportSection(pilTable, startRequested = true) { pilSettled.set(true) }
             }
         }
     }

@@ -225,6 +225,11 @@ class PaimonIcebergExportFixtureTest {
         assertEquals(emptySet(), check.exportedBelowLevel)
         assertEquals(emptySet(), check.missingFromIceberg + check.extraInIceberg, "each absence is explained by the level rule")
         assertTrue(check.describe.endsWith("an Iceberg reader sees 1 of the table's 2 live files"), check.describe)
+        assertEquals(
+            listOf(ExportedFileVerdict(below, 4, ExportFileFate.BELOW_LEVEL), ExportedFileVerdict(top, 5, ExportFileFate.EXPORTED)),
+            check.fileVerdicts,
+            "the section's rows: the rule's absence ahead of the ordinary case",
+        )
 
         // The export read as Iceberg reads it: 1,004 rows, k 1 and 2 at the values the level-5
         // file holds, 1005 and 1006 nowhere — the script's own Iceberg read printed the same.
@@ -264,6 +269,19 @@ class PaimonIcebergExportFixtureTest {
         assertEquals(setOf("b"), dv.belowExportedLevel)
         assertEquals(setOf("c"), dv.missingFromIceberg, "above level 0 and not exported")
         assertEquals(emptySet(), dv.exportedBelowLevel)
+        val stale = dv.copy(icebergFiles = setOf("a", "gone"))
+        assertEquals(setOf("gone"), stale.extraInIceberg)
+        assertEquals(
+            listOf(
+                ExportedFileVerdict("c", 1, ExportFileFate.MISSING),
+                ExportedFileVerdict("gone", null, ExportFileFate.NOT_LIVE),
+                ExportedFileVerdict("b", 0, ExportFileFate.BELOW_LEVEL),
+                ExportedFileVerdict("a", 3, ExportFileFate.EXPORTED),
+            ),
+            stale.fileVerdicts,
+            "disagreements lead, the rule's absence next, the ordinary case last",
+        )
+        assertEquals(listOf(true, true, false, false), stale.fileVerdicts.map { it.fate.disagrees })
         val behind = IcebergExportCheck("/t", true, "table-location", 1, 1, 2, icebergFiles = emptySet(), paimonFiles = emptyMap())
         assertTrue(!behind.current)
     }

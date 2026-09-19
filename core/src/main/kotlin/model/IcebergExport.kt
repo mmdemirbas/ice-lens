@@ -37,6 +37,27 @@ package model
  */
 data class ExportedVector(val container: String, val offset: Long, val length: Long, val cardinality: Long?)
 
+/**
+ * What the export does with one file — the verdict column of the section's table, ordered so
+ * the disagreements lead: a live file the rule says is exported and is not, a listed file the
+ * table no longer holds live, then the rule's own absences, then a file the rebuild path listed
+ * below the level, then the ordinary case.
+ */
+enum class ExportFileFate(val label: String) {
+    MISSING("NOT EXPORTED"),
+    NOT_LIVE("NOT LIVE HERE"),
+    BELOW_LEVEL("not exported — level rule"),
+    REBUILT("exported — rebuild path"),
+    EXPORTED("exported"),
+    ;
+
+    /** The two the rule does not explain. */
+    val disagrees: Boolean get() = this == MISSING || this == NOT_LIVE
+}
+
+/** One of the table's live files with its level, or a file the export lists that is not live (level null), and the export's verdict on it. */
+data class ExportedFileVerdict(val file: String, val level: Int?, val fate: ExportFileFate)
+
 data class IcebergExportCheck(
     /** The directory whose `metadata/` holds the export — the table's own, or the catalog-storage directory beside the warehouse. */
     val exportPath: String,
@@ -70,23 +91,44 @@ data class IcebergExportCheck(
 ) {
     val current: Boolean get() = currentIcebergSnapshotId != null && currentIcebergSnapshotId == latestPaimonSnapshotId
 
+    /**
+     * Every live file with the export's verdict on it, and every file the export lists that is
+     * not live — the one reading the four sets below are filters of, so a file cannot be in two.
+     * Disagreements first, then the rule's absences, then the rebuilt, then the ordinary; within
+     * a fate the highest level first, then by name.
+     */
+    val fileVerdicts: List<ExportedFileVerdict>
+        get() {
+            val live = paimonFiles.map { (name, level) ->
+                val listed = name in icebergFiles
+                val fate = when {
+                    listed && exportsLevel(level) -> ExportFileFate.EXPORTED
+                    listed -> ExportFileFate.REBUILT
+                    exportsLevel(level) -> ExportFileFate.MISSING
+                    else -> ExportFileFate.BELOW_LEVEL
+                }
+                ExportedFileVerdict(name, level, fate)
+            }
+            val extra = (icebergFiles - paimonFiles.keys).map { ExportedFileVerdict(it, null, ExportFileFate.NOT_LIVE) }
+            return (live + extra).sortedWith(compareBy<ExportedFileVerdict> { it.fate.ordinal }.thenByDescending { it.level ?: -1 }.thenBy { it.file })
+        }
+
+    private fun filesWith(fate: ExportFileFate): Set<String> = fileVerdicts.filter { it.fate == fate }.map { it.file }.toSet()
+
     /** Live files the export does not list because the level rule leaves them out — expected, and said. */
-    val belowExportedLevel: Set<String>
-        get() = paimonFiles.filter { (name, level) -> name !in icebergFiles && !exportsLevel(level) }.keys
+    val belowExportedLevel: Set<String> get() = filesWith(ExportFileFate.BELOW_LEVEL)
 
     /** Live files the export does not list and the rule does not explain — the disagreement. */
-    val missingFromIceberg: Set<String>
-        get() = paimonFiles.filter { (name, level) -> name !in icebergFiles && exportsLevel(level) }.keys
+    val missingFromIceberg: Set<String> get() = filesWith(ExportFileFate.MISSING)
 
     /**
      * Live files the export lists that the level rule would not have added — the rebuild path's,
      * and the reason a file below the exported level can be in the export all the same.
      */
-    val exportedBelowLevel: Set<String>
-        get() = paimonFiles.filter { (name, level) -> name in icebergFiles && !exportsLevel(level) }.keys
+    val exportedBelowLevel: Set<String> get() = filesWith(ExportFileFate.REBUILT)
 
     /** Files the export lists that the table no longer holds live. */
-    val extraInIceberg: Set<String> get() = icebergFiles - paimonFiles.keys
+    val extraInIceberg: Set<String> get() = filesWith(ExportFileFate.NOT_LIVE)
 
     /** Data files the table has a vector for and the export does not, where the vectors go out as Iceberg's. */
     val vectorsMissingFromIceberg: Set<String> get() = if (vectorsExported) paimonVectors.keys - icebergVectors.keys else emptySet()

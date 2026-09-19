@@ -37,6 +37,7 @@ import service.EqualityDeleteTargets
 import service.PositionalDeleteTally
 import service.SampleRowReader
 import model.DeletionVector
+import model.ExportFileFate
 import model.IcebergExportCheck
 import model.SchemaFieldRow
 import model.DeleteCandidate
@@ -2259,23 +2260,47 @@ internal fun IcebergExportSection(
                     )
                 }
                 check.readErrors.forEach { Text("Could not read ${fileNameFromPath(it.path)}: ${it.message}", fontSize = TypeScale.small, color = colors.error) }
-                check.missingFromIceberg.take(MAX_EXPORT_ROWS).forEach { Text("Live here, not in the export: $it", fontSize = TypeScale.small, color = colors.error) }
-                check.extraInIceberg.take(MAX_EXPORT_ROWS).forEach { Text("In the export, not live here: $it", fontSize = TypeScale.small, color = colors.error) }
                 check.vectorsMissingFromIceberg.take(MAX_EXPORT_ROWS).forEach { Text("Vector here, not in the export: $it", fontSize = TypeScale.small, color = colors.error) }
                 check.vectorsExtraInIceberg.take(MAX_EXPORT_ROWS).forEach { Text("Vector in the export, none here: $it", fontSize = TypeScale.small, color = colors.error) }
                 check.vectorsDisagreeing.take(MAX_EXPORT_ROWS).forEach {
                     Text("Vector recorded differently: $it — the export says ${check.icebergVectors[it]}, the index manifest ${check.paimonVectors[it]}", fontSize = TypeScale.small, color = colors.error)
                 }
-                val more = listOf(check.missingFromIceberg, check.extraInIceberg, check.vectorsMissingFromIceberg, check.vectorsExtraInIceberg, check.vectorsDisagreeing)
+                val moreVectors = listOf(check.vectorsMissingFromIceberg, check.vectorsExtraInIceberg, check.vectorsDisagreeing)
                     .sumOf { (it.size - MAX_EXPORT_ROWS).coerceAtLeast(0) }
-                if (more > 0) Text("…and ${formatCount(more)} more.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+                if (moreVectors > 0) Text("…and ${formatCount(moreVectors)} more vectors.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+                // Which file each sentence above is about: the verdict leads and the disagreements
+                // sort first, so a table past the cap still lists every file that is wrong.
+                val verdicts = check.fileVerdicts
+                val shown = verdicts.take(MAX_EXPORT_ROWS)
+                if (shown.size < verdicts.size) {
+                    Text(
+                        "The first ${formatCount(shown.size)} of ${formatCounted(verdicts.size, "file")} listed, the disagreements first.",
+                        fontSize = TypeScale.small,
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+                if (shown.isNotEmpty()) {
+                    WideTable(
+                        headers = listOf("Export", "Level", "File"),
+                        columnWidths = listOf(230.dp, 60.dp, 480.dp),
+                        rows = shown.map { v -> listOf(v.fate.label, v.level?.toString() ?: "—", v.file) },
+                        leadCellColors = shown.map { v ->
+                            when {
+                                v.fate.disagrees -> colors.error
+                                v.fate == ExportFileFate.EXPORTED -> null
+                                else -> verdictUnevaluatedColor()
+                            }
+                        },
+                    )
+                }
                 Text(intro, fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
             }
         }
     }
 }
 
-/** Disagreeing files named before the rest are counted. */
+/** Files listed under the export check before the rest are counted; the disagreements sort first, so they are always among them. */
 private const val MAX_EXPORT_ROWS = 20
 
 /**

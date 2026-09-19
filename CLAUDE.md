@@ -3435,7 +3435,16 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   export reproduces. It is the table that tells `level == num-levels - 1` from `level > 0`:
   on `pic`'s level-0 files the two rules agree, and the second passed every test but `pil`'s.
   The compaction's `DELETE` entries go through the incremental path too, so the level-0 file
-  the rebuild listed at snapshot 1 is gone from the export once compacted away. The section rides
+  the rebuild listed at snapshot 1 is gone from the export once compacted away.
+  `IcebergExportCheck.fileVerdicts` is the one reading the four sets are filters of — every
+  live file with its level and the export's verdict on it (`ExportFileFate`: not exported
+  against the rule, listed but not live, not exported by the level rule, exported by the
+  rebuild path, exported), and every file the export lists that is not live — ordered with the
+  disagreements first, so the section's file table lists them within `MAX_EXPORT_ROWS` however
+  large the table; the verdict leads the row and is coloured only where it is not the ordinary
+  case, error for a disagreement and amber for a rule's absence
+  (`paimon-iceberg-export-compacted` is `pil`'s capture, a level-5 row against a level-4 one).
+  The section rides
   `TableNode.icebergExport`, a `DeferredRead` behind a click for the reason
   `UnreferencedFilesSection` is: it reads another table's metadata tree — and the IDE strip
   fills an `Iceberg export` row from the same read, the way it fills `History`, both shells
