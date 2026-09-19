@@ -1,6 +1,8 @@
 # What Iceberg 1.8.1's unfiltered plan attaches to each data file of every checked-in table's current snapshot —
 # `FileScanTask.deletes()`, printed by docs/fixtures/iceberg-scan-plans.scala (run 2026-09-19). One section per
 # table; `<data file> -> <delete files, comma-joined>`; a `!` line is a table that Iceberg could not open.
+# `variant`'s section is from the same script under Iceberg 1.10.0 (the Spark 3.5 runtime jar dropped into the
+# image), since 1.8.1 refuses the table: `Cannot parse type string to primitive: variant`.
 
 -- avrofmt
 00000-0-b2b28d71-9742-46e1-aea8-17484fb15ab0-0-00001.avro -> 00000-3-eb682071-31d1-426e-a690-e5d6ec8f0b3c-00001-deletes.avro
@@ -161,6 +163,9 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet ->
 00000-7-369f3839-1e27-421a-b95b-4e97c5242daf-00001.parquet ->
 00001-1-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet -> 00000-5-c46b81ce-4203-4d61-8abb-13a2391c6b96-00001-deletes.puffin
 00001-3-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet ->
+-- variant
+00000-0-44409929-450b-4b7f-a8c8-b859ffb29cb5-0-00001.parquet ->
+00000-1-10653631-a2f2-42cd-93ba-5dd9503f640f-0-00001.parquet ->
 -- wap
 00000-0-880c6b74-8ef8-45b2-bdac-cbf659ab477a-0-00001.parquet ->
 00000-1-0ba739f9-5085-4d98-bb5a-72127320c0ff-0-00001.parquet ->

@@ -64,9 +64,12 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   the column reads as on the row panel's `Read As` — written through Iceberg's own
   `UpdateSchema` from spark-shell, because Iceberg 1.10's Spark 3.5 module answers
   `ALTER TABLE … ADD COLUMN … DEFAULT` with `UnsupportedOperationException: setting default
-  values in Spark is currently unsupported` (run 2026-09-13). What is still unsurfaced: the
-  **variant / geometry / geography / timestamp_ns** types, which Spark 3.5 cannot write (no
-  VARIANT type) and need a Spark 4.0 image. The **name mapping** is applied now (`migrated`),
+  values in Spark is currently unsupported` (run 2026-09-13). **`variant` is in** (`variant`, written
+  by Spark 4.0.2 with the 1.10.0 Spark 4.0 runtime): the table opens with no code change, the
+  column is held to counts and no bounds by `ParquetMetrics.variant`'s rule, and DuckDB hands
+  every reader the JSON — what is not done is a shredded variant (Spark 4.0.2 writes none, and
+  the bounds a shredded one records are a variant object this does not decode) and the
+  **geometry / geography / timestamp_ns** types, which no Spark writes yet. The **name mapping** is applied now (`migrated`),
   at every level — the mapping's tree is walked as `ApplyNameMapping` walks it (`migdeep`). **The Paimon twin is in** (`pse`): a file's columns are
   placed by the schema its `_SCHEMA_ID` names, which is the format's own rule and the only one
   that covers its Avro files, and a `SET DEFAULT` is drawn as the write-time default it is; a

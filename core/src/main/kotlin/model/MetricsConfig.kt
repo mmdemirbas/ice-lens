@@ -191,6 +191,11 @@ data class MetricsModeCheck(
  * counts, and their bounds too when the file references more than one data file — so the
  * shape is bounds or nothing, never counts. And the Avro writer records no column metrics
  * under any mode (1.8.1), so an Avro file is not judged, nor is a Puffin container.
+ *
+ * A `variant` column (v3) is a fourth: `ParquetMetrics.variant` (1.10.0) takes its counts from
+ * the `metadata` column and records bounds only for shredded fields (`typed_value`), as a
+ * variant object of their bounds — so an unshredded variant, which is what Spark 4.0 writes,
+ * records counts and no bounds under `truncate(16)` or `full`, and that is not a disagreement.
  */
 fun metricsModeChecks(columnStats: List<ColumnStats>, schema: IcebergSchemaModel?, config: MetricsConfig, file: DataFile): List<MetricsModeCheck> {
     if (schema == null) return emptyList()
@@ -220,6 +225,7 @@ fun metricsModeChecks(columnStats: List<ColumnStats>, schema: IcebergSchemaModel
         val mode = configured.mode
         val type = schema.fieldsById[id]?.type
         val allNull = stats?.isAllNull == true || (stats?.valueCount == 0L)
+        val variant = type == IcebergType.VariantType
         val problems = mutableListOf<String>()
         var note: String? = null
         if (positional) {
@@ -230,14 +236,18 @@ fun metricsModeChecks(columnStats: List<ColumnStats>, schema: IcebergSchemaModel
             if (!hasCounts && mode.recordsCounts) problems += "no counts recorded under ${mode.spelled}"
             if (hasBounds && !mode.recordsBounds) problems += "bounds recorded under ${mode.spelled}"
             if (hasBounds && id in underContainer) problems += "bounds recorded under a list or map, where Iceberg stores none"
-            if (!hasBounds && mode.recordsBounds && hasCounts && !allNull && id !in underContainer) problems += "no bounds recorded under ${mode.spelled}"
+            if (!hasBounds && mode.recordsBounds && hasCounts && !allNull && id !in underContainer && !variant) problems += "no bounds recorded under ${mode.spelled}"
             if (id in underContainer && mode.recordsBounds) note = "counts only: a leaf under a list or map records no bounds under any mode"
+            else if (variant && mode.recordsBounds) {
+                note = if (hasBounds) "bounds recorded as a variant object of the shredded fields' bounds, not decoded here"
+                else "counts only: an unshredded variant records no bounds under any mode (bounds come only with shredded fields, typed_value)"
+            }
         }
         if (mode is MetricsMode.Truncate && hasBounds && (type == IcebergType.StringType || type == IcebergType.BinaryType)) {
             val longest = listOfNotNull(stats?.lowerBound?.value, stats?.upperBound?.value).mapNotNull { (it as? String)?.codePointCount(0, it.length) ?: (it as? ByteArray)?.size }.maxOrNull()
             if (longest != null && longest > mode.length) problems += "a bound of $longest characters under ${mode.spelled}"
         }
-        val undecidable = !positional && !hasBounds && mode.recordsBounds && hasCounts && allNull && id !in underContainer
+        val undecidable = !positional && !hasBounds && mode.recordsBounds && hasCounts && allNull && id !in underContainer && !variant
         MetricsModeCheck(
             column = path, fieldId = id, configured = configured, recorded = recorded,
             agrees = if (problems.isNotEmpty()) false else if (undecidable) null else true,

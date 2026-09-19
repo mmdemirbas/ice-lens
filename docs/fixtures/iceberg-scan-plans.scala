@@ -34,6 +34,12 @@
 // which is `read.split.adaptive-size.enabled` shrinking the target. ScanTaskPlanTest holds
 // `planScanTasks` to `src/test/resources/iceberg-scan-plans/tasks.txt` (run 2026-09-19).
 //
+// `variant` is the one table 1.8.1 refuses (`Cannot parse type string to primitive: variant`),
+// so its sections in both files come from the same script run under the 1.10.0 Spark 3.5
+// runtime jar (the CLAUDE.md jar swap) over that table alone: its core plans the scan and the
+// deletes, and its DataFrame read prints `!` — the 1.10.0 Spark 3.5 module has no reader for
+// the type (`UnsupportedOperationException: Unsupported type: variant`).
+//
 // The second half prints, for every table, which delete files the unfiltered plan attaches to
 // each data file of the current snapshot (`FileScanTask.deletes()` — DeleteFileIndex's pairing
 // by sequence number, partition, and a positional delete's file_path bounds or a vector's

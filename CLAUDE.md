@@ -815,6 +815,33 @@ intellij/src/main/kotlin/plugin/
   `METRICS_MODES`, the IDE strip folds it into the file's `Checks` row, and the scan-pruning
   table's "not evaluated" names the mode where the mode is why (`explainMetricsModes`: `tag`
   under `none` records nothing, `id` under `counts` no bound)
+- **A v3 `variant` column opens with no code change, records counts and no bounds by rule, and
+  reaches the cards as JSON.** `variant` is the fixture — `(id INT, v VARIANT)` at format-version
+  3, eighteen rows covering every shape the Variant binary encoding has (an object, a nested one,
+  a long string, an array of numbers at every width, `{}`, `[]`, a SQL NULL, and one typed value
+  cast to `VARIANT` per row: a date, a timestamp with and without zone, a decimal, a float, a
+  binary, an int64, an int8, an int16, an array, a struct through `to_variant_object`) — and
+  it is the one table written by a Spark other than the image's: Spark 3.5 has no `VARIANT` type, so
+  `docs/fixtures/variant.sql` runs on `apache/spark:4.0.2-scala2.13-java17-ubuntu` with the
+  released `iceberg-spark-runtime-4.0_2.13-1.10.0.jar`. Four things the run settled. **Spark
+  4.0.2 writes the column unshredded** — a Parquet group carrying the schema's field id, of a
+  `metadata` and a `value` `BYTE_ARRAY` with no ids of their own — and **Iceberg 1.10.0 records
+  the `metadata` column's value and null counts for it and no bounds and no column size**
+  (`ParquetMetrics.variant`: counts from `metadata`, bounds only for shredded fields as a
+  variant object of their bounds), so `metricsModeChecks` holds a variant to counts alone under
+  a mode that records bounds, with the note the scan's file stage appends to a term on it
+  (`explainMetricsModes` reads a `counts only:` note off the check now, which gives a list or map
+  leaf its reason too). **Spark 4.0.2 refuses `CAST(<struct> AS VARIANT)`**
+  (`DATATYPE_MISMATCH.CAST_WITHOUT_SUGGESTION`), typed fields or not; `to_variant_object` is the
+  way in. **Iceberg 1.8.1 refuses the table outright** (`Cannot parse type string to primitive:
+  variant`), and 1.10.0's core plans it while its Spark 3.5 module's DataFrame read refuses the
+  type (`UnsupportedOperationException: Unsupported type: variant`) — which is why `variant`'s
+  sections in `deletes.txt` and `tasks.txt` come from a 1.10.0 run and its partition line is a
+  `!` the test reads as the refusal. **DuckDB 1.4.4 decodes the Parquet variant to JSON text**
+  (`org.duckdb.JsonNode`), a decimal quoted, a binary as base64, a timestamp with zone in this
+  machine's zone, so every card, panel and lookup gets the JSON with nothing added.
+  `VariantFixtureTest` holds all of it, the script's `to_json(v)` as the oracle for the cells;
+  `graph-cards-variant` and `row-node-variant` are the captures
 - **The Paimon twin reads `metadata.stats-mode` off the schema the file names, at the level the
   file was written to.** `model/PaimonStatsMode.kt` follows `StatsCollectorFactories.createStatsFactories`
   (release-1.3.1): `fields.<name>.stats-mode` first; a system column `truncate(128)` whatever the
@@ -3014,7 +3041,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,462 tests across 201 files (1,161 in :core, 287 in :desktop, 14 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,466 tests across 202 files (1,164 in :core, 288 in :desktop, 14 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3128,6 +3155,7 @@ container invocation and the traps in it:
 | `default/rolled` | `RolledBackFixtureTest` | main set back to an earlier snapshot by `set_current_snapshot` — a second `snapshot-log` entry for the target, the abandoned commit retained on no ref, the next commit forking from the target |
 | `default/retained` | `RetainedFixtureTest` | refs with retention — a tag `RETAIN 90 DAYS`, a branch `RETAIN 30 DAYS WITH SNAPSHOT RETENTION 2 SNAPSHOTS` — and an `expire_snapshots` that kept what each ref's own settings say |
 | `default/extdata` | `ExternalDataPathFixtureTest` | `write.data.path` outside the table — no `data/` under it, two files beside it under `example/iceberg/extdata-files/` |
+| `default/variant` | `VariantFixtureTest` | a v3 `variant` column, written by Spark 4.0.2 with the 1.10.0 Spark 4.0 runtime — eighteen rows over every shape the encoding has, the column a Parquet group of `metadata` and `value` with the schema's id, counts and no bounds recorded for it, and DuckDB's JSON of every row held to the script's `to_json(v)` |
 | `default/wmp` | `WriteMetadataPathFixtureTest` | `write.metadata.path` apart from the location, written by `JdbcCatalog` over SQLite — the metadata under `default/wmp/metadata/` named the metastore way from `00000-<uuid>`, no version hint, no `data/`; the two data files under `example/iceberg/wmp-data/data/`, the location |
 | `default/sorted` | `SortedFixtureTest` | three sort orders, a commit under each, then a sort compaction — rows sorted inside every file, `sort_order_id 0` on every file |
 | `default/expired` | `ExpiredSnapshotsFixtureTest` | snapshots dropped by `expire_snapshots` — the older metadata versions still list them, and they are drawn as expired, not as read errors |
@@ -3215,7 +3243,11 @@ written by the 1.10.0 Spark 3.5 runtime jar (`~/code/spark-kit/lakelab/.cache/`)
 `--jars` after the image's own `iceberg-spark-runtime-3.5_2.12-1.8.1.jar` and the three
 `iceberg-*-bundle-1.8.1.jar` are `rm`ed inside the container — two Iceberg versions on one
 classpath is not a configuration, it is whichever class loads first. That is what unblocks every
-v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` and variant remain.
+v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` and column defaults
+are in on the same jar. **Variant needs the other Spark**: Spark 3.5 has no `VARIANT` type, so
+`variant` runs on `apache/spark:4.0.2-scala2.13-java17-ubuntu` with the released
+`iceberg-spark-runtime-4.0_2.13-1.10.0.jar` — no image to strip, a bare Spark with the one jar
+on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant.sql`).
 
 ## Supported table formats
 

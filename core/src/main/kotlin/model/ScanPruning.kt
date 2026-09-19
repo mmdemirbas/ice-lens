@@ -1150,7 +1150,12 @@ private fun explainMetricsModes(result: FilePruneResult, node: GraphNode.FileNod
         outcomes = result.outcomes.map { outcome ->
             if (outcome.effect != TermEffect.NOT_EVALUATED) return@map outcome
             val check = modes.firstOrNull { it.column.equals(outcome.predicate.column.trim(), ignoreCase = true) } ?: return@map outcome
-            if (check.configured.mode.recordsBounds) return@map outcome
+            // A mode that records bounds explains nothing — unless the column's shape does: a leaf under a
+            // list or map, or an unshredded variant, records none under any mode, and the check's note says so.
+            if (check.configured.mode.recordsBounds) {
+                val byShape = check.reason.takeIf { it.startsWith("counts only: ") }?.removePrefix("counts only: ") ?: return@map outcome
+                return@map outcome.copy(reason = outcome.reason + " — $byShape")
+            }
             outcome.copy(
                 reason = outcome.reason + " — its metrics mode is ${check.configured.mode.spelled} (${check.configured.setBy}), so " +
                     (if (check.configured.mode.recordsCounts) "no bound is recorded for it" else "nothing is recorded for it"),

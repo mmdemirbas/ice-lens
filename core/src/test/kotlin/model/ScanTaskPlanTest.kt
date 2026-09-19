@@ -23,12 +23,16 @@ class ScanTaskPlanTest {
 
     private val sections: List<Section>
     private val sparkPartitions: Map<String, Int>
+    /** A table whose DataFrame read the script's Spark refused, with the refusal — no partition count to hold. */
+    private val sparkRefused: Map<String, String>
 
     init {
         val text = javaClass.getResource("/iceberg-scan-plans/tasks.txt")!!.readText()
         val out = mutableListOf<Section>()
         val spark = mutableMapOf<String, Int>()
+        val refused = mutableMapOf<String, String>()
         var current: Triple<String, String, MutableList<Set<String>>>? = null
+        var lastTable: String? = null
         for (line in text.lines()) {
             val head = Regex("""^-- (\S+): tasks (.+?)(?: = (\d+) tasks)?$""").find(line)
             val partitions = Regex("""^-- (\S+): spark partitions = (\d+) \(parallelism 200\)$""").find(line)
@@ -40,13 +44,15 @@ class ScanTaskPlanTest {
                     out += Section(c.first, c.second, c.third)
                     current = null
                 }
-                head != null -> current = Triple(head.groupValues[1], head.groupValues[2], mutableListOf())
-                line.startsWith("#") || line.isBlank() || line.startsWith("!") || line.startsWith("-- ") -> {}
+                head != null -> { current = Triple(head.groupValues[1], head.groupValues[2], mutableListOf()); lastTable = head.groupValues[1] }
+                line.startsWith("!") -> refused[lastTable!!] = line.removePrefix("! ")
+                line.startsWith("#") || line.isBlank() || line.startsWith("-- ") -> {}
                 else -> current!!.third += line.split(",").toSet()
             }
         }
         sections = out
         sparkPartitions = spark
+        sparkRefused = refused
     }
 
     private fun currentSnapshot(m: UnifiedTableModel): UnifiedSnapshot {
@@ -81,12 +87,16 @@ class ScanTaskPlanTest {
                     packingsHeld++
                 }
             }
-            val spark = sparkPartitions.getValue(table)
             val plan = planScanTasks(files, options)
             val adjusted = adjustedSplitSize(plan.scanBytes, 200, options.splitSize)
             assertEquals(ScanTaskOptions.MIN_SPLIT_SIZE, adjusted, "$table: every checked-in table is small enough for the 16 MiB floor")
-            assertEquals(spark, planScanTasks(files, options, adjusted).tasks.size, "$table: Spark's partitions at a parallelism of 200")
+            val spark = sparkPartitions[table]
+            if (spark != null) assertEquals(spark, planScanTasks(files, options, adjusted).tasks.size, "$table: Spark's partitions at a parallelism of 200")
+            else assertEquals("UnsupportedOperationException: Unsupported type: variant", sparkRefused[table], "$table: no partition count, so the read was refused")
         }
+        // `test` is refused whole (its list is recorded where it was written); the 1.10.0 Spark 3.5 module plans
+        // `variant` and refuses to read it. Nothing else is without a count.
+        assertEquals(setOf("test", "variant"), sparkRefused.keys)
         assertTrue(packingsHeld >= 20, "the fixed-order packings held: $packingsHeld")
     }
 

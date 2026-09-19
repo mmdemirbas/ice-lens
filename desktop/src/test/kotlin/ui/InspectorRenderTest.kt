@@ -497,6 +497,30 @@ class InspectorRenderTest {
     }
 
     /**
+     * A v3 `variant` column, as DuckDB hands it to the card and the panel: JSON text per cell.
+     * `variant`'s id 2 is the nested object — the one shape where a cell has to carry structure
+     * a card cannot lay out, so the capture is what says whether the JSON reads at card width
+     * and in the panel's value column.
+     */
+    @Test
+    fun `a variant cell reads as JSON on the card and the row panel`() {
+        val graph = GraphLayoutService.layoutGraph(
+            UnifiedTableModel(Paths.get(File(repoRoot, "example/iceberg/default/variant").absolutePath)),
+            showRows = true,
+        )
+        val nested = graph.nodes.filterIsInstance<GraphNode.RowNode>().first { it.resolvedData["id"]?.toString() == "2" }
+        val array = graph.nodes.filterIsInstance<GraphNode.RowNode>().first { it.resolvedData["id"]?.toString() == "4" }
+        assertEquals("org.duckdb.JsonNode", nested.resolvedData["v"]?.javaClass?.name)
+        renderScene("graph-cards-variant", width = 700, height = 400) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                RowCard(nested)
+                RowCard(array)
+            }
+        }
+        renderInspector(graph, nested.id, "row-node-variant", height = 1000)
+    }
+
+    /**
      * A row as a read returns it, where that differs from the file: `defaults`' first file
      * predates `region` and `score`, so the section lists them from their initial defaults;
      * `evolved`'s first file holds `name`, which the table has dropped, and lacks `note`. The

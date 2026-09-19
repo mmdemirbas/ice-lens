@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A v3 `variant` column, opened, judged and read** — `example/iceberg/default/variant`, written
+  by Spark 4.0.2 with the released Iceberg 1.10.0 Spark 4.0 runtime (`docs/fixtures/variant.sql`),
+  eighteen rows over every shape the Variant binary encoding has. The table opens with no code
+  change; `metricsModeChecks` holds a variant to counts and no bounds under a mode that records
+  bounds, since `ParquetMetrics.variant` records bounds only for shredded fields and Spark 4.0.2
+  shreds nothing, and the scan's file stage says so of a term on it (a list or map leaf gets its
+  reason the same way now); DuckDB 1.4.4 decodes the column to JSON text, which every card, panel
+  and lookup gets as it is. `VariantFixtureTest` holds the cells to the script's `to_json(v)`;
+  `variant`'s scan-plan oracle sections come from a 1.10.0 run, 1.8.1 refusing the type and the
+  1.10.0 Spark 3.5 module's DataFrame read refusing it too, which `ScanTaskPlanTest` reads as the
+  refusal rather than a missing count. `graph-cards-variant` and `row-node-variant` are the
+  captures.
 - **A Paimon data file's panel says whether the Iceberg export lists it** — an `Iceberg Export`
   section under the file's history with the export's verdict on the file in a sentence
   (`IcebergExportCheck.describeFile`: exported, exported by the rebuild path, not exported by the
