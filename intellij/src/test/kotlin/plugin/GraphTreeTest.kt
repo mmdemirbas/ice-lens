@@ -8,6 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import model.GraphModel
 import model.GraphNode
+import model.IcebergMaintenanceInput
 import model.displayLabel
 import model.PaimonUnifiedTableModel
 import model.UnifiedTableModel
@@ -333,6 +334,35 @@ class GraphTreeTest {
         val dv = flatten(GraphTree.build(paimonGraphOf("dv"))).first { it is GraphNode.TableNode }
         assertEquals(1, GraphTree.deferredDetails(dv).size)
         assertTrue(GraphTree.deferredDetails(dv).single().second.startsWith("none of the "), GraphTree.deferredDetails(dv).toString())
+    }
+
+    /**
+     * A snapshot's deferred detail is the read's cost in tasks — the closure walked for its live
+     * files and delete pairing, under the newest metadata's `read.split.*` — with Spark's figure
+     * at the strip's fixed parallelism of 200, where the adaptive size shrinks the target to
+     * 16 MiB: `rgs`'s 5,000-row file of thirteen row groups is one task and four partitions. An
+     * expired snapshot has no closure to walk and no row. The Paimon twin is the split plan over
+     * the replay: `pt` reads as five splits, three raw and two merged, five Spark partitions.
+     */
+    @Test
+    fun `a snapshot's scan tasks, and a Paimon snapshot's splits, are a deferred detail with Spark's figure at 200`() {
+        val rgs = graphOf("rgs")
+        val newest = (rgs.nodes.filterIsInstance<GraphNode.TableNode>().single().maintenance.value as IcebergMaintenanceInput).metadata
+        val tip = flatten(GraphTree.build(rgs)).filterIsInstance<GraphNode.SnapshotNode>().maxBy { it.data.sequenceNumber ?: 0L }
+        assertTrue(GraphTree.hasDeferredDetails(tip) && GraphTree.deferredLabel(tip) == GraphTree.SCAN_TASKS)
+        assertTrue(GraphTree.details(tip, newest = newest).none { (f, _) -> f == GraphTree.SCAN_TASKS }, "a row that costs a walk is not eager")
+        assertEquals(
+            listOf(GraphTree.SCAN_TASKS to "1 task over 2 data files as 14 splits (2 a split per row group); Spark at a parallelism of 200 reads 4 partitions, the target shrunk to 16,777,216 bytes"),
+            GraphTree.deferredDetails(tip, newest),
+        )
+        val expired = flatten(GraphTree.build(graphOf("expired"))).filterIsInstance<GraphNode.SnapshotNode>().filter { it.expired }
+        assertTrue(expired.isNotEmpty() && expired.none { GraphTree.hasDeferredDetails(it) }, "an expired snapshot has no closure to plan over")
+        val pt = flatten(GraphTree.build(paimonGraphOf("pt"))).filterIsInstance<GraphNode.PaimonSnapshotNode>().filter { it.branch == null }.maxBy { it.data.id ?: 0L }
+        assertTrue(GraphTree.hasDeferredDetails(pt) && GraphTree.deferredLabel(pt) == GraphTree.SCAN_SPLITS)
+        assertEquals(
+            listOf(GraphTree.SCAN_SPLITS to "5 splits over 7 data files in 5 buckets, 3 read raw and 2 merged; Spark at a parallelism of 200 reads 5 partitions"),
+            GraphTree.deferredDetails(pt),
+        )
     }
 
     /**

@@ -90,6 +90,13 @@ data class PaimonSplitPlan(
     val buckets: Int get() = splits.map { it.partition to it.bucket }.distinct().size
     val rawSplits: Int get() = splits.count { it.rawConvertible }
     val rules: Set<PaimonSplitRule> get() = splits.map { it.rule }.toSet()
+
+    /** One line — `5 splits over 7 data files in 5 buckets, 3 read raw and 2 merged` — which both shells print. */
+    val describe: String get() =
+        counted(splits.size, "split") + " over " + counted(files, "data file") + " in " + counted(buckets, "bucket") +
+            (if (splits.isNotEmpty()) ", $rawSplits read raw and ${splits.size - rawSplits} merged" else "")
+
+    private fun counted(n: Int, noun: String) = "$n $noun" + if (n == 1) "" else "s"
 }
 
 /** [planPaimonSplits] over the snapshot's read files under the table's own `source.split.*`. */
@@ -210,7 +217,10 @@ data class PaimonSparkPlan(
     /** `Σ(fileSize + openCost)` over the raw splits' files — what the bound is derived from; a vector's bytes are not in it. */
     val rawBytes: Long,
     val partitions: List<PaimonSparkPartition>,
-)
+) {
+    /** One line — `Spark at a parallelism of 200 reads 5 partitions`. */
+    val describe: String get() = "Spark at a parallelism of $parallelism reads ${partitions.size} partition" + if (partitions.size == 1) "" else "s"
+}
 
 /**
  * The input partitions Spark plans from the splits — `ScanHelper.getInputPartitions` at

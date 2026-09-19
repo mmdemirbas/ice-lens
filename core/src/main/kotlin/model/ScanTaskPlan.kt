@@ -108,6 +108,35 @@ data class ScanTaskPlan(
     val filesBySize: Int get() = splits.filter { it.rule == SplitRule.BY_SIZE }.map { it.path }.distinct().size
     /** The unsplit bytes of the scan, data and paired deletes — what `adjustSplitSize` measures (`ScanTask.sizeBytes` summed). */
     val scanBytes: Long get() = splits.sumOf { it.length } + splits.groupBy { it.path }.values.sumOf { it.first().deleteBytes }
+
+    /**
+     * One line — `1 task over 2 data files as 14 splits (2 a split per row group)` — which both
+     * shells print, so the sentence cannot drift between them.
+     */
+    val describe: String get() {
+        val unsplit = dataFiles - filesByOffsets - filesBySize
+        val cuts = listOfNotNull(
+            filesByOffsets.takeIf { it > 0 }?.let { "$it a split per row group" },
+            filesBySize.takeIf { it > 0 }?.let { "$it cut into target-size slices" },
+            unsplit.takeIf { it > 0 }?.let { "$it whole" },
+        ).joinToString(", ")
+        return counted(tasks.size, "task") + " over " + counted(dataFiles, "data file") +
+            (if (dataFiles > 0) " as ${counted(splits.size, "split")} ($cuts)" else "")
+    }
+
+    private fun counted(n: Int, noun: String) = "$n $noun" + if (n == 1) "" else "s"
+}
+
+/**
+ * Spark's answer in one line: the partitions at [parallelism] under the adaptive split size,
+ * from [files] re-planned at [adjustedSplitSize] where it shrank the target — `Spark at a
+ * parallelism of 200 reads 4 partitions, the target shrunk to 16,777,216 bytes`.
+ */
+fun ScanTaskPlan.describeSpark(files: List<ScanTaskFile>, parallelism: Int): String {
+    val adjusted = adjustedSplitSize(scanBytes, parallelism, options.splitSize)
+    val partitions = if (adjusted == options.splitSize) tasks.size else planScanTasks(files, options, adjusted).tasks.size
+    return "Spark at a parallelism of $parallelism reads $partitions partition" + (if (partitions == 1) "" else "s") +
+        (if (adjusted == options.splitSize) "" else ", the target shrunk to ${"%,d".format(adjusted)} bytes")
 }
 
 /** The data files of a snapshot with the delete files the scan pairs with each, from [liveFilesOf] and [deleteReach]. */

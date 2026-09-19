@@ -126,9 +126,7 @@ private fun PaimonSplitPlanBody(plan: PaimonSplitPlan, parallelism: Int?, headli
     val colors = MaterialTheme.colorScheme
     val merged = plan.splits.size - plan.rawSplits
     Text(
-        "$headline takes ${formatCounted(plan.splits.size, "split")} over ${formatCounted(plan.files, "data file")} in " +
-            "${formatCounted(plan.buckets, "bucket")}" +
-            (if (plan.splits.isNotEmpty()) " — ${formatCount(plan.rawSplits)} read raw, ${formatCount(merged)} merged" else "") + ".",
+        "$headline takes ${plan.describe}.",
         fontSize = TypeScale.body,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(top = 4.dp),

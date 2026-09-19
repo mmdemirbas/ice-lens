@@ -32,6 +32,12 @@ import model.paimonSchemaTallies
 import model.paimonSnapshotTallies
 import model.partitionBoundsChecks
 import model.partitionSummaryTallies
+import model.ScanTaskOptions
+import model.paimonSparkPartitions
+import model.planPaimonSplits
+import model.planScanTasks
+import model.scanTaskFiles
+import model.describeSpark
 
 /**
  * The graph as a tree, and what each node has to say about itself.
@@ -107,10 +113,21 @@ object GraphTree {
     /** On every table: what the retained snapshots need that is not there — a stat per needed file, so deferred. */
     const val MISSING_FILES = "Missing files"
 
+    /** On an Iceberg snapshot: how many tasks a read takes, planned over the closure's live files — a walk, so deferred. */
+    const val SCAN_TASKS = "Scan tasks"
+
+    /** The same on a Paimon snapshot: the splits a batch read takes, planned over the replay — a walk, so deferred. */
+    const val SCAN_SPLITS = "Scan splits"
+
+    /** The parallelism the strip's Spark figure is planned at — `spark.sql.shuffle.partitions`' default, the desktop field's seed. */
+    const val SPARK_PARALLELISM = 200
+
     /** The placeholder label for [deferredDetails] on the node, while the read runs. */
     fun deferredLabel(node: GraphNode): String = when (node) {
         is GraphNode.RowNode -> READ_AS
         is GraphNode.TableNode -> MISSING_FILES
+        is GraphNode.SnapshotNode -> SCAN_TASKS
+        is GraphNode.PaimonSnapshotNode -> SCAN_SPLITS
         else -> HISTORY
     }
 
@@ -121,17 +138,31 @@ object GraphTree {
     fun hasDeferredDetails(node: GraphNode): Boolean =
         node is GraphNode.FileNode || node is GraphNode.PaimonDataFileNode ||
             (node is GraphNode.RowNode && node.readAs.isPresent) ||
-            (node is GraphNode.TableNode && (node.missingFiles.isPresent || node.icebergExport.isPresent))
+            (node is GraphNode.TableNode && (node.missingFiles.isPresent || node.icebergExport.isPresent)) ||
+            (node is GraphNode.SnapshotNode && node.canDiff) ||
+            (node is GraphNode.PaimonSnapshotNode && node.readInput.isPresent)
 
     /**
      * The rows that cost a read: a file's history is a scan of every retained snapshot's manifest
      * entries (`DeferredRead`, memoised on the node), cheap on a developer's table and a stall on
      * a large one, so the panel asks for these off the EDT after [details] is already on screen.
      */
-    fun deferredDetails(node: GraphNode): List<Pair<String, String>> {
+    fun deferredDetails(node: GraphNode, newest: TableMetadata? = null): List<Pair<String, String>> {
         val history = when (node) {
             is GraphNode.FileNode -> node.history
             is GraphNode.PaimonDataFileNode -> node.history
+            // The task plan walks the snapshot's closure for its live files and delete pairing —
+            // the same walk the desktop's sections run — under the newest metadata's read.split.*.
+            is GraphNode.SnapshotNode -> return listOf(SCAN_TASKS to (node.liveFiles?.let { live ->
+                val files = scanTaskFiles(live, node.deleteReach.orEmpty())
+                val plan = planScanTasks(files, ScanTaskOptions.from(newest?.properties.orEmpty()))
+                "${plan.describe}; ${plan.describeSpark(files, SPARK_PARALLELISM)}"
+            } ?: "could not be read"))
+            // The split plan replays the snapshot for its read files, under the schema's source.split.*.
+            is GraphNode.PaimonSnapshotNode -> return listOf(SCAN_SPLITS to (node.readInput.value?.let { input ->
+                val plan = planPaimonSplits(input)
+                "${plan.describe}; ${paimonSparkPartitions(plan, SPARK_PARALLELISM).describe}"
+            } ?: "could not be read"))
             // The projection opens the file's footer for its field ids — a read, so deferred like the history.
             is GraphNode.RowNode -> return listOf(READ_AS to (node.readAs.value?.let { read ->
                 read.describe + if (read.differsFromFile) ": " + read.cells.joinToString(", ") { "${it.name} = ${it.value}" } else ""

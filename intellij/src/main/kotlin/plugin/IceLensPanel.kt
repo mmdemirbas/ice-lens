@@ -169,7 +169,7 @@ class IceLensPanel(private val project: Project, parent: Disposable) : Disposabl
                 private var rows: List<Pair<String, String>> = emptyList()
 
                 override fun run(indicator: ProgressIndicator) {
-                    rows = runCatching { GraphTree.deferredDetails(item.node) }
+                    rows = runCatching { GraphTree.deferredDetails(item.node, item.newest) }
                         .onFailure { logger.warn("Could not read $label of ${item.node.id}", it) }
                         .getOrDefault(listOf(label to "could not be read"))
                 }

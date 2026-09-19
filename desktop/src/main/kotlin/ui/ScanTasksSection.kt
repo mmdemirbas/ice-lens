@@ -158,17 +158,8 @@ private fun ScanTaskPlanBody(
 ) {
     val colors = MaterialTheme.colorScheme
     val deleteFiles = plan.splits.groupBy { it.path }.values.sumOf { it.first().deleteFiles }
-    val byOffsets = plan.filesByOffsets
-    val bySize = plan.filesBySize
-    val unsplit = plan.dataFiles - byOffsets - bySize
-    val cuts = listOfNotNull(
-        byOffsets.takeIf { it > 0 }?.let { "$it a split per row group" },
-        bySize.takeIf { it > 0 }?.let { "$it cut into ${formatBytes(plan.splitSize)} slices" },
-        unsplit.takeIf { it > 0 }?.let { "$it whole" },
-    ).joinToString(", ")
     Text(
-        "$headline takes ${formatCounted(plan.tasks.size, "task")} over ${formatCounted(plan.dataFiles, "data file")}" +
-            (if (plan.dataFiles > 0) " as ${formatCounted(plan.splits.size, "split")} ($cuts)" else "") + ".",
+        "$headline takes ${plan.describe}.",
         fontSize = TypeScale.body,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(top = 4.dp),

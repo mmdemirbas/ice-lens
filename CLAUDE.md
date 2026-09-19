@@ -1326,7 +1326,10 @@ intellij/src/main/kotlin/plugin/
   the packing caveat where the snapshot lists several data manifests — and under the table
   panel's filter a second plan over the files the scan leaves, the `Rewrite` section's `where`
   rule; the table panel's pruning headline says how many tasks the filtered read takes at the
-  current snapshot, off the maintenance input's walk the summary above it already ran
+  current snapshot, off the maintenance input's walk the summary above it already ran. The
+  headline is `ScanTaskPlan.describe`, which the IDE strip prints too as a deferred `Scan tasks`
+  row on an unexpired snapshot (`GraphTree.SCAN_TASKS`, with `describeSpark` at the strip's
+  fixed parallelism of 200) — a walk, so not in `details`
 - **The Paimon twin plans splits per bucket, and Spark repacks the raw ones by a bound the
   vectors are charged to but not counted in.** `model/PaimonSplitPlan.kt` reads
   `SnapshotReaderImpl.generateSplits` at release-1.3.1: the read files ([`PaimonReadInput.readFiles`],
@@ -1363,7 +1366,9 @@ intellij/src/main/kotlin/plugin/
   snapshot panel's `Scan Splits` (`ui/PaimonScanSplitsSection.kt`) is the `Scan Tasks` shape —
   one row per file under its split, raw or merged, the parallelism field on Spark's line, the
   filtered plan under the table panel's filter — and the pruning headline on a Paimon table
-  panel says how many splits the filtered read takes at the latest snapshot
+  panel says how many splits the filtered read takes at the latest snapshot. `PaimonSplitPlan.describe`
+  and `PaimonSparkPlan.describe` are the headline on both shells, the IDE's as a deferred
+  `Scan splits` row (`GraphTree.SCAN_SPLITS`) on a snapshot with a replay
 - **A filter's column binds by field id through the current schema, the way a scan binds it,
   and a nested leaf is named by its path.** `ColumnBinder` in `model/ScanPruning.kt`:
   `BySchema` resolves a column to the current schema's field id (`IcebergSchemaModel.idOfPath`
@@ -2988,7 +2993,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,453 tests across 200 files (1,154 in :core, 287 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,454 tests across 200 files (1,154 in :core, 287 in :desktop, 13 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the input partitions Spark repacks the raw splits into, a vector's bytes charged to the
   partition and not to the bound. The Paimon snapshot panel's `Scan Splits` draws it, with the
   parallelism field and the plan under the table panel's filter, and the pruning headline says
-  how many splits the filtered read takes. Held to Paimon's own plan on every checked-in table
+  how many splits the filtered read takes; the IDE strip carries the same line as a deferred
+  `Scan splits` row, and `Scan tasks` on an Iceberg snapshot. Held to Paimon's own plan on every checked-in table
   and to the DataFrame's partition count at two parallelisms (`paimon-scan-plans/splits.txt`)
 - **The tasks a read takes are planned**, the way `TableScanUtil.planTasks` plans them at 1.8.1
   (`model/ScanTaskPlan.kt`): a Parquet, ORC or Avro file with well-defined `split_offsets` is one
