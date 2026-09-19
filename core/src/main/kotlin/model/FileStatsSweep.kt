@@ -38,7 +38,7 @@ data class FileStatsSweep(
         filesRead < filesTotal -> "$filesRead of $filesTotal live files read" + (if (findings.isEmpty()) ", every one of their $figures figures agrees" else ", ${findings.size} of their $figures figures disagree")
         findings.isEmpty() -> "every one of the $figures figures agrees on all $filesRead live files"
         else -> "${findings.size} of $figures figures disagree on the $filesRead live files"
-    }
+    } + if (unreadable.isEmpty()) "" else ", ${unreadable.size} not read"
 
     /** Live files the cap left unread — what the next page reads. */
     val filesLeft: Int get() = filesTotal - filesRead

@@ -12,15 +12,20 @@ import kotlinx.serialization.json.put
 import model.FormatTableModel
 import model.GraphModel
 import model.GraphNode
+import model.FileStatsSweep
 import model.GraphTree
+import model.IntegrityFinding
 import model.IntegrityReport
 import model.PaimonUnifiedTableModel
 import model.UnifiedTableModel
 import model.displayLabel
 import model.integrityReport
 import model.readTableModel
+import model.StatisticsFileCheck
+import model.sweepFileStats
 import service.AggregationPolicy
 import service.GraphLayoutService
+import service.StatsCheckReader
 import service.StorageLocation
 import service.TableFormat
 import service.TableFormatDetector
@@ -64,8 +69,9 @@ object IceLensCli {
         |                  [--depth N] [--json]  one line per node with its id, folded past the page
         |                                        size like the app unless --all; --rows samples rows
         |  show    <table> <node-id> [--json]    one node's rows, deferred ones read — an id from `tree`
-        |  check   <table> [--json]              every recorded figure against the same figure counted;
-        |                                        exit 1 on a disagreement or a read error
+        |  check   <table> [--files] [--json]    every recorded figure against the same figure counted;
+        |                                        --files opens every live data file and statistics file
+        |                                        too; exit 1 on a disagreement or a file not read
         |  export  <table> --format svg|json|csv [--out FILE] [--page-size N]
         |                                        the graph as a drawing, as structure, or the file
         |                                        inventory; the whole table unless a page size folds it
@@ -163,26 +169,63 @@ object IceLensCli {
     }
 
     private fun check(parsed: Parsed, out: PrintStream, err: PrintStream): Int {
-        parsed.allow("json") ?: return usageError(err, "check takes --json only")
+        parsed.allow("files", "json") ?: return usageError(err, "check takes --files and --json")
         val table = parsed.positional(0) ?: return usageError(err, "check needs a table")
         val model = open(table)
         val report = when (model) {
             is UnifiedTableModel -> model.integrityReport()
             is PaimonUnifiedTableModel -> model.integrityReport()
         }
+        val files = if (parsed.has("files")) readFiles(model) else null
         if (parsed.has("json")) {
-            out.println(pretty(reportJson(model, report)))
+            out.println(pretty(reportJson(model, report, files)))
         } else {
             out.println("${model.name}  ${formatName(model)}  ${model.path}")
             out.println(report.describe + closureNote(report) + (if (report.readErrors > 0) "; ${report.readErrors} artifacts could not be read" else ""))
-            if (report.findings.isNotEmpty()) {
-                out.println()
-                val rows = report.findings.map { listOf(it.check.label, it.where, it.figure, it.recorded, it.counted) }
-                printTable(listOf("check", "where", "figure", "recorded", "counted"), rows, out)
+            if (files != null) {
+                out.println(files.sweep.describe)
+                files.describeStatistics?.let { out.println(it) }
             }
+            val findings = report.findings + files?.findings.orEmpty()
+            if (findings.isNotEmpty()) {
+                out.println()
+                printTable(listOf("check", "where", "figure", "recorded", "counted"), findings.map { listOf(it.check.label, it.where, it.figure, it.recorded, it.counted) }, out)
+            }
+            files?.unreadable?.forEach { (name, reason) -> out.println("not read: $name: $reason") }
             model.readErrors.forEach { out.println("read error: ${it.path}: ${it.message}") }
         }
-        return if (report.findings.isEmpty() && report.readErrors == 0) EXIT_OK else EXIT_FINDINGS
+        val consistent = report.findings.isEmpty() && report.readErrors == 0 && (files == null || files.consistent)
+        return if (consistent) EXIT_OK else EXIT_FINDINGS
+    }
+
+    /**
+     * The reads behind the desktop's second click under `Integrity`, off the table node the
+     * builders fill: every live data file's statistics, layout and row count against its rows —
+     * the whole table, not the panel's page, since a script asked — and, on Iceberg, the
+     * statistics files against the records `metadata.json` keeps of them.
+     */
+    private class FileReads(val sweep: FileStatsSweep, val statistics: List<StatisticsFileCheck>) {
+        val findings: List<IntegrityFinding> get() = sweep.findings + statistics.flatMap { it.findings }
+        val unreadable: List<Pair<String, String>> get() = sweep.unreadable + statistics.filter { !it.read }.map { it.name to (it.problem ?: "not read") }
+        val consistent: Boolean get() = findings.isEmpty() && unreadable.isEmpty()
+        val describeStatistics: String? get() {
+            if (statistics.isEmpty()) return null
+            val read = statistics.count { it.read }
+            val figures = statistics.sumOf { it.figures }
+            val disagreeing = statistics.sumOf { it.findings.size }
+            return "$read of ${statistics.size} statistics file(s) read" + when {
+                read == 0 -> ""
+                disagreeing == 0 -> ", every one of their $figures figures agrees"
+                else -> ", $disagreeing of their $figures figures disagree"
+            }
+        }
+    }
+
+    private fun readFiles(model: FormatTableModel): FileReads {
+        val node = graphOf(model, showRows = false, policy = AggregationPolicy.DEFAULT).nodes.filterIsInstance<GraphNode.TableNode>().first()
+        val targets = node.fileStats.value.orEmpty()
+        val sweep = sweepFileStats(targets, max = targets.size) { StatsCheckReader.check(it) }
+        return FileReads(sweep, node.statisticsFiles.value.orEmpty())
     }
 
     private fun export(parsed: Parsed, out: PrintStream, err: PrintStream): Int {
@@ -291,25 +334,46 @@ object IceLensCli {
         buildJsonObject { put("stage", e.stage); put("message", e.message) }
     })
 
-    private fun reportJson(model: FormatTableModel, report: IntegrityReport): JsonObject = buildJsonObject {
+    private fun reportJson(model: FormatTableModel, report: IntegrityReport, files: FileReads?): JsonObject = buildJsonObject {
         put("table", model.name)
         put("format", formatName(model))
         put("path", model.path.toString())
-        put("consistent", report.findings.isEmpty() && report.readErrors == 0)
+        put("consistent", report.findings.isEmpty() && report.readErrors == 0 && (files == null || files.consistent))
         put("checked", report.checked)
         put("closuresChecked", report.closuresChecked)
         put("snapshots", report.snapshotCount)
         put("readErrors", report.readErrors)
-        put("findings", JsonArray(report.findings.map { f ->
-            buildJsonObject {
-                put("check", f.check.name.lowercase())
-                put("where", f.where)
-                put("figure", f.figure)
-                put("recorded", f.recorded)
-                put("counted", f.counted)
-            }
-        }))
+        put("findings", findingsJson(report.findings))
+        if (files != null) {
+            put("files", buildJsonObject {
+                put("total", files.sweep.filesTotal)
+                put("read", files.sweep.filesRead)
+                put("figures", files.sweep.figures)
+                put("findings", findingsJson(files.sweep.findings))
+                put("unreadable", JsonArray(files.sweep.unreadable.map { (name, reason) -> buildJsonObject { put("file", name); put("reason", reason) } }))
+            })
+            put("statisticsFiles", JsonArray(files.statistics.map { s ->
+                buildJsonObject {
+                    put("file", s.name)
+                    put("kind", s.kind.name.lowercase())
+                    put("read", s.read)
+                    s.problem?.let { put("problem", it) }
+                    put("figures", s.figures)
+                    put("findings", findingsJson(s.findings))
+                }
+            }))
+        }
     }
+
+    private fun findingsJson(findings: List<IntegrityFinding>): JsonArray = JsonArray(findings.map { f ->
+        buildJsonObject {
+            put("check", f.check.name.lowercase())
+            put("where", f.where)
+            put("figure", f.figure)
+            put("recorded", f.recorded)
+            put("counted", f.counted)
+        }
+    })
 
     // ---- the command line ----------------------------------------------------------------------
 

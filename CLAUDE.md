@@ -2534,7 +2534,12 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   terminal has no placeholder to fill later), `tree` is `GraphTree.build` one line per item with
   the node id in brackets — the id `show` takes — `check` is `integrityReport` with the findings
   as a table and **as the exit code** (1 on a disagreement or a read error, which is what a
-  cron job or a CI step branches on), and `export` is `GraphExport`'s SVG, JSON or CSV to
+  cron job or a CI step branches on) — `check --files` is the desktop's second click under
+  `Integrity` too, `sweepFileStats` over every live data file with no cap, since a terminal has
+  no next page to click for, and `checkStatisticsFiles` over the statistics files, with a file
+  that could not be read an exit 1 of its own, because from a cron job "not compared" is the
+  finding (`orcfmt` is the table that says so; `FileStatsSweep.describe` names the count not
+  read, on both shells) — and `export` is `GraphExport`'s SVG, JSON or CSV to
   standard output or `--out`. `--json` on the first four is the same rows as an object, for a
   script. Three rules. **Standard output is the answer and nothing else**: the engine's logging
   goes to standard error at `WARN` (`cli/src/main/resources/logback.xml`), so a pipe carries no
@@ -2549,7 +2554,8 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   `row_…` id. Exit codes: 0, 1 findings, 2 the command line, 3 not a table or no such node.
   `IceLensCliTest` runs every command over `mor`, `dv` and `pbk` and holds the output to the core
   function it prints — the rows to `GraphTree.details`, the tree line by line to `GraphTree.build`,
-  `pbk`'s three bucket-count findings to `integrityReport`, the CSV to `GraphExport.toCsv` — and
+  `pbk`'s three bucket-count findings to `integrityReport`, `--files` on `mor`, `pstats` and
+  `orcfmt` to the sweep and the statistics check it prints, the CSV to `GraphExport.toCsv` — and
   every refusal to its exit code and message
 - **The tree follows structural edges only.** An `affectsLayout = false` edge is an annotation —
   snapshot lineage, or a deletion vector pointing at the data file it covers — and both run between
@@ -3080,7 +3086,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,473 tests across 204 files (1,178 in :core, 288 in :desktop, 1 in :intellij, 6 in :cli) covering full pipelines for both formats (Avro fixtures
+~1,474 tests across 204 files (1,178 in :core, 288 in :desktop, 1 in :intellij, 7 in :cli) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

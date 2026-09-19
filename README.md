@@ -130,6 +130,8 @@ icelens tree /wh/db/orders --depth 2            # metadata → snapshots → man
 icelens show /wh/db/orders snap_8331894 --json  # one node's rows, deferred ones read
 icelens check /wh/db/orders                     # every recorded figure against the same figure counted;
                                                 # exit 1 on a disagreement, so a pipeline can gate on it
+icelens check /wh/db/orders --files             # and every live data file and statistics file opened too;
+                                                # a file that cannot be read is exit 1 as well
 icelens export /wh/db/orders --format csv --out files.csv   # the file inventory; svg and json too
 ```
 

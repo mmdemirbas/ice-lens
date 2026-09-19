@@ -15,7 +15,9 @@ import model.PaimonUnifiedTableModel
 import model.UnifiedTableModel
 import model.integrityReport
 import model.readTableModel
+import model.sweepFileStats
 import service.AggregationPolicy
+import service.StatsCheckReader
 import service.GraphLayoutService
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -150,6 +152,36 @@ class IceLensCliTest {
         assertEquals(expected.checked, json.getValue("checked").jsonPrimitive.content.toInt())
         assertEquals(List(3) { "bucket_count" }, json.getValue("findings").jsonArray.map { it.jsonObject.getValue("check").jsonPrimitive.content })
         assertEquals(true, Json.parseToJsonElement(icelens("check", mor, "--json").out).jsonObject.getValue("consistent").jsonPrimitive.boolean)
+    }
+
+    /**
+     * `--files` is the desktop's second click over the whole table: every live data file read
+     * against its recorded figures, and on Iceberg the statistics files against their records —
+     * held to the same sweep run here. `orcfmt` is the table whose files cannot be read at all,
+     * which is exit 1 with each file named, not a pass.
+     */
+    @Test
+    fun `check --files reads every live data file and the statistics files, and a file not read is a failure`() {
+        val run = icelens("check", mor, "--files")
+        assertEquals(IceLensCli.EXIT_OK, run.code, run.err)
+        val node = graphOf(mor, AggregationPolicy.DEFAULT).nodes.filterIsInstance<GraphNode.TableNode>().first()
+        val targets = node.fileStats.value.orEmpty()
+        val sweep = sweepFileStats(targets, max = targets.size) { StatsCheckReader.check(it) }
+        assertTrue(targets.size > 1 && sweep.filesRead == targets.size && sweep.findings.isEmpty(), sweep.describe)
+        assertTrue(run.out.contains(sweep.describe), run.out)
+
+        val stats = icelens("check", fixture("example/iceberg/default/pstats"), "--files", "--json")
+        assertEquals(IceLensCli.EXIT_OK, stats.code, stats.err)
+        val json = Json.parseToJsonElement(stats.out).jsonObject
+        assertEquals(true, json.getValue("consistent").jsonPrimitive.boolean)
+        val statisticsFiles = json.getValue("statisticsFiles").jsonArray
+        assertTrue(statisticsFiles.isNotEmpty() && statisticsFiles.all { it.jsonObject.getValue("read").jsonPrimitive.boolean }, stats.out)
+        assertEquals(json.getValue("files").jsonObject.getValue("total").jsonPrimitive.content, json.getValue("files").jsonObject.getValue("read").jsonPrimitive.content, "the whole table, not a page")
+
+        val orc = icelens("check", fixture("example/iceberg/default/orcfmt"), "--files")
+        assertEquals(IceLensCli.EXIT_FINDINGS, orc.code, "every file unread is not a pass")
+        assertTrue(orc.out.lines().count { it.startsWith("not read: ") } >= 2, orc.out)
+        assertEquals(IceLensCli.EXIT_OK, icelens("check", fixture("example/iceberg/default/orcfmt")).code, "the metadata alone agrees")
     }
 
     @Test
