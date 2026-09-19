@@ -1005,6 +1005,13 @@ sealed class GraphNode(
          * decoded on first use; see [PaimonFileIndexRead]. Nothing where the entry names none.
          */
         val fileIndex: DeferredRead<PaimonFileIndexRead> = DeferredRead.none(),
+        /**
+         * The table's Iceberg export check — the *same* [DeferredRead] the table node carries, so
+         * the export is read once whichever panel asks first — for the file's own verdict
+         * ([IcebergExportCheck.describeFile]). Nothing on a table without an export, and on a
+         * changelog file, which no export lists.
+         */
+        val icebergExport: DeferredRead<IcebergExportCheck> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
         // 64, not 60: the stress pass measured this card at exactly its declared height, which

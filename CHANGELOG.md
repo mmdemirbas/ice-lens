@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A Paimon data file's panel says whether the Iceberg export lists it** — an `Iceberg Export`
+  section under the file's history with the export's verdict on the file in a sentence
+  (`IcebergExportCheck.describeFile`: exported, exported by the rebuild path, not exported by the
+  level rule, not exported against the rule, not live here, or not compared), the file's level
+  against the rule, and the export's own headline under it; the IDE strip prints the same
+  sentence as an `Iceberg export` row under `History`. The data file nodes carry the table
+  node's own `DeferredRead`, so the export is read once whichever panel asks first, and the
+  file panel draws the verdict without a click once the table panel has read it
 - **`wmp`, the first engine-written `write.metadata.path` table** (`docs/fixtures/wmp.sql`):
   Iceberg's own `JdbcCatalog` over a SQLite file — the one catalog family that honours the
   property, since a HadoopCatalog table keeps its metadata under its location whatever it says —

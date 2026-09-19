@@ -2162,6 +2162,84 @@ internal fun PaimonIndexFilesSection(node: GraphNode.PaimonSnapshotNode) {
 private const val MAX_UNREFERENCED_ROWS = 500
 
 /**
+ * The export's verdict on one Paimon data file — [IcebergExportCheck.describeFile] — on the
+ * file's own panel, so "does an Iceberg reader see this file's rows" is answered where the file
+ * is rather than three panels up in a table of every file. The read is the table's, one
+ * [DeferredRead] shared with the table node: drawn at once where the table panel has already
+ * read it (`isRead`), and behind a click otherwise, since it is another table's metadata tree.
+ * The verdict leads, coloured as the table's verdict column colours it — error for a
+ * disagreement, amber for a rule's absence, nothing for the ordinary case — and the export's
+ * own headline follows it, so a verdict against an export that is behind is read as one.
+ */
+@Composable
+internal fun PaimonFileExportSection(
+    node: GraphNode.PaimonDataFileNode,
+    startRequested: Boolean = false,
+    onSettled: () -> Unit = {},
+) {
+    val colors = MaterialTheme.colorScheme
+    if (!node.icebergExport.isPresent) return
+    val fileName = node.entry.file?.fileName ?: return
+
+    var requested by remember(node.id) { mutableStateOf(startRequested || node.icebergExport.isRead) }
+    val outcome by produceState<Result<IcebergExportCheck>?>(null, node.id, requested) {
+        value = null
+        if (requested) {
+            value = withContext(Dispatchers.IO) {
+                runCatching { requireNotNull(node.icebergExport.value) { "no Iceberg metadata under metadata/" } }
+            }
+            onSettled()
+        }
+    }
+    val check = outcome?.getOrNull()
+    val verdict = check?.verdictFor(fileName)
+    // The verdict's first words alone in the title — `not exported`, never `not exported — level
+    // rule` — since a second dash reads as a second verdict; the rule is the line under it.
+    val title = "Iceberg Export" + when {
+        check == null -> ""
+        verdict == null -> " — not compared"
+        else -> " — ${verdict.fate.label.substringBefore(" — ")}"
+    }
+
+    Section(title) {
+        val intro = "Whether an Iceberg reader of the export this table writes beside its own metadata sees " +
+            "this file's rows — the export's verdict on the file, by the commit callback's rule: the " +
+            "table panel's Iceberg Metadata section lists every file's."
+        when {
+            !requested -> {
+                Text(intro, fontSize = TypeScale.small, color = colors.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+                OutlinedButton(onClick = { requested = true }) { Text("Read the Iceberg metadata") }
+            }
+            outcome == null -> Text("Reading the Iceberg metadata…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            check == null -> Text(
+                "Could not read: ${outcome?.exceptionOrNull()?.message ?: "unknown error"}",
+                fontSize = TypeScale.small,
+                color = colors.error,
+            )
+            else -> {
+                Text(
+                    check.describeFile(fileName).replaceFirstChar { it.uppercase() } + ".",
+                    fontSize = TypeScale.body,
+                    fontWeight = FontWeight.Bold,
+                    color = when {
+                        verdict == null -> colors.onSurfaceVariant
+                        verdict.fate.disagrees -> colors.error
+                        verdict.fate == ExportFileFate.EXPORTED -> colors.onSurface
+                        else -> verdictUnevaluatedColor()
+                    },
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                Text(
+                    "The export is " + check.describe + ".",
+                    fontSize = TypeScale.small,
+                    color = if (check.agrees) colors.onSurfaceVariant else colors.error,
+                )
+            }
+        }
+    }
+}
+
+/**
  * The Iceberg metadata a Paimon table writes beside its own, against the table — see
  * [IcebergExportCheck]. Behind a click for the same reason the orphan walk is: it is a second
  * table's read. The headline says whether an Iceberg reader is looking at the latest commit,

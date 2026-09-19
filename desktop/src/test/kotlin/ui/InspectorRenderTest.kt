@@ -2730,6 +2730,18 @@ class InspectorRenderTest {
                 IcebergExportSection(pilTable, startRequested = true) { pilSettled.set(true) }
             }
         }
+
+        // The same verdict on the file's own panel: `pil`'s level-4 file, the one the rule leaves
+        // out — the reader of a file panel asks "does an Iceberg reader see these rows", and the
+        // ordinary "exported" would not show the amber. The export is read already, so the
+        // section draws the verdict without a click.
+        val below = pil.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>().first { it.level == 4 && it.operationKind == 0 }
+        val belowSettled = java.util.concurrent.atomic.AtomicBoolean(false)
+        renderUntil("paimon-file-node-export", width = 1400, height = 360, ready = belowSettled::get) {
+            Column(Modifier.padding(16.dp)) {
+                PaimonFileExportSection(below) { belowSettled.set(true) }
+            }
+        }
     }
 
     /**

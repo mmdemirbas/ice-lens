@@ -44,6 +44,10 @@ object PaimonGraphBuilder {
         val tableSummary = buildTableSummary(tableModel)
         // Every schema against the one before it, once; the table node lists them and each schema node carries its own.
         val schemaSteps = tableModel.schemaEvolution()
+        // A listing of `metadata/` at build, so the section is drawn only on a table that carries
+        // the export; the read itself waits for the click. One read, shared by the table node and
+        // every data file node, so whichever panel asks first reads the export for all of them.
+        val icebergExport = if (tableModel.icebergExportPath != null) DeferredRead.of { tableModel.checkIcebergExport() } else DeferredRead.none()
         logicalNodes[tableNodeId] = GraphNode.TableNode(
             tableNodeId,
             tableSummary,
@@ -56,8 +60,7 @@ object PaimonGraphBuilder {
             rowHistory = DeferredRead.of { tableModel.rowHistoryInputs() },
             paimonChangelog = if (tableModel.snapshots.any { it.changelogManifests.isNotEmpty() }) DeferredRead.of { tableModel.paimonChangelogInputs() } else DeferredRead.none(),
             schemaEvolution = schemaSteps,
-            // A listing of `metadata/` at build, so the section is drawn only on a table that carries the export; the read itself waits for the click.
-            icebergExport = if (tableModel.icebergExportPath != null) DeferredRead.of { tableModel.checkIcebergExport() } else DeferredRead.none(),
+            icebergExport = icebergExport,
             // Read after the traversal fills `logicalNodes`, so the latest snapshot's node is
             // found whether or not aggregation goes on to draw it.
             maintenance = DeferredRead.of {
@@ -335,6 +338,7 @@ object PaimonGraphBuilder {
                                     vectorRange = vectorRange,
                                     deletionVector = vector,
                                     fileIndex = fileIndexLoader(unifiedDataFile),
+                                    icebergExport = if (kind == "changelog") DeferredRead.none() else icebergExport,
                                 )
                             }
 

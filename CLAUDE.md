@@ -3014,7 +3014,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,460 tests across 201 files (1,160 in :core, 287 in :desktop, 13 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,462 tests across 201 files (1,161 in :core, 287 in :desktop, 14 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3465,7 +3465,18 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   `TableNode.icebergExport`, a `DeferredRead` behind a click for the reason
   `UnreferencedFilesSection` is: it reads another table's metadata tree — and the IDE strip
   fills an `Iceberg export` row from the same read, the way it fills `History`, both shells
-  printing `IcebergExportCheck.describe` so the sentence cannot drift between them.
+  printing `IcebergExportCheck.describe` so the sentence cannot drift between them. **The same
+  verdict is on the file's own panel**, since "does an Iceberg reader see this file's rows" is
+  asked of a file: `PaimonDataFileNode.icebergExport` is the *same* `DeferredRead` instance the
+  table node carries (the builder hoists it and hands it to every data file node but a
+  changelog's), so whichever panel asks first reads the export once for all of them, and
+  `PaimonFileExportSection` draws the verdict at once where the table panel has read it
+  (`isRead`) and behind a click otherwise. `IcebergExportCheck.describeFile(name)` is the one
+  sentence both shells print — the fate, the file's level against `levelRule`, the rebuild path
+  named where it is what listed the file, `not compared` for a file neither live nor listed, and
+  the export's own snapshot named where it is behind — and the IDE strip's `Iceberg export` row
+  on a Paimon data file prints it under `History`. `paimon-file-node-export` is `pil`'s level-4
+  file, the amber verdict
   **Where the export is follows the storage type** (`icebergExportPathOf`, read off
   `catalogTableMetadataPath` at 1.3.1): `table-location` writes under the table's own
   `metadata/`; `hadoop-catalog`, `hive-catalog` and `rest-catalog` infer *catalog storage*

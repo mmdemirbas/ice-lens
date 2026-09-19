@@ -77,6 +77,38 @@ class PaimonIcebergExportFixtureTest {
         )
         assertEquals(emptySet(), check.missingFromIceberg, "each absence is explained by a rule")
         assertEquals(emptySet(), check.extraInIceberg)
+        // The file panel's sentence for each: the rebuild path named on the one, the rule on the other.
+        assertEquals(
+            "exported by the rebuild path: the export's current snapshot lists it at level 0, below the rule's (level 5 alone) — the rebuild " +
+                "lists every raw-convertible file whatever its level, and the next incremental commit that touches it applies the rule",
+            check.describeFile("data-f8514c24-37d7-4ba9-9002-48c9e04354de-0.parquet"),
+        )
+        assertEquals(
+            "not exported — level rule: at level 0, and the export lists level 5 alone; an Iceberg reader does not see its rows",
+            check.describeFile("data-f933e5dc-3f17-4b14-92a6-0cd173414e48-0.parquet"),
+        )
+    }
+
+    /**
+     * The verdict reaches the file's own panel through the table's read: every data file node the
+     * builder emits carries the *same* `DeferredRead` the table node does, so whichever panel
+     * asks first reads the export once for all of them — and a table without an export, or a
+     * changelog file, carries none.
+     */
+    @Test
+    fun `every data file node shares the table node's export read, and a table without an export gives its files none`() {
+        val pil = service.PaimonGraphBuilder.buildGraph(FixtureCatalog.paimonModel("pil"))
+        val table = pil.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val files = pil.nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
+        assertTrue(table.icebergExport.isPresent && files.isNotEmpty())
+        assertTrue(files.all { it.icebergExport === table.icebergExport }, "one read, shared")
+        assertTrue(!table.icebergExport.isRead, "not read at build")
+        val top = files.first { it.level == 5 && it.operationKind == PaimonEntryKind.ADD }
+        assertEquals(ExportFileFate.EXPORTED, top.icebergExport.value?.verdictFor(top.entry.file?.fileName.orEmpty())?.fate)
+        assertTrue(table.icebergExport.isRead, "the file's read is the table's")
+
+        val cl = service.PaimonGraphBuilder.buildGraph(FixtureCatalog.paimonModel("cl")).nodes.filterIsInstance<GraphNode.PaimonDataFileNode>()
+        assertTrue(cl.isNotEmpty() && cl.none { it.icebergExport.isPresent }, "no export on cl")
     }
 
     /**
@@ -230,6 +262,12 @@ class PaimonIcebergExportFixtureTest {
             check.fileVerdicts,
             "the section's rows: the rule's absence ahead of the ordinary case",
         )
+        assertEquals(ExportedFileVerdict(top, 5, ExportFileFate.EXPORTED), check.verdictFor(top))
+        assertEquals("exported: the export's current snapshot lists it, at level 5, which the rule exports (level 5 alone)", check.describeFile(top))
+        assertEquals("not exported — level rule: at level 4, and the export lists level 5 alone; an Iceberg reader does not see its rows", check.describeFile(below))
+        // The level-0 file snapshot 1 rebuilt and the first compaction removed: neither live nor listed.
+        assertEquals(null, check.verdictFor("data-not-here.parquet"))
+        assertEquals("not compared: not live in the table's latest snapshot, and not listed by the export", check.describeFile("data-not-here.parquet"))
 
         // The export read as Iceberg reads it: 1,004 rows, k 1 and 2 at the values the level-5
         // file holds, 1005 and 1006 nowhere — the script's own Iceberg read printed the same.
@@ -282,7 +320,19 @@ class PaimonIcebergExportFixtureTest {
             "disagreements lead, the rule's absence next, the ordinary case last",
         )
         assertEquals(listOf(true, true, false, false), stale.fileVerdicts.map { it.fate.disagrees })
-        val behind = IcebergExportCheck("/t", true, "table-location", 1, 1, 2, icebergFiles = emptySet(), paimonFiles = emptyMap())
+        // The two disagreements in the file panel's words, and the vector rule named on the ordinary case.
+        assertEquals("NOT EXPORTED: at level 1, which the rule exports (any level above 0, the vectors going out as Iceberg's), and the export's current snapshot does not list it", stale.describeFile("c"))
+        assertEquals("NOT LIVE HERE: the export's current snapshot lists it, and the table's latest snapshot does not", stale.describeFile("gone"))
+        assertEquals("exported: the export's current snapshot lists it, at level 3, which the rule exports (any level above 0, the vectors going out as Iceberg's)", stale.describeFile("a"))
+        assertEquals("exported: the export's current snapshot lists it", check.describeFile("a"), "an append table names no level")
+        assertEquals("NOT EXPORTED: at level 0, which the rule exports (every file of an append table), and the export's current snapshot does not list it", check.describeFile("b"))
+        val behind = IcebergExportCheck("/t", true, "table-location", 1, 1, 2, icebergFiles = setOf("a"), paimonFiles = mapOf("a" to 0), exportedLevel = null)
         assertTrue(!behind.current)
+        assertEquals(
+            "exported: the export's current snapshot lists it — the export is behind: its snapshot is 1, the table's latest 2",
+            behind.describeFile("a"),
+            "a verdict against an older commit says so",
+        )
+        assertEquals("not compared: not live in the table's latest snapshot, and not listed by the export", behind.describeFile("x"), "nothing to qualify")
     }
 }

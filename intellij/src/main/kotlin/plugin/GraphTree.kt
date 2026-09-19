@@ -133,7 +133,8 @@ object GraphTree {
 
     /**
      * Whether [deferredDetails] has anything to read for the node — a data file's history on
-     * either format, an Iceberg data row's projection, a Paimon table's Iceberg export.
+     * either format, an Iceberg data row's projection, a Paimon table's Iceberg export and its
+     * verdict on each of the table's data files.
      */
     fun hasDeferredDetails(node: GraphNode): Boolean =
         node is GraphNode.FileNode || node is GraphNode.PaimonDataFileNode ||
@@ -150,7 +151,11 @@ object GraphTree {
     fun deferredDetails(node: GraphNode, newest: TableMetadata? = null): List<Pair<String, String>> {
         val history = when (node) {
             is GraphNode.FileNode -> node.history
-            is GraphNode.PaimonDataFileNode -> node.history
+            // The export's verdict on the file rides the table's read, shared with the table node — another table's metadata tree, deferred like the history.
+            is GraphNode.PaimonDataFileNode -> return listOfNotNull(
+                HISTORY to (node.history.value?.describe ?: "could not be read"),
+                if (node.icebergExport.isPresent) ICEBERG_EXPORT to (node.entry.file?.fileName?.let { f -> node.icebergExport.value?.describeFile(f) } ?: "could not be read") else null,
+            )
             // The task plan walks the snapshot's closure for its live files and delete pairing —
             // the same walk the desktop's sections run — under the newest metadata's read.split.*.
             is GraphNode.SnapshotNode -> return listOf(SCAN_TASKS to (node.liveFiles?.let { live ->

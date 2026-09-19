@@ -337,6 +337,24 @@ class GraphTreeTest {
     }
 
     /**
+     * And the export's verdict on each data file is a deferred row on the file's own strip —
+     * `pil`'s level-5 file exported, its level-4 file left out by the rule — where a file of a
+     * table without the export carries its history alone.
+     */
+    @Test
+    fun `a Paimon data file's strip says whether the Iceberg export lists it`() {
+        val files = flatten(GraphTree.build(paimonGraphOf("pil"))).filterIsInstance<GraphNode.PaimonDataFileNode>()
+            .filter { it.operationKind == 0 }.distinctBy { it.entry.file?.fileName }.associateBy { it.level }
+        val top = GraphTree.deferredDetails(files.getValue(5))
+        val below = GraphTree.deferredDetails(files.getValue(4))
+        assertEquals(listOf(GraphTree.HISTORY, GraphTree.ICEBERG_EXPORT), top.map { it.first })
+        assertEquals("exported: the export's current snapshot lists it, at level 5, which the rule exports (level 5 alone)", top[1].second)
+        assertEquals("not exported — level rule: at level 4, and the export lists level 5 alone; an Iceberg reader does not see its rows", below[1].second)
+        val dvFile = flatten(GraphTree.build(paimonGraphOf("dv"))).filterIsInstance<GraphNode.PaimonDataFileNode>().first()
+        assertEquals(listOf(GraphTree.HISTORY), GraphTree.deferredDetails(dvFile).map { it.first })
+    }
+
+    /**
      * A snapshot's deferred detail is the read's cost in tasks — the closure walked for its live
      * files and delete pairing, under the newest metadata's `read.split.*` — with Spark's figure
      * at the strip's fixed parallelism of 200, where the adaptive size shrinks the target to

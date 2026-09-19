@@ -173,6 +173,41 @@ data class IcebergExportCheck(
         aboveLevelZero -> (level ?: 0) > 0
         else -> level == exportedLevel
     }
+
+    /** The level rule in words — which of the table's files the incremental path exports. */
+    val levelRule: String
+        get() = when {
+            exportedLevel == null -> "every file of an append table"
+            aboveLevelZero -> "any level above 0, the vectors going out as Iceberg's"
+            else -> "level $exportedLevel alone"
+        }
+
+    /** The export's verdict on one file by name, or null where it is neither live in the table's latest snapshot nor listed by the export. */
+    fun verdictFor(fileName: String): ExportedFileVerdict? = fileVerdicts.firstOrNull { it.file == fileName }
+
+    /**
+     * One file's verdict in a sentence, shared by both shells: whether an Iceberg reader of the
+     * export sees this file's rows, and by which of the callback's rules. A file the table no
+     * longer holds live and the export does not list has nothing to compare, and says so rather
+     * than reading as exported or not; an export that is behind says so on every file, since its
+     * verdict is against an older commit than the table's.
+     */
+    fun describeFile(fileName: String): String {
+        val verdict = verdictFor(fileName)
+        val level = verdict?.level?.let { "level $it" } ?: "no level"
+        val sentence = when (verdict?.fate) {
+            null -> "not compared: not live in the table's latest snapshot, and not listed by the export"
+            ExportFileFate.EXPORTED -> "exported: the export's current snapshot lists it" +
+                if (exportedLevel == null) "" else ", at $level, which the rule exports ($levelRule)"
+            ExportFileFate.REBUILT -> "exported by the rebuild path: the export's current snapshot lists it at $level, below the rule's " +
+                "($levelRule) — the rebuild lists every raw-convertible file whatever its level, and the next incremental commit that touches it applies the rule"
+            ExportFileFate.BELOW_LEVEL -> "not exported — level rule: at $level, and the export lists $levelRule; an Iceberg reader does not see its rows"
+            ExportFileFate.MISSING -> "NOT EXPORTED: at $level, which the rule exports ($levelRule), and the export's current snapshot does not list it"
+            ExportFileFate.NOT_LIVE -> "NOT LIVE HERE: the export's current snapshot lists it, and the table's latest snapshot does not"
+        }
+        return if (current || verdict == null) sentence else
+            "$sentence — the export is behind: its snapshot is ${currentIcebergSnapshotId ?: "none"}, the table's latest ${latestPaimonSnapshotId ?: "none"}"
+    }
 }
 
 /** The check, or null where the table carries no Iceberg export. */

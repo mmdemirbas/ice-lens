@@ -46,8 +46,10 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   The temporal hashes are in too (`ft`: a date's epoch day, a timestamp's microseconds), and
   the `bitmap` index is read as the dictionary it is (`fb`: `=` exact, `<>`, `IS NULL`,
   `IS NOT NULL`), and the `bsi` index as the slices it is (`fbs`: every comparison per row,
-  the terms' rows met across the filter as `FileIndexPredicate` meets them). What is left of
-  the index is `range-bitmap`, release-1.3.1's fourth, named and not read.
+  the terms' rows met across the filter as `FileIndexPredicate` meets them), and the
+  `range-bitmap` index as the dictionary and code slices it is (`frb`: every comparison on any
+  type, held to `FileIndexPredicate`'s rows). What is left of the index: nothing named and
+  unread.
   On Iceberg a column that records no bounds is explained rather than only reported: the file
   panel's `Metrics Modes` names the `write.metadata.metrics.*` rule behind each column and the
   pruning reason says so (`model/MetricsConfig.kt`, `metrics` and `metricsw`).
@@ -164,9 +166,10 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   v3 vectors; `pil` is the compacted table *without* exported vectors, where the level rule
   lists the level-5 file and leaves the level-4 one out — Iceberg's own read of its export
   prints two rows short and two updates behind — and the table panel's file table names each
-  file with the export's verdict on it. What the Paimon *file* panel does not say is whether
-  its own file is in the export: the check is a read of the export behind a click on the table
-  panel, and a per-file row would need it run first.
+  file with the export's verdict on it. The Paimon *file* panel says the same of its own file
+  (`PaimonFileExportSection`, the IDE strip's `Iceberg export` row): the data file nodes share
+  the table node's read, so a table panel that has read the export answers on every file at
+  once, and a file panel opened first reads it behind its own click.
 
 - **ORC data files cannot be read.** DuckDB 1.4.4 has no ORC table function, core or community;
   every reader says so (`orcfmt`). An ORC reader would be a second engine on the classpath (the
@@ -249,9 +252,10 @@ What is left:
   `file_path` bounds a positional delete records about itself — so a *dangling* delete is named as
   one, and `SampleRowReader.queryDeletedRowCount` then reads only the narrowed candidates: one
   `count(DISTINCT pos)` gives how many of a data file's rows are gone, which is what makes a **live
-  row count** possible at all. Equality deletes stay out of both: they match by value, so no bound
-  and no path links them to any file, and counting what they remove means evaluating a predicate
-  over the data rather than reading the delete.
+  row count** possible at all. Equality deletes are in both now: the pairing rules them out by
+  sequence, partition and bounds and never in, and what they remove is counted by reading —
+  `service/EqualityDeleteTargets.kt` per candidate file behind a click on the delete's panel,
+  and `service/LiveRowCount.kt`'s join per data file.
 
 - **Cross-manifest deduplication is invisible from a manifest — and measurement says the case is
   empty where the panel would show it.** The drill-down scopes deduplication to the manifest on
