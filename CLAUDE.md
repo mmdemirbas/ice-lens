@@ -68,6 +68,7 @@ core/src/main/kotlin/
 │   ├── BucketTransform.kt     # Iceberg's bucket[N], via the same Guava murmur3 the writer uses
 │   ├── SnapshotDiff.kt        # Two snapshots' live file sets, and the set difference between them
 │   ├── ScanTaskPlan.kt        # How many tasks a read takes — TableScanUtil.planTasks's row-group splits, the open-file cost and the scan's bin packing, and Spark's adaptive split size
+│   ├── PaimonSplitPlan.kt     # The Paimon twin — SnapshotReaderImpl.generateSplits's three generators over each bucket, packForOrdered, and the input partitions Spark repacks the raw splits into
 │   ├── SchemaEvolution.kt     # Each schema against the one before it, by field id — added, dropped, renamed, moved, promoted — with the first snapshot written under it, both formats
 │   ├── ManifestMergePlan.kt   # What the next commit does to the manifest list — ManifestMergeManager's bins and verdicts
 │   ├── MaintenanceInput.kt    # The newest metadata and the current snapshot's node, carried on the table node for the planners — never read off the drawn graph
@@ -183,6 +184,7 @@ desktop/src/main/kotlin/
     ├── NavigationTree.kt      # Structure tree view — flatten graph, search, expand/collapse
     ├── ScanPruningSection.kt  # The filter form and its per-manifest verdicts, in the table inspector
     ├── ScanTasksSection.kt    # How many tasks a read of the snapshot takes, and Spark's partitions at a typed parallelism — with the filter, the files the scan leaves
+    ├── PaimonScanSplitsSection.kt # The same on the Paimon snapshot panel: the splits per bucket, raw or merged, and Spark's repacking of the raw ones
     ├── GraphStatusBadge.kt    # Canvas overlay: how much of the table is drawn, and the page size
     └── ToolWindow.kt          # Draggable tool window bars and panes
 ```
@@ -1325,6 +1327,43 @@ intellij/src/main/kotlin/plugin/
   panel's filter a second plan over the files the scan leaves, the `Rewrite` section's `where`
   rule; the table panel's pruning headline says how many tasks the filtered read takes at the
   current snapshot, off the maintenance input's walk the summary above it already ran
+- **The Paimon twin plans splits per bucket, and Spark repacks the raw ones by a bound the
+  vectors are charged to but not counted in.** `model/PaimonSplitPlan.kt` reads
+  `SnapshotReaderImpl.generateSplits` at release-1.3.1: the read files ([`PaimonReadInput.readFiles`],
+  level 0 left out where a batch read skips it) grouped by partition and bucket in plan order,
+  each bucket cut by the table's `SplitGenerator` — a primary-key table's `MergeTreeSplitGenerator`
+  packs the files whole, every split raw, when every one is above level 0 with no `-D` row and
+  the table has deletion vectors, is `first-row`, or holds them all at one level, and otherwise
+  cuts them into sections of intersecting key ranges (the `paimonIntervalSections` the compaction
+  and the raw-convertible rule already use) and packs the sections, a split raw only when it
+  holds one file; an append table's `AppendOnlySplitGenerator` sorts by `_MIN_SEQUENCE_NUMBER`
+  and packs; a data-evolution table's `DataEvolutionSplitGenerator` packs the groups sharing a
+  first row id, sorted by it then by `_MAX_SEQUENCE_NUMBER` descending. Packing is
+  `BinPacking.packForOrdered` (`packForOrdered`, shared with `paimonRawConvertible` now) to
+  `source.split.target-size`, an item weighing its bytes or `source.split.open-file-cost`,
+  whichever is more: never reordered, and an item past the target on its own is a split of one.
+  `PaimonLookupFile` carries `fileSize`, `deleteRowCount`, `minSequenceNumber` and `keyRange`
+  for it. **Spark then plans its input partitions from the splits** (`ScanHelper.getInputPartitions`,
+  `paimonSparkPartitions`): a split that is not raw-convertible is a partition of its own; the
+  raw splits' files are walked in order and repacked under
+  `min(source.split.target-size, max(open cost, Σ(fileSize + openCost) over the raw files /
+  minPartitionNum))` — `spark.sql.files.minPartitionNum`, else `spark.sql.leafNodeDefaultParallelism`,
+  else `sparkContext.defaultParallelism` — each file charged its size, the open cost, **and its
+  vector's length under deletion vectors**, which is charged to the partition and left out of
+  the bound: so at a parallelism of one `dv`, `ad` and `pid` read as two partitions of two files
+  where a table without vectors reads as one, and at 200 the bound is the open cost and every
+  raw file is a partition. `docs/fixtures/paimon-scan-splits.scala` prints every checked-in
+  table's splits — bucket, rawness, files — and the DataFrame's partition count at parallelism 1
+  (`local[1]`) and 200 (`spark.sql.leafNodeDefaultParallelism`) into
+  `core/src/test/resources/paimon-scan-plans/splits.txt` (the run needs the Paimon catalog confs:
+  the image's default catalog is a REST catalog at a host that is not there, and a read by path
+  resolves through it), and `PaimonSplitPlanTest` holds all 62 tables to it on both counts;
+  the two clauses the corpus cannot tell — `oneLevel`, and the bound from the raw bytes alone —
+  are pinned on synthetic buckets, since dropping either passed every table. The Paimon
+  snapshot panel's `Scan Splits` (`ui/PaimonScanSplitsSection.kt`) is the `Scan Tasks` shape —
+  one row per file under its split, raw or merged, the parallelism field on Spark's line, the
+  filtered plan under the table panel's filter — and the pruning headline on a Paimon table
+  panel says how many splits the filtered read takes at the latest snapshot
 - **A filter's column binds by field id through the current schema, the way a scan binds it,
   and a nested leaf is named by its path.** `ColumnBinder` in `model/ScanPruning.kt`:
   `BySchema` resolves a column to the current schema's field id (`IcebergSchemaModel.idOfPath`
@@ -2949,7 +2988,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,444 tests across 199 files (1,146 in :core, 286 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,453 tests across 200 files (1,154 in :core, 287 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3076,7 +3115,7 @@ container invocation and the traps in it:
 | `default/orph`, `orpha` | `OrphanRemovalPlanFixtureTest` | one table copied before `remove_orphan_files` ran on it — `previous-versions-max = 2`, an expiry with `cleanExpiredFiles(false)`, three strays; the ten files the procedure deleted from `orpha`, and the hidden `_stray` it kept |
 | `paimon/db.db/test` | `RealTableFixtureTest`, `PaimonIndexManifestTest` | a real Flink/Paimon table, and its index manifest |
 | `paimon/db.db/dv` | `PaimonIndexManifestTest` | a Spark-written primary-key table with a deletion vector, and the compaction trap that nearly produced none |
-| `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest`, `PaimonFileBoundsFixtureTest`, `PaimonScanPruningTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
+| `paimon/db.db/pt` | `PaimonPartitionFixtureTest`, `PaimonManifestTallyTest`, `PaimonFileBoundsFixtureTest`, `PaimonScanPruningTest`, `PaimonSplitPlanTest` | a partitioned table — `_PARTITION` decoded against the directory layout, both string encodings and a date, and one manifest whose recorded partition minimum is a partition none of its entries has |
 | `paimon/db.db/ao` | `PaimonAppendOnlyFixtureTest` | an append-only table, no primary key, `bucket = -1` — no key range, everything in `bucket-0`, and a DELETE that rewrites a file as an `APPEND` with a negative delta |
 | `paimon/db.db/br` | `PaimonBranchFixtureTest` | two branches — one created from a tag and committed to, one created empty; main and `dev` both hold a `snapshot-2`, and `bucket-0` holds a file only the branch names |
 | `paimon/db.db/brf` | `FastForwardFixtureTest` | `br` after `sys.fast_forward(branch => 'dev')` — main's snapshot 3 gone and its 2 overwritten by the branch's, the tag rewritten from the branch's copy, and main's k = 4 and k = 6 files with their manifests and lists left named by nothing |

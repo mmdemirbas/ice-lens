@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **The splits a Paimon batch read takes are planned**, the way `SnapshotReaderImpl.generateSplits`
+  plans them at release-1.3.1 (`model/PaimonSplitPlan.kt`): each bucket's files through the
+  table's generator — a primary-key table's packed whole when every file is above level 0 with
+  no `-D` row under deletion vectors, `first-row` or one level, else its sections of intersecting
+  key ranges packed, a split raw only when it holds one file; an append table's by minimum
+  sequence number; a data-evolution table's by first-row-id group — under `source.split.*`, and
+  the input partitions Spark repacks the raw splits into, a vector's bytes charged to the
+  partition and not to the bound. The Paimon snapshot panel's `Scan Splits` draws it, with the
+  parallelism field and the plan under the table panel's filter, and the pruning headline says
+  how many splits the filtered read takes. Held to Paimon's own plan on every checked-in table
+  and to the DataFrame's partition count at two parallelisms (`paimon-scan-plans/splits.txt`)
 - **The tasks a read takes are planned**, the way `TableScanUtil.planTasks` plans them at 1.8.1
   (`model/ScanTaskPlan.kt`): a Parquet, ORC or Avro file with well-defined `split_offsets` is one
   split per row group whatever the target size, any other file is cut into `read.split.target-size`

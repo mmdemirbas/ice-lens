@@ -43,6 +43,14 @@ data class PaimonLookupFile(
      * append table or where the bounds did not decode, which prunes nothing.
      */
     val keyStats: List<ColumnStats> = emptyList(),
+    /** `_FILE_SIZE` — what a split weighs the file at ([planPaimonSplits]). */
+    val fileSize: Long? = null,
+    /** `_DELETE_ROW_COUNT` — a file holding a `-D` row is never read raw. */
+    val deleteRowCount: Long? = null,
+    /** `_MIN_SEQUENCE_NUMBER` — the order an append table's files are packed in. */
+    val minSequenceNumber: Long? = null,
+    /** `_MIN_KEY` / `_MAX_KEY` decoded, where every key column did — what a merge split's sections are cut by; null otherwise. */
+    val keyRange: PaimonKeyRange? = null,
 ) {
     /** The file's format by its name — what decides which DuckDB table function reads it. */
     val extension: String get() = fileName.substringAfterLast('.', "").lowercase()
@@ -160,6 +168,10 @@ fun PaimonUnifiedDataFile.asLookupFile(): PaimonLookupFile? {
         fileSchema = schema,
         writeCols = meta.writeCols,
         keyStats = paimonKeyColumnStats(keyBounds, meta.rowCount),
+        fileSize = meta.fileSize,
+        deleteRowCount = meta.deleteRowCount,
+        minSequenceNumber = meta.minSequenceNumber,
+        keyRange = keyBounds?.takeIf { it.isNotEmpty() && it.all { b -> b.decoded } }?.let { b -> PaimonKeyRange(b.map { it.min }, b.map { it.max }) },
     )
 }
 

@@ -17,6 +17,7 @@ import model.DataFileContent
 import model.GraphModel
 import model.GraphNode
 import model.IcebergMaintenanceInput
+import model.PaimonMaintenanceInput
 import model.ManifestPruneResult
 import model.PredicateOp
 import model.PredicateOutcome
@@ -36,6 +37,7 @@ import model.evaluateScan
 import model.prunableColumns
 import model.ScanTaskOptions
 import model.normalizeFilePath
+import model.planPaimonSplits
 import model.planScanTasks
 import model.scanTaskFiles
 
@@ -267,7 +269,8 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
         // plans them. Off the table node's maintenance input — the `Maintenance` summary above
         // already walked it, so this opens nothing — and the verdicts are the drawn graph's, so a
         // live file that is not drawn is read.
-        val maintenance = (graph.nodeById["table_root"] as? GraphNode.TableNode)?.maintenance?.value as? IcebergMaintenanceInput
+        val maintenanceInput = (graph.nodeById["table_root"] as? GraphNode.TableNode)?.maintenance?.value
+        val maintenance = maintenanceInput as? IcebergMaintenanceInput
         val current = maintenance?.current
         val live = current?.liveFiles
         if (maintenance != null && current != null && live != null) {
@@ -282,6 +285,21 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
                     "${formatCounted(filtered.tasks.size, "task")} over the ${formatCounted(filtered.dataFiles, "live data file")} " +
                     "the filter leaves, ${formatCounted(whole.tasks.size, "task")} over all ${formatCount(whole.dataFiles)} without it; " +
                     "the current snapshot's Scan Tasks section lists them.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+            )
+        }
+        // The Paimon twin: the latest snapshot's read files, cut by the table's SplitGenerator.
+        val paimonInput = (maintenanceInput as? PaimonMaintenanceInput)?.current?.readInput?.value
+        if (paimonInput != null) {
+            val whole = planPaimonSplits(paimonInput)
+            val ruledOut = plan.ruledOutFileKeys(graph)
+            val filtered = planPaimonSplits(paimonInput, paimonInput.readFiles.filter { it.fileName !in ruledOut })
+            Text(
+                "Planned as splits at the latest snapshot (SnapshotReaderImpl.generateSplits under the table's source.split.*): " +
+                    "${formatCounted(filtered.splits.size, "split")} over the ${formatCounted(filtered.files, "live data file")} " +
+                    "the filter leaves, ${formatCounted(whole.splits.size, "split")} over all ${formatCount(whole.files)} without it; " +
+                    "the latest snapshot's Scan Splits section lists them.",
                 fontSize = TypeScale.small,
                 color = colors.onSurfaceVariant,
             )

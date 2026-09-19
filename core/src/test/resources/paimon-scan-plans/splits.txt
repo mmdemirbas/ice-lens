@@ -1,0 +1,321 @@
+-- ad: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-6ec43fa7-517c-454e-a4d3-20cfcf3d9466-0.parquet,data-e876b86d-ec55-41a9-a6fd-99935646c7c7-0.parquet
+-- ad: splits = 1
+-- ag: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-eb754592-a94a-4886-9522-211d1b2d2238-0.parquet,data-784f14a2-4a10-4a85-ad9d-271001c33fc6-0.parquet,data-4b3212ca-442a-41de-9ff2-e8a09965fb45-0.parquet
+-- ag: splits = 1
+-- ao: splits
+s1 org.apache.paimon.data.BinaryRow@59f12306 b0 raw=true data-fb705c59-4242-47c0-8ab0-aa6b947451e2-0.parquet
+s2 org.apache.paimon.data.BinaryRow@386e589d b0 raw=true data-774e54cd-8df4-45ba-ad5e-55613ce92e5e-0.parquet,data-caf63992-b50f-4d8c-833f-cfdda12dcb4e-0.parquet
+-- ao: splits = 2
+-- br: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-5f12e919-6cae-44c5-98a5-cc07211c04bb-0.parquet,data-a157fcba-e08c-48c8-a409-c531bca13760-0.parquet,data-11ab6c2a-03db-4f34-bb35-6b8d5f670d9c-0.parquet
+-- br: splits = 1
+-- brf: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-5f12e919-6cae-44c5-98a5-cc07211c04bb-0.parquet,data-ea051d3b-97c2-44a9-b318-193de01f27b1-0.parquet
+-- brf: splits = 1
+-- brp: splits
+-- brp: splits = 0
+-- cl: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-e9567f42-88ed-4608-a8fa-2bc48a5a34dc-1.parquet
+-- cl: splits = 1
+-- cs: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-23b0a4f3-c5d1-448c-aa46-e1d423fd5afc-0.parquet,data-4e7af8e9-7e9d-4acb-a81b-ccf7ef78b5a2-0.parquet,data-8095528d-06b8-43ca-9314-48e7c0ea006b-0.parquet
+-- cs: splits = 1
+-- de: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-2c9dcdea-2284-4732-9976-00cd692693e1-0.parquet,data-4676e57e-9991-46b7-a67f-0837ede4e2c5-0.parquet,data-672c06d9-98e1-4941-8fd2-babdf1662a1e-0.parquet
+-- de: splits = 1
+-- der: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-0d590b6d-bc53-4a75-af6e-60a98a80d849-0.parquet,data-4c7f6bc5-ee15-492d-aeb7-eb30fb15365d-0.parquet
+-- der: splits = 1
+-- dv: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-14c31b3c-7fe8-4195-9702-ebe02bb6a8e0-0.parquet,data-55edd615-45a1-4dac-aa0d-296dc71399b4-0.parquet
+-- dv: splits = 1
+-- ep: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-e23c81f7-3da8-431b-9657-02c16de21151-0.parquet,data-70cd3443-5801-48e8-ad43-5cdd65e05be0-0.parquet
+-- ep: splits = 1
+-- fa: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-609c9615-ab32-492a-97ad-877b0be8568a-0.parquet,data-bb8cf341-0c49-40e3-a995-5f9fab42118f-0.parquet
+-- fa: splits = 1
+-- fb: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-78cf96d7-9512-4747-8693-dbc3c5d6ad40-0.parquet,data-0601ba10-ed0a-4763-b7de-f03655fc7c77-0.parquet,data-02d4b3e1-d6fa-4f0b-9a20-3932c2cf06d4-0.parquet
+-- fb: splits = 1
+-- fbs: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-a6bfbe8c-557a-4b07-a514-e33bbf1aff52-0.parquet,data-9aec0cc6-8d86-462b-832c-701daf318d13-0.parquet,data-93aa7e5d-3634-4ce3-a95a-5bfcfb8e8e59-0.parquet,data-45f79f1b-a157-4ecb-9a2f-bf4fada5db8c-0.parquet
+-- fbs: splits = 1
+-- fi: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-c207bd15-64eb-4893-a09f-c6ef8e5d7693-0.parquet,data-f13e0a5f-77b4-4f0f-909a-bdc2152578d2-0.parquet
+-- fi: splits = 1
+-- fr: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-3dd96d5b-6c54-4e2d-a679-98a1eb8ed4d2-0.parquet
+-- fr: splits = 1
+-- frb: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-adebd5bf-cf86-44c2-af1b-75073ff05533-0.parquet,data-57249fd9-5816-4bde-8307-55b7c7b3b8c1-0.parquet,data-62d80f60-80d2-4d8d-bc0a-c5a3427edd18-0.parquet,data-e26ca310-b75a-42d9-805b-e90652db74e0-0.parquet
+-- frb: splits = 1
+-- ft: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-831f46cf-d7a2-4d48-a916-d55bc4e917bf-0.parquet
+-- ft: splits = 1
+-- lk: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-c9fecb02-68f6-47ee-85d4-b42cb04c81ff-0.parquet,data-9e1aa64e-90dd-4146-8589-558284b4d7fa-0.parquet,data-c9d1e9d4-4e0f-47ef-9390-303168312a35-0.parquet
+-- lk: splits = 1
+-- pav: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-e833857f-cafd-4568-a51a-4e17c0217213-0.avro,data-22b56e71-9dd5-4a27-b1a6-c16bcfc2d706-0.avro,data-41827951-9b7f-4bec-bc7e-ac5580b7a818-0.avro
+-- pav: splits = 1
+-- paz: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-a56c171b-6e89-4c43-bb1d-47316e3db7a2-0.avro
+-- paz: splits = 1
+-- pbk: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-6842533f-5fa3-4af9-88c5-5dc0b7398149-0.parquet,data-51dcd331-df98-48b1-ae99-59e6002a513e-0.parquet,data-3dd66d3c-e976-4139-8b35-f8a7ebfa7311-0.parquet
+-- pbk: splits = 1
+-- pbka: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-476b51b6-3c00-4933-ad9c-2bb8e0129f37-0.parquet,data-0885a921-70e9-44ea-bb54-6a38df050f40-0.parquet
+s2 org.apache.paimon.data.BinaryRow@9c67b85d b1 raw=true data-6b1279f0-7c99-412f-bb80-feed0c3fb9b5-0.parquet
+-- pbka: splits = 2
+-- pc: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-440cf6fe-f3d2-4028-8553-d6d43db8cf5a-0.parquet,data-91a56f32-fe11-4b98-aafc-a79632c48623-0.parquet,data-542001a6-5e55-4b63-86d7-32391fcfb16e-0.parquet
+-- pc: splits = 1
+-- pcl: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-215ada54-3a56-4440-bbc1-ff60fd1e9344-1.parquet,data-260bc9bb-87bc-45f0-9135-1b6ae540b95e-0.parquet,data-1c353223-87b9-4554-b70a-85995c54659b-1.parquet
+-- pcl: splits = 1
+-- pcn: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-1db28bef-73f4-478d-935f-85c48b87f59d-0.parquet,data-a5d69a38-a588-4ce5-8cd6-5e07a0c5422f-0.parquet,data-d9fa12f5-cfb2-473f-ba1c-5f0271ac5f7a-0.parquet
+-- pcn: splits = 1
+-- pe: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-aa45cb3b-c486-4a85-bc59-9583e30e5240-0.parquet,data-3b65fcb6-125e-4031-83ec-ad5d5ae1fca6-1.parquet,data-5145b600-8d44-4bee-9b6f-3ddbc09d5273-1.parquet
+-- pe: splits = 1
+-- pea: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-aa45cb3b-c486-4a85-bc59-9583e30e5240-0.parquet,data-3b65fcb6-125e-4031-83ec-ad5d5ae1fca6-1.parquet,data-5145b600-8d44-4bee-9b6f-3ddbc09d5273-1.parquet
+-- pea: splits = 1
+-- pic: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-f8514c24-37d7-4ba9-9002-48c9e04354de-0.parquet,data-f933e5dc-3f17-4b14-92a6-0cd173414e48-0.parquet
+-- pic: splits = 1
+-- pid: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-9464b625-a026-4179-97d9-71be023841d2-0.parquet,data-1455d9d6-31e2-46de-85b4-2818497bba58-0.parquet
+-- pid: splits = 1
+-- pih: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-dcf50f79-2ef3-4a02-81c2-03dc19e86987-0.parquet,data-68ff69f4-6aee-45e1-8458-0074e002cc9a-0.parquet
+-- pih: splits = 1
+-- pkr: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-4176255d-dc7e-45dc-8817-a706286bc55e-0.parquet,data-9e86f2d3-14f6-42df-b8b0-4f490d2ecc1b-0.parquet,data-bc50b7cf-ca8c-4e53-bc98-5cad4ccc31c5-0.parquet
+-- pkr: splits = 1
+-- pmm: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-b1951ea3-c273-485e-ac5a-8d4f51c327e3-0.parquet,data-9d07ed4a-7c01-48e4-9c5c-a3ce0a995faa-0.parquet,data-6c31837f-88ae-4dcf-947c-3404b5904a65-0.parquet,data-015083ad-79db-4c33-bf6c-9bfc929c4e2f-0.parquet,data-0c288607-2046-404e-946f-5c4b90dc9d1b-0.parquet,data-f645d92c-be78-420b-96ad-7a18519c83bc-0.parquet,data-7ed0bffe-93ed-49f5-846e-a197f3015350-0.parquet,data-3fe42f1a-7e24-4e5e-8597-1a9ac9838004-0.parquet,data-f9bf009d-a51b-41c6-8d56-827a65a18701-0.parquet,data-786764cd-c2d4-406d-af12-0451ed97f97e-0.parquet
+-- pmm: splits = 1
+-- pmma: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-b1951ea3-c273-485e-ac5a-8d4f51c327e3-0.parquet,data-9d07ed4a-7c01-48e4-9c5c-a3ce0a995faa-0.parquet,data-6c31837f-88ae-4dcf-947c-3404b5904a65-0.parquet,data-015083ad-79db-4c33-bf6c-9bfc929c4e2f-0.parquet,data-0c288607-2046-404e-946f-5c4b90dc9d1b-0.parquet,data-f645d92c-be78-420b-96ad-7a18519c83bc-0.parquet,data-7ed0bffe-93ed-49f5-846e-a197f3015350-0.parquet,data-3fe42f1a-7e24-4e5e-8597-1a9ac9838004-0.parquet,data-f9bf009d-a51b-41c6-8d56-827a65a18701-0.parquet,data-786764cd-c2d4-406d-af12-0451ed97f97e-0.parquet
+-- pmma: splits = 1
+-- pne: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-fbda4e34-8269-4e16-9a57-d447158e5f32-0.parquet,data-bb02d34c-8812-4ce1-8269-11392f9795a5-0.parquet
+-- pne: splits = 1
+-- po: splits
+s1 org.apache.paimon.data.BinaryRow@5e211332 b0 raw=true data-9b1fb4ac-5b5b-42f0-991f-36701de067c0-0.parquet
+-- po: splits = 1
+-- poa: splits
+s1 org.apache.paimon.data.BinaryRow@5e211332 b0 raw=true data-9b1fb4ac-5b5b-42f0-991f-36701de067c0-0.parquet
+-- poa: splits = 1
+-- ppx: splits
+s1 org.apache.paimon.data.BinaryRow@4978959d b0 raw=true data-02b9a5ff-a334-429f-9b8d-4b3db475a1ff-0.parquet
+s2 org.apache.paimon.data.BinaryRow@178c75a2 b0 raw=true data-02feae1e-cdd7-4546-9c6c-58b3722097d5-0.parquet
+s3 org.apache.paimon.data.BinaryRow@4cc79435 b0 raw=true data-5232ae26-ad5a-4cba-8681-c544986dc021-0.parquet
+s4 org.apache.paimon.data.BinaryRow@c8b5e8ad b0 raw=true data-2a603da7-20d1-4e4c-a912-1707090f65ff-0.parquet
+-- ppx: splits = 4
+-- ppxa: splits
+s1 org.apache.paimon.data.BinaryRow@4cc79435 b0 raw=true data-5232ae26-ad5a-4cba-8681-c544986dc021-0.parquet
+s2 org.apache.paimon.data.BinaryRow@c8b5e8ad b0 raw=true data-2a603da7-20d1-4e4c-a912-1707090f65ff-0.parquet
+-- ppxa: splits = 2
+-- prb: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-41c7d5ad-0ae8-4e8c-b5a6-f386e146b006-0.parquet,data-fd8a2428-abad-4bdc-be5c-a421c6323da0-0.parquet,data-988b591f-b41d-4842-a2ca-9b4714de24ef-0.parquet,data-ca04689f-cda3-4abf-b288-cf7df1e957a8-0.parquet
+-- prb: splits = 1
+-- prba: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-41c7d5ad-0ae8-4e8c-b5a6-f386e146b006-0.parquet,data-fd8a2428-abad-4bdc-be5c-a421c6323da0-0.parquet
+-- prba: splits = 1
+-- pru: splits
+s1 org.apache.paimon.data.BinaryRow@5e211332 b0 raw=false data-d2e53a92-4208-439c-8bd8-9b47c8d733c2-0.parquet,data-c9f662ef-59a9-4d80-b020-624f03395256-0.parquet
+s2 org.apache.paimon.data.BinaryRow@ed2df420 b0 raw=false data-e9ec13f8-c151-4141-81c0-0d6a84bb0def-0.parquet,data-e4c400b8-7c3d-4716-b390-33fdaa40a03e-0.parquet
+-- pru: splits = 2
+-- prua: splits
+s1 org.apache.paimon.data.BinaryRow@5e211332 b0 raw=true data-d2e53a92-4208-439c-8bd8-9b47c8d733c2-0.parquet
+s2 org.apache.paimon.data.BinaryRow@ed2df420 b0 raw=true data-e9ec13f8-c151-4141-81c0-0d6a84bb0def-0.parquet
+-- prua: splits = 2
+-- pse: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-59098f85-61ea-42d6-8238-ac899a8e6c9a-0.parquet,data-ac753669-352e-4eb3-bd7c-b9aff8e03339-0.parquet,data-5fd8e304-d57a-4a9a-a827-c375e90e86b8-0.parquet
+-- pse: splits = 1
+-- psk: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-4a0ef0cb-caa5-44d8-acb2-809180fce30b-0.parquet
+-- psk: splits = 1
+-- psl: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-b520f05a-eefc-4838-9796-16d52b6d470c-0.parquet
+-- psl: splits = 1
+-- psm: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-bf276868-047a-42cf-9f33-1a0d4dcb10a4-0.parquet,data-9682c24c-f2be-461e-9573-13bb7803b43f-0.parquet
+-- psm: splits = 1
+-- pt: splits
+s1 org.apache.paimon.data.BinaryRow@95435d17 b0 raw=true data-783ed9fc-aa14-4175-813b-a954781ebe47-0.parquet
+s2 org.apache.paimon.data.BinaryRow@8a98377d b0 raw=false data-23d56f02-c706-4f17-a6aa-2c07e95c282a-0.parquet,data-aa4886f3-3f94-4209-a413-0a718d4e9ff4-0.parquet
+s3 org.apache.paimon.data.BinaryRow@c8ea3e96 b0 raw=false data-86810cb4-adeb-4b60-968a-2081768c6ed4-0.parquet,data-5bfe465d-20c4-44d5-beb0-66f3e47741f1-0.parquet
+s4 org.apache.paimon.data.BinaryRow@2e89fb04 b0 raw=true data-5cd37195-6938-4199-acb7-ce9b10081559-0.parquet
+s5 org.apache.paimon.data.BinaryRow@e1a16f b0 raw=true data-69aee50c-75a2-4eaf-ac04-051b5d6eef57-0.parquet
+-- pt: splits = 5
+-- ptt: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-2428593b-36b3-4f69-8b45-75278b38b897-0.parquet,data-b14beefc-9f88-4fcf-af62-f1de9063b3f7-0.parquet,data-d1e21e29-1dea-4657-9112-f2bbdcbf4151-0.parquet
+-- ptt: splits = 1
+-- ptta: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-2428593b-36b3-4f69-8b45-75278b38b897-0.parquet,data-b14beefc-9f88-4fcf-af62-f1de9063b3f7-0.parquet,data-d1e21e29-1dea-4657-9112-f2bbdcbf4151-0.parquet
+-- ptta: splits = 1
+-- pu: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-99c9d107-0870-4135-b286-338aaa8a6c4c-0.parquet,data-9a83376b-fd3a-4677-a9b2-c2c9a2425e4f-0.parquet,data-a78a9e55-1e0d-4cf2-a0bf-65efeafdb974-0.parquet,data-95e505c9-3414-4b68-bc78-9b032b403c64-0.parquet
+-- pu: splits = 1
+-- px: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-0db6ff7f-30a9-46c8-b9fb-547979a78022-0.parquet,data-b6a1cf77-1695-4bf4-8fa2-00692ef26518-0.parquet,data-073d1a3c-5a65-4be4-8b2d-5a629b3a3985-0.parquet,data-f1011584-c0ee-425a-a7c7-b6d807269037-0.parquet,data-d6356ffa-c3c4-4adb-b9a2-19400db4ef4d-0.parquet,data-162405d0-1bd0-45a3-855b-5353ffde0bf4-0.parquet
+-- px: splits = 1
+-- pxa: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-9e3a8bb7-d560-4494-b605-11b674b9bdd8-0.parquet,data-7feeda72-2ed9-4019-b6c0-76ac12a6e4ee-0.parquet,data-3570d0ca-8315-4a1f-8dd6-795599798b62-0.parquet,data-3c585186-1036-495d-94ca-278fffd4826a-0.parquet,data-63aed7a5-c919-4798-b311-436c2b6b7ff9-0.parquet,data-e2733271-719a-4d66-b63d-1b2359739929-0.parquet
+-- pxa: splits = 1
+-- rt: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-f73c5c80-17fe-465f-bb0d-f5aada691a49-0.parquet
+-- rt: splits = 1
+-- se: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-19f822e8-d67b-449f-b706-400bd4c2d251-0.parquet
+-- se: splits = 1
+-- sg: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-997f36b5-a2f0-466c-8775-1c602abc34ed-0.parquet,data-e8947aeb-806b-4148-a0b1-46a01b505b5b-0.parquet,data-69671142-7d80-4337-9434-7acdc66c708c-0.parquet
+-- sg: splits = 1
+-- sgd: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-53877684-da50-484d-933c-6644bb4316f9-0.parquet
+-- sgd: splits = 1
+-- sgm: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-38d4a2d9-8888-4bef-b72f-8b01a893c18e-0.parquet,data-e8b6bb73-7c61-460f-ac22-765ad12bc34d-0.parquet
+-- sgm: splits = 1
+-- sm: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-b504dca4-198b-4191-82c4-03e08f1f6356-0.parquet
+-- sm: splits = 1
+-- test: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-790113fb-95dd-4221-b455-b1906831f399-0.parquet
+-- test: splits = 1
+-- tg: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-2ea5b675-2040-42ba-bd2d-09a963b7d68d-1.parquet
+-- tg: splits = 1
+-- ad: spark partitions = 2 (parallelism 1)
+-- ag: spark partitions = 1 (parallelism 1)
+-- ao: spark partitions = 1 (parallelism 1)
+-- br: spark partitions = 1 (parallelism 1)
+-- brf: spark partitions = 1 (parallelism 1)
+-- brp: spark partitions = 0 (parallelism 1)
+-- cl: spark partitions = 1 (parallelism 1)
+-- cs: spark partitions = 1 (parallelism 1)
+-- de: spark partitions = 1 (parallelism 1)
+-- der: spark partitions = 1 (parallelism 1)
+-- dv: spark partitions = 2 (parallelism 1)
+-- ep: spark partitions = 1 (parallelism 1)
+-- fa: spark partitions = 1 (parallelism 1)
+-- fb: spark partitions = 1 (parallelism 1)
+-- fbs: spark partitions = 1 (parallelism 1)
+-- fi: spark partitions = 1 (parallelism 1)
+-- fr: spark partitions = 1 (parallelism 1)
+-- frb: spark partitions = 1 (parallelism 1)
+-- ft: spark partitions = 1 (parallelism 1)
+-- lk: spark partitions = 1 (parallelism 1)
+-- pav: spark partitions = 1 (parallelism 1)
+-- paz: spark partitions = 1 (parallelism 1)
+-- pbk: spark partitions = 1 (parallelism 1)
+-- pbka: spark partitions = 2 (parallelism 1)
+-- pc: spark partitions = 1 (parallelism 1)
+-- pcl: spark partitions = 1 (parallelism 1)
+-- pcn: spark partitions = 1 (parallelism 1)
+-- pe: spark partitions = 1 (parallelism 1)
+-- pea: spark partitions = 1 (parallelism 1)
+-- pic: spark partitions = 1 (parallelism 1)
+-- pid: spark partitions = 2 (parallelism 1)
+-- pih: spark partitions = 1 (parallelism 1)
+-- pkr: spark partitions = 1 (parallelism 1)
+-- pmm: spark partitions = 1 (parallelism 1)
+-- pmma: spark partitions = 1 (parallelism 1)
+-- pne: spark partitions = 1 (parallelism 1)
+-- po: spark partitions = 1 (parallelism 1)
+-- poa: spark partitions = 1 (parallelism 1)
+-- ppx: spark partitions = 1 (parallelism 1)
+-- ppxa: spark partitions = 1 (parallelism 1)
+-- prb: spark partitions = 1 (parallelism 1)
+-- prba: spark partitions = 1 (parallelism 1)
+-- pru: spark partitions = 2 (parallelism 1)
+-- prua: spark partitions = 1 (parallelism 1)
+-- pse: spark partitions = 1 (parallelism 1)
+-- psk: spark partitions = 1 (parallelism 1)
+-- psl: spark partitions = 1 (parallelism 1)
+-- psm: spark partitions = 1 (parallelism 1)
+-- pt: spark partitions = 3 (parallelism 1)
+-- ptt: spark partitions = 1 (parallelism 1)
+-- ptta: spark partitions = 1 (parallelism 1)
+-- pu: spark partitions = 1 (parallelism 1)
+-- px: spark partitions = 1 (parallelism 1)
+-- pxa: spark partitions = 1 (parallelism 1)
+-- rt: spark partitions = 1 (parallelism 1)
+-- se: spark partitions = 1 (parallelism 1)
+-- sg: spark partitions = 1 (parallelism 1)
+-- sgd: spark partitions = 1 (parallelism 1)
+-- sgm: spark partitions = 1 (parallelism 1)
+-- sm: spark partitions = 1 (parallelism 1)
+-- test: spark partitions = 1 (parallelism 1)
+-- tg: spark partitions = 1 (parallelism 1)
+-- ad: spark partitions = 2 (parallelism 200)
+-- ag: spark partitions = 1 (parallelism 200)
+-- ao: spark partitions = 3 (parallelism 200)
+-- br: spark partitions = 1 (parallelism 200)
+-- brf: spark partitions = 1 (parallelism 200)
+-- brp: spark partitions = 0 (parallelism 200)
+-- cl: spark partitions = 1 (parallelism 200)
+-- cs: spark partitions = 1 (parallelism 200)
+-- de: spark partitions = 1 (parallelism 200)
+-- der: spark partitions = 1 (parallelism 200)
+-- dv: spark partitions = 2 (parallelism 200)
+-- ep: spark partitions = 1 (parallelism 200)
+-- fa: spark partitions = 2 (parallelism 200)
+-- fb: spark partitions = 3 (parallelism 200)
+-- fbs: spark partitions = 4 (parallelism 200)
+-- fi: spark partitions = 1 (parallelism 200)
+-- fr: spark partitions = 1 (parallelism 200)
+-- frb: spark partitions = 4 (parallelism 200)
+-- ft: spark partitions = 1 (parallelism 200)
+-- lk: spark partitions = 1 (parallelism 200)
+-- pav: spark partitions = 1 (parallelism 200)
+-- paz: spark partitions = 1 (parallelism 200)
+-- pbk: spark partitions = 1 (parallelism 200)
+-- pbka: spark partitions = 2 (parallelism 200)
+-- pc: spark partitions = 1 (parallelism 200)
+-- pcl: spark partitions = 1 (parallelism 200)
+-- pcn: spark partitions = 1 (parallelism 200)
+-- pe: spark partitions = 1 (parallelism 200)
+-- pea: spark partitions = 1 (parallelism 200)
+-- pic: spark partitions = 1 (parallelism 200)
+-- pid: spark partitions = 2 (parallelism 200)
+-- pih: spark partitions = 1 (parallelism 200)
+-- pkr: spark partitions = 1 (parallelism 200)
+-- pmm: spark partitions = 10 (parallelism 200)
+-- pmma: spark partitions = 10 (parallelism 200)
+-- pne: spark partitions = 2 (parallelism 200)
+-- po: spark partitions = 1 (parallelism 200)
+-- poa: spark partitions = 1 (parallelism 200)
+-- ppx: spark partitions = 4 (parallelism 200)
+-- ppxa: spark partitions = 2 (parallelism 200)
+-- prb: spark partitions = 1 (parallelism 200)
+-- prba: spark partitions = 1 (parallelism 200)
+-- pru: spark partitions = 2 (parallelism 200)
+-- prua: spark partitions = 2 (parallelism 200)
+-- pse: spark partitions = 3 (parallelism 200)
+-- psk: spark partitions = 1 (parallelism 200)
+-- psl: spark partitions = 1 (parallelism 200)
+-- psm: spark partitions = 1 (parallelism 200)
+-- pt: spark partitions = 5 (parallelism 200)
+-- ptt: spark partitions = 1 (parallelism 200)
+-- ptta: spark partitions = 1 (parallelism 200)
+-- pu: spark partitions = 1 (parallelism 200)
+-- px: spark partitions = 1 (parallelism 200)
+-- pxa: spark partitions = 1 (parallelism 200)
+-- rt: spark partitions = 1 (parallelism 200)
+-- se: spark partitions = 1 (parallelism 200)
+-- sg: spark partitions = 1 (parallelism 200)
+-- sgd: spark partitions = 1 (parallelism 200)
+-- sgm: spark partitions = 1 (parallelism 200)
+-- sm: spark partitions = 1 (parallelism 200)
+-- test: spark partitions = 1 (parallelism 200)
+-- tg: spark partitions = 1 (parallelism 200)

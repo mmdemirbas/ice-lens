@@ -351,21 +351,7 @@ fun paimonRawConvertible(files: List<GraphNode.PaimonDataFileNode>, rule: Paimon
     fun tuple(f: GraphNode.PaimonDataFileNode, min: Boolean): List<Any?>? =
         f.keyBounds?.takeIf { it.isNotEmpty() && it.all { b -> b.decoded } }?.map { if (min) it.min else it.max }
     val sections = paimonIntervalSections(files, { tuple(it, true) }, { tuple(it, false) })
-    // BinPacking.packForOrdered: a section joins the open split unless it would overflow it and
-    // the split already holds something.
-    val splits = mutableListOf<List<GraphNode.PaimonDataFileNode>>()
-    var split = mutableListOf<GraphNode.PaimonDataFileNode>()
-    var weight = 0L
-    for (sec in sections) {
-        val w = maxOf(sec.sumOf { it.entry.file?.fileSize ?: 0L }, rule.openFileCostBytes)
-        if (weight + w > rule.splitTargetBytes && split.isNotEmpty()) {
-            splits += split
-            split = mutableListOf()
-            weight = 0L
-        }
-        weight += w
-        split += sec
-    }
-    if (split.isNotEmpty()) splits += split
+    val splits = packForOrdered(sections, rule.splitTargetBytes) { sec -> maxOf(sec.sumOf { it.entry.file?.fileSize ?: 0L }, rule.openFileCostBytes) }
+        .map { it.flatten() }
     return splits.filter { it.size == 1 && noDeleteRow(it[0]) }.map { it[0].id }.toSet()
 }

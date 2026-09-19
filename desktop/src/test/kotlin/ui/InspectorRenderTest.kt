@@ -167,6 +167,12 @@ class InspectorRenderTest {
 
     private fun partedGraph(): GraphModel = graphFor("parted")
 
+    private fun paimonGraphFor(fixture: String): GraphModel {
+        val tableDir = File(repoRoot, "example/paimon/db.db/$fixture")
+        assertTrue(tableDir.isDirectory, "fixture missing at $tableDir")
+        return GraphLayoutService.layoutGraph(PaimonUnifiedTableModel(Paths.get(tableDir.absolutePath)), showRows = false)
+    }
+
     @Test
     fun `the table inspector renders`() {
         val graph = partedGraph()
@@ -674,6 +680,27 @@ class InspectorRenderTest {
         val partedTip = parted.nodes.filterIsInstance<GraphNode.SnapshotNode>().maxBy { it.data.sequenceNumber ?: 0L }
         renderScene("snapshot-node-scan-tasks-filtered", width = 1400, height = 2400) {
             InspectorUnderTest(parted, partedTip.id, onlyExpanded("Scan Tasks"), scanFilter = ScanFilter.of(listOf(ScanPredicate("id", PredicateOp.EQ, "1"))))
+        }
+    }
+
+    /**
+     * `pt` is the partitioned primary-key table whose latest snapshot reads as five splits over
+     * five buckets — two merge splits of two files and three raw ones — so both readings sit in
+     * one table, and Spark at 200 makes five partitions of them where 1 would make three. `dv`
+     * is the vectored case: one raw split of two files that Spark reads as two partitions at any
+     * parallelism, the vectors' bytes charged to the partitions and not to the bound. `pt` under
+     * `dt = 2024-03-07` is the filtered read.
+     */
+    @Test
+    fun `a Paimon snapshot says how many splits a read takes`() {
+        val pt = paimonGraphFor("pt")
+        val ptTip = pt.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().filter { it.branch == null }.maxBy { it.data.id ?: 0L }
+        renderInspector(pt, ptTip.id, "paimon-snapshot-node-scan-splits", height = 3400, sectionCollapse = onlyExpanded("Scan Splits"))
+        val dv = paimonGraphFor("dv")
+        val dvTip = dv.nodes.filterIsInstance<GraphNode.PaimonSnapshotNode>().filter { it.branch == null }.maxBy { it.data.id ?: 0L }
+        renderInspector(dv, dvTip.id, "paimon-snapshot-node-scan-splits-vectors", height = 3400, sectionCollapse = onlyExpanded("Scan Splits"))
+        renderScene("paimon-snapshot-node-scan-splits-filtered", width = 1400, height = 3800) {
+            InspectorUnderTest(pt, ptTip.id, onlyExpanded("Scan Splits"), scanFilter = ScanFilter.of(listOf(ScanPredicate("dt", PredicateOp.EQ, "2024-03-07"))))
         }
     }
 
