@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`pil`, the compacted Paimon table whose Iceberg export leaves a level-4 file out**
+  (`docs/fixtures/paimon-pil.sql`): `pic` written until the writer's compactions leave a
+  1,004-row file at level 5 and a four-row file at level 4, no deletion vectors; the export
+  lists the level-5 file alone, and the script prints Paimon's 1,006 rows beside Iceberg's own
+  read of the export — 1,004, two updates behind — which the app's read of the export
+  reproduces. It is the table that tells the level rule (`level == num-levels - 1`) from the
+  one exported vectors bring (`level > 0`), which `pic`'s level-0 files cannot; and its two
+  compactions are the size-ratio branch's first engine oracle, into level 5 while every run is
+  at level 0 and into level 4 once the big file is above
 - **The splits a Paimon batch read takes are planned**, the way `SnapshotReaderImpl.generateSplits`
   plans them at release-1.3.1 (`model/PaimonSplitPlan.kt`): each bucket's files through the
   table's generator — a primary-key table's packed whole when every file is above level 0 with

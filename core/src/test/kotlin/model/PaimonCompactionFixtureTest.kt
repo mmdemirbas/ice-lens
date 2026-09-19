@@ -62,6 +62,42 @@ class PaimonCompactionFixtureTest {
     }
 
     /**
+     * `pil` is the size-ratio branch's oracle, twice (`docs/fixtures/paimon-pil.sql`): a
+     * thousand-row file and four one-row ones never reach 200% of the oldest run, so at the
+     * fifth run the pick walks the four small files' sizes, stops at the big one, and — the
+     * output level may not be 0, and taking the level-0 file in takes every run — compacts all
+     * five into level 5; at the tenth the big file is at level 5, the four small ones go into
+     * level 4, and it stays where it is. `pc` reaches size amplification alone.
+     */
+    @Test
+    fun `four small files beside a big one compact by size ratio, into level 5 while the big one is at level 0 and into level 4 once it is above`() {
+        val pil = model("pil")
+        assertEquals(listOf("APPEND", "APPEND", "APPEND", "APPEND", "APPEND", "COMPACT", "APPEND", "APPEND", "APPEND", "APPEND", "COMPACT"), pil.snapshots.map { it.metadata.commitKind })
+        val byId = plans(pil).associate { (s, verdicts) -> s.metadata.id!! to verdicts.single() }
+
+        val fifth = byId.getValue(5L)
+        assertEquals("L0×5", fifth.lsm.describeLevels())
+        assertEquals(PaimonCompactionRule.SIZE_RATIO, fifth.rule)
+        assertEquals("compacts 5 files in 5 runs into level 5 — size ratio", fifth.describe())
+
+        val sixth = byId.getValue(6L)
+        assertEquals("L5×1", sixth.lsm.describeLevels())
+        assertEquals(1004L, sixth.lsm.runs.single().files.single().rowCount)
+
+        val tenth = byId.getValue(10L)
+        assertEquals("L0×4, L5×1", tenth.lsm.describeLevels())
+        assertEquals(PaimonCompactionRule.SIZE_RATIO, tenth.rule)
+        assertEquals(4, tenth.filesPicked)
+        assertEquals(4, tenth.outputLevel, "the level below the level-5 file the walk stopped at")
+        assertEquals("compacts 4 files in 4 runs into level 4 — size ratio", tenth.describe())
+
+        val eleventh = byId.getValue(11L)
+        assertEquals("L4×1, L5×1", eleventh.lsm.describeLevels())
+        assertEquals(listOf(4L, 1004L), eleventh.lsm.runs.map { it.files.single().rowCount })
+        assertEquals("not yet — 2 of 5 runs", eleventh.describe())
+    }
+
+    /**
      * On every primary-key fixture, an `APPEND` the writer compacted after is one the plan says
      * it would, and one it did not is one the plan says it would not. Append tables are left
      * out: a Spark write never runs their compaction, `ad`'s `COMPACT` is a deletion-vector

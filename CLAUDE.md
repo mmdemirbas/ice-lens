@@ -2123,7 +2123,12 @@ intellij/src/main/kotlin/plugin/
   every default, and Paimon compacted after the fifth — five near-identical level-0 files,
   400% against 200% — so `PaimonCompactionFixtureTest` holds the plan at each snapshot to whether
   the next commit is a `COMPACT`, and sweeps that over every primary-key fixture (the forced-up
-  ones compact every time, `px` never, the rest never reach the trigger). An append table has no
+  ones compact every time, `px` never, the rest never reach the trigger). `pil` is the
+  size-ratio branch's oracle, twice: a thousand-row file and four one-row ones never reach
+  200% of the oldest run, so at the fifth run the walk over the newest runs' sizes stops at the
+  big file — and, the output level never being 0, taking the level-0 file in takes every run,
+  into level 5 — and at the tenth, the big file now at level 5, the four small ones go into
+  level 4 and it stays put. An append table has no
   tree and no writer-driven compaction — Spark writes never run `AppendCompactCoordinator` — so
   its side is what `sys.compact` would pack: the files under 7/10 of `target-file-size` per
   partition, a task at `compaction.min.file-num` of them, which `rt`'s explicit compaction at
@@ -2993,7 +2998,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,454 tests across 200 files (1,154 in :core, 287 in :desktop, 13 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,456 tests across 200 files (1,156 in :core, 287 in :desktop, 13 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3140,6 +3145,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pse` | `PaimonReadProjectionFixtureTest` | an append table evolved after its first file — `ADD COLUMN w`, `RENAME COLUMN v TO label`, `ALTER COLUMN w SET DEFAULT 7` — with Paimon's own read printed in the script: the old file's `v` as `label`, its `w` as null, and the default a later write stored for a row that omitted `w` |
 | `paimon/db.db/pne` | `PaimonNestedEvolutionFixtureTest` | `pse` one level down — a struct and a list of structs, a rename and an add inside the struct and a rename inside the list's element between two writes; the nested type object every schema of such a table carries, and Paimon's read of the old file under the new names |
 | `paimon/db.db/pid` | `PaimonIcebergExportFixtureTest`, `PaimonMergedCountFixtureTest` | `dv` under `deletion-vectors.bitmap64` with a format-version 3 export — the two vectors as Iceberg v3 deletion vectors pointing into Paimon's own index file, decoded by the Puffin reader; two vectors in one container, which is what the ledger, the pairing and the lookup key a vector by its referenced file for; and the 64-bit range length that is the whole blob |
+| `paimon/db.db/pil` | `PaimonIcebergExportFixtureTest`, `PaimonCompactionFixtureTest` | `pic` compacted, without vectors — a thousand-row insert and eight one-row ones, the writer compacting by size ratio into level 5 at the fifth and into level 4 at the tenth; the export lists the level-5 file alone, and the script prints Paimon's 1,006 rows beside Iceberg's own read of the export, 1,004 with two updates unseen |
 | `paimon/db.db/pih` | `PaimonIcebergExportFixtureTest`, `GraphTreeTest` | `pic` under `metadata.iceberg.storage = hadoop-catalog` — the export in catalog storage at `example/paimon/iceberg/db/pih/` beside the table, found by the callback's own rule; opened as an Iceberg table its data files resolve to the Paimon table's and its `Metadata Kept At` says the metadata is apart from its location |
 | `paimon/db.db/pic` | `PaimonIcebergExportFixtureTest` | `metadata.iceberg.storage = table-location` — a primary-key table writing Iceberg metadata under its own `metadata/` on every commit, so the directory carries both formats' markers; two appends, neither compacted, and the export lists one of the two live files: snapshot 1 rebuilt it from the snapshot and snapshot 2 went through the level rule |
 | `paimon/db.db/de` | `PaimonDataEvolutionFixtureTest`, `PaimonRowLookupFixtureTest`, `PaimonScanPruningTest` | `data-evolution.enabled` — a `MERGE INTO` writing a one-column patch file with `_WRITE_COLS` and the first row id of the file it patches, and a whole file for the row it inserted; the stitched read `(1, 11, 1)` the lookup is held to, and the file bounds pruning must not consult |
@@ -3421,7 +3427,15 @@ v3 feature 1.8.1 does not write: row lineage is in; `compute_partition_stats` an
   file (rebuilt, its split raw convertible) and not the second's (incremental, below level 5).
   So an Iceberg reader sees one of the table's two live files and neither half is a
   disagreement — `belowExportedLevel` and `exportedBelowLevel` name each with its rule, leaving
-  `missingFromIceberg` and `extraInIceberg` for what no rule explains. The section rides
+  `missingFromIceberg` and `extraInIceberg` for what no rule explains. **`pil` is `pic`
+  compacted, and no vectors**: the writer's own compactions leave a 1,004-row file at level 5
+  and a four-row file at level 4, the export lists the first and not the second, and the
+  script's Iceberg read of the export prints 1,004 rows with the level-4 file's two new keys
+  absent and its two updates unseen, where Paimon prints 1,006 — which the app's read of the
+  export reproduces. It is the table that tells `level == num-levels - 1` from `level > 0`:
+  on `pic`'s level-0 files the two rules agree, and the second passed every test but `pil`'s.
+  The compaction's `DELETE` entries go through the incremental path too, so the level-0 file
+  the rebuild listed at snapshot 1 is gone from the export once compacted away. The section rides
   `TableNode.icebergExport`, a `DeferredRead` behind a click for the reason
   `UnreferencedFilesSection` is: it reads another table's metadata tree — and the IDE strip
   fills an `Iceberg export` row from the same read, the way it fills `History`, both shells

@@ -197,6 +197,47 @@ class PaimonIcebergExportFixtureTest {
         assertEquals(1497L, count.live, count.toString())
     }
 
+    /**
+     * `pil` is `pic` compacted, and no vectors (`docs/fixtures/paimon-pil.sql`): the writer's
+     * compactions leave a 1,004-row file at level 5 and a four-row file at level 4, and the
+     * level rule — `level == num-levels - 1` — lists the first and leaves the second out. `pic`
+     * reaches the rule with level-0 files alone, which `level > 0` (the rule under exported
+     * vectors) leaves out just the same, so this is the table that tells the two apart. The
+     * script printed both readers' answers: Paimon reads 1,006 rows with k 1 and 2 at their
+     * updated values, and Iceberg's own reader reads 1,004 with the old ones — the level-4
+     * file's two new keys absent and its two updates unseen — which the app's read of the
+     * export reproduces. The rebuild path's level-0 file of snapshot 1 is gone from the export
+     * too: the compaction's `DELETE` entries went through the incremental path and removed it.
+     */
+    @Test
+    fun `a compacted table without vectors exports its level-5 file and not its level-4 one, and Iceberg reads the rows accordingly`() {
+        val pil = FixtureCatalog.paimonModel("pil")
+        val check = assertNotNull(pil.checkIcebergExport())
+        assertTrue(check.current && check.atTable && !check.vectorsExported && !check.aboveLevelZero, "$check")
+        assertEquals(11L, check.currentIcebergSnapshotId)
+        assertEquals(1, check.versions)
+        assertEquals(5, check.exportedLevel)
+        val top = "data-7f316ab1-ff1c-4cdd-819f-7a0239731ee2-0.parquet"
+        val below = "data-00bb8e9e-e2b1-4230-9fda-bfba4899abc1-0.parquet"
+        assertEquals(mapOf(top to 5, below to 4), check.paimonFiles, "the two compactions' outputs, and nothing at level 0")
+        assertEquals(setOf(top), check.icebergFiles, "the level-5 file alone; the rebuilt level-0 file of snapshot 1 was removed by the first compaction")
+        assertEquals(setOf(below), check.belowExportedLevel)
+        assertEquals(emptySet(), check.exportedBelowLevel)
+        assertEquals(emptySet(), check.missingFromIceberg + check.extraInIceberg, "each absence is explained by the level rule")
+        assertTrue(check.describe.endsWith("an Iceberg reader sees 1 of the table's 2 live files"), check.describe)
+
+        // The export read as Iceberg reads it: 1,004 rows, k 1 and 2 at the values the level-5
+        // file holds, 1005 and 1006 nowhere — the script's own Iceberg read printed the same.
+        val export = assertNotNull(pil.icebergExport)
+        val input = assertNotNull(export.rowLookupInput())
+        assertEquals(listOf(top), input.dataFiles.map { it.recordedPath.substringAfterLast('/') })
+        assertEquals(1004L, service.LiveRowCount.count(input).live)
+        val filter = (parseScanFilter("k IN (1, 2, 1005, 1006)") as ScanFilterParse.Parsed).filter
+        val hits = service.RowLookup.lookup(input, filter, emptySet()).hits
+        assertEquals(mapOf(1 to "v1", 2 to "v2"), hits.associate { (it.cells["k"] as Number).toInt() to it.cells["v"] })
+        assertTrue(hits.all { it.fate == RowFate.LIVE })
+    }
+
     /** The rule alone, on paths: every storage type but `table-location` goes to catalog storage unless told otherwise, and only from under a `<db>.db` directory. */
     @Test
     fun `the export's directory follows the storage type, the storage-location override, and the db suffix`() {

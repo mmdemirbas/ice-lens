@@ -1,0 +1,140 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "64376e74-5c7b-4873-9d58-b1cf8f8e7cf8",
+  "location" : "/wh/db.db/pil",
+  "last-sequence-number" : 11,
+  "last-updated-ms" : 1789791552377,
+  "last-column-id" : 1,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 0,
+      "name" : "k",
+      "required" : true,
+      "type" : "int",
+      "doc" : null
+    }, {
+      "id" : 1,
+      "name" : "v",
+      "required" : false,
+      "type" : "string",
+      "doc" : null
+    } ]
+  } ],
+  "current-schema-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ ]
+  } ],
+  "default-spec-id" : 0,
+  "last-partition-id" : 999,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "default-sort-order-id" : 0,
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 1,
+    "timestamp-ms" : 1789791550454,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pil/metadata/snap-1-dd341c28-75ba-49de-8477-599c2ae11632.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 2,
+    "snapshot-id" : 2,
+    "timestamp-ms" : 1789791550740,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pil/metadata/snap-1-a2ef48de-811b-46b5-8a49-d025b0fc0f07.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 3,
+    "snapshot-id" : 3,
+    "timestamp-ms" : 1789791550934,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pil/metadata/snap-1-6eb4478d-176d-4ff0-b902-01d0fc09633a.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 4,
+    "snapshot-id" : 4,
+    "timestamp-ms" : 1789791551160,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pil/metadata/snap-1-472d6dac-efa7-43a9-b9e6-89a3321355bd.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 5,
+    "snapshot-id" : 5,
+    "timestamp-ms" : 1789791551505,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pil/metadata/snap-1-8b8589ad-c366-44d1-ac12-b81150b7474f.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 6,
+    "snapshot-id" : 6,
+    "timestamp-ms" : 1789791551556,
+    "summary" : {
+      "operation" : "overwrite"
+    },
+    "manifest-list" : "/wh/db.db/pil/metadata/snap-2-8b8589ad-c366-44d1-ac12-b81150b7474f.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 7,
+    "snapshot-id" : 7,
+    "timestamp-ms" : 1789791551791,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pil/metadata/snap-1-0c339b86-1e63-4034-ad51-327650f17537.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 8,
+    "snapshot-id" : 8,
+    "timestamp-ms" : 1789791551976,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pil/metadata/snap-1-c36b882b-980f-43ac-90d3-620ffbc8c27a.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 9,
+    "snapshot-id" : 9,
+    "timestamp-ms" : 1789791552193,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pil/metadata/snap-1-1fd429e7-b6c4-4fe9-8797-daa488533f9a.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 10,
+    "snapshot-id" : 10,
+    "timestamp-ms" : 1789791552357,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pil/metadata/snap-1-f3f491db-212f-4bb0-9e63-38733e937355.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 11,
+    "snapshot-id" : 11,
+    "timestamp-ms" : 1789791552377,
+    "summary" : {
+      "operation" : "append"
+    },
+    "manifest-list" : "/wh/db.db/pil/metadata/snap-2-f3f491db-212f-4bb0-9e63-38733e937355.avro",
+    "schema-id" : 0
+  } ],
+  "current-snapshot-id" : 11,
+  "properties" : { },
+  "refs" : { }
+}

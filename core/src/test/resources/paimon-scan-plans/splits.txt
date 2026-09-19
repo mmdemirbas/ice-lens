@@ -95,6 +95,9 @@ s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-9464b625-a026-4179
 -- pih: splits
 s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-dcf50f79-2ef3-4a02-81c2-03dc19e86987-0.parquet,data-68ff69f4-6aee-45e1-8458-0074e002cc9a-0.parquet
 -- pih: splits = 1
+-- pil: splits
+s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-7f316ab1-ff1c-4cdd-819f-7a0239731ee2-0.parquet,data-00bb8e9e-e2b1-4230-9fda-bfba4899abc1-0.parquet
+-- pil: splits = 1
 -- pkr: splits
 s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=false data-4176255d-dc7e-45dc-8817-a706286bc55e-0.parquet,data-9e86f2d3-14f6-42df-b8b0-4f490d2ecc1b-0.parquet,data-bc50b7cf-ca8c-4e53-bc98-5cad4ccc31c5-0.parquet
 -- pkr: splits = 1
@@ -227,6 +230,7 @@ s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-2ea5b675-2040-42ba
 -- pic: spark partitions = 1 (parallelism 1)
 -- pid: spark partitions = 2 (parallelism 1)
 -- pih: spark partitions = 1 (parallelism 1)
+-- pil: spark partitions = 1 (parallelism 1)
 -- pkr: spark partitions = 1 (parallelism 1)
 -- pmm: spark partitions = 1 (parallelism 1)
 -- pmma: spark partitions = 1 (parallelism 1)
@@ -289,6 +293,7 @@ s1 org.apache.paimon.data.BinaryRow@9c67b85d b0 raw=true data-2ea5b675-2040-42ba
 -- pic: spark partitions = 1 (parallelism 200)
 -- pid: spark partitions = 2 (parallelism 200)
 -- pih: spark partitions = 1 (parallelism 200)
+-- pil: spark partitions = 1 (parallelism 200)
 -- pkr: spark partitions = 1 (parallelism 200)
 -- pmm: spark partitions = 10 (parallelism 200)
 -- pmma: spark partitions = 10 (parallelism 200)

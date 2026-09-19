@@ -161,8 +161,12 @@ table-format engineer opens a debugger for". Ordered by how often the question c
   names the Paimon table the location is. A Hive or REST export also has a catalog entry this
   never sees. `pid` reaches a compacted table's export — its files at levels 5 and 4 are
   listed under the `level > 0` rule the vectors bring — and exports the vectors as Iceberg
-  v3 vectors; a compacted table *without* exported vectors, where the level rule lists a
-  level-5 file and leaves a level-4 one out, is still not a fixture.
+  v3 vectors; `pil` is the compacted table *without* exported vectors, where the level rule
+  lists the level-5 file and leaves the level-4 one out — Iceberg's own read of its export
+  prints two rows short and two updates behind. What the table panel does not say is *which*
+  live file the rule left out: the check knows each file's level, and the Paimon file panel
+  could carry a row for it, but the check is a read of the export behind a click on the table
+  panel and a per-file row would need it run first.
 
 - **ORC data files cannot be read.** DuckDB 1.4.4 has no ORC table function, core or community;
   every reader says so (`orcfmt`). An ORC reader would be a second engine on the classpath (the
