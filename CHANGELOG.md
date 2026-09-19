@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A command line, `icelens`** — the third shell, over `:core` alone: `summary`, `tree`
+  (one line per node with its id, folded past the page size unless `--all`, `--depth N`,
+  `--rows`), `show <node-id>` (a node's rows, the deferred ones read), `check` (the integrity
+  report as a table and as the exit code — 1 on a disagreement or a read error) and `export
+  --format svg|json|csv [--out FILE]`; `--json` on the first four. Standard output is the answer
+  only; the engine logs to standard error at `WARN`. `./gradlew :cli:installDist` builds
+  `cli/build/install/icelens/bin/icelens`. `GraphTree` — the tree and the rows the IDE strip
+  draws — moved from the plugin into core (`model/GraphTree.kt`) so both narrow shells print
+  one vocabulary, the plugin keeping a Swing adapter (`SwingTree.kt`); and
+  `GraphLayoutService.assembleGraph` is the build without the layout, which a listing has no
+  use for. `IceLensCliTest` holds every command's output to the core function it prints.
 - **A v3 `variant` column, opened, judged and read** — `example/iceberg/default/variant`, written
   by Spark 4.0.2 with the released Iceberg 1.10.0 Spark 4.0 runtime (`docs/fixtures/variant.sql`),
   eighteen rows over every shape the Variant binary encoding has. The table opens with no code

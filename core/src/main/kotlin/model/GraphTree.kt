@@ -1,51 +1,19 @@
-package plugin
+package model
 
-import javax.swing.tree.DefaultMutableTreeNode
-import model.DecodedPaimonPartition
-import model.GraphModel
-import model.GraphNode
-import model.PaimonRowKind
-import model.PaimonRowValue
-import model.ExpiryOptions
-import model.IcebergMaintenanceInput
-import model.IcebergRollbackVerdict
-import model.TableMetadata
-import model.fastForwardPlans
-import model.planCherryPick
-import model.planRollback
-import model.planUnexistingFiles
-import model.PaimonExpiryOptions
-import model.displayLabel
-import model.planExpiry
-import model.sourceSnapshotId
-import model.publishedWapId
-import model.wapId
-import model.describeRowIds
-import model.describe
-import model.manifestTallies
-import model.metadataTallies
-import model.MissingFilesReport
-import model.paimonIndexFileTallies
-import model.paimonManifestTallies
-import model.paimonPartitionBoundsChecks
-import model.paimonSchemaTallies
-import model.paimonSnapshotTallies
-import model.partitionBoundsChecks
-import model.partitionSummaryTallies
-import model.ScanTaskOptions
-import model.paimonSparkPartitions
-import model.planPaimonSplits
-import model.planScanTasks
-import model.scanTaskFiles
-import model.describeSpark
 
 /**
- * The graph as a tree, and what each node has to say about itself.
+ * The graph as a tree, and what each node has to say about itself — one row per node, and a
+ * short list of fields under it.
  *
- * A tree rather than the desktop shell's canvas because this panel is docked to the side of an
- * editor: it is tall and narrow, which is the one shape a node-and-edge drawing is worst in and a
- * tree is best in. The structure is the same structure — table, metadata versions, snapshots,
- * manifests, files — read off the same `GraphModel` the canvas draws.
+ * This is the vocabulary of the *narrow* shells: the IDE's docked strip and the command line,
+ * both of which list a node rather than draw it. A tree rather than the desktop shell's canvas
+ * because a docked panel and a terminal are tall and narrow, which is the one shape a
+ * node-and-edge drawing is worst in and a tree is best in. The structure is the same structure —
+ * table, metadata versions, snapshots, manifests, files — read off the same `GraphModel` the
+ * canvas draws, and it lives in core so the two shells cannot drift: two shells with their own
+ * vocabulary for one set of things drift the first time a node type is added. The desktop
+ * inspector deliberately does not use it — a panel per node kind with tallies and drill-downs is
+ * a different shape, not a longer version of this one.
  */
 object GraphTree {
 
@@ -62,7 +30,7 @@ object GraphTree {
      * a fact about the table worth seeing. The walk carries the path it came by, so a cycle — which
      * the metadata should not contain but a corrupt table could — stops rather than recursing.
      */
-    fun build(graph: GraphModel): List<DefaultMutableTreeNode> {
+    fun build(graph: GraphModel): List<Item> {
         val childIds = graph.edges
             .filter { it.affectsLayout && !it.isSibling }
             .groupBy({ it.fromId }, { it.toId })
@@ -70,24 +38,30 @@ object GraphTree {
         val roots = graph.nodes.filter { it.id !in hasParent }
         val newest = (graph.nodes.filterIsInstance<GraphNode.TableNode>().firstOrNull()?.maintenance?.value as? IcebergMaintenanceInput)?.metadata
 
-        fun node(graphNode: GraphNode, seen: Set<String>): DefaultMutableTreeNode {
-            val treeNode = DefaultMutableTreeNode(Item(graphNode, newest))
-            if (graphNode.id in seen) return treeNode
-            childIds[graphNode.id].orEmpty()
+        fun node(graphNode: GraphNode, seen: Set<String>): Item {
+            if (graphNode.id in seen) return Item(graphNode, newest)
+            val children = childIds[graphNode.id].orEmpty()
                 .mapNotNull { graph.nodeById[it] }
-                .forEach { treeNode.add(node(it, seen + graphNode.id)) }
-            return treeNode
+                .map { node(it, seen + graphNode.id) }
+            return Item(graphNode, newest, children)
         }
         return roots.map { node(it, emptySet()) }
     }
 
-    /** One row of the tree. [toString] is what the default renderer draws. */
     /**
-     * A node and the table's newest metadata, which a snapshot's rollback and cherry-pick rows
-     * are planned against — carried on the item because the strip lists a node without the graph.
+     * One row of the tree: a node, the table's newest metadata — which a snapshot's rollback and
+     * cherry-pick rows are planned against, carried on the item because a strip lists a node
+     * without the graph — and the rows under it. No toolkit in it: the IDE wraps each in a Swing
+     * tree node and the command line indents it. [toString] is the label either prints.
      */
-    class Item(val node: GraphNode, val newest: TableMetadata? = null) {
+    class Item(val node: GraphNode, val newest: TableMetadata? = null, val children: List<Item> = emptyList()) {
         override fun toString(): String = node.displayLabel()
+
+        /** This item and every item under it, depth first — the order a listing prints them in. */
+        fun flatten(): List<Item> = listOf(this) + children.flatMap { it.flatten() }
+
+        /** How many levels sit under this item; 0 for a leaf. */
+        val depth: Int get() = children.maxOfOrNull { it.depth + 1 } ?: 0
     }
 
     /**

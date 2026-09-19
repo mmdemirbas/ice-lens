@@ -25,6 +25,7 @@ import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 import javax.swing.tree.TreeSelectionModel
 import model.GraphModel
+import model.GraphTree
 import service.GraphLayoutService
 import model.readTableModel
 
@@ -138,7 +139,7 @@ class IceLensPanel(private val project: Project, parent: Disposable) : Disposabl
 
     private fun populate(graph: GraphModel) {
         root.removeAllChildren()
-        GraphTree.build(graph).forEach { root.add(it) }
+        GraphTree.build(graph).forEach { root.add(it.toSwingNode()) }
         treeModel.reload()
         // The table and its metadata versions, open; everything below stays closed, because a
         // table of any size has more manifests than a docked panel has rows.

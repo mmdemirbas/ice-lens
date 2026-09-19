@@ -19,7 +19,7 @@ format records.
 - **Local-first** -- loads tables from folders on your machine, or from `s3://`, `gs://` and `r2://` with a session-only key
 - **Offline-friendly** -- works without external services or catalogs
 - **Two formats** -- Apache Iceberg (v1, v2 and v3) and Apache Paimon, auto-detected per directory
-- **Cross-platform** -- macOS, Windows, Linux, plus an IntelliJ IDEA tool window over the same engine
+- **Cross-platform** -- macOS, Windows, Linux, plus an IntelliJ IDEA tool window and a command line over the same engine
 
 ### What the numbers mean
 
@@ -118,6 +118,23 @@ Prebuilt installers are available on [GitHub Releases](https://github.com/mmdemi
 ```bash
 ./gradlew test
 ```
+
+### Command line
+
+The same engine from a terminal, for a script, a cron job or a CI step:
+
+```bash
+./gradlew :cli:installDist                      # builds cli/build/install/icelens/bin/icelens
+icelens summary /wh/db/orders                   # versions, snapshots, the current figures
+icelens tree /wh/db/orders --depth 2            # metadata → snapshots → manifests → files, with node ids
+icelens show /wh/db/orders snap_8331894 --json  # one node's rows, deferred ones read
+icelens check /wh/db/orders                     # every recorded figure against the same figure counted;
+                                                # exit 1 on a disagreement, so a pipeline can gate on it
+icelens export /wh/db/orders --format csv --out files.csv   # the file inventory; svg and json too
+```
+
+`--json` on `summary`, `tree`, `show` and `check` prints the same as an object. Standard output
+carries the answer only; anything the engine logs goes to standard error.
 
 ## Usage
 

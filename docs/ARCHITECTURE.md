@@ -2,7 +2,7 @@
 
 ## System overview
 
-ice-lens is a single-module Kotlin Compose Desktop application. All code lives in one Gradle module under `src/main/kotlin/` with three packages: `model`, `service`, and `ui`, plus the `app` package for the entry point.
+ice-lens is one headless engine (`core/` — `model`, `service`, `export`) under three shells: the Compose Desktop application (`desktop/`, packages `ui` and `app`), an IntelliJ tool window (`intellij/`) and a command line (`cli/`). The shells depend on core and never on each other; CLAUDE.md's architecture section carries the module boundary and why it sits where it does.
 
 ## Data flow
 
@@ -283,7 +283,7 @@ Avro deserialization: `avro4k` maps `@Serializable` Kotlin data classes to Avro 
 
 ## Build system
 
-Single-module Gradle build with:
+Four Gradle modules (`core`, `desktop`, `intellij`, `cli`) with:
 - Kotlin JVM plugin
 - JetBrains Compose plugin
 - Kotlin Serialization plugin

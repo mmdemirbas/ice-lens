@@ -1,17 +1,10 @@
-package plugin
+package model
 
 import java.io.File
 import java.nio.file.Paths
-import javax.swing.tree.DefaultMutableTreeNode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import model.GraphModel
-import model.GraphNode
-import model.IcebergMaintenanceInput
-import model.displayLabel
-import model.PaimonUnifiedTableModel
-import model.UnifiedTableModel
 import service.AggregationPolicy
 import service.GraphAggregation
 import service.IcebergGraphBuilder
@@ -49,21 +42,15 @@ class GraphTreeTest {
         return GraphModel(aggregated.nodes, aggregated.edges, 0.0, 0.0)
     }
 
-    private fun flatten(nodes: List<DefaultMutableTreeNode>): List<GraphNode> =
-        nodes.flatMap { root ->
-            root.depthFirstEnumeration().toList()
-                .filterIsInstance<DefaultMutableTreeNode>()
-                .mapNotNull { (it.userObject as? GraphTree.Item)?.node }
-        }
+    private fun flatten(nodes: List<GraphTree.Item>): List<GraphNode> = items(nodes).map { it.node }
 
-    private fun items(nodes: List<DefaultMutableTreeNode>): List<GraphTree.Item> =
-        nodes.flatMap { root -> root.depthFirstEnumeration().toList().filterIsInstance<DefaultMutableTreeNode>().mapNotNull { it.userObject as? GraphTree.Item } }
+    private fun items(nodes: List<GraphTree.Item>): List<GraphTree.Item> = nodes.flatMap { it.flatten() }
 
     @Test
     fun `the table is the single root, and everything hangs off it`() {
         val roots = GraphTree.build(graphOf("mor"))
         assertEquals(1, roots.size, "a table has one root, and got ${roots.size}")
-        assertTrue((roots.single().userObject as GraphTree.Item).node is GraphNode.TableNode)
+        assertTrue(roots.single().node is GraphNode.TableNode)
     }
 
     /**
@@ -98,11 +85,7 @@ class GraphTreeTest {
         val graph = graphOf("branched")
         assertTrue(graph.edges.any { !it.affectsLayout }, "the fixture should hold annotation edges")
 
-        fun depth(node: DefaultMutableTreeNode): Int =
-            node.children().toList().filterIsInstance<DefaultMutableTreeNode>()
-                .maxOfOrNull { depth(it) + 1 } ?: 0
-
-        val deepest = GraphTree.build(graph).maxOf { depth(it) }
+        val deepest = GraphTree.build(graph).maxOf { it.depth }
         assertTrue(deepest in 1..6, "containment is at most six levels deep, and the tree went $deepest")
     }
 

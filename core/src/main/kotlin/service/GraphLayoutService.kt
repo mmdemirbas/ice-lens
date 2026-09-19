@@ -72,6 +72,24 @@ object GraphLayoutService {
         policy: AggregationPolicy = AggregationPolicy.DEFAULT,
         algorithm: GraphLayoutAlgorithm = GraphLayoutAlgorithm.DEFAULT,
     ): GraphModel {
+        val assembled = assembleGraph(tableModel, showRows, expandedGroupIds, policy)
+        return layoutNodes(assembled.nodes, assembled.edges, algorithm)
+    }
+
+    /**
+     * Everything [layoutGraph] does before ELK: the format-specific build, the aggregation pass,
+     * the rows for the surviving data files and the pass over them again — the nodes and edges
+     * a shell lists rather than draws. The command line and any tree-shaped shell take this and
+     * skip the layout, which on a few thousand nodes is the second a listing has no use for;
+     * `GraphModel(nodes, edges, 0.0, 0.0)` is the unlaid graph, every reader of positions
+     * answering the origin.
+     */
+    fun assembleGraph(
+        tableModel: FormatTableModel,
+        showRows: Boolean,
+        expandedGroupIds: Set<String> = emptySet(),
+        policy: AggregationPolicy = AggregationPolicy.DEFAULT,
+    ): AggregationResult {
         logger.debug("Building {} graph for: {}", tableModel.format, tableModel.name)
         val buildResult = when (tableModel) {
             is UnifiedTableModel -> IcebergGraphBuilder.buildGraph(tableModel)
@@ -92,7 +110,7 @@ object GraphLayoutService {
             "{} graph built: {} nodes drawn of {}, {} edges",
             tableModel.format, withRows.nodes.size, buildResult.nodes.size, withRows.edges.size,
         )
-        return layoutNodes(withRows.nodes, withRows.edges, algorithm)
+        return withRows
     }
 
     /** Reads sample rows for the data-file nodes the graph is actually drawing. */

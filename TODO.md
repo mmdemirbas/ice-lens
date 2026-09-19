@@ -418,6 +418,17 @@ What is left:
   (`service/ObjectFileSystem.kt`). `hdfs://` and `abfs://` are not: neither is a DuckDB scheme, so
   each needs its own provider, and HDFS in particular drags in the Hadoop client.
 
+- **A command line — done, over the strip's vocabulary.** `icelens summary | tree | show |
+  check | export`, `cli/` over `:core` like the plugin, printing `GraphTree`'s rows and tree,
+  `integrityReport` as an exit code and `GraphExport`'s three formats — `--json` on the first
+  four. `GraphTree` moved to core for it, since a third shell with its own words for one set of
+  things would have drifted from the other two. What is left: `check` runs the metadata-only
+  report — the file reads behind the desktop's second click (`sweepFileStats`,
+  `checkStatisticsFiles`) would be a `--files` flag; the row lookup and the planners the desktop
+  offers per section have no command; an object-storage URL opens only with the credentials the
+  environment carries, since there is no form to type a key into; and the binary is built by
+  `installDist`, not shipped inside the desktop installers.
+
 - **IntelliJ IDEA plugin — done, and *not* through `ComposePanel`.** That was the plan and it does
   not work: IntelliJ ships its own Skiko, a plugin cannot override a platform class, and bundling
   Compose produces `UnsatisfiedLinkError` on the first text layout. The plugin draws with the IDE's

@@ -32,6 +32,9 @@ dependencies {
 
     testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.junit.jupiter)
+    // Test-only: GraphTreeTest asks the sealed GraphNode hierarchy what its subtypes are, so a
+    // node kind added without a row in the tree is a failure rather than a number to bump by hand.
+    testImplementation(libs.kotlin.reflect)
 }
 
 kotlin {

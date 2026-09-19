@@ -15,16 +15,18 @@
 
 ## Architecture
 
-Two Gradle modules. The split is load-bearing, not cosmetic: `core` is the engine every future
-shell sits over (server, CLI, IDE plugin), and it may not depend on a UI toolkit. A Gradle check
+Four Gradle modules, one engine and three shells. The split is load-bearing, not cosmetic:
+`core` is the engine every shell sits over, and it may not depend on a UI toolkit. A Gradle check
 (`:core:noComposeOnCoreClasspath`) fails the build if a Compose or AndroidX artifact reaches
 core's compile classpath, because a convention that is only written down erodes.
 
 ```
 core/     — headless engine. Readers, decoders, model, analysis, ELK layout. No UI.
 desktop/  — shell #1. Compose Desktop over core, in-process: direct java.nio and DuckDB JDBC,
-            no server, no network. Adding `server/` and `cli/` means siblings here.
+            no server, no network. A `server/` would be a sibling here.
 intellij/ — shell #2. An IDE tool window over core, drawn with the IDE's own Swing components.
+cli/      — shell #3. `icelens` in a terminal: the table as the strip's tree, a node's rows,
+            the integrity check as an exit code, the exports written to a file.
 ```
 
 **Shell #2 does not reuse shell #1's cards, and that is forced rather than chosen.** Compose
@@ -112,6 +114,7 @@ core/src/main/kotlin/
 │   ├── ScanPruning.kt         # Predicate → which manifests a scan would skip, and which term did it
 │   ├── GraphNavigation.kt     # Arrow keys → the next node, decided from where the nodes are drawn
 │   ├── GraphSearch.kt         # What each node kind can be found by, and the matches in drawn order
+│   ├── GraphTree.kt           # The graph as a tree and what each node lists as rows — the narrow shells' vocabulary, the IDE strip's and the command line's
 │   ├── PuffinSchema.kt        # @Serializable Puffin footer + the decoded DeletionVector
 │   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 ├── service/
@@ -192,9 +195,13 @@ desktop/src/main/kotlin/
 intellij/src/main/kotlin/plugin/
 ├── IceLensToolWindowFactory.kt # Attaches the panel to the tool window
 ├── IceLensPanel.kt             # Tree + details, with the read on a Task.Backgroundable
-├── GraphTree.kt                # GraphModel → tree rows, and what each node lists
+├── SwingTree.kt                # core's GraphTree.Item as the Swing node the IDE's Tree draws
 ├── IceLensService.kt           # Which table is open, per project
 └── OpenInIceLensAction.kt      # "Open in Iceberg Lens" on a directory in the Project view
+
+cli/src/main/kotlin/cli/
+├── Main.kt                     # `icelens <command> …` → exit code
+└── IceLensCli.kt               # summary, tree, show, check, export — text or --json, over GraphTree, integrityReport and GraphExport
 
 ## Build & run
 
@@ -211,6 +218,10 @@ intellij/src/main/kotlin/plugin/
 ./gradlew :intellij:runIde        # a sandbox IDE with the plugin loaded
 # Both download an IDE on first use. To build against one already installed:
 #   -PintellijLocalPath="$HOME/Applications/IntelliJ IDEA.app"
+
+./gradlew :cli:installDist        # the command line, at cli/build/install/icelens/bin/icelens
+cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or summary, tree, show, export
+./gradlew :cli:run --args="tree example/paimon/db.db/dv --depth 2"        # the same without installing
 ```
 
 ## Key conventions
@@ -2499,9 +2510,14 @@ intellij/src/main/kotlin/plugin/
   `remove_unexisting_files` would do about them, planned over the same report. It is
   deliberately not what `GraphSearch.searchableText` answers — a label is one line chosen to fit a row, so a manifest
   reads by its add count and cannot be found by its path, which is right for a label and wrong for
-  a search. `GraphTree.details` is *not* shared: the desktop inspector is a panel per node kind
-  with tallies and drill-downs, and the tool window is a docked strip answering "what am I looking
-  at", so a shorter list is the design rather than a subset. **A row that costs a read is not
+  a search. **`GraphTree` is core's, and it is the vocabulary of the *narrow* shells** — the IDE
+  strip and the command line both list a node rather than draw it, and they print the same rows
+  because they call the same function; `model/GraphTree.kt` builds the tree with no toolkit in it
+  (`GraphTree.Item`, a node with its children), `plugin/SwingTree.kt` wraps an item in the
+  `DefaultMutableTreeNode` the IDE's `Tree` draws, and the CLI indents it. The desktop inspector
+  deliberately does *not* use it: a panel per node kind with tallies and drill-downs is a
+  different shape from a docked strip answering "what am I looking at", so a shorter list is
+  the design rather than a subset. **A row that costs a read is not
   in `details`.** A file's history walks every retained snapshot's entries, so `GraphTree.details`
   stays eager and `GraphTree.deferredDetails` holds the `History` row; `IceLensPanel.showDetails`
   puts the eager rows up, draws that row as reading, and fills it from a `Task.Backgroundable`,
@@ -2512,6 +2528,29 @@ intellij/src/main/kotlin/plugin/
   both sides folded into `all 40 figures agree` or `2 of 40 DIFFER — last-column-id: 1 recorded,
   7 folded`, since the strip's reader wants the exception findable without the desktop, and a
   figure with one side only is counted apart rather than as agreement
+- **The command line is the third shell, and it says nothing of its own.** `cli/` depends on
+  `:core` only, like the plugin, and every command prints a core function: `summary` and `show`
+  are `GraphTree.details` (with `deferredDetails` read rather than drawn pending, since a
+  terminal has no placeholder to fill later), `tree` is `GraphTree.build` one line per item with
+  the node id in brackets — the id `show` takes — `check` is `integrityReport` with the findings
+  as a table and **as the exit code** (1 on a disagreement or a read error, which is what a
+  cron job or a CI step branches on), and `export` is `GraphExport`'s SVG, JSON or CSV to
+  standard output or `--out`. `--json` on the first four is the same rows as an object, for a
+  script. Three rules. **Standard output is the answer and nothing else**: the engine's logging
+  goes to standard error at `WARN` (`cli/src/main/resources/logback.xml`), so a pipe carries no
+  log line. **Nothing is laid out that is only listed**: `GraphLayoutService.assembleGraph` is
+  `layoutGraph` up to ELK — the build, the aggregation pass, the rows, the pass again — and
+  `tree`, `show`, `summary` and the CSV take it and skip the second a layout of a few thousand
+  nodes costs; only the SVG and the JSON export, which carry positions, are laid out. **The
+  page size is the app's unless told otherwise** — `tree` folds past 24 siblings into a group row
+  as the canvas does, `--all` draws every node, and `export` is of the whole table unless
+  `--page-size N` folds it, since an export from a terminal is of the table and not of a page of
+  it; `show` searches the whole table so an id past the page is found, and reads rows only for a
+  `row_…` id. Exit codes: 0, 1 findings, 2 the command line, 3 not a table or no such node.
+  `IceLensCliTest` runs every command over `mor`, `dv` and `pbk` and holds the output to the core
+  function it prints — the rows to `GraphTree.details`, the tree line by line to `GraphTree.build`,
+  `pbk`'s three bucket-count findings to `integrityReport`, the CSV to `GraphExport.toCsv` — and
+  every refusal to its exit code and message
 - **The tree follows structural edges only.** An `affectsLayout = false` edge is an annotation —
   snapshot lineage, or a deletion vector pointing at the data file it covers — and both run between
   nodes at one depth, so following one would make every commit a child of the commit before it and
@@ -3041,7 +3080,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,466 tests across 202 files (1,164 in :core, 288 in :desktop, 14 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,473 tests across 204 files (1,178 in :core, 288 in :desktop, 1 in :intellij, 6 in :cli) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
