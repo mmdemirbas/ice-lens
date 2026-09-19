@@ -424,9 +424,9 @@ What is left:
   four. `GraphTree` moved to core for it, since a third shell with its own words for one set of
   things would have drifted from the other two; `check --files` is the desktop's second click,
   every live file and statistics file opened. What is left: the row lookup and the planners the
-  desktop offers per section have no command; an object-storage URL opens only with the credentials the
-  environment carries, since there is no form to type a key into; and the binary is built by
-  `installDist`, not shipped inside the desktop installers.
+  desktop offers per section have no command; and an object-storage URL opens only with the
+  credentials the environment carries, since there is no form to type a key into. The binary
+  ships inside the installers as a second jpackage launcher.
 
 - **IntelliJ IDEA plugin — done, and *not* through `ComposePanel`.** That was the plan and it does
   not work: IntelliJ ships its own Skiko, a plugin cannot override a platform class, and bundling

@@ -220,6 +220,11 @@ cli/src/main/kotlin/cli/
 #   -PintellijLocalPath="$HOME/Applications/IntelliJ IDEA.app"
 
 ./gradlew :cli:installDist        # the command line, at cli/build/install/icelens/bin/icelens
+# The installers carry it too, as a second launcher beside the app's: Contents/MacOS/icelens in
+# the .app, bin/icelens under /opt/iceberglens, icelens.exe beside IcebergLens.exe
+./gradlew :desktop:createDistributable            # the .app without the .dmg — the image the
+                                                  # installers are packaged from, quicker to run
+./gradlew :desktop:createReleaseDistributable     # the same through ProGuard
 cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or summary, tree, show, export
 ./gradlew :cli:run --args="tree example/paimon/db.db/dv --depth 2"        # the same without installing
 ```
@@ -2542,8 +2547,10 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   read, on both shells) — and `export` is `GraphExport`'s SVG, JSON or CSV to
   standard output or `--out`. `--json` on the first four is the same rows as an object, for a
   script. Three rules. **Standard output is the answer and nothing else**: the engine's logging
-  goes to standard error at `WARN` (`cli/src/main/resources/logback.xml`), so a pipe carries no
-  log line. **Nothing is laid out that is only listed**: `GraphLayoutService.assembleGraph` is
+  goes to standard error at `WARN` (`cli/src/main/resources/logback-cli.xml` — named apart from
+  the desktop's `logback.xml` because the two jars share the installed app's classpath, and
+  `main` and the bundled launcher both select it by `-Dlogback.configurationFile`), so a pipe
+  carries no log line. **Nothing is laid out that is only listed**: `GraphLayoutService.assembleGraph` is
   `layoutGraph` up to ELK — the build, the aggregation pass, the rows, the pass again — and
   `tree`, `show`, `summary` and the CSV take it and skip the second a layout of a few thousand
   nodes costs; only the SVG and the JSON export, which carry positions, are laid out. **The
@@ -2552,6 +2559,14 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   `--page-size N` folds it, since an export from a terminal is of the table and not of a page of
   it; `show` searches the whole table so an id past the page is found, and reads rows only for a
   `row_…` id. Exit codes: 0, 1 findings, 2 the command line, 3 not a table or no such node.
+  **And the binary ships inside the installers**, as jpackage's second launcher
+  (`desktop/launchers/icelens.properties`, `--add-launcher` on the app-image build alone, since
+  the .dmg, .msi and .deb are packaged from that image): `Contents/MacOS/icelens` in the .app,
+  `bin/icelens` under `/opt/iceberglens`, `icelens.exe` with a console beside the app's — a
+  symlink onto the PATH is enough, and `cli/build/install/icelens` stays the developer's copy.
+  A launcher rather than a script under `app/resources/`, which was tried first: the runtime
+  Compose jlinks has no `bin/java` (jlink's `--strip-native-commands`), and jpackage copies a
+  resource without its execute bit.
   `IceLensCliTest` runs every command over `mor`, `dv` and `pbk` and holds the output to the core
   function it prints — the rows to `GraphTree.details`, the tree line by line to `GraphTree.build`,
   `pbk`'s three bucket-count findings to `integrityReport`, `--files` on `mor`, `pstats` and
@@ -3030,7 +3045,26 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   exercised rather than assumed: a *changed* version is pulled back by the `{strictly}` constraint
   the lock injects, and a *new* module fails with `Resolved '<module>' which is not part of the
   dependency lock state`
-- ProGuard is enabled for release builds with keep rules in `proguard-rules.pro`
+- ProGuard is enabled for release builds with keep rules in `proguard-rules.pro`, and the
+  rules turn shrinking, optimisation and obfuscation all off — so the pass rewrites every class
+  and changes nothing else. Two things that rewrite broke, found the first time an installer
+  was run rather than built: **ELK's jars are signed by Eclipse**, and a rewritten class no
+  longer matches `META-INF/ECLIPSE_.SF`, so the JVM refused the first one loaded
+  (`SecurityException: SHA-256 digest error for org/eclipse/elk/core/…`) — on the release
+  app's first frame and on every command of the release `icelens`; `desktop/build.gradle.kts`
+  drops the signature entries from what ProGuard wrote. And logback's SMTP, servlet and janino
+  references are 148 warnings ProGuard stops on, `-dontwarn ch.qos.logback.**` now
+- **The jlinked runtime holds the modules `nativeDistributions.modules(...)` lists and nothing
+  else**, and a module it lacks is a `NoClassDefFoundError` on first use — inside the installed
+  app, never in the suite, which runs on a full JDK. `./gradlew :desktop:suggestRuntimeModules`
+  is jdeps over the jars and is where the list comes from; `java.naming` is what jdeps misses,
+  logback's JNDI handler being reached by reflection, and without it every installer built
+  since logging arrived failed on the first logger with `javax/naming/NamingException`. Any
+  dependency change is a reason to run the task again, and to run the built `.app` once
+- `version.properties` is generated into `build/generated/version/` and registered as a
+  resource root (`writeVersion`, in `:cli` and `:desktop`), not written into
+  `processResources`' output: Gradle treats a file there that no task declares as stale and
+  removes it the next time the resources change, which a renamed `logback.xml` did
 - Tests use JUnit 5 via `kotlin-test-junit5`; run with `./gradlew test`. **A `@Tag("bench")` class
   is excluded from `test` and run by `./gradlew :core:bench`** on its own JVM with a 4 GB heap.
   `ElkScalingBench` prints timings for up to 64k ELK nodes and catches `Throwable` per

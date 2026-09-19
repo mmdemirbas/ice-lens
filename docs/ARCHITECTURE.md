@@ -288,5 +288,5 @@ Four Gradle modules (`core`, `desktop`, `intellij`, `cli`) with:
 - JetBrains Compose plugin
 - Kotlin Serialization plugin
 - Version catalog (`gradle/libs.versions.toml`)
-- ProGuard for release builds (currently: no shrink, no optimize, no obfuscate — just rule scaffolding)
-- Native distribution targets: `.dmg` (macOS), `.msi` (Windows), `.deb` (Linux)
+- ProGuard for release builds (currently: no shrink, no optimize, no obfuscate — just rule scaffolding; the signature entries of ELK's Eclipse-signed jars are dropped from its output, or the JVM refuses the rewritten classes)
+- Native distribution targets: `.dmg` (macOS), `.msi` (Windows), `.deb` (Linux), each carrying the command line as a second jpackage launcher (`desktop/launchers/icelens.properties`) over the app's jlinked runtime — whose module list is hand-kept in `nativeDistributions.modules(...)`, from `:desktop:suggestRuntimeModules` plus `java.naming`

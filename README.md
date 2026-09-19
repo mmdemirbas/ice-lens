@@ -138,6 +138,16 @@ icelens export /wh/db/orders --format csv --out files.csv   # the file inventory
 `--json` on `summary`, `tree`, `show` and `check` prints the same as an object. Standard output
 carries the answer only; anything the engine logs goes to standard error.
 
+The installers carry the same command beside the app, over the app's own runtime, so a machine
+with Iceberg Lens installed has `icelens` with no Java of its own — a link onto the `PATH` is
+all it takes:
+
+| Installer | Where it is |
+|---|---|
+| macOS `.dmg` | `/Applications/IcebergLens.app/Contents/MacOS/icelens` — `ln -s` it into `/usr/local/bin` |
+| Linux `.deb` | `/opt/iceberglens/bin/icelens` |
+| Windows `.msi` | `icelens.exe` beside `IcebergLens.exe` in the install directory, with a console |
+
 ## Usage
 
 1. Click **Add to Workspace** (sidebar or empty state button).

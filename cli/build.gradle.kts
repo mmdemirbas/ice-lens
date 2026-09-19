@@ -35,15 +35,20 @@ tasks.test {
     useJUnitPlatform()
     // The command tests open the checked-in fixtures, the larger of which the readers decode whole.
     maxHeapSize = "2g"
+    // What `main` sets before the first logger: the tests call `run` directly, so it is set here,
+    // or logback's default configuration prints DEBUG to standard output under the answer.
+    systemProperty("logback.configurationFile", "logback-cli.xml")
 }
 
-// Version is written here as in :desktop: the binary says which build it is.
-tasks.processResources {
-    val versionFile = layout.buildDirectory.file("resources/main/version.properties")
+// Version is written here as in :desktop: the binary says which build it is. A generated
+// directory of its own, registered as a resource root, rather than a file dropped into
+// processResources' output: Gradle treats a file there that no task declares as stale and
+// removes it the next time the resources change, which a renamed logback.xml did.
+val writeVersion by tasks.registering {
+    val dir = layout.buildDirectory.dir("generated/version")
     val projectVersion = version.toString()
-    doFirst {
-        val file = versionFile.get().asFile
-        file.parentFile.mkdirs()
-        file.writeText("version=$projectVersion\n")
-    }
+    inputs.property("version", projectVersion)
+    outputs.dir(dir)
+    doLast { dir.get().file("version.properties").asFile.writeText("version=$projectVersion\n") }
 }
+sourceSets.main { resources.srcDir(writeVersion) }

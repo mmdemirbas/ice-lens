@@ -1,6 +1,8 @@
 <configuration>
     <!-- Standard output is the command's answer and nothing else; what the engine logs goes to
-         standard error, and only what a reader of a terminal should see. -->
+         standard error, and only what a reader of a terminal should see. Named apart from the
+         desktop's logback.xml because both jars share the installed app's classpath; `main` and
+         the bundled launcher scripts select it by `-Dlogback.configurationFile`. -->
     <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
         <target>System.err</target>
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">

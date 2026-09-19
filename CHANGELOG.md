@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one vocabulary, the plugin keeping a Swing adapter (`SwingTree.kt`); and
   `GraphLayoutService.assembleGraph` is the build without the layout, which a listing has no
   use for. `IceLensCliTest` holds every command's output to the core function it prints.
+  **The installers carry it**, as a second jpackage launcher over the app's own runtime and
+  jars: `Contents/MacOS/icelens` in the `.app`, `/opt/iceberglens/bin/icelens`, `icelens.exe`
+  with a console beside the app's — a link onto the `PATH` is all a machine with the app
+  installed needs.
 - **A v3 `variant` column, opened, judged and read** — `example/iceberg/default/variant`, written
   by Spark 4.0.2 with the released Iceberg 1.10.0 Spark 4.0 runtime (`docs/fixtures/variant.sql`),
   eighteen rows over every shape the Variant binary encoding has. The table opens with no code
@@ -356,6 +360,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Paimon table the location is, when it is one
 
 ### Fixed
+- **The installers launched nothing.** Every `.dmg`, `.msi` and `.deb` built since logging
+  arrived failed on the first logger with `NoClassDefFoundError: javax/naming/NamingException`:
+  the jlinked runtime is built from `nativeDistributions.modules(...)` alone, the list held
+  `java.sql` only, and logback's JNDI handler needs `java.naming` — which jdeps does not see,
+  the handler being reached by reflection. The list is jdeps' suggestion plus `java.naming`
+  now (`java.compiler`, `java.instrument`, `java.naming`, `java.prefs`, `java.sql`,
+  `jdk.unsupported`), and the built `.app` was run, both launchers, before this was written.
+  The release build was broken twice over: ProGuard stopped on 148 warnings about logback's
+  optional mail, servlet and janino references, and — those silenced — its rewrite of ELK's
+  Eclipse-signed jars left classes the JVM refuses against `META-INF/ECLIPSE_.SF`
+  (`SecurityException: SHA-256 digest error`), on the release app's first frame. The
+  signature entries are dropped from ProGuard's output, and line numbers are kept, so a
+  release crash report has them. Found by running the installers, which nothing had done.
 - **An empty file index skips every operator `EmptyFileIndexReader` skips.** A column index the
   writer left empty was read as a skip for `=` alone; Paimon reads it as a skip for `=`, `IN`,
   every comparison and `IS NOT NULL`, and a maybe for `<>` and `IS NULL`, which it is now

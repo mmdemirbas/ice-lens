@@ -7,9 +7,12 @@
 
 # Preserve metadata frequently required by Kotlin/serialization/reflection.
 -keepattributes RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,AnnotationDefault,Signature,InnerClasses,EnclosingMethod,*Annotation*
+# Line numbers and file names, or a release build's crash report is a stack of bare method names.
+-keepattributes SourceFile,LineNumberTable
 
 # Application entry points and app code.
 -keep class app.MainKt { *; }
+-keep class cli.** { *; }
 -keep class ui.** { *; }
 -keep class model.** { *; }
 -keep class service.** { *; }
@@ -47,3 +50,7 @@
 -dontwarn org.objectweb.asm.**
 -dontwarn com.google.common.hash.Hashing$Crc32cMethodHandles
 -dontwarn org.apache.avro.reflect.ReflectionUtil
+# logback's SMTP appender, servlet filters and conditional configuration reference jakarta.mail,
+# jakarta.servlet and janino, none of which is on the classpath and none of which a file or
+# console appender reaches. 148 such warnings failed every release build since logging arrived.
+-dontwarn ch.qos.logback.**
