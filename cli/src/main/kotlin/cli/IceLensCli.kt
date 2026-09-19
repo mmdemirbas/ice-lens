@@ -16,15 +16,28 @@ import model.FileStatsSweep
 import model.GraphTree
 import model.IntegrityFinding
 import model.IntegrityReport
+import model.LookupInput
+import model.PaimonReadInput
 import model.PaimonUnifiedTableModel
+import model.RowLookupInput
+import model.RowLookupResult
+import model.ScanFilter
+import model.ScanFilterParse
 import model.UnifiedTableModel
 import model.displayLabel
+import model.evaluateScan
 import model.integrityReport
+import model.paimonRowLookupInput
+import model.parseScanFilter
 import model.readTableModel
+import model.render
+import model.rowLookupInput
 import model.StatisticsFileCheck
 import model.sweepFileStats
 import service.AggregationPolicy
 import service.GraphLayoutService
+import service.PaimonRowLookup
+import service.RowLookup
 import service.StatsCheckReader
 import service.StorageLocation
 import service.TableFormat
@@ -36,12 +49,14 @@ import java.nio.file.Path
 /**
  * The engine from a terminal.
  *
- * Five commands, each the narrow shells' vocabulary and nothing of its own: `summary` and `show`
+ * Six commands, each the narrow shells' vocabulary and nothing of its own: `summary` and `show`
  * print the rows `GraphTree.details` gives a node — the same rows the IDE strip draws — `tree`
- * prints `GraphTree.build`, `check` is `integrityReport` with the findings as an exit code, and
- * `export` writes what the desktop's export menu writes. Text by default, `--json` where a script
- * is the reader. What goes to standard output is the answer and only the answer; the engine's
- * logging goes to standard error at `WARN`, so a pipe carries nothing it did not ask for.
+ * prints `GraphTree.build`, `check` is `integrityReport` with the findings as an exit code,
+ * `lookup` is `RowLookup`/`PaimonRowLookup` — the rows a filter matches and each one's fate, the
+ * desktop's row-lookup section — and `export` writes what the desktop's export menu writes. Text
+ * by default, `--json` where a script is the reader. What goes to standard output is the answer
+ * and only the answer; the engine's logging goes to standard error at `WARN`, so a pipe carries
+ * nothing it did not ask for.
  *
  * [run] takes the streams so a test can run a command and read what it printed; `main` hands it
  * the process's own and exits with what it returns.
@@ -72,6 +87,9 @@ object IceLensCli {
         |  check   <table> [--files] [--json]    every recorded figure against the same figure counted;
         |                                        --files opens every live data file and statistics file
         |                                        too; exit 1 on a disagreement or a file not read
+        |  lookup  <table> <filter> [--json]     the rows the filter matches, read from the current
+        |                                        snapshot's live files it did not rule out, each with
+        |                                        its fate — live, or deleted/superseded by what
         |  export  <table> --format svg|json|csv [--out FILE] [--page-size N]
         |                                        the graph as a drawing, as structure, or the file
         |                                        inventory; the whole table unless a page size folds it
@@ -79,6 +97,9 @@ object IceLensCli {
         |
         |<table> is the directory holding the table — Iceberg's `metadata/`, Paimon's `snapshot/` and
         |`schema/` — or an object-storage URL the environment's credentials open.
+        |
+        |<filter> for `lookup` is one clause — `"id = 4"`, `"amount >= 10 AND region = 'eu'"`,
+        |`"id IN (1, 2)"`, `"name LIKE 'al%'"` — quoted so the shell keeps it as one argument.
         |
         |exit codes: 0 done; 1 `check` found a disagreement; 2 the command line could not be read;
         |3 the path is not a table this opens, or the node id names nothing
@@ -101,6 +122,7 @@ object IceLensCli {
                 "tree" -> tree(parsed, out, err)
                 "show" -> show(parsed, out, err)
                 "check" -> check(parsed, out, err)
+                "lookup" -> lookup(parsed, out, err)
                 "export" -> export(parsed, out, err)
                 else -> usageError(err, "unknown command `$command`")
             }
@@ -228,6 +250,100 @@ object IceLensCli {
         return FileReads(sweep, node.statisticsFiles.value.orEmpty())
     }
 
+    private fun lookup(parsed: Parsed, out: PrintStream, err: PrintStream): Int {
+        parsed.allow("json") ?: return usageError(err, "lookup takes --json only")
+        val table = parsed.positional(0) ?: return usageError(err, "lookup needs a table and a filter")
+        // The filter is the rest of the positionals joined, so `lookup t id = 4` works unquoted
+        // and `lookup t "id = 4"` works quoted — the same clause either way.
+        val filterText = parsed.positionals.drop(1).joinToString(" ")
+        if (filterText.isBlank()) return usageError(err, "lookup needs a filter, e.g. `icelens lookup <table> \"id = 4\"`")
+        val filter = when (val p = parseScanFilter(filterText)) {
+            is ScanFilterParse.Parsed -> p.filter
+            is ScanFilterParse.Failed -> return filterError(err, filterText, p)
+        }
+        val model = open(table)
+        // The whole table's pruning, so no file is folded out of the ruled-out set — the reason
+        // this draws every node (NONE) where the desktop scopes to the page it drew.
+        val graph = graphOf(model, showRows = false, policy = AggregationPolicy.NONE)
+        val ruledOut = evaluateScan(graph, filter).ruledOutFileKeys(graph)
+        val input: LookupInput? = when (model) {
+            is UnifiedTableModel -> model.rowLookupInput()
+            is PaimonUnifiedTableModel -> model.paimonRowLookupInput()
+        }
+        val result = input?.let { readAllPages(it, filter, ruledOut) }
+        if (parsed.has("json")) {
+            out.println(pretty(lookupJson(model, filter, result)))
+            return EXIT_OK
+        }
+        out.println("${model.name}  ${formatName(model)}  ${model.path}")
+        if (result == null) {
+            out.println("no current snapshot to read")
+            return EXIT_OK
+        }
+        out.println(
+            "${filter.render()} — ${countedRows(result.hits.size)} ${if (result.hits.size == 1) "matches" else "match"}, ${result.live} live" +
+                (if (result.deleted > 0) ", ${result.deleted} not live" else "") +
+                (if (result.undecided > 0) ", ${result.undecided} not decided" else "") +
+                "; ${result.filesRead.size} file(s) read, ${result.filesRuledOut} ruled out by pruning",
+        )
+        result.rule?.let { out.println(it) }
+        if (result.skippedFiles > 0) {
+            out.println("${result.skippedFiles} live file(s) at level 0, holding ${result.skippedRows} row(s), are not read by a batch read of this table; a record found there is marked not read")
+        }
+        if (result.bucketFilesRead + result.bucketFilesPruned > 0) {
+            out.println("the hits' keys were asked of their buckets' other files: ${result.bucketFilesRead} opened" +
+                (if (result.bucketFilesPruned > 0) ", ${result.bucketFilesPruned} left unopened, their key range excluding every key asked" else ""))
+        }
+        result.filesRead.filter { it.error != null }.forEach { out.println("could not read ${it.filePath.substringAfterLast('/')}: ${it.error}") }
+        if (result.hits.isNotEmpty()) {
+            out.println()
+            printTable(
+                listOf("fate", "note", "by", "file", "position", "row"),
+                result.hits.map { hit ->
+                    listOf(
+                        hit.fate.label,
+                        hit.note ?: "",
+                        hit.by?.substringAfterLast('/') ?: "",
+                        hit.filePath.substringAfterLast('/'),
+                        hit.position?.toString() ?: "",
+                        // A Paimon key-value row leads with system columns; the row's own come first, as on the card.
+                        hit.cells.entries.sortedBy { it.key.startsWith("_") }.joinToString(", ") { "${it.key}=${it.value ?: "null"}" },
+                    )
+                },
+                out,
+            )
+            if (result.filesRead.any { it.hits >= RowLookup.MAX_HITS_PER_FILE }) {
+                out.println()
+                out.println("a file's hits stop at ${RowLookup.MAX_HITS_PER_FILE}; narrow the filter to see the rest")
+            }
+        }
+        return EXIT_OK
+    }
+
+    /**
+     * Every non-ruled-out file, folded — a terminal has no next page to click for, so `lookup`
+     * reads to the end (`filesLeft == 0`) the way `check --files` sweeps every file, where the
+     * desktop reads a page a click. `RowLookup.lookup` caps a file's hits at [RowLookup.MAX_HITS_PER_FILE]
+     * whichever shell asks, which the headline says when it bites.
+     */
+    private fun readAllPages(input: LookupInput, filter: ScanFilter, ruledOut: Set<String>): RowLookupResult {
+        fun page(from: Int) = when (input) {
+            is RowLookupInput -> RowLookup.lookup(input, filter, ruledOut, from = from)
+            is PaimonReadInput -> PaimonRowLookup.lookup(input, filter, ruledOut, from = from)
+        }
+        var folded = page(0)
+        while (folded.filesLeft > 0) folded += page(folded.filesRead.size)
+        return folded
+    }
+
+    /** A parse failure points at the offset in the reader's own filter text, not the command grammar. */
+    private fun filterError(err: PrintStream, text: String, failure: ScanFilterParse.Failed): Int {
+        err.println("icelens: ${failure.message}")
+        err.println("  $text")
+        err.println("  " + " ".repeat(failure.at.coerceIn(0, text.length)) + "^")
+        return EXIT_USAGE
+    }
+
     private fun export(parsed: Parsed, out: PrintStream, err: PrintStream): Int {
         parsed.allow("format", "out", "page-size") ?: return usageError(err, "export takes --format, --out and --page-size")
         val table = parsed.positional(0) ?: return usageError(err, "export needs a table")
@@ -270,6 +386,8 @@ object IceLensCli {
         val assembled = GraphLayoutService.assembleGraph(model, showRows = showRows, policy = policy)
         return GraphModel(assembled.nodes, assembled.edges, 0.0, 0.0)
     }
+
+    private fun countedRows(n: Int): String = "$n row" + if (n == 1) "" else "s"
 
     private fun formatName(model: FormatTableModel): String = when (model.format) {
         TableFormat.ICEBERG -> "Iceberg"
@@ -363,6 +481,46 @@ object IceLensCli {
                 }
             }))
         }
+    }
+
+    private fun lookupJson(model: FormatTableModel, filter: ScanFilter, result: RowLookupResult?): JsonObject = buildJsonObject {
+        put("table", model.name)
+        put("format", formatName(model))
+        put("path", model.path.toString())
+        put("filter", filter.render())
+        if (result == null) {
+            put("snapshot", JsonPrimitive(null as String?))
+            put("hits", JsonArray(emptyList()))
+            return@buildJsonObject
+        }
+        put("matched", result.hits.size)
+        put("live", result.live)
+        put("deleted", result.deleted)
+        put("undecided", result.undecided)
+        put("filesRead", result.filesRead.size)
+        put("filesRuledOut", result.filesRuledOut)
+        result.rule?.let { put("rule", it) }
+        if (result.skippedFiles > 0) {
+            put("skippedFiles", result.skippedFiles)
+            put("skippedRows", result.skippedRows)
+        }
+        if (result.bucketFilesRead + result.bucketFilesPruned > 0) {
+            put("bucketFilesRead", result.bucketFilesRead)
+            put("bucketFilesPruned", result.bucketFilesPruned)
+        }
+        put("hits", JsonArray(result.hits.map { hit ->
+            buildJsonObject {
+                put("fate", hit.fate.name.lowercase())
+                hit.note?.let { put("note", it) }
+                hit.by?.let { put("by", it) }
+                put("file", hit.filePath)
+                hit.position?.let { put("position", it) }
+                put("row", JsonObject(hit.cells.entries.associate { (k, v) -> k to JsonPrimitive(v?.toString()) }))
+            }
+        }))
+        put("readErrors", JsonArray(result.filesRead.filter { it.error != null }.map { o ->
+            buildJsonObject { put("file", o.filePath); put("error", o.error) }
+        }))
     }
 
     private fun findingsJson(findings: List<IntegrityFinding>): JsonArray = JsonArray(findings.map { f ->

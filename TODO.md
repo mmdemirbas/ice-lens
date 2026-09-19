@@ -423,10 +423,11 @@ What is left:
   `integrityReport` as an exit code and `GraphExport`'s three formats — `--json` on the first
   four. `GraphTree` moved to core for it, since a third shell with its own words for one set of
   things would have drifted from the other two; `check --files` is the desktop's second click,
-  every live file and statistics file opened. What is left: the row lookup and the planners the
+  every live file and statistics file opened, and `lookup <table> <filter>` is the row-lookup
+  section, the rows a filter matches with each one's fate. What is left: the planners the
   desktop offers per section have no command; and an object-storage URL opens only with the
   credentials the environment carries, since there is no form to type a key into. The binary
-  ships inside the installers as a second jpackage launcher.
+  ships inside the installers as a second jpackage launcher; HDFS and ADLS are not yet read.
 
 - **IntelliJ IDEA plugin — done, and *not* through `ComposePanel`.** That was the plan and it does
   not work: IntelliJ ships its own Skiko, a plugin cannot override a platform class, and bundling

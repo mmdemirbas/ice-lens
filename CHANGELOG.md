@@ -12,8 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (one line per node with its id, folded past the page size unless `--all`, `--depth N`,
   `--rows`), `show <node-id>` (a node's rows, the deferred ones read), `check` (the integrity
   report as a table and as the exit code — 1 on a disagreement or a read error; `--files` opens
-  every live data file and statistics file too, uncapped, a file not read an exit 1 of its own)
-  and `export --format svg|json|csv [--out FILE]`; `--json` on the first four. Standard output is the answer
+  every live data file and statistics file too, uncapped, a file not read an exit 1 of its own),
+  `lookup <table> <filter>` (the rows a filter matches, each with its fate — live, or
+  deleted/superseded by what — the desktop's row-lookup section from a terminal) and
+  `export --format svg|json|csv [--out FILE]`; `--json` on the first four. Standard output is the answer
   only; the engine logs to standard error at `WARN`. `./gradlew :cli:installDist` builds
   `cli/build/install/icelens/bin/icelens`. `GraphTree` — the tree and the rows the IDE strip
   draws — moved from the plugin into core (`model/GraphTree.kt`) so both narrow shells print

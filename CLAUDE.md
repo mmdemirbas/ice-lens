@@ -2544,8 +2544,13 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   no next page to click for, and `checkStatisticsFiles` over the statistics files, with a file
   that could not be read an exit 1 of its own, because from a cron job "not compared" is the
   finding (`orcfmt` is the table that says so; `FileStatsSweep.describe` names the count not
-  read, on both shells) — and `export` is `GraphExport`'s SVG, JSON or CSV to
-  standard output or `--out`. `--json` on the first four is the same rows as an object, for a
+  read, on both shells) — `lookup` is `RowLookup`/`PaimonRowLookup` behind the same
+  `evaluateScan(...).ruledOutFileKeys(...)` the desktop's row-lookup section reads, its filter
+  argument the whole clause `parseScanFilter` takes (`"id = 4"`, `"id IN (1, 2)"`, `AND`/`OR`/
+  `LIKE`; a parse failure points a caret at the offset), the current snapshot read to the end
+  rather than a page a click, each hit printed with its fate — the same `RowFate` the panel
+  colours — and `export` is `GraphExport`'s SVG, JSON or CSV to
+  standard output or `--out`. `--json` on the first five is the same rows as an object, for a
   script. Three rules. **Standard output is the answer and nothing else**: the engine's logging
   goes to standard error at `WARN` (`cli/src/main/resources/logback-cli.xml` — named apart from
   the desktop's `logback.xml` because the two jars share the installed app's classpath, and
@@ -2557,7 +2562,8 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   page size is the app's unless told otherwise** — `tree` folds past 24 siblings into a group row
   as the canvas does, `--all` draws every node, and `export` is of the whole table unless
   `--page-size N` folds it, since an export from a terminal is of the table and not of a page of
-  it; `show` searches the whole table so an id past the page is found, and reads rows only for a
+  it; `lookup` draws every node too, so its pruning sees every file rather than the page's;
+  `show` searches the whole table so an id past the page is found, and reads rows only for a
   `row_…` id. Exit codes: 0, 1 findings, 2 the command line, 3 not a table or no such node.
   **And the binary ships inside the installers**, as jpackage's second launcher
   (`desktop/launchers/icelens.properties`, `--add-launcher` on the app-image build alone, since
@@ -2570,8 +2576,10 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   `IceLensCliTest` runs every command over `mor`, `dv` and `pbk` and holds the output to the core
   function it prints — the rows to `GraphTree.details`, the tree line by line to `GraphTree.build`,
   `pbk`'s three bucket-count findings to `integrityReport`, `--files` on `mor`, `pstats` and
-  `orcfmt` to the sweep and the statistics check it prints, the CSV to `GraphExport.toCsv` — and
-  every refusal to its exit code and message
+  `orcfmt` to the sweep and the statistics check it prints, `lookup` on `mor` (`id = 5` live)
+  and `lk` (`v = 'b'` superseded) to `RowLookup`/`PaimonRowLookup`, the CSV to
+  `GraphExport.toCsv` — and every refusal to its exit code and message, a bad filter to the
+  caret
 - **The tree follows structural edges only.** An `affectsLayout = false` edge is an annotation —
   snapshot lineage, or a deletion vector pointing at the data file it covers — and both run between
   nodes at one depth, so following one would make every commit a child of the commit before it and
@@ -3120,7 +3128,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,474 tests across 204 files (1,178 in :core, 288 in :desktop, 1 in :intellij, 7 in :cli) covering full pipelines for both formats (Avro fixtures
+~1,475 tests across 204 files (1,178 in :core, 288 in :desktop, 1 in :intellij, 8 in :cli) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

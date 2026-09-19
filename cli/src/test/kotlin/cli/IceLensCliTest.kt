@@ -12,11 +12,18 @@ import model.GraphModel
 import model.GraphNode
 import model.GraphTree
 import model.PaimonUnifiedTableModel
+import model.ScanFilterParse
 import model.UnifiedTableModel
+import model.evaluateScan
 import model.integrityReport
+import model.paimonRowLookupInput
+import model.parseScanFilter
 import model.readTableModel
+import model.rowLookupInput
 import model.sweepFileStats
 import service.AggregationPolicy
+import service.PaimonRowLookup
+import service.RowLookup
 import service.StatsCheckReader
 import service.GraphLayoutService
 import java.io.ByteArrayOutputStream
@@ -182,6 +189,62 @@ class IceLensCliTest {
         assertEquals(IceLensCli.EXIT_FINDINGS, orc.code, "every file unread is not a pass")
         assertTrue(orc.out.lines().count { it.startsWith("not read: ") } >= 2, orc.out)
         assertEquals(IceLensCli.EXIT_OK, icelens("check", fixture("example/iceberg/default/orcfmt")).code, "the metadata alone agrees")
+    }
+
+    @Test
+    fun `lookup prints RowLookup's hits and fates for Iceberg and Paimon, and holds them to the core function`() {
+        // Iceberg: mor id = 5 is echo-updated and live; the CLI's rows are RowLookup.lookup's hits.
+        val filter = (parseScanFilter("id = 5") as ScanFilterParse.Parsed).filter
+        val model = readTableModel(Paths.get(mor)) as UnifiedTableModel
+        val graph = graphOf(mor, AggregationPolicy.NONE)
+        val ruledOut = evaluateScan(graph, filter).ruledOutFileKeys(graph)
+        val core = RowLookup.lookup(requireNotNull(model.rowLookupInput()), filter, ruledOut)
+        assertEquals(1, core.hits.size); assertEquals("live", core.hits.single().fate.label)
+
+        val run = icelens("lookup", mor, "id = 5")
+        assertEquals(IceLensCli.EXIT_OK, run.code, run.err)
+        assertEquals("mor  Iceberg  $mor", run.out.lineSequence().first())
+        core.hits.forEach { hit ->
+            assertTrue(run.out.contains(hit.fate.label), "fate ${hit.fate.label} in\n${run.out}")
+            assertTrue(run.out.contains("name=echo-updated"), run.out)
+            assertTrue(run.out.contains(hit.filePath.substringAfterLast('/')), run.out)
+        }
+        assertTrue(run.out.contains("1 row matches, 1 live"), run.out)
+        assertEquals("", run.err)
+
+        // A quoted clause and an unquoted one are the same filter (the positionals are joined).
+        assertEquals(run.out, icelens("lookup", mor, "id", "=", "5").out)
+
+        // Paimon: lk v = 'b' is superseded, held to PaimonRowLookup.lookup.
+        val lk = fixture("example/paimon/db.db/lk")
+        val pFilter = (parseScanFilter("v = 'b'") as ScanFilterParse.Parsed).filter
+        val pModel = readTableModel(Paths.get(lk)) as PaimonUnifiedTableModel
+        val pGraph = graphOf(lk, AggregationPolicy.NONE)
+        val pRuledOut = evaluateScan(pGraph, pFilter).ruledOutFileKeys(pGraph)
+        val pCore = PaimonRowLookup.lookup(requireNotNull(pModel.paimonRowLookupInput()), pFilter, pRuledOut)
+        assertEquals("superseded", pCore.hits.single().fate.label)
+        val pRun = icelens("lookup", lk, "v = 'b'")
+        assertEquals(IceLensCli.EXIT_OK, pRun.code, pRun.err)
+        assertTrue(pRun.out.contains("superseded"), pRun.out)
+
+        // JSON: the same counts and one hit per core hit.
+        val json = Json.parseToJsonElement(icelens("lookup", mor, "id = 5", "--json").out).jsonObject
+        assertEquals(core.hits.size, json.getValue("matched").jsonPrimitive.content.toInt())
+        assertEquals(core.live, json.getValue("live").jsonPrimitive.content.toInt())
+        assertEquals("id = 5", json.getValue("filter").jsonPrimitive.content)
+        val hit = json.getValue("hits").jsonArray.single().jsonObject
+        assertEquals("live", hit.getValue("fate").jsonPrimitive.content)
+        assertEquals("echo-updated", hit.getValue("row").jsonObject.getValue("name").jsonPrimitive.content)
+
+        // A filter that does not parse points at the offset and is a usage error, not a crash.
+        val bad = icelens("lookup", mor, "id = = 4")
+        assertEquals(IceLensCli.EXIT_USAGE, bad.code)
+        assertTrue(bad.err.contains("^"), bad.err)
+        assertEquals("", bad.out)
+
+        val noFilter = icelens("lookup", mor)
+        assertEquals(IceLensCli.EXIT_USAGE, noFilter.code)
+        assertTrue(noFilter.err.contains("lookup needs a filter"), noFilter.err)
     }
 
     @Test

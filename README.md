@@ -132,11 +132,13 @@ icelens check /wh/db/orders                     # every recorded figure against 
                                                 # exit 1 on a disagreement, so a pipeline can gate on it
 icelens check /wh/db/orders --files             # and every live data file and statistics file opened too;
                                                 # a file that cannot be read is exit 1 as well
+icelens lookup /wh/db/orders "id = 42"          # the rows a filter matches, each with its fate:
+                                                # live, or deleted/superseded by which delete or write
 icelens export /wh/db/orders --format csv --out files.csv   # the file inventory; svg and json too
 ```
 
-`--json` on `summary`, `tree`, `show` and `check` prints the same as an object. Standard output
-carries the answer only; anything the engine logs goes to standard error.
+`--json` on `summary`, `tree`, `show`, `check` and `lookup` prints the same as an object. Standard
+output carries the answer only; anything the engine logs goes to standard error.
 
 The installers carry the same command beside the app, over the app's own runtime, so a machine
 with Iceberg Lens installed has `icelens` with no Java of its own — a link onto the `PATH` is
