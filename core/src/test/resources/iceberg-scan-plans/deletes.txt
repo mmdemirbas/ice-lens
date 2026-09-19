@@ -1,5 +1,5 @@
 # What Iceberg 1.8.1's unfiltered plan attaches to each data file of every checked-in table's current snapshot —
-# `FileScanTask.deletes()`, printed by docs/fixtures/iceberg-scan-plans.scala (run 2026-09-14). One section per
+# `FileScanTask.deletes()`, printed by docs/fixtures/iceberg-scan-plans.scala (run 2026-09-19). One section per
 # table; `<data file> -> <delete files, comma-joined>`; a `!` line is a table that Iceberg could not open.
 
 -- avrofmt
@@ -165,3 +165,6 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet ->
 00000-0-880c6b74-8ef8-45b2-bdac-cbf659ab477a-0-00001.parquet ->
 00000-1-0ba739f9-5085-4d98-bb5a-72127320c0ff-0-00001.parquet ->
 00000-2-1f835731-107b-4cf2-b15c-d577c07c7191-0-00001.parquet ->
+-- wmp
+00000-0-665d8052-9b6b-44ae-9276-67652cdce754-0-00001.parquet ->
+00000-1-7874b8a4-7f85-4d47-a0bd-2a891cacf416-0-00001.parquet ->

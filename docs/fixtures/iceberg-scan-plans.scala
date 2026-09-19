@@ -32,7 +32,7 @@
 // `read.split.*`, under an 8 MiB target, and under a 32 KiB target with no open-file cost; then
 // the partition count a Spark DataFrame read of the table plans at this session's parallelism,
 // which is `read.split.adaptive-size.enabled` shrinking the target. ScanTaskPlanTest holds
-// `planScanTasks` to `src/test/resources/iceberg-scan-plans/tasks.txt` (run 2026-09-15).
+// `planScanTasks` to `src/test/resources/iceberg-scan-plans/tasks.txt` (run 2026-09-19).
 //
 // The second half prints, for every table, which delete files the unfiltered plan attaches to
 // each data file of the current snapshot (`FileScanTask.deletes()` — DeleteFileIndex's pairing
@@ -47,8 +47,20 @@ import scala.collection.JavaConverters._
 
 val tables = new HadoopTables(spark.sessionState.newHadoopConf())
 
+// A table written by a catalog keeps no version-hint.text and names its versions `%05d-<uuid>`,
+// which HadoopTables' directory fallback does not read (its pattern is `v<N>`), so such a table
+// (`wmp`) is loaded from its newest metadata file — a path HadoopTables and the DataFrame source
+// both accept.
+def tablePath(name: String): String = {
+  val dir = new java.io.File(s"/wh/default/$name/metadata")
+  if (new java.io.File(dir, "version-hint.text").exists) s"/wh/default/$name"
+  else dir.listFiles().map(_.getName).filter(_.endsWith(".metadata.json")).sorted.lastOption
+    .map(f => s"/wh/default/$name/metadata/$f").getOrElse(s"/wh/default/$name")
+}
+def hinted(name: String): Boolean = new java.io.File(s"/wh/default/$name/metadata/version-hint.text").exists
+
 def plan(name: String, label: String, expr: Expression): Unit = {
-  val table = tables.load(s"/wh/default/$name")
+  val table = tables.load(tablePath(name))
   val scan = if (expr == null) table.newScan() else table.newScan().filter(expr)
   val files = scan.planFiles().asScala.map(_.file().path().toString.split("/").last).toList.sorted
   println(s"-- $name: $label")
@@ -129,7 +141,7 @@ plan("mor", "id < 3", E.lessThan("id", 3))
 def deletes(name: String): Unit = {
   println(s"-- $name: deletes")
   try {
-    val table = tables.load(s"/wh/default/$name")
+    val table = tables.load(tablePath(name))
     if (table.currentSnapshot() == null) { println("(no snapshot)"); return }
     val byFile = scala.collection.mutable.TreeMap[String, scala.collection.mutable.TreeSet[String]]()
     for (t <- table.newScan().planFiles().asScala) {
@@ -147,7 +159,7 @@ new java.io.File("/wh/default").listFiles().filter(_.isDirectory).map(_.getName)
 // it; then Spark's own partition count for a DataFrame read.
 def tasks(name: String): Unit = {
   try {
-    val table = tables.load(s"/wh/default/$name")
+    val table = tables.load(tablePath(name))
     if (table.currentSnapshot() == null) { println(s"-- $name: tasks (no snapshot)"); return }
     def run(label: String, scan: org.apache.iceberg.TableScan): Unit = {
       println(s"-- $name: tasks $label")
@@ -159,7 +171,7 @@ def tasks(name: String): Unit = {
     run("default again", table.newScan())
     run("split=8MiB", table.newScan().option("read.split.target-size", (8L * 1024 * 1024).toString))
     run("split=32KiB cost=0", table.newScan().option("read.split.target-size", (32L * 1024).toString).option("read.split.open-file-cost", "0"))
-    val df = spark.table(s"lens.default.$name")
+    val df = if (hinted(name)) spark.table(s"lens.default.$name") else spark.read.format("iceberg").load(tablePath(name))
     val parallelism = math.max(spark.sparkContext.defaultParallelism, spark.sessionState.conf.numShufflePartitions)
     println(s"-- $name: spark partitions = ${df.rdd.getNumPartitions} (parallelism $parallelism)")
   } catch { case e: Throwable => println(s"! ${e.getClass.getSimpleName}: ${e.getMessage}") }

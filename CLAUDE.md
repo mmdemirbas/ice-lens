@@ -248,7 +248,19 @@ intellij/src/main/kotlin/plugin/
   trailing segment is shared, the recorded path is not under the recorded warehouse, or the result
   escapes the local one. `extdata` is the engine-written oracle: the table holds `metadata/` and
   no `data/`, and its two files sit under `example/iceberg/extdata-files/` beside the table, the
-  way they sat under `/wh`
+  way they sat under `/wh`. **`wmp` is the same rule from the other side** — `write.metadata.path`
+  rather than `write.data.path`: the table is opened from the directory holding `metadata/`
+  (`/wh/default/wmp`), its `location` is `/wh/wmp-data`, and the data files re-root the same way
+  onto `example/iceberg/wmp-data/data/`. It is written by Iceberg's own `JdbcCatalog` over a
+  SQLite file (`docs/fixtures/wmp.sql`), because a HadoopCatalog table keeps its metadata under
+  its location whatever the property says (`HadoopTableOperations` derives every path from the
+  location) and only `BaseMetastoreTableOperations.metadataFileLocation` reads it — which is why
+  the layout had only ever been built at runtime (`RecordedPathResolutionTest`) until this
+  table. Two traps in producing it: `InMemoryCatalog` runs every statement and writes nothing to
+  disk, its FileIO being `InMemoryFileIO` whatever `io-impl` says; and the SQLite driver has to
+  be on `--driver-class-path`, since a jar given to `--jars` alone is not one `DriverManager`
+  finds. The app opens it with no code change — `WriteMetadataPathFixtureTest` holds the
+  resolution, the lookup, the count and the two walks
 - **A data file's `sort_order_id` is the writer's claim, and the table's default is put beside
   it because the two are not one fact.** `SortOrder.describe(nameOf)` renders an order the way
   `WRITE ORDERED BY` states it (`id DESC NULLS LAST, name ASC NULLS FIRST`; order 0 is
@@ -2259,8 +2271,12 @@ intellij/src/main/kotlin/plugin/
   `%05d-<uuid>.metadata.json` from `00000`, and `metadataVersionFromFileName` reads the number
   off that shape as well as off `v<N>`, so a Hive, Glue or REST table's cards say `METADATA
   147` and its versions order by number rather than only by `last-updated-ms`;
-  `MetastoreMetadataNamingTest` copies `test` under those names, since the corpus is all
-  Hadoop tables
+  `MetastoreMetadataNamingTest` copies `test` under those names, and `wmp` is the one table an
+  engine wrote under them — three versions from `00000-<uuid>` and no `version-hint.text`,
+  which a catalog keeps in its own store; `HadoopTables.load(<directory>)` matches `v<N>` alone
+  and finds no version there, so `iceberg-scan-plans.scala` loads a table with no hint by the
+  path of its newest metadata file, which `HadoopTables` and `spark.read.format("iceberg")`
+  both take
 - `versionHint` is nullable — `version-hint.text` exists only for HadoopCatalog/HadoopTables
   tables, so absence is normal and must not be reported as a read error
 - **Nothing leaves the graph silently.** `GraphAggregation` draws the first
@@ -2998,7 +3014,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,456 tests across 200 files (1,156 in :core, 287 in :desktop, 13 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,460 tests across 201 files (1,160 in :core, 287 in :desktop, 13 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3112,6 +3128,7 @@ container invocation and the traps in it:
 | `default/rolled` | `RolledBackFixtureTest` | main set back to an earlier snapshot by `set_current_snapshot` — a second `snapshot-log` entry for the target, the abandoned commit retained on no ref, the next commit forking from the target |
 | `default/retained` | `RetainedFixtureTest` | refs with retention — a tag `RETAIN 90 DAYS`, a branch `RETAIN 30 DAYS WITH SNAPSHOT RETENTION 2 SNAPSHOTS` — and an `expire_snapshots` that kept what each ref's own settings say |
 | `default/extdata` | `ExternalDataPathFixtureTest` | `write.data.path` outside the table — no `data/` under it, two files beside it under `example/iceberg/extdata-files/` |
+| `default/wmp` | `WriteMetadataPathFixtureTest` | `write.metadata.path` apart from the location, written by `JdbcCatalog` over SQLite — the metadata under `default/wmp/metadata/` named the metastore way from `00000-<uuid>`, no version hint, no `data/`; the two data files under `example/iceberg/wmp-data/data/`, the location |
 | `default/sorted` | `SortedFixtureTest` | three sort orders, a commit under each, then a sort compaction — rows sorted inside every file, `sort_order_id 0` on every file |
 | `default/expired` | `ExpiredSnapshotsFixtureTest` | snapshots dropped by `expire_snapshots` — the older metadata versions still list them, and they are drawn as expired, not as read errors |
 | `default/maint` | `MaintenanceFixtureTest` | `rewrite_position_delete_files` dropping two dangling deletes, then `rewrite_manifests` — the commit whose summary counts manifests |

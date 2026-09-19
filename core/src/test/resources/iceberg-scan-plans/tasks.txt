@@ -1,5 +1,5 @@
 # The tasks Iceberg 1.8.1's `planTasks()` makes of every checked-in table's current snapshot, printed by
-# docs/fixtures/iceberg-scan-plans.scala (run 2026-09-15). Per table, four plans: the table's own `read.split.*`
+# docs/fixtures/iceberg-scan-plans.scala (run 2026-09-19). Per table, four plans: the table's own `read.split.*`
 # twice (`default`, `default again` — a plan over several manifests returns files in the worker pool's order and
 # the packing follows it, so the two can differ in which file sits in which task while the count holds), an 8 MiB
 # target, and a 32 KiB target with no open-file cost; one line per task, its entries `<file>:<start>+<length>`
@@ -8,46 +8,46 @@
 # partitions), which is `read.split.adaptive-size.enabled` shrinking the target to 16 MiB. `test` prints `!`: its
 # manifest list is recorded at the path it was written to, and the test leaves it out by name.
 -- avrofmt: tasks default
-00000-0-b2b28d71-9742-46e1-aea8-17484fb15ab0-0-00001.avro:0+750,00000-1-ccc6b252-ed6c-4c6b-8365-5fe79b3aa54e-0-00001.avro:0+710
+00000-1-ccc6b252-ed6c-4c6b-8365-5fe79b3aa54e-0-00001.avro:0+710,00000-0-b2b28d71-9742-46e1-aea8-17484fb15ab0-0-00001.avro:0+750
 -- avrofmt: tasks default = 1 tasks
 -- avrofmt: tasks default again
-00000-1-ccc6b252-ed6c-4c6b-8365-5fe79b3aa54e-0-00001.avro:0+710,00000-0-b2b28d71-9742-46e1-aea8-17484fb15ab0-0-00001.avro:0+750
+00000-0-b2b28d71-9742-46e1-aea8-17484fb15ab0-0-00001.avro:0+750,00000-1-ccc6b252-ed6c-4c6b-8365-5fe79b3aa54e-0-00001.avro:0+710
 -- avrofmt: tasks default again = 1 tasks
 -- avrofmt: tasks split=8MiB
-00000-0-b2b28d71-9742-46e1-aea8-17484fb15ab0-0-00001.avro:0+750
 00000-1-ccc6b252-ed6c-4c6b-8365-5fe79b3aa54e-0-00001.avro:0+710
+00000-0-b2b28d71-9742-46e1-aea8-17484fb15ab0-0-00001.avro:0+750
 -- avrofmt: tasks split=8MiB = 2 tasks
 -- avrofmt: tasks split=32KiB cost=0
 00000-0-b2b28d71-9742-46e1-aea8-17484fb15ab0-0-00001.avro:0+750,00000-1-ccc6b252-ed6c-4c6b-8365-5fe79b3aa54e-0-00001.avro:0+710
 -- avrofmt: tasks split=32KiB cost=0 = 1 tasks
 -- avrofmt: spark partitions = 1 (parallelism 200)
 -- branched: tasks default
-00000-4-aa2ed868-92c0-4ea9-af1b-e00e26859b8e-0-00001.parquet:4+674,00000-0-2fd1963b-64cc-4bba-8b58-97facea2c987-0-00001.parquet:4+660,00000-2-cb04721e-3ca5-417d-8bc6-35a0860d816e-0-00001.parquet:4+660,00000-1-99c7c333-bbe5-4b3b-a1b5-b5c6a55104cf-0-00001.parquet:4+674
+00000-4-aa2ed868-92c0-4ea9-af1b-e00e26859b8e-0-00001.parquet:4+674,00000-1-99c7c333-bbe5-4b3b-a1b5-b5c6a55104cf-0-00001.parquet:4+674,00000-0-2fd1963b-64cc-4bba-8b58-97facea2c987-0-00001.parquet:4+660,00000-2-cb04721e-3ca5-417d-8bc6-35a0860d816e-0-00001.parquet:4+660
 -- branched: tasks default = 1 tasks
 -- branched: tasks default again
-00000-0-2fd1963b-64cc-4bba-8b58-97facea2c987-0-00001.parquet:4+660,00000-4-aa2ed868-92c0-4ea9-af1b-e00e26859b8e-0-00001.parquet:4+674,00000-2-cb04721e-3ca5-417d-8bc6-35a0860d816e-0-00001.parquet:4+660,00000-1-99c7c333-bbe5-4b3b-a1b5-b5c6a55104cf-0-00001.parquet:4+674
+00000-0-2fd1963b-64cc-4bba-8b58-97facea2c987-0-00001.parquet:4+660,00000-1-99c7c333-bbe5-4b3b-a1b5-b5c6a55104cf-0-00001.parquet:4+674,00000-2-cb04721e-3ca5-417d-8bc6-35a0860d816e-0-00001.parquet:4+660,00000-4-aa2ed868-92c0-4ea9-af1b-e00e26859b8e-0-00001.parquet:4+674
 -- branched: tasks default again = 1 tasks
 -- branched: tasks split=8MiB
-00000-2-cb04721e-3ca5-417d-8bc6-35a0860d816e-0-00001.parquet:4+660,00000-1-99c7c333-bbe5-4b3b-a1b5-b5c6a55104cf-0-00001.parquet:4+674
-00000-0-2fd1963b-64cc-4bba-8b58-97facea2c987-0-00001.parquet:4+660,00000-4-aa2ed868-92c0-4ea9-af1b-e00e26859b8e-0-00001.parquet:4+674
+00000-4-aa2ed868-92c0-4ea9-af1b-e00e26859b8e-0-00001.parquet:4+674,00000-2-cb04721e-3ca5-417d-8bc6-35a0860d816e-0-00001.parquet:4+660
+00000-1-99c7c333-bbe5-4b3b-a1b5-b5c6a55104cf-0-00001.parquet:4+674,00000-0-2fd1963b-64cc-4bba-8b58-97facea2c987-0-00001.parquet:4+660
 -- branched: tasks split=8MiB = 2 tasks
 -- branched: tasks split=32KiB cost=0
-00000-4-aa2ed868-92c0-4ea9-af1b-e00e26859b8e-0-00001.parquet:4+674,00000-2-cb04721e-3ca5-417d-8bc6-35a0860d816e-0-00001.parquet:4+660,00000-0-2fd1963b-64cc-4bba-8b58-97facea2c987-0-00001.parquet:4+660,00000-1-99c7c333-bbe5-4b3b-a1b5-b5c6a55104cf-0-00001.parquet:4+674
+00000-0-2fd1963b-64cc-4bba-8b58-97facea2c987-0-00001.parquet:4+660,00000-4-aa2ed868-92c0-4ea9-af1b-e00e26859b8e-0-00001.parquet:4+674,00000-1-99c7c333-bbe5-4b3b-a1b5-b5c6a55104cf-0-00001.parquet:4+674,00000-2-cb04721e-3ca5-417d-8bc6-35a0860d816e-0-00001.parquet:4+660
 -- branched: tasks split=32KiB cost=0 = 1 tasks
 -- branched: spark partitions = 1 (parallelism 200)
 -- branched3: tasks default
-00000-2-7b4438b8-516e-4086-a985-2cc35a774734-0-00001.parquet:4+674,00000-3-4cd0e743-23da-4d9a-8421-c3678ff4bb5a-0-00001.parquet:4+660,00000-9-795cfa60-b0f0-46b1-bd7e-f568bb0320e8-0-00001.parquet:4+667,00000-5-f9a7e27c-bfd9-416b-91dc-6acfdce67c77-0-00001.parquet:4+674,00000-0-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00001-1-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660
+00000-3-4cd0e743-23da-4d9a-8421-c3678ff4bb5a-0-00001.parquet:4+660,00000-5-f9a7e27c-bfd9-416b-91dc-6acfdce67c77-0-00001.parquet:4+674,00000-9-795cfa60-b0f0-46b1-bd7e-f568bb0320e8-0-00001.parquet:4+667,00000-0-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00001-1-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00000-2-7b4438b8-516e-4086-a985-2cc35a774734-0-00001.parquet:4+674
 -- branched3: tasks default = 1 tasks
 -- branched3: tasks default again
-00000-2-7b4438b8-516e-4086-a985-2cc35a774734-0-00001.parquet:4+674,00000-9-795cfa60-b0f0-46b1-bd7e-f568bb0320e8-0-00001.parquet:4+667,00000-0-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00001-1-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00000-3-4cd0e743-23da-4d9a-8421-c3678ff4bb5a-0-00001.parquet:4+660,00000-5-f9a7e27c-bfd9-416b-91dc-6acfdce67c77-0-00001.parquet:4+674
+00000-2-7b4438b8-516e-4086-a985-2cc35a774734-0-00001.parquet:4+674,00000-3-4cd0e743-23da-4d9a-8421-c3678ff4bb5a-0-00001.parquet:4+660,00000-5-f9a7e27c-bfd9-416b-91dc-6acfdce67c77-0-00001.parquet:4+674,00000-0-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00001-1-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00000-9-795cfa60-b0f0-46b1-bd7e-f568bb0320e8-0-00001.parquet:4+667
 -- branched3: tasks default again = 1 tasks
 -- branched3: tasks split=8MiB
-00000-9-795cfa60-b0f0-46b1-bd7e-f568bb0320e8-0-00001.parquet:4+667,00000-3-4cd0e743-23da-4d9a-8421-c3678ff4bb5a-0-00001.parquet:4+660
-00000-5-f9a7e27c-bfd9-416b-91dc-6acfdce67c77-0-00001.parquet:4+674,00000-2-7b4438b8-516e-4086-a985-2cc35a774734-0-00001.parquet:4+674
-00000-0-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00001-1-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660
+00000-2-7b4438b8-516e-4086-a985-2cc35a774734-0-00001.parquet:4+674,00000-0-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660
+00001-1-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00000-3-4cd0e743-23da-4d9a-8421-c3678ff4bb5a-0-00001.parquet:4+660
+00000-9-795cfa60-b0f0-46b1-bd7e-f568bb0320e8-0-00001.parquet:4+667,00000-5-f9a7e27c-bfd9-416b-91dc-6acfdce67c77-0-00001.parquet:4+674
 -- branched3: tasks split=8MiB = 3 tasks
 -- branched3: tasks split=32KiB cost=0
-00000-0-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00001-1-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00000-3-4cd0e743-23da-4d9a-8421-c3678ff4bb5a-0-00001.parquet:4+660,00000-9-795cfa60-b0f0-46b1-bd7e-f568bb0320e8-0-00001.parquet:4+667,00000-5-f9a7e27c-bfd9-416b-91dc-6acfdce67c77-0-00001.parquet:4+674,00000-2-7b4438b8-516e-4086-a985-2cc35a774734-0-00001.parquet:4+674
+00000-3-4cd0e743-23da-4d9a-8421-c3678ff4bb5a-0-00001.parquet:4+660,00000-9-795cfa60-b0f0-46b1-bd7e-f568bb0320e8-0-00001.parquet:4+667,00000-2-7b4438b8-516e-4086-a985-2cc35a774734-0-00001.parquet:4+674,00000-0-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00001-1-4de3a0bc-39ca-4da1-a5d2-b4d7c1da83c5-0-00001.parquet:4+660,00000-5-f9a7e27c-bfd9-416b-91dc-6acfdce67c77-0-00001.parquet:4+674
 -- branched3: tasks split=32KiB cost=0 = 1 tasks
 -- branched3: spark partitions = 2 (parallelism 200)
 -- deep: tasks default
@@ -61,20 +61,20 @@
 00000-0-0248dde9-6dcb-4e95-972d-38314364f440-0-00001.parquet:4+2285
 -- deep: tasks split=8MiB = 2 tasks
 -- deep: tasks split=32KiB cost=0
-00000-1-f5bffcac-dc11-4c99-9c5e-3fd644479cef-0-00001.parquet:4+2441,00000-0-0248dde9-6dcb-4e95-972d-38314364f440-0-00001.parquet:4+2285
+00000-0-0248dde9-6dcb-4e95-972d-38314364f440-0-00001.parquet:4+2285,00000-1-f5bffcac-dc11-4c99-9c5e-3fd644479cef-0-00001.parquet:4+2441
 -- deep: tasks split=32KiB cost=0 = 1 tasks
 -- deep: spark partitions = 1 (parallelism 200)
 -- defaults: tasks default
 00000-1-31cc12be-7e28-44eb-b5c3-2da651172510-0-00001.parquet:4+1102,00000-0-a813262d-11ae-4f4f-8538-619f0a70995c-0-00001.parquet:4+636
 -- defaults: tasks default = 1 tasks
 -- defaults: tasks default again
-00000-0-a813262d-11ae-4f4f-8538-619f0a70995c-0-00001.parquet:4+636,00000-1-31cc12be-7e28-44eb-b5c3-2da651172510-0-00001.parquet:4+1102
+00000-1-31cc12be-7e28-44eb-b5c3-2da651172510-0-00001.parquet:4+1102,00000-0-a813262d-11ae-4f4f-8538-619f0a70995c-0-00001.parquet:4+636
 -- defaults: tasks default again = 1 tasks
 -- defaults: tasks split=8MiB
 00000-1-31cc12be-7e28-44eb-b5c3-2da651172510-0-00001.parquet:4+1102,00000-0-a813262d-11ae-4f4f-8538-619f0a70995c-0-00001.parquet:4+636
 -- defaults: tasks split=8MiB = 1 tasks
 -- defaults: tasks split=32KiB cost=0
-00000-1-31cc12be-7e28-44eb-b5c3-2da651172510-0-00001.parquet:4+1102,00000-0-a813262d-11ae-4f4f-8538-619f0a70995c-0-00001.parquet:4+636
+00000-0-a813262d-11ae-4f4f-8538-619f0a70995c-0-00001.parquet:4+636,00000-1-31cc12be-7e28-44eb-b5c3-2da651172510-0-00001.parquet:4+1102
 -- defaults: tasks split=32KiB cost=0 = 1 tasks
 -- defaults: spark partitions = 1 (parallelism 200)
 -- eqdel: tasks default
@@ -92,7 +92,7 @@
 -- eqdel: tasks split=32KiB cost=0 = 1 tasks
 -- eqdel: spark partitions = 2 (parallelism 200)
 -- eqpart: tasks default
-00000-0-9dfb6d30-53ef-4a54-8c22-55a7773ae665-0-00001.parquet:4+627,00000-2-523218cc-914d-4e9f-b18e-c6642376fcf4-0-00002.parquet:4+673,00000-2-523218cc-914d-4e9f-b18e-c6642376fcf4-0-00001.parquet:4+673
+00000-2-523218cc-914d-4e9f-b18e-c6642376fcf4-0-00002.parquet:4+673,00000-2-523218cc-914d-4e9f-b18e-c6642376fcf4-0-00001.parquet:4+673,00000-0-9dfb6d30-53ef-4a54-8c22-55a7773ae665-0-00001.parquet:4+627
 -- eqpart: tasks default = 1 tasks
 -- eqpart: tasks default again
 00000-2-523218cc-914d-4e9f-b18e-c6642376fcf4-0-00002.parquet:4+673,00000-2-523218cc-914d-4e9f-b18e-c6642376fcf4-0-00001.parquet:4+673,00000-0-9dfb6d30-53ef-4a54-8c22-55a7773ae665-0-00001.parquet:4+627
@@ -110,29 +110,29 @@
 00000-0-533395c9-97e2-418a-a9cd-2005e4a43e6e-0-00001.parquet:4+925,00000-0-06075099-35fc-447c-a728-a46639430370-0-00001.parquet:4+951,00000-1-590e6e55-db01-4573-bfef-721a3ffbc54d-0-00001.parquet:4+926
 -- eqren: tasks default = 1 tasks
 -- eqren: tasks default again
-00000-0-533395c9-97e2-418a-a9cd-2005e4a43e6e-0-00001.parquet:4+925,00000-0-06075099-35fc-447c-a728-a46639430370-0-00001.parquet:4+951,00000-1-590e6e55-db01-4573-bfef-721a3ffbc54d-0-00001.parquet:4+926
+00000-0-06075099-35fc-447c-a728-a46639430370-0-00001.parquet:4+951,00000-0-533395c9-97e2-418a-a9cd-2005e4a43e6e-0-00001.parquet:4+925,00000-1-590e6e55-db01-4573-bfef-721a3ffbc54d-0-00001.parquet:4+926
 -- eqren: tasks default again = 1 tasks
 -- eqren: tasks split=8MiB
+00000-1-590e6e55-db01-4573-bfef-721a3ffbc54d-0-00001.parquet:4+926
 00000-0-06075099-35fc-447c-a728-a46639430370-0-00001.parquet:4+951
 00000-0-533395c9-97e2-418a-a9cd-2005e4a43e6e-0-00001.parquet:4+925
-00000-1-590e6e55-db01-4573-bfef-721a3ffbc54d-0-00001.parquet:4+926
 -- eqren: tasks split=8MiB = 3 tasks
 -- eqren: tasks split=32KiB cost=0
 00000-0-533395c9-97e2-418a-a9cd-2005e4a43e6e-0-00001.parquet:4+925,00000-1-590e6e55-db01-4573-bfef-721a3ffbc54d-0-00001.parquet:4+926,00000-0-06075099-35fc-447c-a728-a46639430370-0-00001.parquet:4+951
 -- eqren: tasks split=32KiB cost=0 = 1 tasks
 -- eqren: spark partitions = 2 (parallelism 200)
 -- evolved: tasks default
-00000-2-d97e21b7-7c26-4140-8572-bec8986b8299-0-00001.parquet:4+958,00000-1-8796d368-d573-43ff-8e88-77d8d19fd2b0-0-00001.parquet:4+1232,00000-0-a6c9cccf-8be8-4bf0-b8b2-e04615ebabbb-0-00001.parquet:4+903
+00000-1-8796d368-d573-43ff-8e88-77d8d19fd2b0-0-00001.parquet:4+1232,00000-2-d97e21b7-7c26-4140-8572-bec8986b8299-0-00001.parquet:4+958,00000-0-a6c9cccf-8be8-4bf0-b8b2-e04615ebabbb-0-00001.parquet:4+903
 -- evolved: tasks default = 1 tasks
 -- evolved: tasks default again
-00000-1-8796d368-d573-43ff-8e88-77d8d19fd2b0-0-00001.parquet:4+1232,00000-2-d97e21b7-7c26-4140-8572-bec8986b8299-0-00001.parquet:4+958,00000-0-a6c9cccf-8be8-4bf0-b8b2-e04615ebabbb-0-00001.parquet:4+903
+00000-2-d97e21b7-7c26-4140-8572-bec8986b8299-0-00001.parquet:4+958,00000-0-a6c9cccf-8be8-4bf0-b8b2-e04615ebabbb-0-00001.parquet:4+903,00000-1-8796d368-d573-43ff-8e88-77d8d19fd2b0-0-00001.parquet:4+1232
 -- evolved: tasks default again = 1 tasks
 -- evolved: tasks split=8MiB
-00000-0-a6c9cccf-8be8-4bf0-b8b2-e04615ebabbb-0-00001.parquet:4+903,00000-1-8796d368-d573-43ff-8e88-77d8d19fd2b0-0-00001.parquet:4+1232
-00000-2-d97e21b7-7c26-4140-8572-bec8986b8299-0-00001.parquet:4+958
+00000-2-d97e21b7-7c26-4140-8572-bec8986b8299-0-00001.parquet:4+958,00000-1-8796d368-d573-43ff-8e88-77d8d19fd2b0-0-00001.parquet:4+1232
+00000-0-a6c9cccf-8be8-4bf0-b8b2-e04615ebabbb-0-00001.parquet:4+903
 -- evolved: tasks split=8MiB = 2 tasks
 -- evolved: tasks split=32KiB cost=0
-00000-2-d97e21b7-7c26-4140-8572-bec8986b8299-0-00001.parquet:4+958,00000-0-a6c9cccf-8be8-4bf0-b8b2-e04615ebabbb-0-00001.parquet:4+903,00000-1-8796d368-d573-43ff-8e88-77d8d19fd2b0-0-00001.parquet:4+1232
+00000-2-d97e21b7-7c26-4140-8572-bec8986b8299-0-00001.parquet:4+958,00000-1-8796d368-d573-43ff-8e88-77d8d19fd2b0-0-00001.parquet:4+1232,00000-0-a6c9cccf-8be8-4bf0-b8b2-e04615ebabbb-0-00001.parquet:4+903
 -- evolved: tasks split=32KiB cost=0 = 1 tasks
 -- evolved: spark partitions = 1 (parallelism 200)
 -- expired: tasks default
@@ -145,24 +145,24 @@
 00000-1-7a432ed2-c99b-4db0-87ea-47215f96b760-0-00001.parquet:4+660,00000-2-ff50e34c-dab3-4c3d-9d54-9e81cd023b87-0-00001.parquet:4+674
 -- expired: tasks split=8MiB = 1 tasks
 -- expired: tasks split=32KiB cost=0
-00000-1-7a432ed2-c99b-4db0-87ea-47215f96b760-0-00001.parquet:4+660,00000-2-ff50e34c-dab3-4c3d-9d54-9e81cd023b87-0-00001.parquet:4+674
+00000-2-ff50e34c-dab3-4c3d-9d54-9e81cd023b87-0-00001.parquet:4+674,00000-1-7a432ed2-c99b-4db0-87ea-47215f96b760-0-00001.parquet:4+660
 -- expired: tasks split=32KiB cost=0 = 1 tasks
 -- expired: spark partitions = 1 (parallelism 200)
 -- extdata: tasks default
-00000-0-45a53a84-7477-4be4-beae-804690913765-0-00001.parquet:4+657,00000-1-aa0f790f-375d-47f9-944b-80538f14bd4f-0-00001.parquet:4+660
+00000-1-aa0f790f-375d-47f9-944b-80538f14bd4f-0-00001.parquet:4+660,00000-0-45a53a84-7477-4be4-beae-804690913765-0-00001.parquet:4+657
 -- extdata: tasks default = 1 tasks
 -- extdata: tasks default again
-00000-1-aa0f790f-375d-47f9-944b-80538f14bd4f-0-00001.parquet:4+660,00000-0-45a53a84-7477-4be4-beae-804690913765-0-00001.parquet:4+657
+00000-0-45a53a84-7477-4be4-beae-804690913765-0-00001.parquet:4+657,00000-1-aa0f790f-375d-47f9-944b-80538f14bd4f-0-00001.parquet:4+660
 -- extdata: tasks default again = 1 tasks
 -- extdata: tasks split=8MiB
-00000-1-aa0f790f-375d-47f9-944b-80538f14bd4f-0-00001.parquet:4+660,00000-0-45a53a84-7477-4be4-beae-804690913765-0-00001.parquet:4+657
+00000-0-45a53a84-7477-4be4-beae-804690913765-0-00001.parquet:4+657,00000-1-aa0f790f-375d-47f9-944b-80538f14bd4f-0-00001.parquet:4+660
 -- extdata: tasks split=8MiB = 1 tasks
 -- extdata: tasks split=32KiB cost=0
 00000-1-aa0f790f-375d-47f9-944b-80538f14bd4f-0-00001.parquet:4+660,00000-0-45a53a84-7477-4be4-beae-804690913765-0-00001.parquet:4+657
 -- extdata: tasks split=32KiB cost=0 = 1 tasks
 -- extdata: spark partitions = 1 (parallelism 200)
 -- fup: tasks default
-00000-0-9bb2bf3a-1dc8-4afe-b61b-f87bb79ccdbb-00001.parquet:4+650,00000-0-72e79fa5-ee85-46d7-a8cf-c55afb4347d8-00001.parquet:4+699
+00000-0-72e79fa5-ee85-46d7-a8cf-c55afb4347d8-00001.parquet:4+699,00000-0-9bb2bf3a-1dc8-4afe-b61b-f87bb79ccdbb-00001.parquet:4+650
 -- fup: tasks default = 1 tasks
 -- fup: tasks default again
 00000-0-72e79fa5-ee85-46d7-a8cf-c55afb4347d8-00001.parquet:4+699,00000-0-9bb2bf3a-1dc8-4afe-b61b-f87bb79ccdbb-00001.parquet:4+650
@@ -176,18 +176,18 @@
 -- fup: tasks split=32KiB cost=0 = 1 tasks
 -- fup: spark partitions = 1 (parallelism 200)
 -- fupp: tasks default
-00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00001.parquet:4+943,00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00003.parquet:4+853,00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00003.parquet:4+853,00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00001.parquet:4+859
+00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00003.parquet:4+853,00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00001.parquet:4+859,00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00001.parquet:4+943,00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00003.parquet:4+853
 -- fupp: tasks default = 1 tasks
 -- fupp: tasks default again
-00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00001.parquet:4+943,00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00003.parquet:4+853,00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00003.parquet:4+853,00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00001.parquet:4+859
+00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00003.parquet:4+853,00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00001.parquet:4+859,00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00001.parquet:4+943,00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00003.parquet:4+853
 -- fupp: tasks default again = 1 tasks
 -- fupp: tasks split=8MiB
-00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00003.parquet:4+853,00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00001.parquet:4+859
 00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00001.parquet:4+943
 00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00003.parquet:4+853
+00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00003.parquet:4+853,00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00001.parquet:4+859
 -- fupp: tasks split=8MiB = 3 tasks
 -- fupp: tasks split=32KiB cost=0
-00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00003.parquet:4+853,00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00001.parquet:4+859,00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00001.parquet:4+943,00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00003.parquet:4+853
+00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00003.parquet:4+853,00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00001.parquet:4+943,00000-0-7bb812dd-dd42-4d80-b1f6-2c7fd7f875df-00001.parquet:4+859,00000-0-917f15a7-1c62-4efe-a35f-87607728ea95-00003.parquet:4+853
 -- fupp: tasks split=32KiB cost=0 = 1 tasks
 -- fupp: spark partitions = 2 (parallelism 200)
 -- gzmeta: tasks default
@@ -197,7 +197,7 @@
 00000-0-c0c0eed2-33ca-4c68-a4ea-8e43bf8ba559-0-00001.parquet:4+660,00000-1-034cc8e9-8a0d-4baf-b075-ed6f310b9b2b-0-00001.parquet:4+674
 -- gzmeta: tasks default again = 1 tasks
 -- gzmeta: tasks split=8MiB
-00000-1-034cc8e9-8a0d-4baf-b075-ed6f310b9b2b-0-00001.parquet:4+674,00000-0-c0c0eed2-33ca-4c68-a4ea-8e43bf8ba559-0-00001.parquet:4+660
+00000-0-c0c0eed2-33ca-4c68-a4ea-8e43bf8ba559-0-00001.parquet:4+660,00000-1-034cc8e9-8a0d-4baf-b075-ed6f310b9b2b-0-00001.parquet:4+674
 -- gzmeta: tasks split=8MiB = 1 tasks
 -- gzmeta: tasks split=32KiB cost=0
 00000-0-c0c0eed2-33ca-4c68-a4ea-8e43bf8ba559-0-00001.parquet:4+660,00000-1-034cc8e9-8a0d-4baf-b075-ed6f310b9b2b-0-00001.parquet:4+674
@@ -231,14 +231,14 @@
 -- maint: tasks split=32KiB cost=0 = 1 tasks
 -- maint: spark partitions = 1 (parallelism 200)
 -- merged: tasks default
-00000-3-9942d7c1-02d8-46e4-b618-6178831f69da-0-00001.parquet:4+660,00000-2-ccbb5628-48dc-4da4-aad8-e1445a51e49a-0-00001.parquet:4+660,00000-1-834299c8-15ef-49f1-a8ca-ff2db199ad46-0-00001.parquet:4+652,00000-4-5b2563ed-b86a-4ca7-b0f1-62682c5652ca-0-00001.parquet:4+674
+00000-4-5b2563ed-b86a-4ca7-b0f1-62682c5652ca-0-00001.parquet:4+674,00000-3-9942d7c1-02d8-46e4-b618-6178831f69da-0-00001.parquet:4+660,00000-2-ccbb5628-48dc-4da4-aad8-e1445a51e49a-0-00001.parquet:4+660,00000-1-834299c8-15ef-49f1-a8ca-ff2db199ad46-0-00001.parquet:4+652
 -- merged: tasks default = 1 tasks
 -- merged: tasks default again
 00000-3-9942d7c1-02d8-46e4-b618-6178831f69da-0-00001.parquet:4+660,00000-2-ccbb5628-48dc-4da4-aad8-e1445a51e49a-0-00001.parquet:4+660,00000-1-834299c8-15ef-49f1-a8ca-ff2db199ad46-0-00001.parquet:4+652,00000-4-5b2563ed-b86a-4ca7-b0f1-62682c5652ca-0-00001.parquet:4+674
 -- merged: tasks default again = 1 tasks
 -- merged: tasks split=8MiB
-00000-4-5b2563ed-b86a-4ca7-b0f1-62682c5652ca-0-00001.parquet:4+674,00000-3-9942d7c1-02d8-46e4-b618-6178831f69da-0-00001.parquet:4+660
-00000-2-ccbb5628-48dc-4da4-aad8-e1445a51e49a-0-00001.parquet:4+660,00000-1-834299c8-15ef-49f1-a8ca-ff2db199ad46-0-00001.parquet:4+652
+00000-3-9942d7c1-02d8-46e4-b618-6178831f69da-0-00001.parquet:4+660,00000-2-ccbb5628-48dc-4da4-aad8-e1445a51e49a-0-00001.parquet:4+660
+00000-1-834299c8-15ef-49f1-a8ca-ff2db199ad46-0-00001.parquet:4+652,00000-4-5b2563ed-b86a-4ca7-b0f1-62682c5652ca-0-00001.parquet:4+674
 -- merged: tasks split=8MiB = 2 tasks
 -- merged: tasks split=32KiB cost=0
 00000-4-5b2563ed-b86a-4ca7-b0f1-62682c5652ca-0-00001.parquet:4+674,00000-3-9942d7c1-02d8-46e4-b618-6178831f69da-0-00001.parquet:4+660,00000-2-ccbb5628-48dc-4da4-aad8-e1445a51e49a-0-00001.parquet:4+660,00000-1-834299c8-15ef-49f1-a8ca-ff2db199ad46-0-00001.parquet:4+652
@@ -261,14 +261,14 @@
 00000-13-8a0e118b-a86b-4a2f-91ab-69273559ee9b-0-00001.parquet:4+660,00000-11-ac580287-8e10-473d-874e-1bfbfcc12e4e-0-00001.parquet:4+652,00000-10-46789686-0114-4c56-ab4f-0422fdb5c686-0-00001.parquet:4+660
 -- mergespec: tasks default = 1 tasks
 -- mergespec: tasks default again
-00000-11-ac580287-8e10-473d-874e-1bfbfcc12e4e-0-00001.parquet:4+652,00000-10-46789686-0114-4c56-ab4f-0422fdb5c686-0-00001.parquet:4+660,00000-13-8a0e118b-a86b-4a2f-91ab-69273559ee9b-0-00001.parquet:4+660
+00000-13-8a0e118b-a86b-4a2f-91ab-69273559ee9b-0-00001.parquet:4+660,00000-11-ac580287-8e10-473d-874e-1bfbfcc12e4e-0-00001.parquet:4+652,00000-10-46789686-0114-4c56-ab4f-0422fdb5c686-0-00001.parquet:4+660
 -- mergespec: tasks default again = 1 tasks
 -- mergespec: tasks split=8MiB
 00000-11-ac580287-8e10-473d-874e-1bfbfcc12e4e-0-00001.parquet:4+652,00000-10-46789686-0114-4c56-ab4f-0422fdb5c686-0-00001.parquet:4+660
 00000-13-8a0e118b-a86b-4a2f-91ab-69273559ee9b-0-00001.parquet:4+660
 -- mergespec: tasks split=8MiB = 2 tasks
 -- mergespec: tasks split=32KiB cost=0
-00000-11-ac580287-8e10-473d-874e-1bfbfcc12e4e-0-00001.parquet:4+652,00000-10-46789686-0114-4c56-ab4f-0422fdb5c686-0-00001.parquet:4+660,00000-13-8a0e118b-a86b-4a2f-91ab-69273559ee9b-0-00001.parquet:4+660
+00000-13-8a0e118b-a86b-4a2f-91ab-69273559ee9b-0-00001.parquet:4+660,00000-11-ac580287-8e10-473d-874e-1bfbfcc12e4e-0-00001.parquet:4+652,00000-10-46789686-0114-4c56-ab4f-0422fdb5c686-0-00001.parquet:4+660
 -- mergespec: tasks split=32KiB cost=0 = 1 tasks
 -- mergespec: spark partitions = 1 (parallelism 200)
 -- metrics: tasks default
@@ -278,7 +278,7 @@
 00000-2-b56e718f-9798-4df2-a9e2-ce9c7235b07a-0-00001.parquet:4+2216,00000-5-b9e081ed-542e-45b8-b7f0-a27f6691ec59-0-00001.parquet:4+2031
 -- metrics: tasks default again = 1 tasks
 -- metrics: tasks split=8MiB
-00000-2-b56e718f-9798-4df2-a9e2-ce9c7235b07a-0-00001.parquet:4+2216,00000-5-b9e081ed-542e-45b8-b7f0-a27f6691ec59-0-00001.parquet:4+2031
+00000-5-b9e081ed-542e-45b8-b7f0-a27f6691ec59-0-00001.parquet:4+2031,00000-2-b56e718f-9798-4df2-a9e2-ce9c7235b07a-0-00001.parquet:4+2216
 -- metrics: tasks split=8MiB = 1 tasks
 -- metrics: tasks split=32KiB cost=0
 00000-5-b9e081ed-542e-45b8-b7f0-a27f6691ec59-0-00001.parquet:4+2031,00000-2-b56e718f-9798-4df2-a9e2-ce9c7235b07a-0-00001.parquet:4+2216
@@ -304,14 +304,14 @@
 part-00000-86a2746a-0f28-42ac-b115-3c9e7ae9f37d-c000.snappy.parquet:0+2265,00000-403-9d113518-4df6-40bc-91ed-a6e396ebf56b-0-00001.parquet:4+2571
 -- migdeep: tasks default again = 1 tasks
 -- migdeep: tasks split=8MiB
-part-00000-86a2746a-0f28-42ac-b115-3c9e7ae9f37d-c000.snappy.parquet:0+2265,00000-403-9d113518-4df6-40bc-91ed-a6e396ebf56b-0-00001.parquet:4+2571
+00000-403-9d113518-4df6-40bc-91ed-a6e396ebf56b-0-00001.parquet:4+2571,part-00000-86a2746a-0f28-42ac-b115-3c9e7ae9f37d-c000.snappy.parquet:0+2265
 -- migdeep: tasks split=8MiB = 1 tasks
 -- migdeep: tasks split=32KiB cost=0
 part-00000-86a2746a-0f28-42ac-b115-3c9e7ae9f37d-c000.snappy.parquet:0+2265,00000-403-9d113518-4df6-40bc-91ed-a6e396ebf56b-0-00001.parquet:4+2571
 -- migdeep: tasks split=32KiB cost=0 = 1 tasks
 -- migdeep: spark partitions = 1 (parallelism 200)
 -- migrated: tasks default
-00000-403-7ab035a5-6f8b-4799-a55f-06563466160b-0-00001.parquet:4+939,part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916
+part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916,00000-403-7ab035a5-6f8b-4799-a55f-06563466160b-0-00001.parquet:4+939
 -- migrated: tasks default = 1 tasks
 -- migrated: tasks default again
 00000-403-7ab035a5-6f8b-4799-a55f-06563466160b-0-00001.parquet:4+939,part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916
@@ -350,38 +350,38 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916,00000-
 -- ndv: tasks split=32KiB cost=0 = 1 tasks
 -- ndv: spark partitions = 1 (parallelism 200)
 -- nested: tasks default
-00000-1-74cd4e79-8fb4-42a9-a996-18347ada2af8-0-00001.parquet:4+660,00000-6-dd38bf99-15d9-4f2e-a070-62d2122d6db5-0-00001.parquet:4+674,00000-0-96ef5809-8e36-4842-8e7d-9b6f7f224bcf-0-00001.parquet:4+660
+00000-6-dd38bf99-15d9-4f2e-a070-62d2122d6db5-0-00001.parquet:4+674,00000-0-96ef5809-8e36-4842-8e7d-9b6f7f224bcf-0-00001.parquet:4+660,00000-1-74cd4e79-8fb4-42a9-a996-18347ada2af8-0-00001.parquet:4+660
 -- nested: tasks default = 1 tasks
 -- nested: tasks default again
 00000-1-74cd4e79-8fb4-42a9-a996-18347ada2af8-0-00001.parquet:4+660,00000-0-96ef5809-8e36-4842-8e7d-9b6f7f224bcf-0-00001.parquet:4+660,00000-6-dd38bf99-15d9-4f2e-a070-62d2122d6db5-0-00001.parquet:4+674
 -- nested: tasks default again = 1 tasks
 -- nested: tasks split=8MiB
-00000-1-74cd4e79-8fb4-42a9-a996-18347ada2af8-0-00001.parquet:4+660,00000-0-96ef5809-8e36-4842-8e7d-9b6f7f224bcf-0-00001.parquet:4+660
-00000-6-dd38bf99-15d9-4f2e-a070-62d2122d6db5-0-00001.parquet:4+674
+00000-6-dd38bf99-15d9-4f2e-a070-62d2122d6db5-0-00001.parquet:4+674,00000-0-96ef5809-8e36-4842-8e7d-9b6f7f224bcf-0-00001.parquet:4+660
+00000-1-74cd4e79-8fb4-42a9-a996-18347ada2af8-0-00001.parquet:4+660
 -- nested: tasks split=8MiB = 2 tasks
 -- nested: tasks split=32KiB cost=0
-00000-1-74cd4e79-8fb4-42a9-a996-18347ada2af8-0-00001.parquet:4+660,00000-0-96ef5809-8e36-4842-8e7d-9b6f7f224bcf-0-00001.parquet:4+660,00000-6-dd38bf99-15d9-4f2e-a070-62d2122d6db5-0-00001.parquet:4+674
+00000-0-96ef5809-8e36-4842-8e7d-9b6f7f224bcf-0-00001.parquet:4+660,00000-1-74cd4e79-8fb4-42a9-a996-18347ada2af8-0-00001.parquet:4+660,00000-6-dd38bf99-15d9-4f2e-a070-62d2122d6db5-0-00001.parquet:4+674
 -- nested: tasks split=32KiB cost=0 = 1 tasks
 -- nested: spark partitions = 1 (parallelism 200)
 -- orcfmt: tasks default
-00000-1-eddf5e6f-b258-42b9-a2a3-e67f9e5c3d8b-0-00001.orc:3+580,00000-0-b22a234d-8bad-4c71-aea8-980bc8f4c8f8-0-00001.orc:3+637
+00000-0-b22a234d-8bad-4c71-aea8-980bc8f4c8f8-0-00001.orc:3+637,00000-1-eddf5e6f-b258-42b9-a2a3-e67f9e5c3d8b-0-00001.orc:3+580
 -- orcfmt: tasks default = 1 tasks
 -- orcfmt: tasks default again
-00000-0-b22a234d-8bad-4c71-aea8-980bc8f4c8f8-0-00001.orc:3+637,00000-1-eddf5e6f-b258-42b9-a2a3-e67f9e5c3d8b-0-00001.orc:3+580
+00000-1-eddf5e6f-b258-42b9-a2a3-e67f9e5c3d8b-0-00001.orc:3+580,00000-0-b22a234d-8bad-4c71-aea8-980bc8f4c8f8-0-00001.orc:3+637
 -- orcfmt: tasks default again = 1 tasks
 -- orcfmt: tasks split=8MiB
 00000-1-eddf5e6f-b258-42b9-a2a3-e67f9e5c3d8b-0-00001.orc:3+580
 00000-0-b22a234d-8bad-4c71-aea8-980bc8f4c8f8-0-00001.orc:3+637
 -- orcfmt: tasks split=8MiB = 2 tasks
 -- orcfmt: tasks split=32KiB cost=0
-00000-0-b22a234d-8bad-4c71-aea8-980bc8f4c8f8-0-00001.orc:3+637,00000-1-eddf5e6f-b258-42b9-a2a3-e67f9e5c3d8b-0-00001.orc:3+580
+00000-1-eddf5e6f-b258-42b9-a2a3-e67f9e5c3d8b-0-00001.orc:3+580,00000-0-b22a234d-8bad-4c71-aea8-980bc8f4c8f8-0-00001.orc:3+637
 -- orcfmt: tasks split=32KiB cost=0 = 1 tasks
 -- orcfmt: spark partitions = 1 (parallelism 200)
 -- orph: tasks default
-00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet:4+660,00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet:4+674
+00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet:4+674,00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet:4+660
 -- orph: tasks default = 1 tasks
 -- orph: tasks default again
-00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet:4+674,00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet:4+660
+00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet:4+660,00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet:4+674
 -- orph: tasks default again = 1 tasks
 -- orph: tasks split=8MiB
 00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet:4+660,00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet:4+674
@@ -391,16 +391,16 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916,00000-
 -- orph: tasks split=32KiB cost=0 = 1 tasks
 -- orph: spark partitions = 1 (parallelism 200)
 -- orpha: tasks default
-00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet:4+660,00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet:4+674
+00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet:4+674,00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet:4+660
 -- orpha: tasks default = 1 tasks
 -- orpha: tasks default again
 00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet:4+660,00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet:4+674
 -- orpha: tasks default again = 1 tasks
 -- orpha: tasks split=8MiB
-00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet:4+674,00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet:4+660
+00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet:4+660,00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet:4+674
 -- orpha: tasks split=8MiB = 1 tasks
 -- orpha: tasks split=32KiB cost=0
-00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet:4+674,00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet:4+660
+00000-1-b8228b70-ad2e-4c33-82b2-4a791b8edf63-0-00001.parquet:4+660,00000-2-3a876892-4adb-4eb0-8c8e-1bdf837a535d-0-00001.parquet:4+674
 -- orpha: tasks split=32KiB cost=0 = 1 tasks
 -- orpha: spark partitions = 1 (parallelism 200)
 -- parted: tasks default
@@ -410,11 +410,11 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916,00000-
 00000-4-08c9aa36-9136-4172-b2b8-7347018f6a82-0-00001.parquet:4+1985,00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00002.parquet:4+1985,00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00001.parquet:4+1982,00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00003.parquet:4+1999
 -- parted: tasks default again = 1 tasks
 -- parted: tasks split=8MiB
-00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00002.parquet:4+1985,00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00001.parquet:4+1982
-00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00003.parquet:4+1999,00000-4-08c9aa36-9136-4172-b2b8-7347018f6a82-0-00001.parquet:4+1985
+00000-4-08c9aa36-9136-4172-b2b8-7347018f6a82-0-00001.parquet:4+1985,00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00002.parquet:4+1985
+00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00001.parquet:4+1982,00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00003.parquet:4+1999
 -- parted: tasks split=8MiB = 2 tasks
 -- parted: tasks split=32KiB cost=0
-00000-4-08c9aa36-9136-4172-b2b8-7347018f6a82-0-00001.parquet:4+1985,00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00002.parquet:4+1985,00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00001.parquet:4+1982,00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00003.parquet:4+1999
+00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00002.parquet:4+1985,00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00001.parquet:4+1982,00000-2-01dcc36f-1af9-45c9-b0fa-491db9c64f3f-0-00003.parquet:4+1999,00000-4-08c9aa36-9136-4172-b2b8-7347018f6a82-0-00001.parquet:4+1985
 -- parted: tasks split=32KiB cost=0 = 1 tasks
 -- parted: spark partitions = 1 (parallelism 200)
 -- promoted: tasks default
@@ -434,7 +434,7 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916,00000-
 00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00002.parquet:4+858,00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00001.parquet:4+851,00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00001.parquet:4+851,00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00002.parquet:4+900
 -- pstats: tasks default = 1 tasks
 -- pstats: tasks default again
-00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00002.parquet:4+858,00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00001.parquet:4+851,00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00001.parquet:4+851,00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00002.parquet:4+900
+00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00001.parquet:4+851,00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00002.parquet:4+900,00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00002.parquet:4+858,00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00001.parquet:4+851
 -- pstats: tasks default again = 1 tasks
 -- pstats: tasks split=8MiB
 00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00002.parquet:4+858,00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00001.parquet:4+851
@@ -442,42 +442,42 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916,00000-
 00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00002.parquet:4+900
 -- pstats: tasks split=8MiB = 3 tasks
 -- pstats: tasks split=32KiB cost=0
-00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00002.parquet:4+858,00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00001.parquet:4+851,00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00001.parquet:4+851,00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00002.parquet:4+900
+00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00001.parquet:4+851,00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00002.parquet:4+858,00000-3-164ae112-35b3-43cc-9c8b-7004f2d5f39c-0-00001.parquet:4+851,00000-1-2cc41757-1f8d-4ef2-8688-0f1d5e578bd0-0-00002.parquet:4+900
 -- pstats: tasks split=32KiB cost=0 = 1 tasks
 -- pstats: spark partitions = 2 (parallelism 200)
 -- respec: tasks default
 00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00002.parquet:4+904,00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00001.parquet:4+890,00000-1-20f66297-7efb-488b-89aa-0fdbbeabf87f-0-00002.parquet:4+890,00000-1-20f66297-7efb-488b-89aa-0fdbbeabf87f-0-00001.parquet:4+890
 -- respec: tasks default = 1 tasks
 -- respec: tasks default again
-00000-1-20f66297-7efb-488b-89aa-0fdbbeabf87f-0-00002.parquet:4+890,00000-1-20f66297-7efb-488b-89aa-0fdbbeabf87f-0-00001.parquet:4+890,00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00002.parquet:4+904,00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00001.parquet:4+890
+00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00002.parquet:4+904,00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00001.parquet:4+890,00000-1-20f66297-7efb-488b-89aa-0fdbbeabf87f-0-00002.parquet:4+890,00000-1-20f66297-7efb-488b-89aa-0fdbbeabf87f-0-00001.parquet:4+890
 -- respec: tasks default again = 1 tasks
 -- respec: tasks split=8MiB
-00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00002.parquet:4+904,00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00001.parquet:4+890
 00000-1-20f66297-7efb-488b-89aa-0fdbbeabf87f-0-00002.parquet:4+890,00000-1-20f66297-7efb-488b-89aa-0fdbbeabf87f-0-00001.parquet:4+890
+00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00002.parquet:4+904,00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00001.parquet:4+890
 -- respec: tasks split=8MiB = 2 tasks
 -- respec: tasks split=32KiB cost=0
-00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00002.parquet:4+904,00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00001.parquet:4+890,00000-1-20f66297-7efb-488b-89aa-0fdbbeabf87f-0-00002.parquet:4+890,00000-1-20f66297-7efb-488b-89aa-0fdbbeabf87f-0-00001.parquet:4+890
+00000-1-20f66297-7efb-488b-89aa-0fdbbeabf87f-0-00002.parquet:4+890,00000-1-20f66297-7efb-488b-89aa-0fdbbeabf87f-0-00001.parquet:4+890,00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00002.parquet:4+904,00000-3-76c3ef4b-3349-4a15-baf1-c081c83b8eb5-0-00001.parquet:4+890
 -- respec: tasks split=32KiB cost=0 = 1 tasks
 -- respec: spark partitions = 1 (parallelism 200)
 -- retained: tasks default
-00000-5-653cf4c2-0a95-4230-a27d-51c332d47b6a-0-00001.parquet:4+674,00000-1-bb309581-6905-4728-aaba-d65539857b6f-0-00001.parquet:4+660,00000-0-e3200a24-f1a0-4c5c-b52b-bf6a9b00ba99-0-00001.parquet:4+660
+00000-1-bb309581-6905-4728-aaba-d65539857b6f-0-00001.parquet:4+660,00000-5-653cf4c2-0a95-4230-a27d-51c332d47b6a-0-00001.parquet:4+674,00000-0-e3200a24-f1a0-4c5c-b52b-bf6a9b00ba99-0-00001.parquet:4+660
 -- retained: tasks default = 1 tasks
 -- retained: tasks default again
-00000-5-653cf4c2-0a95-4230-a27d-51c332d47b6a-0-00001.parquet:4+674,00000-0-e3200a24-f1a0-4c5c-b52b-bf6a9b00ba99-0-00001.parquet:4+660,00000-1-bb309581-6905-4728-aaba-d65539857b6f-0-00001.parquet:4+660
+00000-5-653cf4c2-0a95-4230-a27d-51c332d47b6a-0-00001.parquet:4+674,00000-1-bb309581-6905-4728-aaba-d65539857b6f-0-00001.parquet:4+660,00000-0-e3200a24-f1a0-4c5c-b52b-bf6a9b00ba99-0-00001.parquet:4+660
 -- retained: tasks default again = 1 tasks
 -- retained: tasks split=8MiB
-00000-1-bb309581-6905-4728-aaba-d65539857b6f-0-00001.parquet:4+660,00000-0-e3200a24-f1a0-4c5c-b52b-bf6a9b00ba99-0-00001.parquet:4+660
-00000-5-653cf4c2-0a95-4230-a27d-51c332d47b6a-0-00001.parquet:4+674
+00000-5-653cf4c2-0a95-4230-a27d-51c332d47b6a-0-00001.parquet:4+674,00000-1-bb309581-6905-4728-aaba-d65539857b6f-0-00001.parquet:4+660
+00000-0-e3200a24-f1a0-4c5c-b52b-bf6a9b00ba99-0-00001.parquet:4+660
 -- retained: tasks split=8MiB = 2 tasks
 -- retained: tasks split=32KiB cost=0
-00000-5-653cf4c2-0a95-4230-a27d-51c332d47b6a-0-00001.parquet:4+674,00000-0-e3200a24-f1a0-4c5c-b52b-bf6a9b00ba99-0-00001.parquet:4+660,00000-1-bb309581-6905-4728-aaba-d65539857b6f-0-00001.parquet:4+660
+00000-0-e3200a24-f1a0-4c5c-b52b-bf6a9b00ba99-0-00001.parquet:4+660,00000-1-bb309581-6905-4728-aaba-d65539857b6f-0-00001.parquet:4+660,00000-5-653cf4c2-0a95-4230-a27d-51c332d47b6a-0-00001.parquet:4+674
 -- retained: tasks split=32KiB cost=0 = 1 tasks
 -- retained: spark partitions = 1 (parallelism 200)
 -- rgs: tasks default
 00000-1-09600866-b421-49ab-8d70-c5829ddfb0ea-0-00001.parquet:4+949,00000-0-f2699694-e770-4650-a873-c114823758dd-0-00001.parquet:4+21860
 -- rgs: tasks default = 1 tasks
 -- rgs: tasks default again
-00000-0-f2699694-e770-4650-a873-c114823758dd-0-00001.parquet:4+21860,00000-1-09600866-b421-49ab-8d70-c5829ddfb0ea-0-00001.parquet:4+949
+00000-1-09600866-b421-49ab-8d70-c5829ddfb0ea-0-00001.parquet:4+949,00000-0-f2699694-e770-4650-a873-c114823758dd-0-00001.parquet:4+21860
 -- rgs: tasks default again = 1 tasks
 -- rgs: tasks split=8MiB
 00000-1-09600866-b421-49ab-8d70-c5829ddfb0ea-0-00001.parquet:4+949,00000-0-f2699694-e770-4650-a873-c114823758dd-0-00001.parquet:4+1443
@@ -489,21 +489,21 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916,00000-
 00000-0-f2699694-e770-4650-a873-c114823758dd-0-00001.parquet:13494+8370
 -- rgs: tasks split=8MiB = 7 tasks
 -- rgs: tasks split=32KiB cost=0
-00000-0-f2699694-e770-4650-a873-c114823758dd-0-00001.parquet:4+21860,00000-1-09600866-b421-49ab-8d70-c5829ddfb0ea-0-00001.parquet:4+949
+00000-1-09600866-b421-49ab-8d70-c5829ddfb0ea-0-00001.parquet:4+949,00000-0-f2699694-e770-4650-a873-c114823758dd-0-00001.parquet:4+21860
 -- rgs: tasks split=32KiB cost=0 = 1 tasks
 -- rgs: spark partitions = 4 (parallelism 200)
 -- rolled: tasks default
 00000-0-8e5baa67-764d-4894-8008-9e87ae98b2c7-0-00001.parquet:4+660,00000-3-d5126fed-3d8a-4e5e-9ff8-6338b50103c1-0-00001.parquet:4+660,00000-1-2d6387f9-0cad-467c-86d0-81a3d6b361de-0-00001.parquet:4+660
 -- rolled: tasks default = 1 tasks
 -- rolled: tasks default again
-00000-3-d5126fed-3d8a-4e5e-9ff8-6338b50103c1-0-00001.parquet:4+660,00000-0-8e5baa67-764d-4894-8008-9e87ae98b2c7-0-00001.parquet:4+660,00000-1-2d6387f9-0cad-467c-86d0-81a3d6b361de-0-00001.parquet:4+660
+00000-3-d5126fed-3d8a-4e5e-9ff8-6338b50103c1-0-00001.parquet:4+660,00000-1-2d6387f9-0cad-467c-86d0-81a3d6b361de-0-00001.parquet:4+660,00000-0-8e5baa67-764d-4894-8008-9e87ae98b2c7-0-00001.parquet:4+660
 -- rolled: tasks default again = 1 tasks
 -- rolled: tasks split=8MiB
-00000-0-8e5baa67-764d-4894-8008-9e87ae98b2c7-0-00001.parquet:4+660,00000-1-2d6387f9-0cad-467c-86d0-81a3d6b361de-0-00001.parquet:4+660
-00000-3-d5126fed-3d8a-4e5e-9ff8-6338b50103c1-0-00001.parquet:4+660
+00000-0-8e5baa67-764d-4894-8008-9e87ae98b2c7-0-00001.parquet:4+660,00000-3-d5126fed-3d8a-4e5e-9ff8-6338b50103c1-0-00001.parquet:4+660
+00000-1-2d6387f9-0cad-467c-86d0-81a3d6b361de-0-00001.parquet:4+660
 -- rolled: tasks split=8MiB = 2 tasks
 -- rolled: tasks split=32KiB cost=0
-00000-3-d5126fed-3d8a-4e5e-9ff8-6338b50103c1-0-00001.parquet:4+660,00000-0-8e5baa67-764d-4894-8008-9e87ae98b2c7-0-00001.parquet:4+660,00000-1-2d6387f9-0cad-467c-86d0-81a3d6b361de-0-00001.parquet:4+660
+00000-0-8e5baa67-764d-4894-8008-9e87ae98b2c7-0-00001.parquet:4+660,00000-1-2d6387f9-0cad-467c-86d0-81a3d6b361de-0-00001.parquet:4+660,00000-3-d5126fed-3d8a-4e5e-9ff8-6338b50103c1-0-00001.parquet:4+660
 -- rolled: tasks split=32KiB cost=0 = 1 tasks
 -- rolled: spark partitions = 1 (parallelism 200)
 -- sorted: tasks default
@@ -523,41 +523,41 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916,00000-
 00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00001.parquet:4+1163,00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00002.parquet:4+1195,00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00002.parquet:4+1177,00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00001.parquet:4+1198
 -- stats: tasks default = 1 tasks
 -- stats: tasks default again
-00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00001.parquet:4+1163,00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00002.parquet:4+1195,00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00002.parquet:4+1177,00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00001.parquet:4+1198
+00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00002.parquet:4+1177,00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00001.parquet:4+1198,00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00001.parquet:4+1163,00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00002.parquet:4+1195
 -- stats: tasks default again = 1 tasks
 -- stats: tasks split=8MiB
 00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00001.parquet:4+1163,00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00002.parquet:4+1195
 00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00002.parquet:4+1177,00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00001.parquet:4+1198
 -- stats: tasks split=8MiB = 2 tasks
 -- stats: tasks split=32KiB cost=0
-00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00002.parquet:4+1177,00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00001.parquet:4+1198,00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00001.parquet:4+1163,00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00002.parquet:4+1195
+00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00001.parquet:4+1163,00000-5-21e70358-31d3-47dc-a4e6-b5f3d8dfa953-0-00002.parquet:4+1195,00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00002.parquet:4+1177,00000-2-713c5432-0910-46a5-818c-a2cd98636477-0-00001.parquet:4+1198
 -- stats: tasks split=32KiB cost=0 = 1 tasks
 -- stats: spark partitions = 1 (parallelism 200)
 -- sweep: tasks default
 00000-1-a8baae55-467e-4c60-b593-f1f5926a9f62-0-00001.parquet:4+660,00000-3-5c3ccf01-f78b-495e-a0c7-6386c0389867-0-00001.parquet:4+660
 -- sweep: tasks default = 1 tasks
 -- sweep: tasks default again
-00000-3-5c3ccf01-f78b-495e-a0c7-6386c0389867-0-00001.parquet:4+660,00000-1-a8baae55-467e-4c60-b593-f1f5926a9f62-0-00001.parquet:4+660
+00000-1-a8baae55-467e-4c60-b593-f1f5926a9f62-0-00001.parquet:4+660,00000-3-5c3ccf01-f78b-495e-a0c7-6386c0389867-0-00001.parquet:4+660
 -- sweep: tasks default again = 1 tasks
 -- sweep: tasks split=8MiB
-00000-3-5c3ccf01-f78b-495e-a0c7-6386c0389867-0-00001.parquet:4+660,00000-1-a8baae55-467e-4c60-b593-f1f5926a9f62-0-00001.parquet:4+660
+00000-1-a8baae55-467e-4c60-b593-f1f5926a9f62-0-00001.parquet:4+660,00000-3-5c3ccf01-f78b-495e-a0c7-6386c0389867-0-00001.parquet:4+660
 -- sweep: tasks split=8MiB = 1 tasks
 -- sweep: tasks split=32KiB cost=0
-00000-3-5c3ccf01-f78b-495e-a0c7-6386c0389867-0-00001.parquet:4+660,00000-1-a8baae55-467e-4c60-b593-f1f5926a9f62-0-00001.parquet:4+660
+00000-1-a8baae55-467e-4c60-b593-f1f5926a9f62-0-00001.parquet:4+660,00000-3-5c3ccf01-f78b-495e-a0c7-6386c0389867-0-00001.parquet:4+660
 -- sweep: tasks split=32KiB cost=0 = 1 tasks
 -- sweep: spark partitions = 1 (parallelism 200)
 -- sweepb: tasks default
-00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674,00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660,00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660
+00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660,00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674,00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660
 -- sweepb: tasks default = 1 tasks
 -- sweepb: tasks default again
-00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660,00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660,00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674
+00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660,00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674,00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660
 -- sweepb: tasks default again = 1 tasks
 -- sweepb: tasks split=8MiB
-00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660,00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660
-00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674
+00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674,00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660
+00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660
 -- sweepb: tasks split=8MiB = 2 tasks
 -- sweepb: tasks split=32KiB cost=0
-00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674,00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660,00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660
+00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660,00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660,00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674
 -- sweepb: tasks split=32KiB cost=0 = 1 tasks
 -- sweepb: spark partitions = 1 (parallelism 200)
 -- swept: tasks default
@@ -567,21 +567,21 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916,00000-
 00000-1-a8baae55-467e-4c60-b593-f1f5926a9f62-0-00001.parquet:4+660,00000-3-5c3ccf01-f78b-495e-a0c7-6386c0389867-0-00001.parquet:4+660
 -- swept: tasks default again = 1 tasks
 -- swept: tasks split=8MiB
-00000-1-a8baae55-467e-4c60-b593-f1f5926a9f62-0-00001.parquet:4+660,00000-3-5c3ccf01-f78b-495e-a0c7-6386c0389867-0-00001.parquet:4+660
+00000-3-5c3ccf01-f78b-495e-a0c7-6386c0389867-0-00001.parquet:4+660,00000-1-a8baae55-467e-4c60-b593-f1f5926a9f62-0-00001.parquet:4+660
 -- swept: tasks split=8MiB = 1 tasks
 -- swept: tasks split=32KiB cost=0
 00000-1-a8baae55-467e-4c60-b593-f1f5926a9f62-0-00001.parquet:4+660,00000-3-5c3ccf01-f78b-495e-a0c7-6386c0389867-0-00001.parquet:4+660
 -- swept: tasks split=32KiB cost=0 = 1 tasks
 -- swept: spark partitions = 1 (parallelism 200)
 -- sweptb: tasks default
-00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660,00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660,00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674
+00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660,00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674,00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660
 -- sweptb: tasks default = 1 tasks
 -- sweptb: tasks default again
 00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660,00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660,00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674
 -- sweptb: tasks default again = 1 tasks
 -- sweptb: tasks split=8MiB
-00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660,00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674
-00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660
+00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660,00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660
+00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674
 -- sweptb: tasks split=8MiB = 2 tasks
 -- sweptb: tasks split=32KiB cost=0
 00000-5-66f7ffdb-a8e3-4217-a671-1b8e2ba7b22a-0-00001.parquet:4+660,00000-7-b569cf5d-beb0-4ab8-95ec-1435ce03318b-0-00001.parquet:4+660,00000-6-1fadb0ae-dad4-4528-af6b-780105c6b5e1-0-00001.parquet:4+674
@@ -590,7 +590,7 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916,00000-
 -- test: tasks default
 ! NotFoundException: Failed to open input stream for file: file:/data/iceberg/default/test/metadata/snap-859671389683896769-1-f700fba6-a3d8-4abd-bbe3-0e034c59ffb6.avro
 -- v1: tasks default
-00000-6-6a6bed58-0b8b-4f35-bb72-ad6c33a3eb6f-0-00001.parquet:4+669,00000-5-08be98ed-613f-4b6e-bea7-416741415b83-0-00001.parquet:4+686,00000-1-851e015a-cb18-4738-84fa-5d951f05a8e4-0-00001.parquet:4+678
+00000-6-6a6bed58-0b8b-4f35-bb72-ad6c33a3eb6f-0-00001.parquet:4+669,00000-1-851e015a-cb18-4738-84fa-5d951f05a8e4-0-00001.parquet:4+678,00000-5-08be98ed-613f-4b6e-bea7-416741415b83-0-00001.parquet:4+686
 -- v1: tasks default = 1 tasks
 -- v1: tasks default again
 00000-5-08be98ed-613f-4b6e-bea7-416741415b83-0-00001.parquet:4+686,00000-1-851e015a-cb18-4738-84fa-5d951f05a8e4-0-00001.parquet:4+678,00000-6-6a6bed58-0b8b-4f35-bb72-ad6c33a3eb6f-0-00001.parquet:4+669
@@ -600,36 +600,49 @@ part-00000-c14fe34a-7b20-4ebc-9dd4-3d5251180e53-c000.snappy.parquet:0+916,00000-
 00000-1-851e015a-cb18-4738-84fa-5d951f05a8e4-0-00001.parquet:4+678
 -- v1: tasks split=8MiB = 2 tasks
 -- v1: tasks split=32KiB cost=0
-00000-6-6a6bed58-0b8b-4f35-bb72-ad6c33a3eb6f-0-00001.parquet:4+669,00000-5-08be98ed-613f-4b6e-bea7-416741415b83-0-00001.parquet:4+686,00000-1-851e015a-cb18-4738-84fa-5d951f05a8e4-0-00001.parquet:4+678
+00000-5-08be98ed-613f-4b6e-bea7-416741415b83-0-00001.parquet:4+686,00000-1-851e015a-cb18-4738-84fa-5d951f05a8e4-0-00001.parquet:4+678,00000-6-6a6bed58-0b8b-4f35-bb72-ad6c33a3eb6f-0-00001.parquet:4+669
 -- v1: tasks split=32KiB cost=0 = 1 tasks
 -- v1: spark partitions = 1 (parallelism 200)
 -- v3: tasks default
-00000-7-369f3839-1e27-421a-b95b-4e97c5242daf-00001.parquet:4+1008,00000-0-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+922,00001-1-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+919,00000-2-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+922,00001-3-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+915
+00000-2-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+922,00001-3-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+915,00000-0-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+922,00001-1-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+919,00000-7-369f3839-1e27-421a-b95b-4e97c5242daf-00001.parquet:4+1008
 -- v3: tasks default = 1 tasks
 -- v3: tasks default again
-00000-0-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+922,00001-1-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+919,00000-7-369f3839-1e27-421a-b95b-4e97c5242daf-00001.parquet:4+1008,00000-2-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+922,00001-3-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+915
+00000-7-369f3839-1e27-421a-b95b-4e97c5242daf-00001.parquet:4+1008,00000-2-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+922,00001-3-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+915,00000-0-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+922,00001-1-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+919
 -- v3: tasks default again = 1 tasks
 -- v3: tasks split=8MiB
-00000-0-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+922,00000-7-369f3839-1e27-421a-b95b-4e97c5242daf-00001.parquet:4+1008
-00001-1-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+919
 00000-2-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+922
-00001-3-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+915
+00001-3-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+915,00000-0-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+922
+00001-1-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+919
+00000-7-369f3839-1e27-421a-b95b-4e97c5242daf-00001.parquet:4+1008
 -- v3: tasks split=8MiB = 4 tasks
 -- v3: tasks split=32KiB cost=0
 00000-2-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+922,00001-3-a5ab8db2-921d-48c8-a53f-14906588e2d9-0-00001.parquet:4+915,00000-0-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+922,00001-1-9a995d1b-5910-427d-ab3b-14a18e95beca-0-00001.parquet:4+919,00000-7-369f3839-1e27-421a-b95b-4e97c5242daf-00001.parquet:4+1008
 -- v3: tasks split=32KiB cost=0 = 1 tasks
 -- v3: spark partitions = 2 (parallelism 200)
 -- wap: tasks default
-00000-0-880c6b74-8ef8-45b2-bdac-cbf659ab477a-0-00001.parquet:4+660,00000-1-0ba739f9-5085-4d98-bb5a-72127320c0ff-0-00001.parquet:4+660,00000-2-1f835731-107b-4cf2-b15c-d577c07c7191-0-00001.parquet:4+674
+00000-1-0ba739f9-5085-4d98-bb5a-72127320c0ff-0-00001.parquet:4+660,00000-2-1f835731-107b-4cf2-b15c-d577c07c7191-0-00001.parquet:4+674,00000-0-880c6b74-8ef8-45b2-bdac-cbf659ab477a-0-00001.parquet:4+660
 -- wap: tasks default = 1 tasks
 -- wap: tasks default again
 00000-2-1f835731-107b-4cf2-b15c-d577c07c7191-0-00001.parquet:4+674,00000-0-880c6b74-8ef8-45b2-bdac-cbf659ab477a-0-00001.parquet:4+660,00000-1-0ba739f9-5085-4d98-bb5a-72127320c0ff-0-00001.parquet:4+660
 -- wap: tasks default again = 1 tasks
 -- wap: tasks split=8MiB
-00000-1-0ba739f9-5085-4d98-bb5a-72127320c0ff-0-00001.parquet:4+660,00000-0-880c6b74-8ef8-45b2-bdac-cbf659ab477a-0-00001.parquet:4+660
-00000-2-1f835731-107b-4cf2-b15c-d577c07c7191-0-00001.parquet:4+674
+00000-0-880c6b74-8ef8-45b2-bdac-cbf659ab477a-0-00001.parquet:4+660,00000-2-1f835731-107b-4cf2-b15c-d577c07c7191-0-00001.parquet:4+674
+00000-1-0ba739f9-5085-4d98-bb5a-72127320c0ff-0-00001.parquet:4+660
 -- wap: tasks split=8MiB = 2 tasks
 -- wap: tasks split=32KiB cost=0
-00000-1-0ba739f9-5085-4d98-bb5a-72127320c0ff-0-00001.parquet:4+660,00000-2-1f835731-107b-4cf2-b15c-d577c07c7191-0-00001.parquet:4+674,00000-0-880c6b74-8ef8-45b2-bdac-cbf659ab477a-0-00001.parquet:4+660
+00000-2-1f835731-107b-4cf2-b15c-d577c07c7191-0-00001.parquet:4+674,00000-0-880c6b74-8ef8-45b2-bdac-cbf659ab477a-0-00001.parquet:4+660,00000-1-0ba739f9-5085-4d98-bb5a-72127320c0ff-0-00001.parquet:4+660
 -- wap: tasks split=32KiB cost=0 = 1 tasks
 -- wap: spark partitions = 1 (parallelism 200)
+-- wmp: tasks default
+00000-0-665d8052-9b6b-44ae-9276-67652cdce754-0-00001.parquet:4+660,00000-1-7874b8a4-7f85-4d47-a0bd-2a891cacf416-0-00001.parquet:4+674
+-- wmp: tasks default = 1 tasks
+-- wmp: tasks default again
+00000-1-7874b8a4-7f85-4d47-a0bd-2a891cacf416-0-00001.parquet:4+674,00000-0-665d8052-9b6b-44ae-9276-67652cdce754-0-00001.parquet:4+660
+-- wmp: tasks default again = 1 tasks
+-- wmp: tasks split=8MiB
+00000-0-665d8052-9b6b-44ae-9276-67652cdce754-0-00001.parquet:4+660,00000-1-7874b8a4-7f85-4d47-a0bd-2a891cacf416-0-00001.parquet:4+674
+-- wmp: tasks split=8MiB = 1 tasks
+-- wmp: tasks split=32KiB cost=0
+00000-1-7874b8a4-7f85-4d47-a0bd-2a891cacf416-0-00001.parquet:4+674,00000-0-665d8052-9b6b-44ae-9276-67652cdce754-0-00001.parquet:4+660
+-- wmp: tasks split=32KiB cost=0 = 1 tasks
+-- wmp: spark partitions = 1 (parallelism 200)

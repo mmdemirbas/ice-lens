@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`wmp`, the first engine-written `write.metadata.path` table** (`docs/fixtures/wmp.sql`):
+  Iceberg's own `JdbcCatalog` over a SQLite file — the one catalog family that honours the
+  property, since a HadoopCatalog table keeps its metadata under its location whatever it says —
+  leaves the metadata versions, manifest lists and manifests under `/wh/default/wmp/metadata`,
+  named the metastore way from `00000-<uuid>` with no `version-hint.text`, and the two data
+  files under the `location`, `/wh/wmp-data/data/`; the table directory holds no `data/` at
+  all. Checked in as `example/iceberg/default/wmp` and `example/iceberg/wmp-data`. The app opens
+  it with no code change: the data files re-root beside the table through `rebuildBesideTable`,
+  the summary says the metadata is kept apart from the location, the lookup and the live count
+  read the script's three rows, and the orphan walk and the missing-file stat both come back
+  empty (`WriteMetadataPathFixtureTest`). Until it the layout was only ever rearranged at
+  runtime and the version names only ever renamed onto a copy. The Iceberg scan-plan oracle
+  now loads a table with no version hint by the path of its newest metadata file, since
+  `HadoopTables.load(<directory>)` matches `v<N>` names alone; `deletes.txt` and `tasks.txt`
+  carry `wmp`
 - **The Iceberg export section names each file with the export's verdict on it**: a table
   under the rule sentences, one row per live file with its level and one per file the export
   lists that is not live, the verdict leading — not exported against the rule, listed but not

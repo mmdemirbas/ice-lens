@@ -454,6 +454,7 @@ What is left:
   | `default/nested` | a branch cut from a branch, committing before the older branch does again |
   | `default/wap` | write-audit-publish — a snapshot staged under `spark.wap.id` with no ref, main moving past it, then `publish_changes` writing a new commit on main that names it in `source-snapshot-id` |
   | `default/extdata` | `write.data.path` outside the table — `metadata/` and no `data/`, two files beside the table; the engine-written shape the resolver's third rule was written against |
+  | `default/wmp` | `write.metadata.path` apart from the location, written by `JdbcCatalog` over a SQLite file — metastore-named versions, no version hint, no `data/` under the table; the layout `RecordedPathResolutionTest` had only built at runtime |
   | `default/sorted` | `WRITE ORDERED BY` twice, then `rewrite_data_files(strategy => 'sort')` — three sort orders, `default-sort-order-id` 2, rows sorted inside every file written under an order, and `sort_order_id 0` on every data file including the compacted one, which is what Spark records |
   | `default/expired` | four commits, then `expire_snapshots(retain_last => 1)` — three expired snapshots the older metadata versions still list |
   | `default/maint` | merge-on-read, then `rewrite_position_delete_files` (two dangling deletes dropped) and `rewrite_manifests` (created 2, kept 0) |
@@ -477,11 +478,6 @@ What is left:
   | `paimon/db.db/se` | `ADD COLUMN` between two writes, then `sys.compact` — the compaction's delta manifest is under schema 1 and removes a schema-0 file, whose two-field stats decode only against its own schema |
   | `paimon/db.db/px`, `pxa` | one table written twice, six commits, a tag and a consumer — `px` unexpired, `pxa` after `expire_snapshots(retain_max = 2, retain_min = 1)`; the expiry planner's oracle |
   | `paimon/db.db/pc` | a primary-key table on every default, seven one-row inserts — the fifth flush compacts by size amplification; the compaction planner's oracle |
-
-  **Still missing:** the `write.metadata.path` layout is built at runtime by
-  `RecordedPathResolutionTest`, a rearrangement of the minimal fixture rather than a table an
-  engine wrote that way — a HadoopCatalog table keeps its metadata under the table whatever the
-  property says, so producing one needs a different catalog in the image.
 
 - **The rendered inspector is mostly checked by eye; one invariant is now a number.** Every
   `WideTable`'s leading column is asserted to fit the panel it is drawn in, over the 28 tables the
