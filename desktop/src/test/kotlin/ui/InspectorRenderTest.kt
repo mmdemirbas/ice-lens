@@ -655,6 +655,29 @@ class InspectorRenderTest {
     }
 
     /**
+     * `rgs` is the one table with more than one row group: its 5,000-row file is thirteen splits
+     * paying thirteen open costs, so one task of fourteen splits at the default target and — at a
+     * parallelism of 200, where the adaptive size shrinks the target to 16 MiB — four partitions,
+     * which is the figure a reader asks about when one file became four tasks. `mor`'s current
+     * snapshot is the delete case, a paired delete file charging a cost on its data file's split;
+     * `parted` under `id = 1` is the filtered read, the files the pruning leaves packed on their own.
+     */
+    @Test
+    fun `a snapshot says how many tasks a read takes`() {
+        val rgs = graphFor("rgs")
+        val rgsTip = rgs.nodes.filterIsInstance<GraphNode.SnapshotNode>().maxBy { it.data.sequenceNumber ?: 0L }
+        renderInspector(rgs, rgsTip.id, "snapshot-node-scan-tasks", height = 2600, sectionCollapse = onlyExpanded("Scan Tasks"))
+        val mor = graphFor("mor")
+        val morTip = mor.nodes.filterIsInstance<GraphNode.SnapshotNode>().maxBy { it.data.sequenceNumber ?: 0L }
+        renderInspector(mor, morTip.id, "snapshot-node-scan-tasks-deletes", height = 2800, sectionCollapse = onlyExpanded("Scan Tasks"))
+        val parted = graphFor("parted")
+        val partedTip = parted.nodes.filterIsInstance<GraphNode.SnapshotNode>().maxBy { it.data.sequenceNumber ?: 0L }
+        renderScene("snapshot-node-scan-tasks-filtered", width = 1400, height = 2400) {
+            InspectorUnderTest(parted, partedTip.id, onlyExpanded("Scan Tasks"), scanFilter = ScanFilter.of(listOf(ScanPredicate("id", PredicateOp.EQ, "1"))))
+        }
+    }
+
+    /**
      * `pe` is `pea` before its expiry, complete: the `retain_min = 1, older_than = now` column
      * removes snapshots 1..6, and the file plan frees the compaction's two unprotected removals,
      * five changelog files and the manifests — while the tag on 3 holds three removed files on

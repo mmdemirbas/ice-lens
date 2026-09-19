@@ -626,6 +626,7 @@ internal fun ColumnScope.SnapshotPanel(
         SnapshotRowLookupSection(node.id, node.readInput, paimon = false, currentGraph, scanFilter)
 
         PartitionsSection(node)
+        ScanTasksSection(node, currentGraph, scanFilter)
 
         RewriteSection(node, currentGraph, scanFilter)
         PositionDeleteRewriteSection(node, currentGraph)

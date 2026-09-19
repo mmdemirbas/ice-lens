@@ -182,6 +182,7 @@ desktop/src/main/kotlin/
     ├── Sidebar.kt             # Workspace panel — add/remove roots, search, drag-to-reorder, format badges (ICE/PMN)
     ├── NavigationTree.kt      # Structure tree view — flatten graph, search, expand/collapse
     ├── ScanPruningSection.kt  # The filter form and its per-manifest verdicts, in the table inspector
+    ├── ScanTasksSection.kt    # How many tasks a read of the snapshot takes, and Spark's partitions at a typed parallelism — with the filter, the files the scan leaves
     ├── GraphStatusBadge.kt    # Canvas overlay: how much of the table is drawn, and the page size
     └── ToolWindow.kt          # Draggable tool window bars and panes
 ```
@@ -1291,6 +1292,39 @@ intellij/src/main/kotlin/plugin/
   oracle for the rows and not for the planner: a wrong skip of a file holding no matching row
   passes it. An `Or` proved by one branch — the unsound reading — is caught by `id IN (1, 2)` on
   `parted` skipping the two files Iceberg opens
+- **How many tasks a read takes is planned the way `TableScanUtil.planTasks` plans them, and
+  held to the planner on every table.** `model/ScanTaskPlan.kt` reads `BaseTableScan.planTasks`
+  at 1.8.1: `splitFiles` cuts each data file — a Parquet, ORC or Avro file with well-defined
+  `split_offsets` (strictly ascending, the last below the file's size, #8925) into **one split
+  per row group whatever the target size**, any other into `read.split.target-size` (128 MiB)
+  slices, an unsplittable format or an empty file left whole — then each split weighs the
+  greater of its bytes plus its paired delete files' content bytes (a vector at its blob,
+  `ScanTaskUtil.contentSizeInBytes`) and `(1 + delete files) × read.split.open-file-cost`
+  (4 MiB), and `binPack` packs them to the target with `read.split.planning-lookback` (10) bins
+  open, the heaviest closed first; a task is a bin, and adjacent splits of one file are joined
+  back into one entry (`BaseCombinedScanTask`, `TableScanUtil.mergeTasks`). The pairing is
+  `deleteReach`'s, `mayReach` included, as the rewrite's is. Spark's `adjustSplitSize` sits
+  beside it (`adjustedSplitSize`): under `read.split.adaptive-size.enabled`, with fewer
+  target-size splits than the job's parallelism, the target becomes the greater of the scan's
+  bytes over the parallelism and 16 MiB, so a table small enough for one task at 128 MiB reads
+  as a task per 16 MiB of weight. Two things the run settled: **a row group is a split before it
+  is a task**, so `rgs`'s thirteen row groups are fourteen splits paying fourteen open costs —
+  56 MiB into one task, four partitions under Spark's 16 MiB, seven tasks at an 8 MiB target;
+  and **with several data manifests the files arrive in the worker pool's order**
+  (`ManifestGroup.planFiles` over `ThreadPools.getWorkerPool()`), so the packing follows an
+  order this cannot know — the oracle prints the default plan twice, and 24 tables packed
+  differently with the same counts. The third part of `docs/fixtures/iceberg-scan-plans.scala`
+  prints every table's tasks under the defaults (twice), `split=8MiB` and `split=32KiB cost=0`,
+  and Spark's partition count at parallelism 200, into
+  `core/src/test/resources/iceberg-scan-plans/tasks.txt`; `ScanTaskPlanTest` holds the count
+  everywhere, the packing where the snapshot lists one data manifest, and the partition count.
+  `LiveFile` carries `format` and `splitOffsets` for it. The Iceberg snapshot panel's `Scan
+  Tasks` (`ui/ScanTasksSection.kt`) draws the plan under the table's `read.split.*` off the
+  newest metadata — one row per task entry, a parallelism field on the Spark line it decides,
+  the packing caveat where the snapshot lists several data manifests — and under the table
+  panel's filter a second plan over the files the scan leaves, the `Rewrite` section's `where`
+  rule; the table panel's pruning headline says how many tasks the filtered read takes at the
+  current snapshot, off the maintenance input's walk the summary above it already ran
 - **A filter's column binds by field id through the current schema, the way a scan binds it,
   and a nested leaf is named by its path.** `ColumnBinder` in `model/ScanPruning.kt`:
   `BySchema` resolves a column to the current schema's field id (`IcebergSchemaModel.idOfPath`
@@ -2915,7 +2949,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,443 tests across 199 files (1,146 in :core, 285 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
+~1,444 tests across 199 files (1,146 in :core, 286 in :desktop, 12 in :intellij) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

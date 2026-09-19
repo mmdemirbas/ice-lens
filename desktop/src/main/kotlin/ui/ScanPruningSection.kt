@@ -13,8 +13,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import model.DataFileContent
 import model.GraphModel
 import model.GraphNode
+import model.IcebergMaintenanceInput
 import model.ManifestPruneResult
 import model.PredicateOp
 import model.PredicateOutcome
@@ -32,6 +34,10 @@ import model.FileFate
 import model.FilePruneResult
 import model.evaluateScan
 import model.prunableColumns
+import model.ScanTaskOptions
+import model.normalizeFilePath
+import model.planScanTasks
+import model.scanTaskFiles
 
 /**
  * Enter a scan filter; see which manifests it would let a query skip, and why.
@@ -251,6 +257,31 @@ fun ScanPruningSection(graph: GraphModel, filter: ScanFilter, onChange: (ScanFil
             Text(
                 "${formatCounted(plan.unreadFiles, "file")} at level 0 ${if (plan.unreadFiles == 1) "is" else "are"} never opened: " +
                     "a batch read of this table skips level 0.",
+                fontSize = TypeScale.small,
+                color = colors.onSurfaceVariant,
+            )
+        }
+
+        // What the read the filter leaves costs in tasks, on Iceberg: the current snapshot's live
+        // files less the ones ruled out above, planned the way the snapshot panel's `Scan Tasks`
+        // plans them. Off the table node's maintenance input — the `Maintenance` summary above
+        // already walked it, so this opens nothing — and the verdicts are the drawn graph's, so a
+        // live file that is not drawn is read.
+        val maintenance = (graph.nodeById["table_root"] as? GraphNode.TableNode)?.maintenance?.value as? IcebergMaintenanceInput
+        val current = maintenance?.current
+        val live = current?.liveFiles
+        if (maintenance != null && current != null && live != null) {
+            val options = ScanTaskOptions.from(maintenance.metadata.properties)
+            val reach = current.deleteReach.orEmpty()
+            val whole = planScanTasks(scanTaskFiles(live, reach), options)
+            val ruledOut = plan.ruledOutFileKeys(graph)
+            val left = live.filter { it.content != DataFileContent.DATA || normalizeFilePath(it.path) !in ruledOut }
+            val filtered = planScanTasks(scanTaskFiles(left, reach), options)
+            Text(
+                "Planned as tasks at the current snapshot (TableScanUtil.planTasks under the table's read.split.*): " +
+                    "${formatCounted(filtered.tasks.size, "task")} over the ${formatCounted(filtered.dataFiles, "live data file")} " +
+                    "the filter leaves, ${formatCounted(whole.tasks.size, "task")} over all ${formatCount(whole.dataFiles)} without it; " +
+                    "the current snapshot's Scan Tasks section lists them.",
                 fontSize = TypeScale.small,
                 color = colors.onSurfaceVariant,
             )

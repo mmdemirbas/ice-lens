@@ -14,7 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   slices, each split weighs its bytes plus its delete files' content bytes or `(1 + deletes) ×
   read.split.open-file-cost`, whichever is more, and the splits are bin-packed with
   `read.split.planning-lookback` bins open, the heaviest closed first. Spark's adaptive split size
-  (`read.split.adaptive-size.enabled`) is planned beside it. Held to Iceberg's own task counts on
+  (`read.split.adaptive-size.enabled`) is planned beside it. The Iceberg snapshot panel's `Scan
+  Tasks` draws it — one row per task entry, a parallelism field on Spark's line, and under the
+  table panel's filter the plan over the files the scan leaves — and the table panel's pruning
+  headline says how many tasks the filtered read takes. Held to Iceberg's own task counts on
   every checked-in table under three option sets (`iceberg-scan-plans/tasks.txt`), to the packing
   where the table has one data manifest, and to Spark's partition count at parallelism 200.
   `rgs`'s thirteen row groups are fourteen splits and one task; on a table with several manifests
