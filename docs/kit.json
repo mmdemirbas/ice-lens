@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/mmdemirbas/oku/main/kit/schema/project-kit.schema.json",
+  "name": "Iceberg Lens",
+  "description": "A read-only desktop view of what an Apache Iceberg or Apache Paimon table is made of — the metadata tree, snapshot by snapshot, down to the rows.",
+  "accent": "teal",
+  "audience": "Reader",
+  "domains": ["data-platforms"],
+  "lang": "en",
+  "lang_fallback": ["en"],
+  "languages": [{ "code": "en", "label": "English" }],
+  "defaultLanguage": "en",
+  "skip_dirs": ["reports", "fixtures"],
+  "skip_gitignored": true,
+  "rebuild_command": false
+}

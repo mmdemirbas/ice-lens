@@ -10,6 +10,7 @@ checked against the same figure counted.**
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3-blue)](https://kotlinlang.org/)
 [![Compose](https://img.shields.io/badge/Compose_Desktop-1.10-blue)](https://www.jetbrains.com/lp/compose-multiplatform/)
 
+[Documentation](https://mmdemirbas.github.io/ice-lens/) ·
 [Releases](https://github.com/mmdemirbas/ice-lens/releases) ·
 [Source](https://github.com/mmdemirbas/ice-lens) ·
 [Changelog](CHANGELOG.md) ·

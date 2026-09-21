@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="14">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#9ca3af"/>
+    </marker>
+    <style>
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 12.5px; }
+      .h { font-size: 16px; font-weight: 700; fill: #111827; }
+      .kind { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; fill: #6b7280; }
+      .name { font-size: 13.5px; font-weight: 700; fill: #111827; }
+      .sub { font-size: 12px; fill: #4b5563; }
+      .q { font-size: 13px; fill: #1f2937; }
+      .qh { font-size: 13px; font-weight: 700; fill: #111827; }
+      .cap { font-size: 12.5px; fill: #6b7280; }
+    </style>
+  </defs>
+  <rect width="1200" height="620" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="40" y="44" class="h">The tree an engine walks on every query, and what Iceberg Lens answers at each level</text>
+
+  <!-- column 1: the tree (Iceberg names; Paimon twins noted) -->
+  <!-- table -->
+  <g transform="translate(40,80)">
+    <rect width="200" height="56" rx="8" fill="#f3f0ea" stroke="#c9bfae"/>
+    <text x="14" y="20" class="kind">TABLE</text>
+    <text x="14" y="40" class="name">orders</text>
+    <text x="86" y="40" class="sub">Iceberg · Paimon</text>
+  </g>
+  <!-- metadata -->
+  <g transform="translate(40,164)">
+    <rect width="200" height="56" rx="8" fill="#f3e8ff" stroke="#c4b5fd"/>
+    <text x="14" y="20" class="kind">METADATA</text>
+    <text x="14" y="40" class="name mono">v12.metadata.json</text>
+  </g>
+  <!-- snapshot -->
+  <g transform="translate(40,248)">
+    <rect width="200" height="56" rx="8" fill="#dbeafe" stroke="#93c5fd"/>
+    <text x="14" y="20" class="kind">SNAPSHOT</text>
+    <text x="14" y="40" class="name">8331894</text>
+    <text x="90" y="40" class="sub">op: overwrite</text>
+  </g>
+  <!-- manifest list + manifests -->
+  <g transform="translate(40,332)">
+    <rect width="200" height="56" rx="8" fill="#dcfce7" stroke="#86efac"/>
+    <text x="14" y="20" class="kind">MANIFEST LIST → MANIFESTS</text>
+    <text x="14" y="40" class="name">data · delete</text>
+    <text x="110" y="40" class="sub">Avro, per snapshot</text>
+  </g>
+  <!-- files -->
+  <g transform="translate(40,416)">
+    <rect width="200" height="56" rx="8" fill="#fef3c7" stroke="#fcd34d"/>
+    <text x="14" y="20" class="kind">DATA FILES · DELETE FILES</text>
+    <text x="14" y="40" class="name">Parquet, Avro, ORC</text>
+    <text x="150" y="40" class="sub">+ Puffin</text>
+  </g>
+  <!-- rows -->
+  <g transform="translate(40,500)">
+    <rect width="200" height="56" rx="8" fill="#fee2e2" stroke="#fca5a5"/>
+    <text x="14" y="20" class="kind">ROWS</text>
+    <text x="14" y="40" class="name">sampled, read by DuckDB</text>
+  </g>
+  <!-- tree arrows -->
+  <g stroke="#9ca3af" stroke-width="2" fill="none" marker-end="url(#arrow)">
+    <path d="M140 136 L140 162"/>
+    <path d="M140 220 L140 246"/>
+    <path d="M140 304 L140 330"/>
+    <path d="M140 388 L140 414"/>
+    <path d="M140 472 L140 498"/>
+  </g>
+
+  <!-- column 2: what is answered -->
+  <g transform="translate(290,80)">
+    <text y="20" class="qh">On the table</text>
+    <text y="40" class="q">What is under the root that no metadata names, and what the metadata needs that is missing —</text>
+    <text y="58" class="q">both orphan questions. Every recorded figure against the same figure counted, in one click.</text>
+  </g>
+  <g transform="translate(290,164)">
+    <text y="20" class="qh">On the metadata file</text>
+    <text y="40" class="q">Schema evolution by field id; partition specs and sort orders; refs with retention; the snapshot</text>
+    <text y="58" class="q">log with rollbacks marked; which snapshot a read as of a time lands on; what <tspan class="mono">expire_snapshots</tspan> would drop.</text>
+  </g>
+  <g transform="translate(290,248)">
+    <text y="20" class="qh">On a snapshot</text>
+    <text y="40" class="q">What the commit did, folded from the manifests it wrote and checked against its summary; the difference</text>
+    <text y="58" class="q">between any two snapshots; the partition breakdown, largest first; what <tspan class="mono">SELECT count(*)</tspan> returns here.</text>
+  </g>
+  <g transform="translate(290,332)">
+    <text y="20" class="qh">On the manifests</text>
+    <text y="40" class="q">What a scan would skip: a <tspan class="mono">WHERE</tspan> clause evaluated against partition tuples and column bounds, file by file;</text>
+    <text y="58" class="q">what <tspan class="mono">rewrite_data_files</tspan> would rewrite; what the next commit does to the manifest list.</text>
+  </g>
+  <g transform="translate(290,416)">
+    <text y="20" class="qh">On the files</text>
+    <text y="40" class="q">Delete files paired with the data files they reach, dangling deletes named, deletion vectors decoded;</text>
+    <text y="58" class="q">recorded bounds, counts and size against the file itself; a file's history — added by, removed by, kept by.</text>
+  </g>
+  <g transform="translate(290,500)">
+    <text y="20" class="qh">On the rows</text>
+    <text y="40" class="q">Row lookup: the rows a filter matches, each with its fate — live, or deleted by which delete file or write;</text>
+    <text y="58" class="q">a sampled row as a read would return it, placed onto the current schema.</text>
+  </g>
+
+  <text x="40" y="594" class="cap">Paimon has the same shape with its own names — snapshot/ and schema/, base and delta manifest lists, LSM buckets — and gets the same questions, answered the way its readers do.</text>
+</svg>
