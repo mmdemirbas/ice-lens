@@ -1,8 +1,4 @@
----
-title: Architecture
-order: 40
-summary: One headless engine under three shells; the data flow from files to graph; node types, threading, the workspace model, and the extension points for a new format.
----
+# Architecture
 
 ## System overview
 

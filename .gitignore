@@ -33,6 +33,3 @@ bin/
 # IntelliJ Platform Gradle Plugin cache (downloaded IDEs)
 .intellijPlatform/
 
-# oku docs tree: the kit symlink points at the local install; dist/ is the build; reports/ is personal
-docs/_oku
-docs/dist/

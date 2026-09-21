@@ -1,13 +1,13 @@
 name: pages
 
-# Builds docs/ with oku (https://github.com/mmdemirbas/oku) and publishes
-# docs/dist/site to GitHub Pages at https://mmdemirbas.github.io/ice-lens/.
-# Separate from ci.yml on purpose: a red test must not take the docs down.
+# Publishes site/ — a static landing page, no build step — to GitHub Pages.
+# The page is generated from a spec by atolye/bin/web/landing/build.py and
+# committed; edit index.html by hand if you like, it is plain HTML.
 
 on:
   push:
     branches: [main]
-    paths: ['docs/**', '.github/workflows/pages.yml']
+    paths: ['site/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -20,35 +20,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
-      - name: Build the docs tree with oku (search extra bundles Pagefind)
-        working-directory: docs
-        run: uvx --from "oku[search] @ git+https://github.com/mmdemirbas/oku" oku build
-
-      - name: Keep every _oku/ asset (Pages skips underscore paths only under Jekyll; this makes it explicit)
-        run: touch docs/dist/site/.nojekyll
-
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs/dist/site
-
   deploy:
-    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
       - id: deployment
         uses: actions/deploy-pages@v4
