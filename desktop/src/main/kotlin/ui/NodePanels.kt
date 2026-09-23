@@ -22,6 +22,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import model.PaimonUnexistingFilesPlan
+import model.DeltaMaintenanceInput
+import model.DeltaVacuumPlan
 import model.ScanFilter
 import model.GraphModel
 import model.GraphNode
@@ -209,7 +211,13 @@ internal fun ColumnScope.TablePanel(
         // remove_orphan_files row follows the button without starting the walk itself.
         var orphanReport by remember(node.id) { mutableStateOf(if (node.unreferencedFiles.isRead) node.unreferencedFiles.value else null) }
         var unexistingPlan by remember(node.id) { mutableStateOf<PaimonUnexistingFilesPlan?>(null) }
-        MaintenanceSection(node, orphanReport, unexistingPlan)
+        var vacuumPlan by remember(node.id) { mutableStateOf<DeltaVacuumPlan?>(null) }
+        MaintenanceSection(node, orphanReport, unexistingPlan, vacuumPlan)
+        (node.maintenance.value as? DeltaMaintenanceInput)?.model?.let { delta ->
+            DeltaOptimizeSection(delta)
+            DeltaLogCleanupSection(delta)
+            DeltaVacuumSection(delta, onPlanned = { vacuumPlan = it })
+        }
         summary.paimonExpiry?.let { PaimonExpirySection(it, nowMs = expiryClock()) }
         summary.paimonExpiry?.let { PaimonExpiryFilesSection(node, it, nowMs = expiryClock()) }
         summary.paimonExpiry?.let { PaimonChangelogExpirySection(it, nowMs = expiryClock()) }

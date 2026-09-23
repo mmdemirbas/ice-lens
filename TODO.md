@@ -26,12 +26,9 @@ Neither is worth doing before the plugin has a reason to read a data file.
 
 Read: the log, checkpoints of every naming, the replay, file actions, deletion vectors, the
 integrity checks (commit metrics, checkpoint against replay, `_last_checkpoint`, vectors), column
-mapping in both modes, the change data feed, a row's history across versions.
+mapping in both modes, the change data feed, a row's history across versions, and the VACUUM,
+OPTIMIZE and log-cleanup planners with their maintenance lines.
 
-- **VACUUM, OPTIMIZE and log-cleanup planners.** The orphan plan uses VACUUM's 7-day retention but
-  VACUUM also deletes files expired tombstones name; plan it properly from the tombstones. Oracles
-  checked in: `dvac` → `dvaca` (`RETAIN 0 HOURS`, six files), `dopt` → `dvac` (four files
-  compacted), `dlcb` → `dlc` (commits 0–4 and checkpoints 2 and 4 cleaned up).
 - **Row tracking on rows** (`drt`): `baseRowId + position` as `_row_id` where the materialized
   column is null, `rowIdHighWaterMark` checked against the adds, in-commit timestamps shown and
   checked for order.
@@ -39,7 +36,8 @@ mapping in both modes, the change data feed, a row's history across versions.
   has no file — and leaves the row undecided. delta-spark 3.2.1 does not write them, so a fixture
   needs another writer.
 - **UniForm**: needs `delta-iceberg_2.12-3.2.1.jar`, not in lakelab's cache.
-- **The table's maintenance summary** has no Delta lines yet.
+- **OPTIMIZE with ZORDER BY and liquid clustering** take every file and are not planned; the
+  `delta.clustering` domain is only noticed. Needs a clustered fixture.
 
 ## Format coverage gaps
 

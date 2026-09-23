@@ -123,6 +123,9 @@ core/src/main/kotlin/
 │   ├── DeltaChecks.kt         # operationMetrics against the commit's actions, a checkpoint against the replay, _last_checkpoint against its checkpoint
 │   ├── DeltaRead.kt           # A version as a RowLookupInput — the Iceberg read path over the log's adds, vectors and partition values — and the row history's inputs
 │   ├── DeltaChangeFeed.kt     # What the change data feed publishes per version — its cdc files, or its file actions and vectors — as CDCReader.changesToDF builds it
+│   ├── DeltaVacuumPlan.kt     # What VACUUM deletes — the table directory listed as VacuumCommand.gc lists it, against the state's adds, the tombstones within the retention and their vectors
+│   ├── DeltaOptimizePlan.kt   # What OPTIMIZE rewrites — the candidates by size and deleted-rows ratio, packed per partition smallest first, a bin of one left alone
+│   ├── DeltaLogCleanupPlan.kt # What the cleanup after a checkpoint deletes from _delta_log/ — the cutoff to UTC midnight, the times made increasing, a run decided by its last file
 │   ├── Z85.kt                 # ZeroMQ's Base85, which a Delta deletion vector's location and inline bytes are written in
 │   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 ├── service/
@@ -193,6 +196,7 @@ desktop/src/main/kotlin/
     ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
     ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
     ├── DeltaNodePanels.kt     # Delta version, file action and checkpoint panels
+    ├── DeltaMaintenanceSections.kt # The Delta table panel's Optimize, Log Cleanup and Vacuum sections, the last behind a listing
     ├── RemoteLocations.kt      # A location in object storage and how to reach it — persisted, minus the secret
     ├── RemoteLocationDialog.kt # The form for a location no file chooser can browse to
     ├── Sidebar.kt             # Workspace panel — add/remove roots, search, drag-to-reorder, format badges (ICE/PMN)
@@ -2567,8 +2571,9 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   rather than a page a click, each hit printed with its fate — the same `RowFate` the panel
   colours — `plan` is `maintenanceSummary` at `--at` (epoch milliseconds or an ISO instant,
   now by default), with the two lines the desktop plans only behind a click run rather than
-  left `not walked`: `remove_orphan_files` over `TableNode.unreferencedFiles`, and on Paimon
-  `remove_unexisting_files` over `missingFiles` and `planUnexistingFiles`; it exits 0 whatever
+  left `not walked`: `remove_orphan_files` over `TableNode.unreferencedFiles`, on Paimon
+  `remove_unexisting_files` over `missingFiles` and `planUnexistingFiles`, and on Delta
+  `VACUUM` over `planVacuum`'s listing; it exits 0 whatever
   it says, being a plan and not a check — and `export` is `GraphExport`'s SVG, JSON or CSV to
   standard output or `--out`. A local table path is made absolute before it is opened, as the
   desktop's workspace and the IDE's virtual files already are: `MissingFilesReport` normalises
@@ -3165,7 +3170,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,502 tests across 210 files (1,203 in :core, 289 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,519 tests across 213 files (1,219 in :core, 290 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3344,10 +3349,10 @@ container invocation and the traps in it:
 | `delta/dcm`, `dcmid` | `DeltaPhase3FixtureTest`, `DeltaChangeFeedFixtureTest` | column mapping in `name` and in `id` mode, one script — a rename at the top level, inside a struct and of the partition column, a drop and an add between inserts |
 | `delta/dcdf`, `dcdfdv` | `DeltaChangeFeedFixtureTest`, `DeltaPhase3FixtureTest` | `delta.enableChangeDataFeed` — an `UPDATE` and a `MERGE` read from their cdc files, a partition `DELETE` from its removes; the same under deletion vectors, where the `DELETE` writes no cdc file; `table_changes` printed as the oracle |
 | `delta/dmp`, `dv2` | `DeltaPhase3FixtureTest` | a multi-part checkpoint (`checkpoint.partSize = 2`); V2 checkpoints with sidecars (`delta.checkpointPolicy = v2`) and the `v2Checkpoint` block of `_last_checkpoint` |
-| `delta/dlc`, `dlcb` | `DeltaPhase3FixtureTest` | the log cleanup a checkpoint runs — commits 0–4 dated 2020, then two inserts: `dlc` keeps 5, 6 and the checkpoint at 6; `dlcb` is the copy before, the oracle for a cleanup plan |
+| `delta/dlc`, `dlcb` | `DeltaPhase3FixtureTest`, `DeltaLogCleanupPlanFixtureTest` | the log cleanup a checkpoint runs — commits 0–4 dated 2020, then two inserts: `dlc` keeps 5, 6 and the checkpoint at 6; `dlcb` is the copy before, the oracle for a cleanup plan |
 | `delta/drs` | `DeltaPhase3FixtureTest` | `RESTORE TABLE … TO VERSION AS OF 2` after a `DELETE`, and its six metrics |
 | `delta/drt` | `DeltaGraphFixtureTest` | `delta.enableRowTracking` and in-commit timestamps — `baseRowId`, `defaultRowCommitVersion`, the `rowIdHighWaterMark` domain, an `UPDATE`'s materialized row-id column |
-| `delta/dvac`, `dvaca`, `dopt` | `DeltaGraphFixtureTest` | five inserts and a whole-file `DELETE`; `dopt` copied before the `OPTIMIZE` that compacted four files into one, `dvaca` after a `VACUUM … RETAIN 0 HOURS` that deleted six — the oracles for the two planners |
+| `delta/dvac`, `dvaca`, `dopt` | `DeltaVacuumPlanFixtureTest`, `DeltaOptimizePlanFixtureTest` | five inserts and a whole-file `DELETE`; `dopt` copied before the `OPTIMIZE` that compacted four files into one, `dvaca` after a `VACUUM … RETAIN 0 HOURS` that deleted six, with its `VACUUM START` and `VACUUM END` commits |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
@@ -4195,9 +4200,54 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   `tightBounds = false`, whose bounds only widen. The test holds the lookup with pruning to the
   lookup without it on `dplain`, the direction that loses rows; a null partition's null count
   set to 0 fails `region IS NULL`
-- Not yet read (the `TODO.md` Delta section): the VACUUM, OPTIMIZE and log-cleanup planners
-  (their oracles, `dvac`/`dvaca`/`dopt` and `dlcb`/`dlc`, are checked in), row tracking shown on
-  rows (`drt`), UniForm
+- **`VACUUM` is planned from the listing, the state and the retention, the way `VacuumCommand.gc`
+  decides it at 3.2.1** (`model/DeltaVacuumPlan.kt`). The cutoff is `now - RETAIN`, else
+  `now - delta.deletedFileRetentionDuration` (a week; `deltaIntervalMs` reads the property as
+  `parseCalendarInterval` does, a month refused); a `RETAIN` below the table's is refused while
+  `spark.databricks.delta.retentionDurationCheck.enabled` is on, and planned as if it were off.
+  What keeps a file is the latest state: a live `add`, a tombstone the state still holds whose
+  `deletionTimestamp` is not before the cutoff, and each one's directories and relative (`u`)
+  vector. A `cdc` action is never in the state, so a change data file goes once it is old. The
+  listing skips `DeltaTableUtils.isHiddenDirectory`'s names — `metadata`, and a name starting `_`
+  or `.` other than `_delta_index`, `_change_data` and `<partition column>=` — and a directory is
+  a candidate only when no old file lies under it, deleted non-recursively, so a partition
+  directory emptied by one call goes on the next. **The hidden `.crc` beside a data file goes with
+  it** on a local or HDFS table — Hadoop's checksum filesystem deletes it, which is why `dvaca`
+  lost both although the listing never sees one. `DeltaVacuumPlanFixtureTest` holds the plan from
+  `dvac` under `RETAIN 0` to exactly the six files `dvaca` lacks and to `VACUUM START`'s
+  `numFilesToDelete 6` / `sizeOfDataToDelete 3661` and `VACUUM END`'s `numDeletedFiles` and
+  `numVacuumedDirectories`, and no fixture's live file or vector to ever be planned; keeping every
+  tombstone and dropping a live file's vector each fail it
+- **`OPTIMIZE` is planned from the latest state** (`model/DeltaOptimizePlan.kt`,
+  `OptimizeExecutor` at 3.2.1): a live file under `optimize.minFileSize` (1 GiB), or whose vector
+  marks more than `optimize.maxDeletedRowsRatio` (5%) of its `numRecords`, or with a vector and no
+  `numRecords`, is a candidate; candidates are grouped by partition values, sorted by size, and
+  packed greedily into `optimize.maxFileSize` bins, and **only a bin of two or more is rewritten** —
+  a lone small file stays, its vector with it. `dopt`'s plan is the four files `dvac`'s `OPTIMIZE`
+  removed, with its `numRemovedFiles`, `numRemovedBytes` and `numAddedFiles`; the packing rules are
+  pinned on built inputs. A `CLUSTER BY` table and `ZORDER BY` take every file and are not planned
+- **The log cleanup a checkpoint runs is planned from `MetadataCleanup.cleanUpExpiredLogs`**
+  (`model/DeltaLogCleanupPlan.kt`): every commit and checkpoint file below the checkpoint
+  `_last_checkpoint` names, modified at or before `now - delta.logRetentionDuration` (30 days)
+  **truncated to UTC midnight**, under `delta.enableExpiredLogCleanup`. **Times are made increasing
+  first** (`BufferingLogDeletionIterator`): a file not after the one before it at a higher version
+  is read as a millisecond after it, and a run of such files goes or stays with its **last** — and
+  a checkpoint and the commit of its version are never compared, so a run ends between them.
+  A V2 table's run also deletes the unreferenced sidecars older than the cutoff and first writes a
+  classic checkpoint for old readers. A file's modification time survives neither the copy into
+  the repository nor a checkout, so the planner takes the times as a function:
+  `DeltaLogCleanupPlanFixtureTest` gives `dlcb`'s versions 0–4 the time the script's `touch` set
+  and holds the cleanup after the checkpoint at 6 to exactly the seven files `dlc` lacks, and pins
+  the run rule, including the same-version break, on times it chooses. The panel and the summary
+  plan the **next** checkpoint's run (`nextCheckpointVersion`, the next multiple of
+  `delta.checkpointInterval`)
+- The three ride `TableNode.maintenance` as `DeltaMaintenanceInput`, the model itself, and
+  `maintenanceSummary` gives Delta its own three lines in place of the orphan one — `VACUUM` from
+  a plan the caller ran (`vacuumPlan`), `not walked` until then. The table panel draws `Optimize`,
+  `Log Cleanup` and `Vacuum` under `Maintenance`, the last behind a listing; the sections read the
+  panel clock **once** (`LocalExpiryClock` answers the current time on every call, and a plan
+  keyed on it would be planned again every frame)
+- Not yet read (the `TODO.md` Delta section): row tracking shown on rows (`drt`), UniForm
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

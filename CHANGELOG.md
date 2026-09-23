@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Delta's VACUUM, OPTIMIZE and log cleanup, planned.** The table panel's `Vacuum` lists the table
+  directory and says what a bare `VACUUM` deletes and why each file stays or goes — a live add, a
+  tombstone within the retention, a vector, or nothing — with `RETAIN 0 HOURS` and its refusal
+  beside it; `Optimize` shows the bins compaction would rewrite; `Log Cleanup` says what the next
+  checkpoint's cleanup deletes from `_delta_log/`. The maintenance summary and `icelens plan`
+  carry the three lines. Each is held to a run: `dvac`'s VACUUM and OPTIMIZE and `dlc`'s cleanup.
 - **Delta's change data feed and a row's history across versions.** Under
   `delta.enableChangeDataFeed` the table panel's lookup has a `Change Data Feed` stage: each
   version's records for the filter, read from the cdc files a rewrite wrote or from the file

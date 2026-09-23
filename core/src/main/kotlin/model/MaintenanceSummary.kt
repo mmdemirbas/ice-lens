@@ -26,6 +26,7 @@ fun maintenanceSummary(
     nowMs: Long,
     orphanReport: UnreferencedFilesReport? = null,
     unexistingPlan: PaimonUnexistingFilesPlan? = null,
+    vacuumPlan: DeltaVacuumPlan? = null,
 ): List<MaintenanceLine> {
     val summary = node.summary
     val rows = mutableListOf<MaintenanceLine>()
@@ -276,15 +277,74 @@ fun maintenanceSummary(
             else -> MaintenanceLine("nothing on a call", "remove_unexisting_files", "${formatCounted(unexistingPlan.rows.size, "missing file")}, none a data file the latest snapshot's batch scan opens", "table → Missing Files", MaintenanceTone.PLAIN)
         }
     }
+    if (input is DeltaMaintenanceInput) {
+        rows += deltaMaintenanceLines(input.model, nowMs, vacuumPlan)
+        return rows
+    }
     if (node.unreferencedFiles.isPresent) {
         val orphans = orphanReport?.let { planOrphanRemoval(it, nowMs) }
-        val procedure = orphans?.procedure ?: if (summary.delta != null) "VACUUM" else "remove_orphan_files"
+        val procedure = orphans?.procedure ?: "remove_orphan_files"
         rows += when {
             orphans == null -> MaintenanceLine("not walked", procedure, "walk the table directory under Unreferenced Files to plan it", "table → Unreferenced Files", MaintenanceTone.PLAIN)
-            orphans.rows.isEmpty() -> MaintenanceLine("nothing to delete", procedure, "every file on disk is named by the metadata the procedure reads" + if (summary.delta != null) " — the files only an expired tombstone names are not planned yet" else "", "table → Unreferenced Files", MaintenanceTone.PLAIN)
+            orphans.rows.isEmpty() -> MaintenanceLine("nothing to delete", procedure, "every file on disk is named by the metadata the procedure reads", "table → Unreferenced Files", MaintenanceTone.PLAIN)
             orphans.removed.isEmpty() -> MaintenanceLine("nothing on a bare call", procedure, "${formatCounted(orphans.rows.size, "file")} named by nothing: ${orphans.tooYoung} younger than ${orphans.defaultIntervalText}, ${orphans.unlisted} where it never lists", "table → Unreferenced Files", MaintenanceTone.PLAIN)
             else -> MaintenanceLine("would delete ${formatCounted(orphans.removed.size, "file")}", procedure, "${formatBytes(orphans.removedBytes)}, older than ${orphans.defaultIntervalText}; ${orphans.tooYoung} younger held back, ${orphans.unlisted} never listed", "table → Unreferenced Files", MaintenanceTone.ACTS)
         }
+    }
+    return rows
+}
+
+/**
+ * Delta's three: `OPTIMIZE` and the log cleanup from the log alone, `VACUUM` from [vacuumPlan] —
+ * a listing of the table directory, run by a caller and said to be missing until then.
+ */
+private fun deltaMaintenanceLines(model: DeltaUnifiedTableModel, nowMs: Long, vacuumPlan: DeltaVacuumPlan?): List<MaintenanceLine> {
+    val rows = mutableListOf<MaintenanceLine>()
+    rows += model.planOptimize().fold(
+        onSuccess = { plan ->
+            when {
+                plan.clustered -> MaintenanceLine("not planned", "OPTIMIZE", "a CLUSTER BY table's OPTIMIZE clusters every file, which is not planned here", "table → Optimize", MaintenanceTone.PLAIN)
+                plan.commits -> MaintenanceLine(
+                    "would rewrite ${formatCounted(plan.removed.size, "file")} into ${plan.filesAdded}", "OPTIMIZE",
+                    "${formatBytes(plan.removedBytes)} in ${formatCounted(plan.filesAdded, "bin")}" + (if (plan.leftAlone.isNotEmpty()) "; ${formatCounted(plan.leftAlone.size, "candidate")} alone in a bin, left" else ""),
+                    "table → Optimize", MaintenanceTone.ACTS,
+                )
+                plan.leftAlone.isNotEmpty() -> MaintenanceLine("left alone", "OPTIMIZE", "${formatCounted(plan.leftAlone.size, "candidate")} alone in a bin — a bin of one file is not rewritten", "table → Optimize", MaintenanceTone.PLAIN)
+                else -> MaintenanceLine("nothing to do", "OPTIMIZE", "no live file under optimize.minFileSize (${formatBytes(plan.options.minFileSize)}) or past the deleted-rows ratio", "table → Optimize", MaintenanceTone.PLAIN)
+            }
+        },
+        onFailure = { MaintenanceLine("not planned", "OPTIMIZE", it.message ?: "the latest version could not be rebuilt", "table → Optimize", MaintenanceTone.PLAIN) },
+    )
+    val next = model.nextCheckpointVersion()
+    rows += when {
+        next == null -> MaintenanceLine("not planned", "log cleanup", "the log holds no version", "table → Log Cleanup", MaintenanceTone.PLAIN)
+        else -> model.planLogCleanup(nowMs, next).fold(
+            onSuccess = { plan ->
+                when {
+                    !plan.enabled -> MaintenanceLine("switched off", "log cleanup", "delta.enableExpiredLogCleanup = false: commits and checkpoints stay until removed by hand", "table → Log Cleanup", MaintenanceTone.PLAIN)
+                    plan.deleted.isNotEmpty() -> MaintenanceLine(
+                        "next checkpoint deletes ${formatCounted(plan.deleted.size, "log file")}", "log cleanup",
+                        "the checkpoint at version $next, cutoff ${java.time.Instant.ofEpochMilli(plan.cutoffMs)}; version ${plan.earliestReadableAfter} the earliest readable after",
+                        "table → Log Cleanup", MaintenanceTone.ACTS,
+                    )
+                    else -> MaintenanceLine("nothing past retention", "log cleanup", "the checkpoint at version $next finds no commit or checkpoint below it older than ${formatRetention(plan.retentionMs)}, to the UTC midnight before", "table → Log Cleanup", MaintenanceTone.PLAIN)
+                }
+            },
+            onFailure = { MaintenanceLine("not planned", "log cleanup", it.message ?: "unknown error", "table → Log Cleanup", MaintenanceTone.PLAIN) },
+        )
+    }
+    rows += when {
+        vacuumPlan == null -> MaintenanceLine("not walked", "VACUUM", "list the table directory under Vacuum to plan it", "table → Vacuum", MaintenanceTone.PLAIN)
+        vacuumPlan.toDelete.isEmpty() -> MaintenanceLine(
+            "nothing to delete", "VACUUM",
+            "${formatCounted(vacuumPlan.kept, "file")} kept by the state" + (if (vacuumPlan.tooYoung > 0) "; ${vacuumPlan.tooYoung} kept by nothing, younger than ${formatRetention(vacuumPlan.tableRetentionMs)}" else ""),
+            "table → Vacuum", MaintenanceTone.PLAIN,
+        )
+        else -> MaintenanceLine(
+            "would delete ${formatCounted(vacuumPlan.toDelete.size, "file")}", "VACUUM",
+            "${formatBytes(vacuumPlan.sizeOfDataToDelete)}, older than ${formatRetention(vacuumPlan.tableRetentionMs)} and kept by nothing" + (if (vacuumPlan.tooYoung > 0) "; ${vacuumPlan.tooYoung} younger held back" else ""),
+            "table → Vacuum", MaintenanceTone.ACTS,
+        )
     }
     return rows
 }

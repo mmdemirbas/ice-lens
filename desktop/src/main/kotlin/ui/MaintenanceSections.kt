@@ -386,12 +386,17 @@ internal fun ExpirySection(metadata: TableMetadata, nowMs: Long) {
  * [orphanReport] — what `Unreferenced Files` found, once its button has been pressed — and says
  * so until then, rather than starting the walk from a summary. Paimon's
  * `remove_unexisting_files` is the same shape over the stat `Missing Files` runs, carried in
- * [unexistingPlan].
+ * [unexistingPlan], and Delta's `VACUUM` over the listing `Vacuum` runs, in [vacuumPlan].
  */
 @Composable
-internal fun MaintenanceSection(node: GraphNode.TableNode, orphanReport: UnreferencedFilesReport? = null, unexistingPlan: PaimonUnexistingFilesPlan? = null) {
+internal fun MaintenanceSection(
+    node: GraphNode.TableNode,
+    orphanReport: UnreferencedFilesReport? = null,
+    unexistingPlan: PaimonUnexistingFilesPlan? = null,
+    vacuumPlan: model.DeltaVacuumPlan? = null,
+) {
     val colors = MaterialTheme.colorScheme
-    val rows = maintenanceSummary(node, expiryClock(), orphanReport, unexistingPlan)
+    val rows = maintenanceSummary(node, expiryClock(), orphanReport, unexistingPlan, vacuumPlan)
     if (rows.isEmpty()) return
     val acting = rows.count { it.tone != MaintenanceTone.PLAIN }
     Section("Maintenance" + if (acting > 0) " — $acting would act" else " — nothing to do") {

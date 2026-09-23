@@ -34,3 +34,10 @@ data class PaimonMaintenanceInput(
     /** The latest snapshot on main; null on a table that has none. */
     val current: GraphNode.PaimonSnapshotNode?,
 ) : MaintenanceInput
+
+/**
+ * Delta's planners read the log itself — the latest state for `OPTIMIZE` and `VACUUM`, the listing
+ * and `_last_checkpoint` for the log cleanup — so the input is the model, which the table node's
+ * other deferred reads already hold.
+ */
+data class DeltaMaintenanceInput(val model: DeltaUnifiedTableModel) : MaintenanceInput

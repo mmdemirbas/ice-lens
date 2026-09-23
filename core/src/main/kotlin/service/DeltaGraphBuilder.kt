@@ -42,6 +42,7 @@ object DeltaGraphBuilder {
             rowLookup = DeferredRead.of { tableModel.latestVersion?.let { tableModel.readInputAt(it) } },
             rowHistory = DeferredRead.of { tableModel.rowHistoryInputs() },
             deltaChangeFeed = if (current?.metadata?.changeDataFeedEnabled == true) DeferredRead.of { tableModel.deltaChangeFeedInputs() } else DeferredRead.none(),
+            maintenance = DeferredRead.of { DeltaMaintenanceInput(tableModel) },
         )
 
         var nextErrorId = 0

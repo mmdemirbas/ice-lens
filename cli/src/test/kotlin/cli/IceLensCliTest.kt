@@ -56,6 +56,7 @@ class IceLensCliTest {
     private val pbk = fixture("example/paimon/db.db/pbk")
     private val orph = fixture("example/iceberg/default/orph")
     private val pe = fixture("example/paimon/db.db/pe")
+    private val dvac = fixture("example/delta/dvac")
     private val pru = fixture("example/paimon/db.db/pru")
 
     private class Run(val code: Int, val out: String, val err: String)
@@ -292,6 +293,13 @@ class IceLensCliTest {
         assertTrue(icelens("plan", relative.toString(), "--at", at).out.lines().any { "remove_unexisting_files" in it && "would remove 2 entries" in it })
         // purge_files is the one Paimon line in the alert tone, marked `!` in the text.
         assertTrue(icelens("plan", pe, "--at", at).out.lines().any { it.startsWith("!") && "purge_files" in it })
+        // Delta's three: VACUUM over the listing the desktop runs behind a click, a week and a day past
+        // the files — dvaca's six — OPTIMIZE and the log cleanup from the log.
+        val dvacNewest = java.nio.file.Files.walk(Path.of(dvac)).use { s -> s.filter { java.nio.file.Files.isRegularFile(it) }.mapToLong { java.nio.file.Files.getLastModifiedTime(it).toMillis() }.max().asLong }
+        val deltaPlan = icelens("plan", dvac, "--at", (dvacNewest + 8L * 24 * 3_600_000).toString()).out.lines()
+        assertTrue(deltaPlan.any { it.startsWith("*") && "VACUUM" in it && "would delete 6 files" in it }, deltaPlan.joinToString("\n"))
+        assertTrue(deltaPlan.any { "OPTIMIZE" in it && "left alone" in it }, deltaPlan.joinToString("\n"))
+        assertTrue(deltaPlan.any { "log cleanup" in it }, deltaPlan.joinToString("\n"))
         val bad = icelens("plan", mor, "--at", "yesterday")
         assertEquals(2, bad.code)
         assertTrue("--at takes epoch milliseconds" in bad.err)

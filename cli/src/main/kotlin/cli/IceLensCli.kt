@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import model.DeltaMaintenanceInput
 import model.DeltaUnifiedTableModel
 import model.FormatTableModel
 import model.GraphModel
@@ -22,6 +23,7 @@ import model.MaintenanceTone
 import model.maintenanceSummary
 import model.formatCounted
 import model.planUnexistingFiles
+import model.planVacuum
 import model.PaimonReadInput
 import model.PaimonUnifiedTableModel
 import model.RowLookupInput
@@ -343,9 +345,10 @@ object IceLensCli {
      */
     /**
      * The table panel's `Maintenance` section as a table: [maintenanceSummary] at [nowMs], with the
-     * two lines the desktop plans only behind a click — `remove_orphan_files` over the directory
-     * walk, `remove_unexisting_files` over the stat of every needed file — run here, since a
-     * command asked has nothing to click. Informational: the exit code is 0 whatever it says.
+     * lines the desktop plans only behind a click — `remove_orphan_files` over the directory walk,
+     * `remove_unexisting_files` over the stat of every needed file, Delta's `VACUUM` over its
+     * listing — run here, since a command asked has nothing to click. Informational: the exit
+     * code is 0 whatever it says.
      */
     private fun plan(parsed: Parsed, out: PrintStream, err: PrintStream): Int {
         parsed.allow("at", "json") ?: return usageError(err, "plan takes --at and --json")
@@ -360,7 +363,8 @@ object IceLensCli {
         val unexisting = if (node.missingFiles.isPresent && node.paimonRowLookup.isPresent) {
             node.missingFiles.value?.let { report -> node.paimonRowLookup.value?.let { planUnexistingFiles(report, it) } }
         } else null
-        val lines = maintenanceSummary(node, nowMs, orphans, unexisting)
+        val vacuum = (node.maintenance.value as? DeltaMaintenanceInput)?.model?.planVacuum(nowMs)?.getOrNull()
+        val lines = maintenanceSummary(node, nowMs, orphans, unexisting, vacuum)
         if (parsed.has("json")) {
             out.println(pretty(buildJsonObject {
                 put("table", model.name)

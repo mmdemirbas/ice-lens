@@ -2671,6 +2671,42 @@ class InspectorRenderTest {
     }
 
     /**
+     * Delta's three planners on `dvac` — the table `VACUUM` and `OPTIMIZE` ran against — with the
+     * clock eight days past its newest file, so the week's retention lets the tombstones and the
+     * engine's empty file go: `Vacuum` lists the six files `dvaca` lost and the one it kept,
+     * `Optimize` the one file left alone after the compaction, `Log Cleanup` the next checkpoint's
+     * run. `dopt`'s `Optimize` is the four-file bin the engine rewrote, and the maintenance summary
+     * carries all three lines once the listing has run.
+     */
+    @Test
+    fun `the Delta maintenance sections plan VACUUM, OPTIMIZE and the log cleanup`() {
+        val dvac = deltaGraphFor("dvac")
+        val table = dvac.nodes.filterIsInstance<GraphNode.TableNode>().single()
+        val delta = (table.maintenance.value as model.DeltaMaintenanceInput).model
+        val newest = java.nio.file.Files.walk(delta.path).use { s -> s.filter { java.nio.file.Files.isRegularFile(it) }.mapToLong { java.nio.file.Files.getLastModifiedTime(it).toMillis() }.max().asLong }
+        val clock = newest + 8L * 24 * 3_600_000
+        val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+        var planned: model.DeltaVacuumPlan? = null
+        renderUntil("delta-vacuum", width = 1400, height = 900, ready = settled::get) {
+            CompositionLocalProvider(LocalExpiryClock provides { clock }) {
+                Column(Modifier.padding(16.dp)) {
+                    DeltaVacuumSection(delta, startRequested = true) { planned = it; settled.set(true) }
+                }
+            }
+        }
+        assertEquals(6, planned!!.toDelete.size)
+        renderScene("delta-optimize-and-cleanup", width = 1400, height = 2200) {
+            CompositionLocalProvider(LocalExpiryClock provides { clock }) {
+                Column(Modifier.padding(16.dp)) {
+                    MaintenanceSection(table, vacuumPlan = planned)
+                    DeltaOptimizeSection((deltaGraphFor("dopt").nodes.filterIsInstance<GraphNode.TableNode>().single().maintenance.value as model.DeltaMaintenanceInput).model)
+                    DeltaLogCleanupSection(delta)
+                }
+            }
+        }
+    }
+
+    /**
      * The converse walk: what the retained snapshots need that is not there — captured on a copy
      * of `mor` with a live data file and the oldest manifest list deleted, each listed with the
      * snapshots that read it, and once against the table as checked in for the sentence a whole

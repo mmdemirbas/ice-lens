@@ -55,8 +55,8 @@ data class OrphanRemovalPlan(
     val unlisted: Int get() = rows.count { it.fate == OrphanFate.UNLISTED }
 
     /**
-     * The call this plans. On Delta it is VACUUM's half about files no action names; the other
-     * half — files only a tombstone past the retention names — is not planned here.
+     * The call this plans. On Delta it is VACUUM's half about files no action names; the whole
+     * call, tombstones past the retention included, is [DeltaVacuumPlan].
      */
     val procedure: String
         get() = if (format == TableFormat.DELTA) "VACUUM" else "remove_orphan_files"
@@ -79,7 +79,7 @@ val PAIMON_ORPHAN_INTERVAL_MS: Long = TimeUnit.DAYS.toMillis(1)
 /**
  * VACUUM's default retention, `delta.deletedFileRetentionDuration = interval 1 week`. VACUUM is
  * not only an orphan sweep — it also deletes files a tombstone past the retention names — so on
- * Delta this plan answers only for the files no retained action names.
+ * Delta this plan answers only for the files no retained action names; [planVacuum] plans the call.
  */
 val DELTA_VACUUM_RETENTION_MS: Long = TimeUnit.DAYS.toMillis(7)
 

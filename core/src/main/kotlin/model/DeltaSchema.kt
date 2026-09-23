@@ -70,6 +70,43 @@ data class DeltaMetadata(
     val columnMappingMode: String get() = configuration["delta.columnMapping.mode"] ?: "none"
     /** `delta.enableChangeDataFeed` — a commit that rewrites rows then writes its changes as cdc files. */
     val changeDataFeedEnabled: Boolean get() = configuration["delta.enableChangeDataFeed"].equals("true", ignoreCase = true)
+
+    /**
+     * `delta.deletedFileRetentionDuration`, default `interval 1 week`: how long a tombstone keeps
+     * its file from `VACUUM`, and how long the state holds the tombstone at all. Null where the
+     * value is one Delta refuses (a month or a year, or not an interval).
+     */
+    val tombstoneRetentionMs: Long? get() = deltaIntervalMs(configuration["delta.deletedFileRetentionDuration"] ?: "interval 1 week")
+
+    /** `delta.logRetentionDuration`, default `interval 30 days`: how long a commit file outlives a checkpoint above it. */
+    val logRetentionMs: Long? get() = deltaIntervalMs(configuration["delta.logRetentionDuration"] ?: "interval 30 days")
+}
+
+/**
+ * A Delta interval property in milliseconds, the way `DeltaConfigs.parseCalendarInterval` and
+ * `getMilliSeconds` read it at 3.2.1: an optional `interval` and any number of `<n> <unit>` pairs,
+ * summed — `interval 1 week`, `2 days 12 hours`. A month or a year is refused
+ * (`isValidIntervalConfigValue`, since neither has a fixed length), as is a negative total and
+ * anything else: null.
+ */
+fun deltaIntervalMs(text: String): Long? {
+    val words = text.trim().lowercase().removePrefix("interval").trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    if (words.isEmpty() || words.size % 2 != 0) return null
+    var micros = 0L
+    for ((n, unit) in words.chunked(2).map { it[0] to it[1].removeSuffix("s") }) {
+        val value = n.toLongOrNull() ?: return null
+        micros += value * when (unit) {
+            "week" -> 7 * 86_400_000_000L
+            "day" -> 86_400_000_000L
+            "hour" -> 3_600_000_000L
+            "minute" -> 60_000_000L
+            "second" -> 1_000_000L
+            "millisecond" -> 1_000L
+            "microsecond" -> 1L
+            else -> return null
+        }
+    }
+    return if (micros < 0) null else micros / 1000
 }
 
 @Serializable
