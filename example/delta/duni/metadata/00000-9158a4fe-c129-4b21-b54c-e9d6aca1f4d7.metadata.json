@@ -1,0 +1,81 @@
+{
+  "format-version" : 1,
+  "table-uuid" : "eb14469d-8f6b-4155-9771-995d9b8257df",
+  "location" : "file:/wh/duni",
+  "last-updated-ms" : 1790188974085,
+  "last-column-id" : 3,
+  "schema" : {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "v",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "p",
+      "required" : false,
+      "type" : "string"
+    } ]
+  },
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "v",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "p",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "partition-spec" : [ {
+    "name" : "p",
+    "transform" : "identity",
+    "source-id" : 3,
+    "field-id" : 1000
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ {
+      "name" : "p",
+      "transform" : "identity",
+      "source-id" : 3,
+      "field-id" : 1000
+    } ]
+  } ],
+  "last-partition-id" : 1000,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "schema.name-mapping.default" : "[ {\n  \"field-id\" : 1,\n  \"names\" : [ \"id\" ]\n}, {\n  \"field-id\" : 2,\n  \"names\" : [ \"v\" ]\n}, {\n  \"field-id\" : 3,\n  \"names\" : [ \"p\" ]\n} ]",
+    "delta-timestamp" : "1790188968136",
+    "delta-version" : "-1"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ ]
+}

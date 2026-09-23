@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **UniForm.** A Delta table writing Iceberg metadata beside its log has it read as the Iceberg
+  table it is and checked against the log: the Delta version the newest metadata converted
+  against the latest, and its current snapshot's files against the Delta state at that version.
+  Its files no longer read as orphans. The fixture `duni` is written by delta-iceberg 3.2.1.
 - **Delta row tracking on rows.** A sampled row of a row-tracked table carries `_row_id` and
   `_row_commit_version` — the materialised column where a rewrite kept the row's own id, else the
   file's base plus its position — and each commit's `rowIdHighWaterMark` is checked against the

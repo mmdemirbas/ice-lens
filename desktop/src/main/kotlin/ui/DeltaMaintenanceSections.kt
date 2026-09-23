@@ -292,3 +292,56 @@ private fun VacuumPlanBody(plan: DeltaVacuumPlan, retainZero: DeltaVacuumPlan?) 
         Text("…and ${formatCounted(plan.rows.size - rows.size, "more")}.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
     }
 }
+
+/**
+ * UniForm's Iceberg metadata against the log — see [model.DeltaUniFormCheck]. It reads the
+ * Iceberg metadata tree whole, so it sits behind a click, the Paimon export's shape; the verdict
+ * leads, then the files only one side lists, the ones a reader of the other format would miss or
+ * find extra.
+ */
+@Composable
+internal fun DeltaUniFormSection(node: model.GraphNode.TableNode, startRequested: Boolean = false) {
+    val colors = MaterialTheme.colorScheme
+    if (!node.deltaUniForm.isPresent) return
+    var requested by remember(node.id) { mutableStateOf(startRequested || node.deltaUniForm.isRead) }
+    val outcome by produceState<Result<model.DeltaUniFormCheck>?>(null, node.id, requested) {
+        value = null
+        if (requested) value = withContext(Dispatchers.IO) { runCatching { requireNotNull(node.deltaUniForm.value) { "no check" } } }
+    }
+    val check = outcome?.getOrNull()
+    Section("UniForm" + (check?.let { if (it.filesAgree && !it.behind) " — the same files" else if (it.filesAgree) " — behind" else " — DIFFERS" } ?: "")) {
+        Text(
+            "Under delta.universalFormat.enabledFormats = iceberg every commit is converted into Iceberg metadata under " +
+                "metadata/, naming the same Parquet files, and each metadata version records the Delta version it " +
+                "converted as delta-version. Checked here: that version against the latest, and the Iceberg current " +
+                "snapshot's files against the Delta state at it.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        when {
+            !requested -> OutlinedButton(onClick = { requested = true }) { Text("Read the Iceberg metadata") }
+            outcome == null -> Text("Reading the Iceberg metadata…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+            check == null -> Text("Not read: ${outcome?.exceptionOrNull()?.message}", fontSize = TypeScale.small, color = colors.error)
+            else -> {
+                Text(
+                    check.describe().replaceFirstChar { it.uppercase() } + ".",
+                    fontSize = TypeScale.small,
+                    fontWeight = FontWeight.Bold,
+                    color = if (check.exportPresent && check.readError == null && check.exportedVersion != null && !check.filesAgree) colors.error else colors.onSurface,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                check.metadataFile?.let { DetailTable { DetailRow("Newest Metadata", it); DetailRow("Iceberg Snapshot", check.icebergSnapshotId?.toString() ?: "none") } }
+                val rows = check.missingFromIceberg.map { "only in Delta" to it } + check.extraInIceberg.map { "only in Iceberg" to it }
+                if (rows.isNotEmpty()) {
+                    WideTable(
+                        headers = listOf("Side", "File"),
+                        rows = rows.take(MAX_DELTA_PLAN_ROWS).map { (side, p) -> listOf(side, runCatching { java.nio.file.Paths.get(node.summary.tablePath).toAbsolutePath().normalize().relativize(p).toString() }.getOrNull() ?: p.toString()) },
+                        columnWidths = listOf(150.dp, 600.dp),
+                        leadCellColors = rows.take(MAX_DELTA_PLAN_ROWS).map { colors.error },
+                    )
+                }
+            }
+        }
+    }
+}

@@ -127,7 +127,8 @@ they do on Iceberg, since a Delta vector is an Iceberg v3 vector byte for byte; 
 tables in `name` and `id` mode read the same way. A row's history walks every version the log can
 rebuild, and under `delta.enableChangeDataFeed` the change data feed is read per version as
 `table_changes` returns it. VACUUM, OPTIMIZE and the log cleanup a checkpoint runs are planned
-the way delta-spark 3.2.1 decides them, file by file with the reason.
+the way delta-spark 3.2.1 decides them, file by file with the reason. A UniForm table's Iceberg
+metadata is read and checked against the Delta version it records.
 
 Paimon has no Iceberg-style positional or equality delete files; removals are `_KIND=1`
 manifest entries, reported as *entries recording a removal* rather than as delete files, and

@@ -113,7 +113,7 @@ object GraphTree {
     fun hasDeferredDetails(node: GraphNode): Boolean =
         node is GraphNode.FileNode || node is GraphNode.PaimonDataFileNode ||
             (node is GraphNode.RowNode && node.readAs.isPresent) ||
-            (node is GraphNode.TableNode && (node.missingFiles.isPresent || node.icebergExport.isPresent)) ||
+            (node is GraphNode.TableNode && (node.missingFiles.isPresent || node.icebergExport.isPresent || node.deltaUniForm.isPresent)) ||
             (node is GraphNode.SnapshotNode && node.canDiff) ||
             (node is GraphNode.PaimonSnapshotNode && node.readInput.isPresent)
 
@@ -150,6 +150,7 @@ object GraphTree {
             is GraphNode.TableNode -> return listOfNotNull(
                 if (node.missingFiles.isPresent) MISSING_FILES to (node.missingFiles.value?.let { missingFilesLine(it, node) } ?: "could not be read") else null,
                 if (node.icebergExport.isPresent) ICEBERG_EXPORT to (node.icebergExport.value?.describe ?: "could not be read") else null,
+                if (node.deltaUniForm.isPresent) ICEBERG_EXPORT to (node.deltaUniForm.value?.describe() ?: "could not be read") else null,
             )
             else -> return emptyList()
         }

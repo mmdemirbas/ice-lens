@@ -2704,6 +2704,11 @@ class InspectorRenderTest {
                 }
             }
         }
+        // UniForm on `duni`: the export at the latest version, naming the log's three files.
+        val duni = deltaGraphFor("duni").nodes.filterIsInstance<GraphNode.TableNode>().single()
+        renderUntil("delta-uniform", width = 1400, height = 520, ready = { duni.deltaUniForm.isRead }) {
+            Column(Modifier.padding(16.dp)) { DeltaUniFormSection(duni, startRequested = true) }
+        }
     }
 
     /**

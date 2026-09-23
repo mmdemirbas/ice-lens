@@ -199,6 +199,9 @@ private fun deltaReferencedFiles(model: DeltaUnifiedTableModel): List<Path> {
     }
     log.compactions.forEach { paths.add(it.path) }
     log.lastCheckpoint?.let { paths.add(it) }
+    // UniForm's Iceberg metadata under `metadata/` names its own manifest lists and manifests;
+    // the data files it lists are the log's (`duni`).
+    model.icebergExport?.let(::icebergReferencedFiles)?.forEach { paths.add(it) }
     val actions = model.commits.flatMap { it.actions } + model.checkpoints.flatMap { model.checkpointRead(it)?.allActions.orEmpty() }
     for (a in actions) {
         val recorded = a.add?.path ?: a.remove?.path ?: a.cdc?.path ?: continue

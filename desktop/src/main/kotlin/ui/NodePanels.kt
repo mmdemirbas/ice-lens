@@ -256,6 +256,7 @@ internal fun ColumnScope.TablePanel(
         MissingFilesSection(node, onPlanned = { unexistingPlan = it })
         RewriteTablePathSection(node)
         IcebergExportSection(node)
+        DeltaUniFormSection(node)
 
         // Folded, and out of the identity table above, because none of the three
         // is identity and together they were the largest thing on the panel: each

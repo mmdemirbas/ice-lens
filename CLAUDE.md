@@ -123,6 +123,7 @@ core/src/main/kotlin/
 │   ├── DeltaChecks.kt         # operationMetrics against the commit's actions, a checkpoint against the replay, _last_checkpoint against its checkpoint
 │   ├── DeltaRead.kt           # A version as a RowLookupInput — the Iceberg read path over the log's adds, vectors and partition values — and the row history's inputs
 │   ├── DeltaChangeFeed.kt     # What the change data feed publishes per version — its cdc files, or its file actions and vectors — as CDCReader.changesToDF builds it
+│   ├── DeltaUniForm.kt        # UniForm's Iceberg metadata under metadata/, read as an Iceberg table, against the Delta version its delta-version names
 │   ├── DeltaRowTracking.kt    # A row's _row_id and _row_commit_version — the materialised column, else the file's base plus its position — and rowIdHighWaterMark against the ids handed out
 │   ├── DeltaVacuumPlan.kt     # What VACUUM deletes — the table directory listed as VacuumCommand.gc lists it, against the state's adds, the tombstones within the retention and their vectors
 │   ├── DeltaOptimizePlan.kt   # What OPTIMIZE rewrites — the candidates by size and deleted-rows ratio, packed per partition smallest first, a bin of one left alone
@@ -3171,7 +3172,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,522 tests across 214 files (1,222 in :core, 290 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,525 tests across 215 files (1,225 in :core, 290 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3352,6 +3353,7 @@ container invocation and the traps in it:
 | `delta/dmp`, `dv2` | `DeltaPhase3FixtureTest` | a multi-part checkpoint (`checkpoint.partSize = 2`); V2 checkpoints with sidecars (`delta.checkpointPolicy = v2`) and the `v2Checkpoint` block of `_last_checkpoint` |
 | `delta/dlc`, `dlcb` | `DeltaPhase3FixtureTest`, `DeltaLogCleanupPlanFixtureTest` | the log cleanup a checkpoint runs — commits 0–4 dated 2020, then two inserts: `dlc` keeps 5, 6 and the checkpoint at 6; `dlcb` is the copy before, the oracle for a cleanup plan |
 | `delta/drs` | `DeltaPhase3FixtureTest` | `RESTORE TABLE … TO VERSION AS OF 2` after a `DELETE`, and its six metrics |
+| `delta/duni` | `DeltaUniFormFixtureTest` | UniForm — name-mode column mapping and IcebergCompatV2, four commits converted to Iceberg metadata under `metadata/`, each version recording its `delta-version`; the script's rows as the oracle for both readers |
 | `delta/drt` | `DeltaRowTrackingFixtureTest` | `delta.enableRowTracking` and in-commit timestamps — `baseRowId`, `defaultRowCommitVersion`, the `rowIdHighWaterMark` domain, an `UPDATE`'s materialized row-id column |
 | `delta/dvac`, `dvaca`, `dopt` | `DeltaVacuumPlanFixtureTest`, `DeltaOptimizePlanFixtureTest` | five inserts and a whole-file `DELETE`; `dopt` copied before the `OPTIMIZE` that compacted four files into one, `dvaca` after a `VACUUM … RETAIN 0 HOURS` that deleted six, with its `VACUUM START` and `VACUUM END` commits |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
@@ -4259,7 +4261,26 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   it and the last id of each file the commit added (`deltaRowIdTallies`, beside the metric
   tallies): 2, 4, 7 on `drt`. `DeltaRowTrackingFixtureTest` holds every live row to Spark's
   printed row id and commit version, and plants a mark one short
-- Not yet read (the `TODO.md` Delta section): UniForm, in-commit timestamps' order
+- **UniForm is read as the Iceberg table it writes, and held to the log it was converted from**
+  (`model/DeltaUniForm.kt`). delta-iceberg 3.2.1 converts each commit into Iceberg metadata under
+  the table's `metadata/` — `<n>-<uuid>.metadata.json`, no version hint, format version 1, and the
+  log's own Parquet files — and records the Delta version each metadata version converted as its
+  `delta-version` **property**; no snapshot summary carries one. `DeltaUnifiedTableModel.icebergExport`
+  is that directory read by the Iceberg reader, the orphan walk counts its files as referenced (every
+  one was a false orphan before), `metadata` is a name VACUUM never lists, and `uniFormCheck` puts
+  the newest metadata's `delta-version` beside the latest version (**behind** is the conversion's
+  lag, said and not a finding) and its current snapshot's files beside the Delta state at that
+  version (a file on one side only is a finding under `UNIFORM`). The table panel's `UniForm`
+  section and the IDE's `Iceberg export` row carry it behind a read. `DeltaUniFormFixtureTest`
+  holds `duni` to the script's rows through both readers — the Iceberg one placing the
+  column-mapped files by field id — every metadata version to the files of its `delta-version`,
+  and a copy with the newest metadata deleted (behind) and one with its `delta-version` moved
+  (differs). Two things producing `duni` settled: **the converter commits through the Hive
+  metastore under a lock**, and spark-sql's embedded Derby has no transaction tables until Hive's
+  `TxnDbUtil.prepDb` creates them — the script runs it from a `spark-shell` first; and **the
+  Iceberg shaded into delta-iceberg 3.2.1 predates the no-lock commit** (`iceberg-core-c1872d0`, no
+  `NoLock`), so `iceberg.engine.hive.lock-enabled = false` changes nothing
+- Not yet read (the `TODO.md` Delta section): in-commit timestamps' order
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

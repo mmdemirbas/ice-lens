@@ -43,6 +43,9 @@ object DeltaGraphBuilder {
             rowHistory = DeferredRead.of { tableModel.rowHistoryInputs() },
             deltaChangeFeed = if (current?.metadata?.changeDataFeedEnabled == true) DeferredRead.of { tableModel.deltaChangeFeedInputs() } else DeferredRead.none(),
             maintenance = DeferredRead.of { DeltaMaintenanceInput(tableModel) },
+            deltaUniForm = if (current?.metadata?.icebergUniFormEnabled == true || tableModel.path.resolve("metadata").let { java.nio.file.Files.isDirectory(it) }) {
+                DeferredRead.of { tableModel.uniFormCheck() }
+            } else DeferredRead.none(),
         )
 
         var nextErrorId = 0

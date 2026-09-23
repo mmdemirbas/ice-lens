@@ -1,0 +1,320 @@
+spark.databricks.delta.uniform.iceberg.sync.convert.enabled	true
+1
+rows	1	a	x
+rows	3	c	x
+rows	4	d	y
+4	2026-09-23 18:42:58.332	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	3	Serializable	true	{"numFiles":"1","numOutputBytes":"1787","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+3	2026-09-23 18:42:57.968	NULL	NULL	DELETE	{"predicate":"["(id#1066 = 2)"]"}	NULL	NULL	NULL	2	Serializable	false	{"executionTimeMs":"2288","numAddedBytes":"0","numAddedChangeFiles":"0","numAddedFiles":"0","numCopiedRows":"0","numDeletedRows":"1","numDeletionVectorsAdded":"0","numDeletionVectorsRemoved":"0","numDeletionVectorsUpdated":"0","numRemovedBytes":"1787","numRemovedFiles":"1","rewriteTimeMs":"149","scanTimeMs":"2139"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+2	2026-09-23 18:42:55.395	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	1	Serializable	true	{"numFiles":"1","numOutputBytes":"1787","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+1	2026-09-23 18:42:54.883	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	0	Serializable	true	{"numFiles":"2","numOutputBytes":"3574","numOutputRows":"2"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+0	2026-09-23 18:42:48.136	NULL	NULL	CREATE TABLE	{"clusterBy":"[]","description":null,"isManaged":"true","partitionBy":"["p"]","properties":"{"delta.enableIcebergCompatV2":"true","delta.universalFormat.enabledFormats":"iceberg","delta.columnMapping.mode":"name","delta.columnMapping.maxColumnId":"3"}"}	NULL	NULL	NULL	NULL	Serializable	true	{}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+/wh/duni/_delta_log:
+total 40
+drwxr-xr-x 1 root root  416 Sep 23 18:42 .
+drwxr-xr-x 1 root root  192 Sep 23 18:42 ..
+-rw-r--r-- 1 root root 1691 Sep 23 18:42 00000000000000000000.json
+-rw-r--r-- 1 root root   24 Sep 23 18:42 .00000000000000000000.json.crc
+-rw-r--r-- 1 root root 1699 Sep 23 18:42 00000000000000000001.json
+-rw-r--r-- 1 root root   24 Sep 23 18:42 .00000000000000000001.json.crc
+-rw-r--r-- 1 root root 1034 Sep 23 18:42 00000000000000000002.json
+-rw-r--r-- 1 root root   20 Sep 23 18:42 .00000000000000000002.json.crc
+-rw-r--r-- 1 root root  956 Sep 23 18:42 00000000000000000003.json
+-rw-r--r-- 1 root root   16 Sep 23 18:42 .00000000000000000003.json.crc
+-rw-r--r-- 1 root root 1034 Sep 23 18:42 00000000000000000004.json
+-rw-r--r-- 1 root root   20 Sep 23 18:42 .00000000000000000004.json.crc
+drwxr-xr-x 1 root root   64 Sep 23 18:42 _commits
+
+/wh/duni/_delta_log/_commits:
+total 0
+drwxr-xr-x 1 root root  64 Sep 23 18:42 .
+drwxr-xr-x 1 root root 416 Sep 23 18:42 ..
+
+/wh/duni/metadata:
+total 136
+drwxr-xr-x 1 root root  960 Sep 23 18:42 .
+drwxr-xr-x 1 root root  192 Sep 23 18:42 ..
+-rw-r--r-- 1 root root 1821 Sep 23 18:42 00000-9158a4fe-c129-4b21-b54c-e9d6aca1f4d7.metadata.json
+-rw-r--r-- 1 root root   24 Sep 23 18:42 .00000-9158a4fe-c129-4b21-b54c-e9d6aca1f4d7.metadata.json.crc
+-rw-r--r-- 1 root root 1966 Sep 23 18:42 00001-b78b2e10-f1a9-4f28-9542-d6d34d4b88a6.metadata.json
+-rw-r--r-- 1 root root   24 Sep 23 18:42 .00001-b78b2e10-f1a9-4f28-9542-d6d34d4b88a6.metadata.json.crc
+-rw-r--r-- 1 root root 2917 Sep 23 18:42 00002-79568813-9070-4348-bfd6-812f5326b345.metadata.json
+-rw-r--r-- 1 root root   32 Sep 23 18:42 .00002-79568813-9070-4348-bfd6-812f5326b345.metadata.json.crc
+-rw-r--r-- 1 root root 3806 Sep 23 18:42 00003-625787ff-ba54-45c7-ba7f-85f413f84ab4.metadata.json
+-rw-r--r-- 1 root root   40 Sep 23 18:42 .00003-625787ff-ba54-45c7-ba7f-85f413f84ab4.metadata.json.crc
+-rw-r--r-- 1 root root 4702 Sep 23 18:42 00004-205fa6bb-54dc-410d-8d5a-2247d84bd1bd.metadata.json
+-rw-r--r-- 1 root root   48 Sep 23 18:42 .00004-205fa6bb-54dc-410d-8d5a-2247d84bd1bd.metadata.json.crc
+-rw-r--r-- 1 root root 5597 Sep 23 18:42 00005-4cc258e0-1b83-4cfc-8041-d537ed239d42.metadata.json
+-rw-r--r-- 1 root root   52 Sep 23 18:42 .00005-4cc258e0-1b83-4cfc-8041-d537ed239d42.metadata.json.crc
+-rw-r--r-- 1 root root 6012 Sep 23 18:42 90652139-bd9b-4923-b1c3-511308ab3473-m0.avro
+-rw-r--r-- 1 root root   56 Sep 23 18:42 .90652139-bd9b-4923-b1c3-511308ab3473-m0.avro.crc
+-rw-r--r-- 1 root root 6073 Sep 23 18:42 ca7d6fb4-807b-4006-944e-b7c4b7ce0045-m0.avro
+-rw-r--r-- 1 root root   56 Sep 23 18:42 .ca7d6fb4-807b-4006-944e-b7c4b7ce0045-m0.avro.crc
+-rw-r--r-- 1 root root 6057 Sep 23 18:42 cefa58a6-dcb3-4aaf-9381-652722f30627-m0.avro
+-rw-r--r-- 1 root root   56 Sep 23 18:42 .cefa58a6-dcb3-4aaf-9381-652722f30627-m0.avro.crc
+-rw-r--r-- 1 root root 6015 Sep 23 18:42 fff8b29f-78a9-45c1-8058-2a83393e5e86-m0.avro
+-rw-r--r-- 1 root root   56 Sep 23 18:42 .fff8b29f-78a9-45c1-8058-2a83393e5e86-m0.avro.crc
+-rw-r--r-- 1 root root 3742 Sep 23 18:42 snap-1888887400981618395-1-cefa58a6-dcb3-4aaf-9381-652722f30627.avro
+-rw-r--r-- 1 root root   40 Sep 23 18:42 .snap-1888887400981618395-1-cefa58a6-dcb3-4aaf-9381-652722f30627.avro.crc
+-rw-r--r-- 1 root root 3817 Sep 23 18:42 snap-235595292868532444-1-90652139-bd9b-4923-b1c3-511308ab3473.avro
+-rw-r--r-- 1 root root   40 Sep 23 18:42 .snap-235595292868532444-1-90652139-bd9b-4923-b1c3-511308ab3473.avro.crc
+-rw-r--r-- 1 root root 3875 Sep 23 18:42 snap-3824784290880034975-1-fff8b29f-78a9-45c1-8058-2a83393e5e86.avro
+-rw-r--r-- 1 root root   40 Sep 23 18:42 .snap-3824784290880034975-1-fff8b29f-78a9-45c1-8058-2a83393e5e86.avro.crc
+-rw-r--r-- 1 root root 3816 Sep 23 18:42 snap-764250087905493650-1-ca7d6fb4-807b-4006-944e-b7c4b7ce0045.avro
+-rw-r--r-- 1 root root   40 Sep 23 18:42 .snap-764250087905493650-1-ca7d6fb4-807b-4006-944e-b7c4b7ce0045.avro.crc
+{
+  "format-version" : 1,
+  "table-uuid" : "eb14469d-8f6b-4155-9771-995d9b8257df",
+  "location" : "file:/wh/duni",
+  "last-updated-ms" : 1790188974085,
+  "last-column-id" : 3,
+  "schema" : {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "v",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "p",
+      "required" : false,
+      "type" : "string"
+    } ]
+  },
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "v",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "p",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "partition-spec" : [ {
+    "name" : "p",
+    "transform" : "identity",
+    "source-id" : 3,
+    "field-id" : 1000
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ {
+      "name" : "p",
+      "transform" : "identity",
+      "source-id" : 3,
+      "field-id" : 1000
+    } ]
+  } ],
+  "last-partition-id" : 1000,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "schema.name-mapping.default" : "[ {\n  \"field-id\" : 1,\n  \"names\" : [ \"id\" ]\n}, {\n  \"field-id\" : 2,\n  \"names\" : [ \"v\" ]\n}, {\n  \"field-id\" : 3,\n  \"names\" : [ \"p\" ]\n} ]",
+    "delta-timestamp" : "1790188968136",
+    "delta-version" : "-1"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ ]
+}{
+  "format-version" : 1,
+  "table-uuid" : "eb14469d-8f6b-4155-9771-995d9b8257df",
+  "location" : "file:/wh/duni",
+  "last-updated-ms" : 1790188974265,
+  "last-column-id" : 3,
+  "schema" : {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "v",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "p",
+      "required" : false,
+      "type" : "string"
+    } ]
+  },
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "v",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "p",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "partition-spec" : [ {
+    "name" : "p",
+    "transform" : "identity",
+    "source-id" : 3,
+    "field-id" : 1000
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ {
+      "name" : "p",
+      "transform" : "identity",
+      "source-id" : 3,
+      "field-id" : 1000
+    } ]
+  } ],
+  "last-partition-id" : 1000,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "schema.name-mapping.default" : "[ {\n  \"field-id\" : 1,\n  \"names\" : [ \"id\" ]\n}, {\n  \"field-id\" : 2,\n  \"names\" : [ \"v\" ]\n}, {\n  \"field-id\" : 3,\n  \"names\" : [ \"p\" ]\n} ]",
+    "delta-timestamp" : "1790188968136",
+    "delta-version" : "0"
+  },
+  "current-snapshot-id" : -1,
+  "refs" : { },
+  "snapshots" : [ ],
+  "statistics" : [ ],
+  "snapshot-log" : [ ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1790188974085,
+    "metadata-file" : "file:/wh/duni/metadata/00000-9158a4fe-c129-4b21-b54c-e9d6aca1f4d7.metadata.json"
+  } ]
+}{
+  "format-version" : 1,
+  "table-uuid" : "eb14469d-8f6b-4155-9771-995d9b8257df",
+  "location" : "file:/wh/duni",
+  "last-updated-ms" : 1790188975211,
+  "last-column-id" : 3,
+  "schema" : {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "v",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "p",
+      "required" : false,
+      "type" : "string"
+    } ]
+  },
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "v",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "p",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "partition-spec" : [ {
+    "name" : "p",
+    "transform" : "identity",
+    "source-id" : 3,
+    "field-id" : 1000
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ {
+      "name" : "p",
+      "transform" : "identity",
+      "source-id" : 3,
+      "field-id" : 1000
+    } ]
+  } ],
+  "last-partition-id" : 1000,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "schema.name-mapping.default" : "[ {\n  \"field-id\" : 1,\n  \"names\" : [ \"id\" ]\n}, {\n  \"field-id\" : 2,\n  \"names\" : [ \"v\" ]\n}, {\n  \"field-id\" : 3,\n  \"names\" : [ \"p\" ]\n} ]",
+    "delta-timestamp" : "1790188974883",
+    "delta-version" : "1"
+  },
+  "current-snapshot-id" : 1888887400981618395,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 1888887400981618395,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "snapshot-id" : 1888887400981618395,
+    "timestamp-ms" : 1790188975173,
+    "summary" : {
+      "operation" : "append",
+      "added-data-files" : "2",
+      "added-records" : "2",
+      "added-files-size" : "3574",
+      "changed-partition-count" : "2",
+      "total-records" : "2",
+      "total-files-size" : "3574",
+      "total-data-files" : "2",
+ 

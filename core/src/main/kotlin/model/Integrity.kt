@@ -42,6 +42,8 @@ enum class IntegrityCheck(val label: String) {
     CHECKPOINTS("checkpoints"),
     /** A deletion vector's recorded cardinality and CRC against its bitmap, decoded. */
     DELETION_VECTORS("deletion vectors"),
+    /** UniForm's Iceberg current snapshot against the Delta version it converted — see [uniFormCheck]. */
+    UNIFORM("UniForm export"),
 }
 
 data class IntegrityFinding(
@@ -236,6 +238,17 @@ fun DeltaUnifiedTableModel.integrityReport(): IntegrityReport {
         t.count(IntegrityCheck.CHECKPOINTS, where, "metadata", "checkpoint's", if (check.metadataAgrees) "the same" else "another", check.metadataAgrees)
     }
     lastCheckpointTallies().forEach { t.count(IntegrityCheck.METADATA_FIGURES, "_last_checkpoint", it.label, it.recorded, it.counted, it.agrees) }
+    // UniForm: an export behind the log is the conversion's normal lag, not a disagreement; a
+    // file on one side only of the version it did convert is.
+    uniFormCheck()?.let { u ->
+        val where = "UniForm " + (u.metadataFile ?: "metadata/")
+        when {
+            !u.exportPresent -> t.count(IntegrityCheck.UNIFORM, where, "Iceberg metadata", "enabled", "none on disk", false)
+            u.readError != null -> errors++
+            u.exportedVersion == null -> t.count(IntegrityCheck.UNIFORM, where, "delta-version", "not recorded", "a version", false)
+            else -> t.count(IntegrityCheck.UNIFORM, where, "live files at version ${u.exportedVersion}", u.icebergFiles.size, u.deltaFiles.size, u.filesAgree)
+        }
+    }
     current?.files?.values?.forEach { add ->
         val vector = add.deletionVector ?: return@forEach
         val decoded = service.DeltaGraphBuilder.readDeletionVector(this, vector)

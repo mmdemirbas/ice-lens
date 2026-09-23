@@ -27,7 +27,8 @@ Neither is worth doing before the plugin has a reason to read a data file.
 Read: the log, checkpoints of every naming, the replay, file actions, deletion vectors, the
 integrity checks (commit metrics, checkpoint against replay, `_last_checkpoint`, vectors), column
 mapping in both modes, the change data feed, a row's history across versions, and the VACUUM,
-OPTIMIZE and log-cleanup planners with their maintenance lines, row tracking on rows.
+OPTIMIZE and log-cleanup planners with their maintenance lines, row tracking on rows, UniForm's
+Iceberg metadata against the log.
 
 - **In-commit timestamps' order**: the protocol requires each commit's `inCommitTimestamp` to be
   above the previous one's, from `delta.inCommitTimestampEnablementVersion` on. The timestamps are
@@ -35,7 +36,6 @@ OPTIMIZE and log-cleanup planners with their maintenance lines, row tracking on 
 - **Inline deletion vectors** are decoded on the file panel but the lookup cannot read one — it
   has no file — and leaves the row undecided. delta-spark 3.2.1 does not write them, so a fixture
   needs another writer.
-- **UniForm**: needs `delta-iceberg_2.12-3.2.1.jar`, not in lakelab's cache.
 - **OPTIMIZE with ZORDER BY and liquid clustering** take every file and are not planned; the
   `delta.clustering` domain is only noticed. Needs a clustered fixture.
 

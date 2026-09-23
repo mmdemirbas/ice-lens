@@ -187,6 +187,9 @@ class DeltaUnifiedTableModel(
     /** The table as it stands; null where even the latest version cannot be rebuilt. */
     val current: DeltaState? by lazy { latestVersion?.let { stateAt(it).getOrNull() } }
 
+    /** UniForm's Iceberg metadata under `metadata/`, read as an Iceberg table; null where there is none — see `DeltaUniForm.kt`. */
+    val icebergExport: UnifiedTableModel? by lazy { readDeltaIcebergExport(path) }
+
     /** A data file's path as the log records it, resolved against the table — see [resolveDeltaPath]. */
     fun resolve(recorded: String): Path = resolveDeltaPath(path, recorded)
 
