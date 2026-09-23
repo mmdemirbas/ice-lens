@@ -1,8 +1,13 @@
 -- dcdfdv — the change data feed on a table with deletion vectors. A DELETE or an UPDATE marks
--- rows in a vector rather than rewriting the file, so what the feed publishes for the marked rows
--- is written as cdc files beside the new vector, and the metrics count those files among the bytes
--- an UPDATE removed (UpdateCommand at 3.2.1 splits its new actions into AddFile and the rest). A
--- MERGE under vectors marks the matched rows the same way.
+-- rows in a vector rather than rewriting the file. The DELETE writes no cdc file — its commit is
+-- the file removed and re-added under the new vector, and the feed reads the newly marked rows as
+-- deletes. The UPDATE and the MERGE write cdc files beside their vectors (one and two), and the
+-- metrics count the UPDATE's among the bytes it removed (UpdateCommand at 3.2.1 splits its new
+-- actions into AddFile and the rest).
+--
+--   v2  DELETE     remove + add, no cdc
+--   v3  UPDATE     remove + 2 adds + 1 cdc
+--   v4  MERGE      2 removes + 3 adds + 2 cdc
 --
 --   v0  CREATE PARTITIONED BY (p), change data feed and deletion vectors on
 --   v1  INSERT (1, a, x) (2, b, x) (3, c, x) (4, d, y) (5, e, y)
