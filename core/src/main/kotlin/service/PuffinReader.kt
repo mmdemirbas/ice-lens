@@ -182,6 +182,11 @@ object PuffinReader {
             file.position(offset)
             file.readFully(length.toInt())
         }
+        return positionsOf(blob)
+    }
+
+    /** [readDeletionVectorPositions] over a blob already in hand — an inline Delta vector's, which has no file. */
+    internal fun positionsOf(blob: ByteArray): BitSet {
         val declared = ByteBuffer.wrap(blob).order(ByteOrder.BIG_ENDIAN).getInt()
         if (declared < 4 || 4 + declared + 4 > blob.size) {
             throw PuffinFormatException("the vector declares $declared bytes, which does not fit its ${blob.size}-byte blob")

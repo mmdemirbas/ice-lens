@@ -3,6 +3,12 @@
 #
 #   docs/fixtures/delta/run.sh dplain ddv      # one or more, by script name without .sql
 #
+# A line `--! <command>` in a script splits it: the SQL before it runs in one spark-sql, the
+# command runs in the container's shell, and the SQL after it in a fresh spark-sql. That is how a
+# table is copied on disk before a procedure runs on the original (`--! cp -R /wh/t /wh/tb`), and
+# how a log file is aged past a retention (`--! touch -d 2020-01-01 …`) — the two things SQL
+# cannot do and an oracle for a destructive procedure needs.
+#
 # Each script runs in its own spark-sql on apache/spark:3.5.4-java17 with the released
 # delta-spark_2.12-3.2.1 and delta-storage-3.2.1 jars from lakelab's cache, against a fresh
 # warehouse at /wh, so a table named t lands at /wh/t and is copied to example/delta/t.
@@ -20,27 +26,39 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 CACHE=~/code/spark-kit/lakelab/.cache
+SPARK_SQL="/opt/spark/bin/spark-sql --master 'local[1]' \
+  --jars /opt/delta-spark.jar,/opt/delta-storage.jar \
+  --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
+  --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
+  --conf spark.sql.warehouse.dir=/wh \
+  --conf spark.databricks.delta.retentionDurationCheck.enabled=false \
+  --conf spark.ui.enabled=false \
+  --conf spark.sql.session.timeZone=UTC"
 for name in "$@"; do
   wh=$(mktemp -d)
+  fx=$(mktemp -d)
   script=docs/fixtures/delta/$name.sql
+  # The driver: one spark-sql per SQL phase, the --! lines between them as they are.
+  {
+    echo "set -e; cd /tmp"
+    echo "sql() { $SPARK_SQL -f \"\$1\" 2>>/tmp/err.log || { tail -40 /tmp/err.log >&2; exit 1; }; }"
+  } > "$fx/driver.sh"
+  awk -v dir="$fx" '
+    function phase() { n++; f = dir "/phase-" n ".sql"; printf "" > f; print "sql /fx/phase-" n ".sql" >> (dir "/driver.sh") }
+    BEGIN { phase() }
+    /^--! / { sub(/^--! /, ""); print >> (dir "/driver.sh"); split_next = 1; next }
+    { if (split_next) { phase(); split_next = 0 } print >> f }
+  ' "$script"
   docker run --rm --entrypoint bash --user 0 \
     -v "$wh:/wh" \
+    -v "$fx:/fx:ro" \
     -v "$CACHE/delta-spark_2.12-3.2.1.jar:/opt/delta-spark.jar:ro" \
     -v "$CACHE/delta-storage-3.2.1.jar:/opt/delta-storage.jar:ro" \
-    -v "$PWD/$script:/tmp/script.sql:ro" \
     apache/spark:3.5.4-java17 \
-    -c "cd /tmp && /opt/spark/bin/spark-sql --master 'local[1]' \
-          --jars /opt/delta-spark.jar,/opt/delta-storage.jar \
-          --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
-          --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
-          --conf spark.sql.warehouse.dir=/wh \
-          --conf spark.databricks.delta.retentionDurationCheck.enabled=false \
-          --conf spark.ui.enabled=false \
-          --conf spark.sql.session.timeZone=UTC \
-          -f /tmp/script.sql 2>/tmp/err.log || { tail -40 /tmp/err.log >&2; exit 1; }" \
+    -c "bash /fx/driver.sh" \
     > "docs/fixtures/delta/$name.out"
   for t in $(ls "$wh"); do
     rm -rf "example/delta/$t" && mkdir -p example/delta && cp -R "$wh/$t" "example/delta/$t"
   done
-  rm -rf "$wh"
+  rm -rf "$wh" "$fx"
 done

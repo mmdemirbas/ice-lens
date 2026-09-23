@@ -1,0 +1,32 @@
+1
+file:/wh/dvac	{"numFilesAdded":1,"numFilesRemoved":4,"filesAdded":{"min":678,"max":678,"avg":678.0,"totalFiles":1,"totalSize":678},"filesRemoved":{"min":657,"max":657,"avg":657.0,"totalFiles":4,"totalSize":2628},"partitionsOptimized":1,"zOrderStats":null,"clusteringStats":null,"numBatches":1,"totalConsideredFiles":4,"totalFilesSkipped":0,"preserveInsertionOrder":false,"numFilesSkippedToReduceWriteAmplification":0,"numBytesSkippedToReduceWriteAmplification":0,"startTimeMs":1790172285360,"endTimeMs":0,"totalClusterParallelism":1,"totalScheduledTasks":0,"autoCompactParallelismStats":null,"deletionVectorStats":null,"numTableColumns":2,"numTableColumnsWithStats":2}
+file:/wh/dvaca/part-00000-4b63b733-900b-42d9-bfc1-18506d67e0d1-c000.snappy.parquet
+file:/wh/dvaca/part-00000-7a67d95c-74ad-4ec2-90f2-1f9064fd1791-c000.snappy.parquet
+file:/wh/dvaca/part-00000-65afe4b3-7d3c-44c4-bf26-b3c496d4599b-c000.snappy.parquet
+file:/wh/dvaca/part-00000-3c2fe5a3-8cc4-46ea-8934-f8a7d591bad5-c000.snappy.parquet
+file:/wh/dvaca/part-00000-c3f00691-1107-40a4-8f0d-6df8c8a066d7-c000.snappy.parquet
+file:/wh/dvaca/part-00000-6b842c34-a44d-4640-9e3f-a92048a91215-c000.snappy.parquet
+Deleted 6 files and directories in a total of 1 directories.
+file:/wh/dvaca
+rows	1	a
+rows	2	b
+rows	3	c
+rows	4	d
+7	2026-09-23 14:04:45.121	NULL	NULL	OPTIMIZE	{"auto":"false","clusterBy":"[]","predicate":"[]","zOrderBy":"[]"}	NULL	NULL	NULL	6	SnapshotIsolation	false	{"maxFileSize":"678","minFileSize":"678","numAddedBytes":"678","numAddedFiles":"1","numDeletionVectorsRemoved":"0","numRemovedBytes":"2628","numRemovedFiles":"4","p25FileSize":"678","p50FileSize":"678","p75FileSize":"678"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+6	2026-09-23 14:04:25.906	NULL	NULL	DELETE	{"predicate":"["(id#460 = 5)"]"}	NULL	NULL	NULL	5	Serializable	false	{"executionTimeMs":"6102","numAddedBytes":"0","numAddedChangeFiles":"0","numAddedFiles":"0","numCopiedRows":"0","numDeletedRows":"1","numDeletionVectorsAdded":"0","numDeletionVectorsRemoved":"0","numDeletionVectorsUpdated":"0","numRemovedBytes":"657","numRemovedFiles":"1","rewriteTimeMs":"214","scanTimeMs":"5887"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+5	2026-09-23 14:04:19.459	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	4	Serializable	true	{"numFiles":"1","numOutputBytes":"657","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+4	2026-09-23 14:04:18.963	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	3	Serializable	true	{"numFiles":"1","numOutputBytes":"657","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+3	2026-09-23 14:04:18.524	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	2	Serializable	true	{"numFiles":"1","numOutputBytes":"657","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+2	2026-09-23 14:04:18.063	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	1	Serializable	true	{"numFiles":"1","numOutputBytes":"657","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+1	2026-09-23 14:04:17.434	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	0	Serializable	true	{"numFiles":"1","numOutputBytes":"657","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+0	2026-09-23 14:04:13.404	NULL	NULL	CREATE TABLE	{"clusterBy":"[]","description":null,"isManaged":"true","partitionBy":"[]","properties":"{}"}	NULL	NULL	NULL	NULL	Serializable	true	{}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+9	2026-09-23 14:07:26.783	NULL	NULL	VACUUM END	{"status":"COMPLETED"}	NULL	NULL	NULL	8	SnapshotIsolation	true	{"numDeletedFiles":"6","numVacuumedDirectories":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+8	2026-09-23 14:07:24.03	NULL	NULL	VACUUM START	{"defaultRetentionMillis":"604800000","retentionCheckEnabled":"false","specifiedRetentionMillis":"0"}	NULL	NULL	NULL	7	SnapshotIsolation	true	{"numFilesToDelete":"6","sizeOfDataToDelete":"3661"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+7	2026-09-23 14:04:45.456	NULL	NULL	OPTIMIZE	{"auto":"false","clusterBy":"[]","predicate":"[]","zOrderBy":"[]"}	NULL	NULL	NULL	6	SnapshotIsolation	false	{"maxFileSize":"678","minFileSize":"678","numAddedBytes":"678","numAddedFiles":"1","numDeletionVectorsRemoved":"0","numRemovedBytes":"2628","numRemovedFiles":"4","p25FileSize":"678","p50FileSize":"678","p75FileSize":"678"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+6	2026-09-23 14:04:45.455	NULL	NULL	DELETE	{"predicate":"["(id#460 = 5)"]"}	NULL	NULL	NULL	5	Serializable	false	{"executionTimeMs":"6102","numAddedBytes":"0","numAddedChangeFiles":"0","numAddedFiles":"0","numCopiedRows":"0","numDeletedRows":"1","numDeletionVectorsAdded":"0","numDeletionVectorsRemoved":"0","numDeletionVectorsUpdated":"0","numRemovedBytes":"657","numRemovedFiles":"1","rewriteTimeMs":"214","scanTimeMs":"5887"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+5	2026-09-23 14:04:45.454	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	4	Serializable	true	{"numFiles":"1","numOutputBytes":"657","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+4	2026-09-23 14:04:45.453	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	3	Serializable	true	{"numFiles":"1","numOutputBytes":"657","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+3	2026-09-23 14:04:45.452	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	2	Serializable	true	{"numFiles":"1","numOutputBytes":"657","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+2	2026-09-23 14:04:45.451	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	1	Serializable	true	{"numFiles":"1","numOutputBytes":"657","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+1	2026-09-23 14:04:45.45	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	0	Serializable	true	{"numFiles":"1","numOutputBytes":"657","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+0	2026-09-23 14:04:45.449	NULL	NULL	CREATE TABLE	{"clusterBy":"[]","description":null,"isManaged":"true","partitionBy":"[]","properties":"{}"}	NULL	NULL	NULL	NULL	Serializable	true	{}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1

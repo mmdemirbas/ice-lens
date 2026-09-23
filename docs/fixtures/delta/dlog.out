@@ -1,0 +1,48 @@
+spark.databricks.delta.checkpoint.partSize	2
+dmp rows	1	a
+dmp rows	2	b
+dmp rows	3	c
+dmp rows	4	d
+1
+dv2 rows	2	b
+dv2 rows	3	c
+total 96
+drwxr-xr-x 1 root root   608 Sep 23 14:08 .
+drwxr-xr-x 1 root root   352 Sep 23 14:08 ..
+-rw-r--r-- 1 root root   849 Sep 23 14:08 00000000000000000000.json
+-rw-r--r-- 1 root root    16 Sep 23 14:08 .00000000000000000000.json.crc
+-rw-r--r-- 1 root root   674 Sep 23 14:08 00000000000000000001.json
+-rw-r--r-- 1 root root    16 Sep 23 14:08 .00000000000000000001.json.crc
+-rw-r--r-- 1 root root 16323 Sep 23 14:08 00000000000000000002.checkpoint.parquet
+-rw-r--r-- 1 root root   136 Sep 23 14:08 .00000000000000000002.checkpoint.parquet.crc
+-rw-r--r-- 1 root root   674 Sep 23 14:08 00000000000000000002.json
+-rw-r--r-- 1 root root    16 Sep 23 14:08 .00000000000000000002.json.crc
+-rw-r--r-- 1 root root   674 Sep 23 14:08 00000000000000000003.json
+-rw-r--r-- 1 root root    16 Sep 23 14:08 .00000000000000000003.json.crc
+-rw-r--r-- 1 root root 16453 Sep 23 14:08 00000000000000000004.checkpoint.parquet
+-rw-r--r-- 1 root root   140 Sep 23 14:08 .00000000000000000004.checkpoint.parquet.crc
+-rw-r--r-- 1 root root   674 Sep 23 14:08 00000000000000000004.json
+-rw-r--r-- 1 root root    16 Sep 23 14:08 .00000000000000000004.json.crc
+drwxr-xr-x 1 root root    64 Sep 23 14:08 _commits
+-rw-r--r-- 1 root root  4794 Sep 23 14:08 _last_checkpoint
+-rw-r--r-- 1 root root    48 Sep 23 14:08 ._last_checkpoint.crc
+total 52
+drwxr-xr-x 1 root root   352 Sep 23 14:08 .
+drwxr-xr-x 1 root root   480 Sep 23 14:08 ..
+-rw-r--r-- 1 root root   674 Sep 23 14:08 00000000000000000005.json
+-rw-r--r-- 1 root root    16 Sep 23 14:08 .00000000000000000005.json.crc
+-rw-r--r-- 1 root root 16559 Sep 23 14:08 00000000000000000006.checkpoint.parquet
+-rw-r--r-- 1 root root   140 Sep 23 14:08 .00000000000000000006.checkpoint.parquet.crc
+-rw-r--r-- 1 root root   674 Sep 23 14:08 00000000000000000006.json
+-rw-r--r-- 1 root root    16 Sep 23 14:08 .00000000000000000006.json.crc
+drwxr-xr-x 1 root root    64 Sep 23 14:08 _commits
+-rw-r--r-- 1 root root  4794 Sep 23 14:08 _last_checkpoint
+-rw-r--r-- 1 root root    48 Sep 23 14:08 ._last_checkpoint.crc
+dlc rows	1	a
+dlc rows	2	b
+dlc rows	3	c
+dlc rows	4	d
+dlc rows	5	e
+dlc rows	6	f
+6	2026-09-23 14:08:32.76	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	5	Serializable	true	{"numFiles":"1","numOutputBytes":"657","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+5	2026-09-23 14:08:31.89	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	4	Serializable	true	{"numFiles":"1","numOutputBytes":"657","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1

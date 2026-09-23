@@ -121,6 +121,8 @@ core/src/main/kotlin/
 │   ├── DeltaSchema.kt         # @Serializable Delta log actions (commitInfo, metaData, protocol, add, remove, cdc, txn, domainMetadata, sidecar), add.stats, and the Spark schema as a DeltaType tree
 │   ├── DeltaUnifiedModel.kt   # DeltaUnifiedTableModel — the log listed, every commit read, checkpoints read on first use, stateAt(version) replayed by the protocol's reconciliation rules; path and deletion-vector resolution
 │   ├── DeltaChecks.kt         # operationMetrics against the commit's actions, a checkpoint against the replay, _last_checkpoint against its checkpoint
+│   ├── DeltaRead.kt           # A version as a RowLookupInput — the Iceberg read path over the log's adds, vectors and partition values — and the row history's inputs
+│   ├── DeltaChangeFeed.kt     # What the change data feed publishes per version — its cdc files, or its file actions and vectors — as CDCReader.changesToDF builds it
 │   ├── Z85.kt                 # ZeroMQ's Base85, which a Delta deletion vector's location and inline bytes are written in
 │   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 ├── service/
@@ -149,6 +151,7 @@ core/src/main/kotlin/
 │   ├── PaimonGraphBuilder.kt  # Paimon-specific graph construction: PaimonUnifiedTableModel → nodes + edges
 │   ├── DeltaReader.kt         # The _delta_log/ listing (commits, three checkpoint namings, log compactions, _last_checkpoint), commit JSON lines, checkpoints and sidecars through DuckDB's to_json
 │   ├── DeltaGraphBuilder.kt   # Delta graph construction: versions → the file actions each commit wrote → rows; checkpoints beside a version's files
+│   ├── DeltaChangeFeedTrace.kt # The change data feed read for a filter through the lookup's projection — a cdc file with its _change_type, a data file's rows selected by its vectors
 │   ├── GraphAggregation.kt    # Format-agnostic: long sibling runs → one expandable GroupNode
 │   ├── SiblingOrder.kt        # One order per kind — read by layout AND by aggregation
 │   ├── SnapshotTracks.kt      # Which column each snapshot draws in, and which branch names it
@@ -3162,7 +3165,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,491 tests across 207 files (1,192 in :core, 289 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,502 tests across 210 files (1,203 in :core, 289 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3338,6 +3341,13 @@ container invocation and the traps in it:
 | `delta/dplain` | `DeltaLogFixtureTest`, `DeltaGraphFixtureTest` | delta-spark 3.2.1, unpartitioned, a classic checkpoint at 3 under `delta.checkpointInterval = 3`, then a copy-on-write `DELETE` and `UPDATE` — the replay to 5 starts from the checkpoint, and the checkpoint equals the replay of commits 0–3 |
 | `delta/ddv` | `DeltaLogFixtureTest`, `DeltaGraphFixtureTest` | deletion vectors — two `DELETE`s put a vector on each file and then replace one, an `UPDATE` replaces the other and writes a new file; `count(*)` 1000 of 1004 written |
 | `delta/dpart` | `DeltaLogFixtureTest`, `DeltaGraphFixtureTest`, `DeltaReadFixtureTest` | partitioned by a string and a date, a null partition, a checkpoint at 2 under `writeStatsAsStruct` |
+| `delta/dcm`, `dcmid` | `DeltaPhase3FixtureTest`, `DeltaChangeFeedFixtureTest` | column mapping in `name` and in `id` mode, one script — a rename at the top level, inside a struct and of the partition column, a drop and an add between inserts |
+| `delta/dcdf`, `dcdfdv` | `DeltaChangeFeedFixtureTest`, `DeltaPhase3FixtureTest` | `delta.enableChangeDataFeed` — an `UPDATE` and a `MERGE` read from their cdc files, a partition `DELETE` from its removes; the same under deletion vectors, where the `DELETE` writes no cdc file; `table_changes` printed as the oracle |
+| `delta/dmp`, `dv2` | `DeltaPhase3FixtureTest` | a multi-part checkpoint (`checkpoint.partSize = 2`); V2 checkpoints with sidecars (`delta.checkpointPolicy = v2`) and the `v2Checkpoint` block of `_last_checkpoint` |
+| `delta/dlc`, `dlcb` | `DeltaPhase3FixtureTest` | the log cleanup a checkpoint runs — commits 0–4 dated 2020, then two inserts: `dlc` keeps 5, 6 and the checkpoint at 6; `dlcb` is the copy before, the oracle for a cleanup plan |
+| `delta/drs` | `DeltaPhase3FixtureTest` | `RESTORE TABLE … TO VERSION AS OF 2` after a `DELETE`, and its six metrics |
+| `delta/drt` | `DeltaGraphFixtureTest` | `delta.enableRowTracking` and in-commit timestamps — `baseRowId`, `defaultRowCommitVersion`, the `rowIdHighWaterMark` domain, an `UPDATE`'s materialized row-id column |
+| `delta/dvac`, `dvaca`, `dopt` | `DeltaGraphFixtureTest` | five inserts and a whole-file `DELETE`; `dopt` copied before the `OPTIMIZE` that compacted four files into one, `dvaca` after a `VACUUM … RETAIN 0 HOURS` that deleted six — the oracles for the two planners |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
@@ -4094,7 +4104,68 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   is neither a removed nor an added file, except that an `UPDATE`'s `numRemovedFiles` counts every
   remove (`ddv` recorded 1 file and 0 bytes removed for a vector swap); the vector counts are adds
   and removes carrying one; `numDeletedRows` under vectors is the cardinality the vectors gained.
+  **An `UPDATE`'s `numRemovedBytes` counts its change files too**: `UpdateCommand` splits its
+  rewrite's actions into the adds and the rest, and an `AddCDCFile` lands in the rest — `dcdf`'s
+  update records 1,663, the rewritten file's 660 and the cdc file's 1,003, and under vectors
+  (`dcdfdv`) the cdc file's alone. `numFiles`, `numOutputRows` and `numOutputBytes` are the adds of
+  a path the commit did not remove, so a `MERGE` that re-adds a file under a new vector records
+  `numOutputRows` 2 where its adds hold 5 (`dcdfdv`). A `MERGE`'s `numTarget*` figures follow the
+  same rules; a `RESTORE`'s `numRestoredFiles` / `restoredFilesSize` are its adds, its
+  `numRemovedFiles` / `removedFilesSize` its removes, and `numOfFilesAfterRestore` /
+  `tableSizeAfterRestore` the state after it (`drs`: 1, 657, 1, 657, 2, 1,314); an `OPTIMIZE`'s
+  `minFileSize` / `maxFileSize` are over its adds, with `numDeletionVectorRowsRemoved` and
+  `numDeletionVectorBytesRemoved` the vectors its rewrite purged.
   Every fixture commit agrees; planting a byte count is named; reverting the `UPDATE` rule fails `ddv`
+  and `dcdf`, counting every add as output fails `dcdfdv`
+- **`_last_checkpoint` of a V2 checkpoint names the top-level file and its sidecars, and both are
+  checked.** `sizeInBytes` is the top-level file *and* its sidecars together (`dv2`: 765 + 9,865 =
+  10,630), and `v2Checkpoint` carries the file's path, size and modification time, its
+  non-file actions (protocol, metadata, `checkpointMetadata`: 3) and each sidecar with its size;
+  `lastCheckpointTallies` puts every one of them beside the files. A multi-part checkpoint (`dmp`,
+  `checkpoint.partSize = 2`) is two Parquet parts read as one, and a V2 one (`dv2`,
+  `delta.checkpointPolicy = v2`) a UUID-named JSON file whose adds are all in the sidecar under
+  `_delta_log/_sidecars/`. **A checkpoint whose commits the log has cleaned up is not compared**:
+  `dlc`'s cleanup after the checkpoint at 6 deleted commits 0–4 and the checkpoints at 2 and 4
+  (their files were dated 2020, past `delta.logRetentionDuration`), so version 5 is
+  `DeltaVersionUnavailable` — no checkpoint under it — and the checkpoint at 6 has no replay to
+  stand against; `DeltaCheckpointCheck.fromCommits` is false and `DeltaGraphFixtureTest` requires
+  it false exactly where a commit at or below the checkpoint is gone. `dlcb` is the table copied
+  before the last two inserts, everything on disk
+- **Column mapping needs nothing of its own**, because `deltaReadSchema` already places a field
+  by physical name and id. In `name` mode a file's columns are `col-<uuid>`, a partition directory
+  is named by the column's physical name, and `add.stats` and `partitionValues` are keyed by it;
+  in `id` mode the Parquet field ids are the schema's `delta.columnMapping.id`. `dcm` and `dcmid`
+  are one script in the two modes — `v` renamed to `label`, `addr.city` to `addr.town`, a column
+  dropped, `w` added, the partition column `p` renamed to `part` — and `DeltaPhase3FixtureTest`
+  holds the lookup on each renamed name and `w IS NULL` to the script's output in both
+- **The change data feed is read the way `CDCReader.changesToDF` builds it at 3.2.1**
+  (`model/DeltaChangeFeed.kt`, `service/DeltaChangeFeedTrace.kt`, `TableNode.deltaChangeFeed`
+  where the current metadata enables it). A commit that wrote `cdc` actions is read from those
+  files alone, each row with its own `_change_type`; any other commit from its file actions with
+  `dataChange` — an added file's rows as `insert` and a removed file's as `delete`, each less the
+  rows its own vector marks, and a path removed and added back under another vector as the rows the
+  new vector marks and the old did not (`delete`), the reverse (`insert`). A `MERGE` recording no
+  row inserted, updated or deleted is skipped. The range runs back from the newest version while
+  the feed is on and the version can be rebuilt. Two things the runs settled: **with the feed on, a
+  `DELETE` by a data column rewrites the file and writes a cdc file even when no row survives** —
+  only a predicate on partition columns alone removes whole files without one, which is why
+  `dcdf`'s delete is `WHERE p = 'y'` — and **a `DELETE` under vectors writes no cdc file**, its
+  feed read from the vector (`dcdfdv`). The records are the lookup's `Changelog` type (renamed
+  from `PaimonChangelog`, with `label` for the `_change_type` and `unit` for `version`), so the
+  table panel's lookup draws a `Change Data Feed` stage where Paimon draws `Changelog`.
+  `DeltaChangeFeedFixtureTest` holds `dcdf` and `dcdfdv` whole and filtered to `table_changes` as
+  the scripts printed it
+- **A row's history walks the versions the log can rebuild, under the newest schema.**
+  `rowHistoryInputs()` is every version from the earliest `stateAt` answers, newest first, capped
+  at `MAX_HISTORY_SNAPSHOTS`, each read with `readInputAt(v, newest)` — the question is asked in
+  the current names, so a column renamed at version 2 (`dcm`'s `label`) is one column at every
+  step. `RowHistoryInputs` carries its `unit` and `line` (`version`, `in the log`) for the panel.
+  `ddv`'s 1001 is appeared at 2 and changed at 5, its 2 appeared at 1 and gone at 3
+- **A `DELETE` whose predicate matches every row of a file leaves an empty Parquet file on disk**:
+  delta-spark 3.2.1 rewrites the file all the same, writes a 376-byte file with no rows, and
+  commits only the remove. `drs`, `dv2`, `dvac` and `dopt` hold one each, and
+  `DeltaGraphFixtureTest.ENGINE_ORPHANS` names them — the orphan walk is right to report them, and
+  `dvaca`'s `VACUUM` deleted it
 - **A deletion vector's stored bytes are Iceberg's Puffin blob** — big-endian size, `D1 D3 39 64`,
   portable 64-bit Roaring, big-endian CRC-32 — read at `offset` (1 when absent, after the file's
   version byte) for `4 + sizeInBytes + 4` bytes by `PuffinReader.readDeletionVector`. A `u` vector
@@ -4124,8 +4195,9 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   `tightBounds = false`, whose bounds only widen. The test holds the lookup with pruning to the
   lookup without it on `dplain`, the direction that loses rows; a null partition's null count
   set to 0 fails `region IS NULL`
-- Not yet read (the `TODO.md` Delta section): row history across versions, column mapping
-  fixtures, change data feed, VACUUM / OPTIMIZE planners, UniForm
+- Not yet read (the `TODO.md` Delta section): the VACUUM, OPTIMIZE and log-cleanup planners
+  (their oracles, `dvac`/`dvaca`/`dopt` and `dlcb`/`dlc`, are checked in), row tracking shown on
+  rows (`drt`), UniForm
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

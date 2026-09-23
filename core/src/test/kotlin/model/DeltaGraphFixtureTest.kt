@@ -33,7 +33,9 @@ class DeltaGraphFixtureTest {
             }
             for (cp in graph.nodes.filterIsInstance<GraphNode.DeltaCheckpointNode>()) {
                 val check = cp.check.value!!
-                assertTrue(check.fromCommits && check.agrees, "$name checkpoint ${cp.checkpoint.version}: $check")
+                assertTrue(check.readError == null && check.agrees, "$name checkpoint ${cp.checkpoint.version}: $check")
+                // Compared with the replay wherever every commit up to it is on disk; `dlc`'s log cleanup took 0..4.
+                assertEquals((0..cp.checkpoint.version).all { it in model.commitByVersion }, check.fromCommits, "$name checkpoint ${cp.checkpoint.version}")
                 assertEquals(model.stateAt(cp.checkpoint.version).getOrThrow().files.size, check.checkpointFileCount)
             }
             val last = model.lastCheckpointTallies()
@@ -45,7 +47,7 @@ class DeltaGraphFixtureTest {
             assertTrue(report.checked > 0, name)
 
             val orphans = findUnreferencedFiles(model)
-            assertEquals(emptyList(), orphans.unreferenced.map { orphans.relativePathOf(it) }, name)
+            assertEquals(ENGINE_ORPHANS[name].orEmpty(), orphans.unreferenced.map { orphans.relativePathOf(it) }, name)
         }
     }
 
@@ -85,5 +87,20 @@ class DeltaGraphFixtureTest {
         assertEquals(5, rows.size)
         assertEquals(setOf("eu", "us", "null"), rows.map { it.resolvedData["region"].toString() }.toSet())
         assertTrue(rows.all { it.resolvedData["dt"] != null })
+    }
+
+    companion object {
+        /**
+         * The files an engine left that no commit names. A `DELETE` whose predicate matches every
+         * row of a file rewrites it all the same, and delta-spark 3.2.1 leaves the empty 376-byte
+         * Parquet file it wrote on disk and commits only the remove — `drs`, `dv2` and `dvac`, and
+         * `dopt` copied from `dvac` after it. `dvaca`'s `VACUUM` deleted it.
+         */
+        val ENGINE_ORPHANS = mapOf(
+            "drs" to listOf("part-00000-2242e3c3-5ace-4012-88f8-99c0060a4513-c000.snappy.parquet"),
+            "dv2" to listOf("part-00000-b901ee3f-ee43-4485-93d4-ac74ab16bf0b-c000.snappy.parquet"),
+            "dopt" to listOf("part-00000-7a67d95c-74ad-4ec2-90f2-1f9064fd1791-c000.snappy.parquet"),
+            "dvac" to listOf("part-00000-7a67d95c-74ad-4ec2-90f2-1f9064fd1791-c000.snappy.parquet"),
+        )
     }
 }

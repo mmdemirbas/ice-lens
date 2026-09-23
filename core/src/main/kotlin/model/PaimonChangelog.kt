@@ -49,7 +49,7 @@ data class PaimonChangelogInputs(
     }
 }
 
-/** One record of the stream: which commit published it, its kind, its sequence number and its cells under the schema's names. */
+/** One record of the stream: which commit published it (a Paimon snapshot or a Delta version, [snapshotId]), its kind, its sequence number and its cells under the schema's names. */
 data class ChangelogRecord(
     val snapshotId: Long,
     val commitKind: String?,
@@ -58,19 +58,30 @@ data class ChangelogRecord(
     val sequenceNumber: Long?,
     val fileName: String,
     val cells: Map<String, Any?>,
+    /** The format's own word for the kind where it has one — Delta's `_change_type` — printed in place of [PaimonRowKind.describe]. */
+    val label: String? = null,
 ) {
     val isRetraction: Boolean get() = kind != null && PaimonRowKind.isRetraction(kind)
+    val kindText: String get() = label ?: kind?.let(PaimonRowKind::describe) ?: "—"
 }
 
 /** One changelog file as read: how many of its records matched, or why it was not read. */
 data class ChangelogFileRead(val snapshotId: Long, val fileName: String, val matched: Int, val error: String? = null)
 
-data class PaimonChangelog(
+/**
+ * What a stream reader receives for the rows a filter matches, commit by commit — Paimon's
+ * changelog files ([PaimonChangelogTrace]) or Delta's change data feed (`DeltaChangeFeedTrace`),
+ * one shape so the lookup draws either. [unit] is what the format calls a commit, `snapshot` or
+ * `version`; [publishing] how many of them published something, of which the last are read when
+ * [capped]; [rule] is the sentence saying what the format publishes for a change.
+ */
+data class Changelog(
     val records: List<ChangelogRecord>,
     val filesRead: List<ChangelogFileRead>,
     val capped: Boolean,
-    val withChangelog: Int,
-    val producerRule: String,
+    val publishing: Int,
+    val rule: String,
+    val unit: String = "snapshot",
 ) {
     val snapshotsRead: Int get() = filesRead.map { it.snapshotId }.distinct().size
     val unreadable: Int get() = filesRead.count { it.error != null }

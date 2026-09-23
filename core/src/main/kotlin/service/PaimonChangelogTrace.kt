@@ -2,7 +2,7 @@ package service
 
 import model.ChangelogFileRead
 import model.ChangelogRecord
-import model.PaimonChangelog
+import model.Changelog
 import model.PaimonChangelogInputs
 import model.PaimonRowKind
 import model.PaimonSystemColumns
@@ -25,7 +25,7 @@ import org.slf4j.LoggerFactory
 object PaimonChangelogTrace {
     private val log = LoggerFactory.getLogger(PaimonChangelogTrace::class.java)
 
-    fun trace(inputs: PaimonChangelogInputs, filter: ScanFilter): PaimonChangelog {
+    fun trace(inputs: PaimonChangelogInputs, filter: ScanFilter): Changelog {
         val predicate = filter.toSql { column -> inputs.readSchema.let { s -> s.idOfPath(column)?.let(s::typeOf) } }
         val records = mutableListOf<ChangelogRecord>()
         val reads = mutableListOf<ChangelogFileRead>()
@@ -47,7 +47,7 @@ object PaimonChangelogTrace {
                 }
             }
         }
-        return PaimonChangelog(records, reads, inputs.capped, inputs.withChangelog, inputs.producerRule)
+        return Changelog(records, reads, inputs.capped, inputs.withChangelog, inputs.producerRule)
     }
 
     private fun readRecords(localPath: String, source: FileProjection, where: String, params: List<String>): List<Map<String, Any?>> {

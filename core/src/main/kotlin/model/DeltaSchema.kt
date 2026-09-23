@@ -68,6 +68,8 @@ data class DeltaMetadata(
 
     /** `delta.columnMapping.mode`: `none`, `name` or `id`; `none` where unset. */
     val columnMappingMode: String get() = configuration["delta.columnMapping.mode"] ?: "none"
+    /** `delta.enableChangeDataFeed` — a commit that rewrites rows then writes its changes as cdc files. */
+    val changeDataFeedEnabled: Boolean get() = configuration["delta.enableChangeDataFeed"].equals("true", ignoreCase = true)
 }
 
 @Serializable
@@ -176,6 +178,18 @@ data class DeltaLastCheckpoint(
     val numOfAddFiles: Long? = null,
     val checksum: String? = null,
     val tags: Map<String, String?>? = null,
+    /** Written for a V2 checkpoint: the top-level file, its sidecars and its non-file actions. */
+    val v2Checkpoint: DeltaLastCheckpointV2? = null,
+)
+
+/** `_last_checkpoint`'s `v2Checkpoint`: the top-level file it names, with its size, its non-file actions and its sidecars. */
+@Serializable
+data class DeltaLastCheckpointV2(
+    val path: String,
+    val sizeInBytes: Long? = null,
+    val modificationTime: Long? = null,
+    val nonFileActions: List<JsonObject>? = null,
+    val sidecarFiles: List<DeltaSidecar>? = null,
 )
 
 /**

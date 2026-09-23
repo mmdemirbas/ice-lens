@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Delta's change data feed and a row's history across versions.** Under
+  `delta.enableChangeDataFeed` the table panel's lookup has a `Change Data Feed` stage: each
+  version's records for the filter, read from the cdc files a rewrite wrote or from the file
+  actions and vectors of any other commit, as `table_changes` returns them. The history stage
+  walks every version the log can rebuild, under the newest schema. Column mapping in `name` and
+  `id` mode reads with no change. The commit checks learnt `UPDATE`'s change-file bytes, `MERGE`,
+  `RESTORE` and `OPTIMIZE`, and `_last_checkpoint`'s V2 block. Eleven more engine-written
+  fixtures: column mapping, the feed with and without vectors, multi-part and V2 checkpoints, log
+  cleanup, `RESTORE`, row tracking, and a table before and after `OPTIMIZE` and `VACUUM`.
 - **Delta row lookup, live row count and scan pruning**, through the Iceberg read path: a
   version is a `RowLookupInput` whose vectors are Iceberg v3 vectors, the partition values the
   file does not hold are read from the log, and `add.stats` bridges to the file stage.

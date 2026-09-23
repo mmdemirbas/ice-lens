@@ -97,17 +97,20 @@ fun IcebergSchemaModel.withConstants(values: Map<String, String?>): IcebergSchem
 /**
  * What reading [version] takes, in the Iceberg read path's shape: every live file with its
  * partition values as constants, and each file's deletion vector as a delete file paired with it
- * alone. Null where the version cannot be rebuilt or records no schema.
+ * alone. Null where the version cannot be rebuilt or records no schema. [readUnder] is the schema
+ * the rows are placed onto — the version's own unless given; the history passes the newest, so a
+ * column renamed between two versions is one column at every step (column mapping keys files and
+ * partition values by physical name, which a rename does not change).
  *
  * An inline vector (`storageType = i`) has no file to open, so it is listed with no location and
  * a row it could mark is left undecided — said, never guessed. The display names are the
  * partition columns' keys only without column mapping; under it `partitionValues` is keyed by the
  * physical name, which is mapped back here.
  */
-fun DeltaUnifiedTableModel.readInputAt(version: Long): RowLookupInput? {
+fun DeltaUnifiedTableModel.readInputAt(version: Long, readUnder: DeltaStructType? = null): RowLookupInput? {
     val state = stateAt(version).getOrNull() ?: return null
     val metadata = state.metadata ?: return null
-    val struct = metadata.schema ?: return null
+    val struct = readUnder ?: metadata.schema ?: return null
     val read = deltaReadSchema(struct)
     val physicalToName = struct.fields.associate { it.physicalName to it.name }
     val data = mutableListOf<LookupDataFile>()
@@ -199,4 +202,22 @@ fun deltaColumnStats(add: DeltaAddFile, struct: DeltaStructType, read: DeltaRead
             columnSizeBytes = null,
         )
     }
+}
+
+/**
+ * The retained versions, newest first, each with what looking a row up in it takes — read under
+ * the newest schema, the Iceberg rule ([readInputAt]). A version is retained when it can be
+ * rebuilt: a log cleaned past a checkpoint keeps commits it cannot replay, and those are left
+ * out of the count as well as the trace, since no read of them exists.
+ */
+fun DeltaUnifiedTableModel.rowHistoryInputs(): RowHistoryInputs? {
+    val newest = current?.metadata?.schema ?: return null
+    // Rebuildable is monotone: once a version can be read, every later one can.
+    val earliest = versions.firstOrNull { stateAt(it).isSuccess } ?: return null
+    val retained = versions.filter { it >= earliest }.sortedDescending()
+    val traced = retained.asSequence().take(MAX_HISTORY_SNAPSHOTS).mapNotNull { v ->
+        val input = readInputAt(v, newest) ?: return@mapNotNull null
+        HistorySnapshot(v, commitByVersion[v]?.timestampMs, commitByVersion[v]?.commitInfo?.operation, input)
+    }.toList()
+    return RowHistoryInputs(traced, retained.size, unit = "version", line = "in the log")
 }

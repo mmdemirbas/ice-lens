@@ -39,7 +39,9 @@ object DeltaGraphBuilder {
             unreferencedFiles = DeferredRead.of { findUnreferencedFiles(tableModel) },
             integrity = DeferredRead.of { tableModel.integrityReport() },
             // The lookup is the Iceberg one over the Delta version — see DeltaRead.kt.
-            rowLookup = DeferredRead.of { tableModel.latestVersion?.let(tableModel::readInputAt) },
+            rowLookup = DeferredRead.of { tableModel.latestVersion?.let { tableModel.readInputAt(it) } },
+            rowHistory = DeferredRead.of { tableModel.rowHistoryInputs() },
+            deltaChangeFeed = if (current?.metadata?.changeDataFeedEnabled == true) DeferredRead.of { tableModel.deltaChangeFeedInputs() } else DeferredRead.none(),
         )
 
         var nextErrorId = 0
@@ -70,7 +72,7 @@ object DeltaGraphBuilder {
                 checkpoints = tableModel.listing.checkpoints[version].orEmpty(),
                 unavailable = (state.exceptionOrNull() as? DeltaVersionUnavailable)?.detail?.reason,
                 stateLoader = DeferredRead.of { tableModel.stateAt(version).getOrNull() },
-                tallies = commit?.let(::deltaCommitTallies).orEmpty(),
+                tallies = commit?.let { c -> deltaCommitTallies(c) { state.getOrNull() } }.orEmpty(),
                 readInput = if (state.isSuccess) DeferredRead.of { tableModel.readInputAt(version) } else DeferredRead.none(),
             )
             edges += GraphEdge("e_table_$versionId", tableNodeId, versionId)
@@ -161,6 +163,19 @@ object DeltaGraphBuilder {
             val file = requireNotNull(vector.filePath(tableModel.path)) { "the vector's location ${vector.pathOrInlineDv} does not decode" }
             val size = requireNotNull(vector.sizeInBytes) { "the vector records no sizeInBytes" }
             PuffinReader.readDeletionVector(file, (vector.offset ?: 1).toLong(), 4L + size + 4L, recordedCardinality = vector.cardinality)
+        }
+    }.onFailure { logger.warn("Could not read the deletion vector {}: {}", vector.uniqueId, it.message) }.getOrNull()
+
+    /** Every position [vector] marks, uncapped — for a change feed or a count that must be exact; null where it cannot be read. */
+    internal fun readDeletionVectorPositions(tableRoot: java.nio.file.Path, vector: DeltaDeletionVector): java.util.BitSet? = runCatching {
+        if (vector.storageType == "i") {
+            val data = Z85.decode(vector.pathOrInlineDv.orEmpty()).let { bytes -> vector.sizeInBytes?.let { bytes.copyOf(it) } ?: bytes }
+            val crc = CRC32().apply { update(data) }.value.toInt()
+            PuffinReader.positionsOf(ByteBuffer.allocate(4 + data.size + 4).order(ByteOrder.BIG_ENDIAN).putInt(data.size).put(data).putInt(crc).array())
+        } else {
+            val file = requireNotNull(vector.filePath(tableRoot)) { "the vector's location ${vector.pathOrInlineDv} does not decode" }
+            val size = requireNotNull(vector.sizeInBytes) { "the vector records no sizeInBytes" }
+            PuffinReader.readDeletionVectorPositions(file, (vector.offset ?: 1).toLong(), 4L + size + 4L)
         }
     }.onFailure { logger.warn("Could not read the deletion vector {}: {}", vector.uniqueId, it.message) }.getOrNull()
 

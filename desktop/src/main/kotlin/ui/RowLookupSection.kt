@@ -26,9 +26,10 @@ import model.RowChange
 import model.RowLookupInput
 import model.RowFate
 import model.RowHistory
-import model.PaimonChangelog
+import model.Changelog
 import model.ChangelogRecord
 import model.PaimonRowKind
+import service.DeltaChangeFeedTrace
 import service.PaimonChangelogTrace
 import model.RowLookupResult
 import model.ScanFilter
@@ -81,9 +82,9 @@ internal fun RowLookupSection(
         // The changelog, once read, is joined onto the history's rows by snapshot — what each
         // commit published beside what each snapshot returns — so the reader pairs "changed at
         // the APPEND" with "-U/+U at the COMPACT" in one table rather than across two.
-        var changelog by remember(node.id, filter) { mutableStateOf<PaimonChangelog?>(null) }
+        var changelog by remember(node.id, filter) { mutableStateOf<Changelog?>(null) }
         if (node.rowHistory.isPresent) RowHistoryStage(node, filter, ruledOut, paimon, historyRequested, onHistorySettled, published = changelog?.let { c -> c.records.groupBy { it.snapshotId } })
-        if (node.paimonChangelog.isPresent) ChangelogStage(node, filter, changelogRequested, onChangelogSettled, onRead = { changelog = it })
+        if (node.paimonChangelog.isPresent || node.deltaChangeFeed.isPresent) ChangelogStage(node, filter, changelogRequested, onChangelogSettled, onRead = { changelog = it })
     }
 }
 
@@ -223,7 +224,7 @@ private fun LookupSection(
 
 /**
  * What each commit *published* for the rows — the changelog files its snapshot names, read for
- * the same filter — behind a third click; see [PaimonChangelog]. The history above is what a
+ * the same filter — behind a third click; see [Changelog]. The history above is what a
  * batch read returns at each snapshot, and this is the other side of `changelog-producer`: the
  * stream a downstream consumer receives, which under `lookup` carries the change in the COMPACT
  * commit after the append that made it, and under `input` carries the write as it arrived.
@@ -235,16 +236,19 @@ private fun ChangelogStage(
     startRequested: Boolean,
     onSettled: () -> Unit,
     /** The changelog once read, for the history's `Published` column. */
-    onRead: (PaimonChangelog?) -> Unit = {},
+    onRead: (Changelog?) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     var requested by remember(node.id, filter) { mutableStateOf(startRequested) }
-    val outcome by produceState<Result<PaimonChangelog>?>(null, node.id, filter, requested) {
+    val outcome by produceState<Result<Changelog>?>(null, node.id, filter, requested) {
         value = null
         onRead(null)
         if (requested) {
             value = withContext(Dispatchers.IO) {
-                runCatching { PaimonChangelogTrace.trace(requireNotNull(node.paimonChangelog.value) { "no changelog to read" }, filter) }
+                runCatching {
+                    if (node.deltaChangeFeed.isPresent) DeltaChangeFeedTrace.trace(requireNotNull(node.deltaChangeFeed.value) { "no change data feed to read" }, filter)
+                    else PaimonChangelogTrace.trace(requireNotNull(node.paimonChangelog.value) { "no changelog to read" }, filter)
+                }
             }
             onRead(value?.getOrNull())
             onSettled()
@@ -252,7 +256,7 @@ private fun ChangelogStage(
     }
     val changelog = outcome?.getOrNull()
     Text(
-        "Changelog",
+        if (node.deltaChangeFeed.isPresent) "Change Data Feed" else "Changelog",
         fontSize = TypeScale.small,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
@@ -261,36 +265,36 @@ private fun ChangelogStage(
         !requested -> OutlinedButton(onClick = { requested = true }) {
             Text("Read what each commit published for these rows")
         }
-        outcome == null -> Text("Reading each snapshot's changelog…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
+        outcome == null -> Text(if (node.deltaChangeFeed.isPresent) "Reading each version's change data feed…" else "Reading each snapshot's changelog…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
         changelog == null -> Text("Could not read: ${outcome?.exceptionOrNull()?.message ?: "unknown error"}", fontSize = TypeScale.small, color = colors.error)
         else -> ChangelogBody(changelog)
     }
 }
 
 @Composable
-private fun ChangelogBody(changelog: PaimonChangelog) {
+private fun ChangelogBody(changelog: Changelog) {
     val colors = MaterialTheme.colorScheme
     val published = changelog.publishedAt
     Text(
-        (if (changelog.capped) "The last ${changelog.snapshotsRead} of ${changelog.withChangelog} snapshots naming a changelog" else "All ${formatCounted(changelog.snapshotsRead, "snapshot")} naming a changelog") +
+        (if (changelog.capped) "The last ${changelog.snapshotsRead} of ${changelog.publishing} ${changelog.unit}s publishing a change" else "All ${formatCounted(changelog.snapshotsRead, changelog.unit)} publishing a change") +
             (if (changelog.records.isEmpty()) ": nothing was published for the matching rows." else
-                ": ${formatCounted(changelog.records.size, "record")} published for the matching rows, at ${published.joinToString(", ") { "snapshot $it" }}."),
+                ": ${formatCounted(changelog.records.size, "record")} published for the matching rows, at ${published.joinToString(", ") { "${changelog.unit} $it" }}."),
         fontSize = TypeScale.small,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(bottom = 4.dp),
     )
     Text(
-        changelog.producerRule + (if (changelog.capped) ". Older snapshots are not read." else "."),
+        changelog.rule + (if (changelog.capped) ". Older ${changelog.unit}s are not read." else "."),
         fontSize = TypeScale.small,
         color = colors.onSurfaceVariant,
         modifier = Modifier.padding(bottom = 4.dp),
     )
     WideTable(
-        headers = listOf("Kind", "Snapshot", "Commit", "Sequence", "File", "Row"),
+        headers = listOf("Kind", changelog.unit.replaceFirstChar { it.uppercase() }, "Commit", "Sequence", "File", "Row"),
         columnWidths = listOf(260.dp, 120.dp, 100.dp, 90.dp, 340.dp, 600.dp),
         rows = changelog.records.map { record ->
             listOf(
-                record.kind?.let(PaimonRowKind::describe) ?: "—",
+                record.kindText,
                 record.snapshotId.toString(),
                 record.commitKind ?: "—",
                 record.sequenceNumber?.toString() ?: "—",
@@ -361,24 +365,25 @@ private fun HistoryBody(history: RowHistory, paimon: Boolean, published: Map<Lon
     val changed = history.changedSteps
     val traced = history.steps.size
     Text(
-        (if (history.capped) "The last $traced of ${history.onMain} snapshots on main" else "All ${formatCounted(traced, "snapshot")} on main") +
+        (if (history.capped) "The last $traced of ${history.onMain} ${history.unit}s ${history.line}" else "All ${formatCounted(traced, history.unit)} ${history.line}") +
             (if (changed.isEmpty()) ": the matching rows are the same at every one traced." else
-                ": the rows changed at ${changed.asReversed().joinToString(", ") { step -> "snapshot ${step.snapshot.snapshotId} (${step.snapshot.operation ?: "?"}, ${history.changes[history.steps.indexOf(step)]?.label})" }}."),
+                ": the rows changed at ${changed.asReversed().joinToString(", ") { step -> "${history.unit} ${step.snapshot.snapshotId} (${step.snapshot.operation ?: "?"}, ${history.changes[history.steps.indexOf(step)]?.label})" }}."),
         fontSize = TypeScale.small,
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(bottom = 4.dp),
     )
     Text(
-        (if (paimon) "Each snapshot is read under its own schema; " else "Every snapshot is read under the current schema; ") +
-            "a step compares the live rows a read returns with the snapshot before it, on the row's own columns" +
-            (if (history.capped) ". Older snapshots are not traced." else ".") +
-            (if (published != null) " Published is what the snapshot's changelog carries for these rows, from the stage below — under a lookup producer the change a snapshot made is published by the COMPACT after it." else ""),
+        (if (paimon) "Each snapshot is read under its own schema; " else "Every ${history.unit} is read under the current schema; ") +
+            "a step compares the live rows a read returns with the ${history.unit} before it, on the row's own columns" +
+            (if (history.capped) ". Older ${history.unit}s are not traced." else ".") +
+            (if (published == null) "" else if (paimon) " Published is what the snapshot's changelog carries for these rows, from the stage below — under a lookup producer the change a snapshot made is published by the COMPACT after it."
+                else " Published is what the ${history.unit}'s change data feed carries for these rows, from the stage below."),
         fontSize = TypeScale.small,
         color = colors.onSurfaceVariant,
         modifier = Modifier.padding(bottom = 4.dp),
     )
     WideTable(
-        headers = listOf("Change", "Snapshot", "Operation") + (if (published != null) listOf("Published") else emptyList()) + listOf("When", "Live", if (paimon) "Not live" else "Deleted", "Rows"),
+        headers = listOf("Change", history.unit.replaceFirstChar { it.uppercase() }, "Operation") + (if (published != null) listOf("Published") else emptyList()) + listOf("When", "Live", if (paimon) "Not live" else "Deleted", "Rows"),
         columnWidths = listOf(120.dp, 190.dp, 110.dp) + (if (published != null) listOf(160.dp) else emptyList()) + listOf(190.dp, 60.dp, 80.dp, 600.dp),
         rows = history.steps.mapIndexed { i, step ->
             val result = step.result

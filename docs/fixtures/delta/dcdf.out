@@ -1,0 +1,20 @@
+1
+1
+2	1	0	1
+rows	1	A	x
+rows	2	B	x
+rows	4	d	y
+change	1	insert	1	a	x
+change	1	insert	2	b	x
+change	1	insert	3	c	y
+change	2	update_postimage	2	B	x
+change	2	update_preimage	2	b	x
+change	3	delete	3	c	y
+change	4	update_postimage	1	A	x
+change	4	update_preimage	1	a	x
+change	4	insert	4	d	y
+4	2026-09-23 14:16:21.341	NULL	NULL	MERGE	{"matchedPredicates":"[{"actionType":"update"}]","notMatchedBySourcePredicates":"[]","notMatchedPredicates":"[{"actionType":"insert"}]","predicate":"["(id#2223 = id#2226)"]"}	NULL	NULL	NULL	3	Serializable	false	{"executionTimeMs":"3875","numOutputRows":"3","numSourceRows":"2","numTargetBytesAdded":"1750","numTargetBytesRemoved":"876","numTargetChangeFilesAdded":"2","numTargetDeletionVectorsAdded":"0","numTargetDeletionVectorsRemoved":"0","numTargetDeletionVectorsUpdated":"0","numTargetFilesAdded":"2","numTargetFilesRemoved":"1","numTargetRowsCopied":"1","numTargetRowsDeleted":"0","numTargetRowsInserted":"1","numTargetRowsMatchedDeleted":"0","numTargetRowsMatchedUpdated":"1","numTargetRowsNotMatchedBySourceDeleted":"0","numTargetRowsNotMatchedBySourceUpdated":"0","numTargetRowsUpdated":"1","rewriteTimeMs":"540","scanTimeMs":"3215"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+3	2026-09-23 14:16:17.127	NULL	NULL	DELETE	{"predicate":"["(p#1336 = y)"]"}	NULL	NULL	NULL	2	Serializable	false	{"executionTimeMs":"2967","numAddedBytes":"0","numAddedChangeFiles":"0","numAddedFiles":"0","numCopiedRows":"0","numDeletedRows":"1","numDeletionVectorsAdded":"0","numDeletionVectorsRemoved":"0","numDeletionVectorsUpdated":"0","numRemovedBytes":"657","numRemovedFiles":"1","rewriteTimeMs":"0","scanTimeMs":"2965"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+2	2026-09-23 14:16:13.906	NULL	NULL	UPDATE	{"predicate":"["(id#141 = 2)"]"}	NULL	NULL	NULL	1	Serializable	false	{"executionTimeMs":"7607","numAddedBytes":"876","numAddedChangeFiles":"1","numAddedFiles":"1","numCopiedRows":"1","numDeletionVectorsAdded":"0","numDeletionVectorsRemoved":"0","numDeletionVectorsUpdated":"0","numRemovedBytes":"1663","numRemovedFiles":"1","numUpdatedRows":"1","rewriteTimeMs":"364","scanTimeMs":"7242"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+1	2026-09-23 14:16:05.892	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	0	Serializable	true	{"numFiles":"2","numOutputBytes":"1317","numOutputRows":"3"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+0	2026-09-23 14:16:01.689	NULL	NULL	CREATE TABLE	{"clusterBy":"[]","description":null,"isManaged":"true","partitionBy":"["p"]","properties":"{"delta.enableChangeDataFeed":"true"}"}	NULL	NULL	NULL	NULL	Serializable	true	{}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1

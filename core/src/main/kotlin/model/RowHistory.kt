@@ -22,7 +22,13 @@ data class HistorySnapshot(
  * cap and not the table's first commit. A `DeferredRead` on the table node: building each
  * entry walks that snapshot's closure (Iceberg) or replays it (Paimon).
  */
-data class RowHistoryInputs(val snapshots: List<HistorySnapshot>, val onMain: Int) {
+data class RowHistoryInputs(
+    val snapshots: List<HistorySnapshot>,
+    val onMain: Int,
+    /** What the format calls a commit, and where the traced ones are — `snapshot` `on main`, Delta's `version` `in the log`. */
+    val unit: String = "snapshot",
+    val line: String = "on main",
+) {
     val capped: Boolean get() = snapshots.size < onMain
 }
 
@@ -60,7 +66,7 @@ data class RowHistoryStep(val snapshot: HistorySnapshot, val result: RowLookupRe
  * The question is "when did this row change", which the current snapshot's fate cannot
  * answer: a row deleted three commits ago and a row deleted by the last one look the same.
  */
-data class RowHistory(val steps: List<RowHistoryStep>, val onMain: Int) {
+data class RowHistory(val steps: List<RowHistoryStep>, val onMain: Int, val unit: String = "snapshot", val line: String = "on main") {
     val capped: Boolean get() = steps.size < onMain
 
     /** [RowChange] per step, aligned with [steps]; null for the oldest traced, which has nothing older to stand against. */

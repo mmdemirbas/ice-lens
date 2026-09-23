@@ -23,7 +23,7 @@ object RowHistoryTrace {
         val steps = inputs.snapshots.map { snapshot ->
             RowHistoryStep(snapshot, lookupAt(snapshot.input, filter, ruledOut, reads))
         }
-        return RowHistory(steps, inputs.onMain)
+        return RowHistory(steps, inputs.onMain, inputs.unit, inputs.line)
     }
 
     private fun lookupAt(input: LookupInput, filter: ScanFilter, ruledOut: Set<String>, reads: MutableMap<String, Result<List<Map<String, Any?>>>>) =
