@@ -27,10 +27,10 @@ Neither is worth doing before the plugin has a reason to read a data file.
 Read: the log, checkpoints of every naming, the replay, file actions, deletion vectors, the
 integrity checks (commit metrics, checkpoint against replay, `_last_checkpoint`, vectors).
 
-- **Row lookup and the live row count.** A Delta read pairs a file with its own vector and nothing
-  else, so both are simpler than Iceberg's; `icelens lookup` refuses a Delta table until then.
-- **Scan pruning from `add.stats` and `partitionValues`**, through the pruning bridge the Paimon
-  side uses. `tightBounds = false` is still sound for skipping.
+- **Row history across versions** (`RowHistoryInputs` for Delta): every retained version's
+  `readInputAt`, the same trace the other formats run.
+- **Inline deletion vectors** are decoded on the file panel but the lookup cannot read one — it
+  has no file — and leaves the row undecided. Needs a fixture (`storageType = i`) first.
 - **Column mapping** (`delta.columnMapping.mode` name and id): stats and files keyed by physical
   names, parquet field ids. Needs `dcm` fixtures in both modes.
 - **Change data feed**: `cdc` actions and `_change_data/`, `_change_type`; needs a fixture.

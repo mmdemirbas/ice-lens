@@ -293,6 +293,8 @@ data class DeltaTableFacts(
     /** The earliest version whose commit is still in the log — older ones were cleaned up after a checkpoint. */
     val earliestCommit: Long?,
     val configuration: Map<String, String?>,
+    /** The current schema as the Iceberg read path takes it — see [deltaReadSchema]; what a filter binds against. */
+    val readSchema: IcebergSchemaModel? = null,
 ) {
     val describeProtocol: String
         get() = "reader $minReaderVersion, writer $minWriterVersion" + (features.takeIf { it.isNotEmpty() }?.let { " — " + it.joinToString(", ") } ?: "")
@@ -310,5 +312,6 @@ fun DeltaUnifiedTableModel.tableFacts(): DeltaTableFacts {
         lastCheckpointVersion = lastCheckpoint?.version,
         earliestCommit = commits.firstOrNull()?.version,
         configuration = state?.metadata?.configuration.orEmpty(),
+        readSchema = state?.metadata?.schema?.let { deltaReadSchema(it).schema },
     )
 }

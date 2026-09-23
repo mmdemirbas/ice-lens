@@ -38,6 +38,8 @@ object DeltaGraphBuilder {
             summary,
             unreferencedFiles = DeferredRead.of { findUnreferencedFiles(tableModel) },
             integrity = DeferredRead.of { tableModel.integrityReport() },
+            // The lookup is the Iceberg one over the Delta version — see DeltaRead.kt.
+            rowLookup = DeferredRead.of { tableModel.latestVersion?.let(tableModel::readInputAt) },
         )
 
         var nextErrorId = 0
@@ -50,6 +52,8 @@ object DeltaGraphBuilder {
 
         val partitionColumns = current?.metadata?.partitionColumns.orEmpty()
         val livePaths = current?.files?.keys?.mapTo(mutableSetOf()) { it.path }.orEmpty()
+        val struct = current?.metadata?.schema
+        val read = struct?.let(::deltaReadSchema)
         var nextFileId = 1
         var nextCheckpointId = 1
         var previousVersionId: String? = null
@@ -67,6 +71,7 @@ object DeltaGraphBuilder {
                 unavailable = (state.exceptionOrNull() as? DeltaVersionUnavailable)?.detail?.reason,
                 stateLoader = DeferredRead.of { tableModel.stateAt(version).getOrNull() },
                 tallies = commit?.let(::deltaCommitTallies).orEmpty(),
+                readInput = if (state.isSuccess) DeferredRead.of { tableModel.readInputAt(version) } else DeferredRead.none(),
             )
             edges += GraphEdge("e_table_$versionId", tableNodeId, versionId)
             previousVersionId?.let { parent ->
@@ -78,6 +83,7 @@ object DeltaGraphBuilder {
                 val fileId = "dfile_${version}_${nextFileId}"
                 val node = when {
                     action.add != null -> fileNode(tableModel, fileId, DeltaFileAction.ADD, version, nextFileId, partitionColumns, add = action.add, liveNow = current?.files?.containsKey(action.add.key) == true, pathLiveNow = action.add.path in livePaths)
+                        .let { n -> if (struct != null && read != null) n.copy(columnStats = deltaColumnStats(action.add, struct, read, partitionColumns)) else n }
                     action.remove != null -> fileNode(tableModel, fileId, DeltaFileAction.REMOVE, version, nextFileId, partitionColumns, remove = action.remove)
                     action.cdc != null -> fileNode(tableModel, fileId, DeltaFileAction.CDC, version, nextFileId, partitionColumns, cdc = action.cdc)
                     else -> null

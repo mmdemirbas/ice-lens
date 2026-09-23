@@ -3162,7 +3162,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,486 tests across 206 files (1,187 in :core, 289 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,491 tests across 207 files (1,192 in :core, 289 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3337,7 +3337,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pru`, `prua` | `PaimonUnexistingFilesFixtureTest` | a partitioned primary-key table with two live data files deleted from disk, copied before `sys.remove_unexisting_files` ran on it — the APPEND with a DELETE entry per file and `deltaRecordCount -2` it commits, the older snapshots it leaves broken, and the `fr` copies that pin the level-0 rule |
 | `delta/dplain` | `DeltaLogFixtureTest`, `DeltaGraphFixtureTest` | delta-spark 3.2.1, unpartitioned, a classic checkpoint at 3 under `delta.checkpointInterval = 3`, then a copy-on-write `DELETE` and `UPDATE` — the replay to 5 starts from the checkpoint, and the checkpoint equals the replay of commits 0–3 |
 | `delta/ddv` | `DeltaLogFixtureTest`, `DeltaGraphFixtureTest` | deletion vectors — two `DELETE`s put a vector on each file and then replace one, an `UPDATE` replaces the other and writes a new file; `count(*)` 1000 of 1004 written |
-| `delta/dpart` | `DeltaLogFixtureTest`, `DeltaGraphFixtureTest` | partitioned by a string and a date, a null partition, a checkpoint at 2 under `writeStatsAsStruct` |
+| `delta/dpart` | `DeltaLogFixtureTest`, `DeltaGraphFixtureTest`, `DeltaReadFixtureTest` | partitioned by a string and a date, a null partition, a checkpoint at 2 under `writeStatsAsStruct` |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
@@ -4104,8 +4104,28 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
 - **A Delta writer does not put a partition column into the file**, so a row card is given the
   partition values from the log beside the file's own columns (`dpart`); a null partition is JSON
   null in the log and prints `null`
-- Not yet read (the `TODO.md` Delta section): row lookup, live row count, scan pruning from
-  `add.stats`, column mapping, change data feed, VACUUM / OPTIMIZE planners, UniForm
+- **A Delta version is read through the Iceberg read path, not a second one** (`model/DeltaRead.kt`).
+  `readInputAt(version)` is a `RowLookupInput`: each live `add` a `LookupDataFile`, its vector a
+  `DELETION_VECTOR` delete file paired with it alone (`DeleteReach.reaches` = its path), so
+  `RowLookup`, `LiveRowCount` and the version panel's lookup run unchanged. The schema becomes an
+  `IcebergSchemaModel` with a `NameMapping` (`deltaReadSchema`): ids from
+  `delta.columnMapping.id` where written, assigned otherwise, and the mapping names each field by
+  physical and display name. **A partition column is not in a Delta file**, so
+  `LookupDataFile.constants` carries the `add`'s partition values and the projection reads a field
+  the file lacks from there (`withConstants`) — a null value as no default at all, since `JsonNull`
+  prints as the text `null` and `region IS NULL` then found nothing on `dpart` until it was
+  fixed. `DeltaReadFixtureTest` holds `ddv`'s count at every version (`0, 1000, 1003, 1001, 1000,
+  1000`, no data file opened) and its fates to the script, `dpart`'s partition filters, and
+  `dplain` as of version 3
+- **Pruning bridges `add.stats` into `ColumnStats`** (`deltaColumnStats`, carried on the
+  `DeltaFileNode`): each leaf by the id `deltaReadSchema` gave it, stats walked by physical name,
+  `numRecords` as the value count, a partition column exact — its value as both bounds, or every
+  row null. The file stage runs over the live adds only, the current version's scan. Sound under
+  `tightBounds = false`, whose bounds only widen. The test holds the lookup with pruning to the
+  lookup without it on `dplain`, the direction that loses rows; a null partition's null count
+  set to 0 fails `region IS NULL`
+- Not yet read (the `TODO.md` Delta section): row history across versions, column mapping
+  fixtures, change data feed, VACUUM / OPTIMIZE planners, UniForm
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

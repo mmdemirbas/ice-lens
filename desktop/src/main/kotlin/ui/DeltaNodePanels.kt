@@ -14,7 +14,10 @@ import kotlinx.coroutines.withContext
 import model.CommitTally
 import model.DeltaCheckpointCheck
 import model.DeltaFileAction
+import model.GraphModel
 import model.GraphNode
+import model.ScanFilter
+import service.LiveRowCount
 import model.deltaPartitionText
 import model.formatBytes
 import model.formatBytesExact
@@ -24,7 +27,7 @@ import model.formatCounted
 // The inspector panels for Delta's node kinds: a version, a file action, a checkpoint.
 
 @Composable
-internal fun ColumnScope.DeltaVersionPanel(node: GraphNode.DeltaVersionNode) {
+internal fun ColumnScope.DeltaVersionPanel(node: GraphNode.DeltaVersionNode, graph: GraphModel, scanFilter: ScanFilter) {
     val colors = MaterialTheme.colorScheme
     val info = node.commit?.commitInfo
     DetailTable {
@@ -122,9 +125,23 @@ internal fun ColumnScope.DeltaVersionPanel(node: GraphNode.DeltaVersionNode) {
                     (state.fromCheckpoint?.let { "checkpoint $it" } ?: "version 0") +
                         if (state.commitsReplayed.isEmpty()) "" else ", then ${formatCounted(state.commitsReplayed.size, "commit")}",
                 )
+                // The vectors decoded rather than their recorded cardinalities: the same count
+                // the Iceberg snapshot panel's Live Rows makes, over the same input shape.
+                if (state.deletedByVectors > 0) {
+                    val counted by produceState<String?>(null, node.id) {
+                        value = withContext(Dispatchers.IO) {
+                            runCatching { LiveRowCount.count(requireNotNull(node.readInput.value)) }
+                                .map { r -> r.live?.let { "${formatCount(it)} — every vector decoded" } ?: "not every vector could be read" }
+                                .getOrElse { "not counted: ${it.message}" }
+                        }
+                    }
+                    DetailRow("Rows Counted", counted ?: "decoding the vectors…")
+                }
             }
         }
     }
+    // A lookup as of this version: the table panel's filter, read against the files this version holds.
+    SnapshotRowLookupSection(node.id, node.readInput, paimon = false, graph, scanFilter)
 }
 
 @Composable

@@ -1044,6 +1044,8 @@ sealed class GraphNode(
         private val stateLoader: DeferredRead<DeltaState> = DeferredRead.none(),
         /** What the commit's `operationMetrics` say against the commit's own actions — see [deltaCommitTallies]. */
         val tallies: List<CommitTally> = emptyList(),
+        /** What reading this version takes, in the Iceberg read path's shape — see [readInputAt]; for the live row count and the lookup. */
+        val readInput: DeferredRead<RowLookupInput> = DeferredRead.none(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 210.0, 66.0), ComparableSnapshot {
@@ -1083,6 +1085,8 @@ sealed class GraphNode(
         val deletionVectorPath: String? = null,
         /** The vector decoded on first use, shared with the file's rows so it is read once. */
         val deletionVector: DeferredRead<DeletionVector> = DeferredRead.none(),
+        /** An `add`'s statistics and partition values as the file stage prunes on them — see [deltaColumnStats]. */
+        val columnStats: List<ColumnStats> = emptyList(),
         val initialX: Double = 0.0,
         val initialY: Double = 0.0,
     ) : GraphNode(id, initialX, initialY, 200.0, 64.0) {

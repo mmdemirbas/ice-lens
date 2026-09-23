@@ -232,6 +232,13 @@ class IceLensCliTest {
         assertEquals(IceLensCli.EXIT_OK, pRun.code, pRun.err)
         assertTrue(pRun.out.contains("superseded"), pRun.out)
 
+        // Delta: the Iceberg lookup over the latest version, ddv's vectors deciding — 2 marked,
+        // 1001's old row marked and its updated row live in the UPDATE's file.
+        val dRun = icelens("lookup", fixture("example/delta/ddv"), "id IN (2, 1001)")
+        assertEquals(IceLensCli.EXIT_OK, dRun.code, dRun.err)
+        assertTrue(dRun.out.contains("3 rows match, 1 live, 2 not live"), dRun.out)
+        assertTrue(dRun.out.contains("deleted by a vector") && dRun.out.contains("deletion_vector_"), dRun.out)
+
         // JSON: the same counts and one hit per core hit.
         val json = Json.parseToJsonElement(icelens("lookup", mor, "id = 5", "--json").out).jsonObject
         assertEquals(core.hits.size, json.getValue("matched").jsonPrimitive.content.toInt())

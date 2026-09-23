@@ -122,7 +122,9 @@ its commit wrote — adds, removes, change-data files — with their statistics 
 and deletion vectors are decoded, relative, absolute or inline. One click checks each commit's
 `operationMetrics` against its actions, each checkpoint against the replay of the commits before
 it, `_last_checkpoint` against its checkpoint, and every live vector's cardinality and CRC. Row
-lookup, the live row count, scan pruning, column mapping and the change data feed are not read yet.
+lookup, the live row count and scan pruning (from `add.stats` and the partition values) run as
+they do on Iceberg, since a Delta vector is an Iceberg v3 vector byte for byte. Column mapping
+fixtures and the change data feed are not read yet.
 
 Paimon has no Iceberg-style positional or equality delete files; removals are `_KIND=1`
 manifest entries, reported as *entries recording a removal* rather than as delete files, and

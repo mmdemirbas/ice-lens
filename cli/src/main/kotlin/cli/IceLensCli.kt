@@ -37,6 +37,7 @@ import model.parseScanFilter
 import model.readTableModel
 import model.render
 import model.rowLookupInput
+import model.readInputAt
 import model.StatisticsFileCheck
 import model.sweepFileStats
 import service.AggregationPolicy
@@ -281,12 +282,8 @@ object IceLensCli {
         val input: LookupInput? = when (model) {
             is UnifiedTableModel -> model.rowLookupInput()
             is PaimonUnifiedTableModel -> model.paimonRowLookupInput()
-            // Not built yet: a Delta read pairs each file with its vector and nothing else, and
-            // the lookup that decides it is the next piece of Delta support.
-            is DeltaUnifiedTableModel -> {
-                err.println("lookup does not read Delta tables yet")
-                return EXIT_UNREADABLE
-            }
+            // The Iceberg lookup over the latest version — a vector is Iceberg's, see DeltaRead.kt.
+            is DeltaUnifiedTableModel -> model.latestVersion?.let(model::readInputAt)
         }
         val result = input?.let { readAllPages(it, filter, ruledOut) }
         if (parsed.has("json")) {

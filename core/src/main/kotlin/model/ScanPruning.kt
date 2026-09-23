@@ -1055,6 +1055,8 @@ data class ScanPlan(
                 when (val file = graph.nodeById[id]) {
                     is GraphNode.FileNode -> file.data.filePath?.let(::normalizeFilePath)
                     is GraphNode.PaimonDataFileNode -> file.entry.file?.fileName
+                    // The lookup's key for a Delta file is its recorded path, normalised the way RowLookup compares it.
+                    is GraphNode.DeltaFileNode -> normalizeFilePath(file.path)
                     else -> null
                 }
             }
@@ -1121,6 +1123,9 @@ fun evaluateScan(graph: GraphModel, filter: ScanFilter): ScanPlan {
                     primaryKey?.let { return@mapNotNull node.id to it.getValue(node.id) }
                     if (withheld == null) paimonEvolvedColumnStats(node, scanSchema, paimonSchemasById[node.entry.file?.schemaId?.toInt()]) else null
                 }
+                // A Delta scan is of the current version: its live adds are the files it plans
+                // over, and a removed or superseded add, a remove and a change-data file are not.
+                is GraphNode.DeltaFileNode -> if (node.action == DeltaFileAction.ADD && node.liveNow) node.columnStats else return@mapNotNull null
                 else -> return@mapNotNull null
             }
             var own = if (stats != null) evaluateFilePruning(stats, filter, binder) else unevaluatedFile(filter, withheld.orEmpty())
@@ -1227,6 +1232,7 @@ val GraphNode.FileNode.isScanDataFile: Boolean get() = data.content == DataFileC
 fun scanSchemaOf(graph: GraphModel): IcebergSchemaModel? =
     graph.newestIcebergMetadata()?.currentSchemaModel()
         ?: graph.nodes.asSequence().filterIsInstance<GraphNode.PaimonSchemaNode>().maxByOrNull { it.data.id ?: -1 }?.data?.let(::paimonSchemaAsIceberg)
+        ?: graph.nodes.asSequence().filterIsInstance<GraphNode.TableNode>().firstNotNullOfOrNull { it.summary.delta?.readSchema }
 
 fun scanColumnBinder(graph: GraphModel): ColumnBinder = scanSchemaOf(graph)?.let { ColumnBinder.BySchema(it) } ?: ColumnBinder.ByName
 
@@ -1252,6 +1258,7 @@ fun prunableColumns(graph: GraphModel): List<PrunableColumn> {
             when (node) {
                 is GraphNode.FileNode -> if (node.isScanDataFile) node.columnStats.asSequence() else emptySequence()
                 is GraphNode.PaimonDataFileNode -> paimonColumnStats(node).asSequence()
+                is GraphNode.DeltaFileNode -> node.columnStats.asSequence()
                 else -> emptySequence()
             }
         }
@@ -1300,6 +1307,7 @@ private fun prunableColumnsOf(graph: GraphModel, schema: IcebergSchemaModel): Li
             when (node) {
                 is GraphNode.FileNode -> if (node.isScanDataFile) node.columnStats.asSequence() else emptySequence()
                 is GraphNode.PaimonDataFileNode -> paimonColumnStats(node).asSequence()
+                is GraphNode.DeltaFileNode -> node.columnStats.asSequence()
                 else -> emptySequence()
             }
         }

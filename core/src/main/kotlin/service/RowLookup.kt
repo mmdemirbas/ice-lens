@@ -3,6 +3,7 @@ package service
 import model.DeleteFileKind
 import model.DeletionVector
 import model.LookupDataFile
+import model.withConstants
 import model.LookupDeleteFile
 import model.LookupFileOutcome
 import model.RowFate
@@ -78,7 +79,7 @@ object RowLookup {
         val (safePath, ext) = SampleRowReader.resolveForQuery(file.localPath)
         // The file under the schema's names, so a column renamed or added since it was written
         // still answers the filter — see FileProjection.
-        val source = FileProjection.of(ext, SampleRowReader.fileColumnTreeOf(file.localPath), schema, mapping, rowNumber = true)
+        val source = FileProjection.of(ext, SampleRowReader.fileColumnTreeOf(file.localPath), schema?.withConstants(file.constants), mapping, rowNumber = true)
         return DuckDb.withConnection { conn ->
             conn.prepareStatement("SELECT * FROM ${source.sql} WHERE $where LIMIT $MAX_HITS_PER_FILE").use { pstmt ->
                 var i = source.bind(pstmt, 1, safePath)

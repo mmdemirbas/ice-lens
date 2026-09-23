@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Delta row lookup, live row count and scan pruning**, through the Iceberg read path: a
+  version is a `RowLookupInput` whose vectors are Iceberg v3 vectors, the partition values the
+  file does not hold are read from the log, and `add.stats` bridges to the file stage.
+  `icelens lookup` reads Delta tables; the version panel counts its rows and looks them up.
 - **Delta Lake, the third format.** A table is detected by a `_delta_log/` holding a commit or a
   checkpoint — after Paimon and before Iceberg, since a UniForm table writes Iceberg metadata
   beside its log. Every commit is read; checkpoints (classic, multi-part, V2 with sidecars) are

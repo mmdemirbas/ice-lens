@@ -1036,7 +1036,7 @@ fun NodeDetailsContent(
                     is GraphNode.PaimonManifestListNode -> PaimonManifestListPanel(node, currentGraph)
                     is GraphNode.PaimonManifestNode -> PaimonManifestPanel(node, currentGraph)
                     is GraphNode.PaimonDataFileNode -> PaimonDataFilePanel(node, currentGraph)
-                    is GraphNode.DeltaVersionNode -> DeltaVersionPanel(node)
+                    is GraphNode.DeltaVersionNode -> DeltaVersionPanel(node, currentGraph, scanFilter)
                     is GraphNode.DeltaFileNode -> DeltaFilePanel(node)
                     is GraphNode.DeltaCheckpointNode -> DeltaCheckpointPanel(node)
                     is GraphNode.GroupNode -> GroupPanel(node, onExpandGroup, onExpandGroupFully)

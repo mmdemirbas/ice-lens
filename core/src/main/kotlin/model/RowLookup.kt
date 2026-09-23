@@ -22,6 +22,13 @@ data class LookupDataFile(
     val localPath: String,
     val format: String?,
     val recordCount: Long?,
+    /**
+     * Columns whose value the metadata fixes for the whole file rather than the file holding
+     * them — a Delta partition column — by the schema's name; a null value is a null column.
+     * Read by the projection as the value of a field the file lacks. Empty on Iceberg and
+     * Paimon, whose files hold their partition columns.
+     */
+    val constants: Map<String, String?> = emptyMap(),
 )
 
 data class LookupDeleteFile(
