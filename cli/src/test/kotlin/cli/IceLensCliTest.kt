@@ -334,7 +334,7 @@ class IceLensCliTest {
 
         val notATable = icelens("summary", fixture("docs"))
         assertEquals(IceLensCli.EXIT_UNREADABLE, notATable.code)
-        assertTrue(notATable.err.contains("is not an Iceberg or Paimon table"), notATable.err)
+        assertTrue(notATable.err.contains("is not an Iceberg, Paimon or Delta table"), notATable.err)
 
         val notADirectory = icelens("check", fixture("README.md"))
         assertEquals(IceLensCli.EXIT_UNREADABLE, notADirectory.code)

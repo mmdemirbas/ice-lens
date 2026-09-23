@@ -10,6 +10,7 @@ class FixtureCatalogTest {
         assertTrue(FixtureCatalog.iceberg.size >= 28, FixtureCatalog.iceberg.toString())
         assertTrue(FixtureCatalog.paimon.size >= 26, FixtureCatalog.paimon.toString())
         assertTrue("mor" in FixtureCatalog.iceberg && "sgd" in FixtureCatalog.paimon)
+        assertTrue(listOf("dplain", "ddv", "dpart").all { it in FixtureCatalog.delta }, FixtureCatalog.delta.toString())
         assertTrue(FixtureCatalog.iceberg.all { FixtureCatalog.icebergDir(it).isDirectory } && FixtureCatalog.paimon.all { FixtureCatalog.paimonDir(it).isDirectory })
     }
 }

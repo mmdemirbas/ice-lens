@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import model.*
 import service.AggregationPolicy
+import service.DeltaReader
 import service.DuckDb
 import service.GraphAggregation
 import service.GraphLayoutAlgorithm
@@ -627,9 +628,14 @@ class AppState(
         if (StorageLocation.isRemote(tablePath)) return remoteTableFingerprint(tablePath)
         val tableDir = File(tablePath)
         if (!tableDir.exists() || !tableDir.isDirectory) return "missing"
-        // Iceberg first; fall back to Paimon. UNKNOWN treated as a present-but-empty directory.
-        val trackedFiles = icebergTrackedFiles(tableDir)
-            .ifEmpty { paimonTrackedFiles(tableDir) }
+        // The detector's answer, so a table carrying another format's metadata beside its own — a
+        // Paimon table's Iceberg export, a Delta UniForm table's — is fingerprinted by its own
+        // commits. UNKNOWN is treated as a present-but-empty directory.
+        val trackedFiles = when (TableFormatDetector.detect(tableDir.toPath())) {
+            TableFormat.PAIMON -> paimonTrackedFiles(tableDir)
+            TableFormat.DELTA -> deltaTrackedFiles(tableDir)
+            TableFormat.ICEBERG, TableFormat.UNKNOWN -> icebergTrackedFiles(tableDir)
+        }
         if (trackedFiles.isEmpty()) return "empty"
         val signature = trackedFiles.joinToString("|") { file ->
             "${file.name}:${file.length()}:${file.lastModified()}"
@@ -652,9 +658,14 @@ class AppState(
         // would return whatever the first read produced, forever, and a remote table would never
         // reload. The cost of that honesty is a LIST per call, which is why the callers space these
         // out (REMOTE_POLL_INTERVAL_MS) rather than asking on the local table's three-second timer.
-        listOf("metadata", "snapshot", "schema", "tag", "branch", "consumer").forEach { ObjectStorage.invalidate("$root/$it") }
+        listOf("metadata", "snapshot", "schema", "tag", "branch", "consumer", DeltaReader.LOG_DIR).forEach { ObjectStorage.invalidate("$root/$it") }
         val names = runCatching {
-            ObjectStorage.list("$root/metadata")
+            // A Delta commit adds a file to _delta_log/ and nothing a Paimon or Iceberg listing
+            // reaches; asked first, as the detector asks Delta before Iceberg.
+            ObjectStorage.list("$root/${DeltaReader.LOG_DIR}")
+                .filter { DeltaReader.isVersionFileName(it.name) || it.name == "_last_checkpoint" }
+                .map { it.name }
+                .ifEmpty { ObjectStorage.list("$root/metadata")
                 .filter { isMetadataFileName(it.name) || it.name == "version-hint.text" }
                 .map { it.name }
                 .ifEmpty {
@@ -666,12 +677,19 @@ class AppState(
                         ObjectStorage.glob("$root/tag/**").map { it.removePrefix("$root/") } +
                         ObjectStorage.glob("$root/branch/**").map { it.removePrefix("$root/") } +
                         ObjectStorage.glob("$root/consumer/**").map { it.removePrefix("$root/") }
-                }
+                } }
                 .sorted()
         }.getOrElse { return "unreachable" }
         if (names.isEmpty()) return "empty"
         return names.joinToString("|").hashCode().toString()
     }
+
+    /** What a Delta commit or checkpoint touches: the version files in `_delta_log/`, and `_last_checkpoint`. */
+    private fun deltaTrackedFiles(tableDir: File): List<File> =
+        File(tableDir, DeltaReader.LOG_DIR).listFiles()
+            ?.filter { it.isFile && (DeltaReader.isVersionFileName(it.name) || it.name == "_last_checkpoint") }
+            ?.sortedBy { it.name }
+            .orEmpty()
 
     private fun icebergTrackedFiles(tableDir: File): List<File> {
         val metadataDir = File(tableDir, "metadata")

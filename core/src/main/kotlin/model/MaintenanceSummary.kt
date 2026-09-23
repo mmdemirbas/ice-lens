@@ -278,11 +278,12 @@ fun maintenanceSummary(
     }
     if (node.unreferencedFiles.isPresent) {
         val orphans = orphanReport?.let { planOrphanRemoval(it, nowMs) }
+        val procedure = orphans?.procedure ?: if (summary.delta != null) "VACUUM" else "remove_orphan_files"
         rows += when {
-            orphans == null -> MaintenanceLine("not walked", "remove_orphan_files", "walk the table directory under Unreferenced Files to plan it", "table → Unreferenced Files", MaintenanceTone.PLAIN)
-            orphans.rows.isEmpty() -> MaintenanceLine("nothing to delete", "remove_orphan_files", "every file on disk is named by the metadata the procedure reads", "table → Unreferenced Files", MaintenanceTone.PLAIN)
-            orphans.removed.isEmpty() -> MaintenanceLine("nothing on a bare call", "remove_orphan_files", "${formatCounted(orphans.rows.size, "file")} named by nothing: ${orphans.tooYoung} younger than ${orphans.defaultIntervalText}, ${orphans.unlisted} where it never lists", "table → Unreferenced Files", MaintenanceTone.PLAIN)
-            else -> MaintenanceLine("would delete ${formatCounted(orphans.removed.size, "file")}", "remove_orphan_files", "${formatBytes(orphans.removedBytes)}, older than ${orphans.defaultIntervalText}; ${orphans.tooYoung} younger held back, ${orphans.unlisted} never listed", "table → Unreferenced Files", MaintenanceTone.ACTS)
+            orphans == null -> MaintenanceLine("not walked", procedure, "walk the table directory under Unreferenced Files to plan it", "table → Unreferenced Files", MaintenanceTone.PLAIN)
+            orphans.rows.isEmpty() -> MaintenanceLine("nothing to delete", procedure, "every file on disk is named by the metadata the procedure reads" + if (summary.delta != null) " — the files only an expired tombstone names are not planned yet" else "", "table → Unreferenced Files", MaintenanceTone.PLAIN)
+            orphans.removed.isEmpty() -> MaintenanceLine("nothing on a bare call", procedure, "${formatCounted(orphans.rows.size, "file")} named by nothing: ${orphans.tooYoung} younger than ${orphans.defaultIntervalText}, ${orphans.unlisted} where it never lists", "table → Unreferenced Files", MaintenanceTone.PLAIN)
+            else -> MaintenanceLine("would delete ${formatCounted(orphans.removed.size, "file")}", procedure, "${formatBytes(orphans.removedBytes)}, older than ${orphans.defaultIntervalText}; ${orphans.tooYoung} younger held back, ${orphans.unlisted} never listed", "table → Unreferenced Files", MaintenanceTone.ACTS)
         }
     }
     return rows

@@ -172,6 +172,7 @@ fun formatBadgeLabel(dir: File): String? = formatBadge(TableFormatDetector.detec
 fun formatBadge(format: TableFormat): String? = when (format) {
     TableFormat.ICEBERG -> "ICE"
     TableFormat.PAIMON -> "PMN"
+    TableFormat.DELTA -> "DLT"
     TableFormat.UNKNOWN -> null
 }
 

@@ -38,6 +38,10 @@ enum class IntegrityCheck(val label: String) {
     METRICS_MODES("metrics modes"),
     /** A live Paimon file's `_TOTAL_BUCKETS` against the table's `bucket` — the count a write is refused on until a rescale; see [paimonBucketCountChecks]. */
     BUCKET_COUNT("bucket counts"),
+    /** A Delta checkpoint against the replay of the commits up to its version — see [checkDeltaCheckpoint]. */
+    CHECKPOINTS("checkpoints"),
+    /** A deletion vector's recorded cardinality and CRC against its bitmap, decoded. */
+    DELETION_VECTORS("deletion vectors"),
 }
 
 data class IntegrityFinding(
@@ -203,6 +207,46 @@ fun PaimonUnifiedTableModel.integrityReport(maxClosureChecks: Int = MAX_CLOSURE_
         }
     }
     return IntegrityReport(t.checked, t.findings, closures.size, snapshotCount, readErrors)
+}
+
+/**
+ * The Delta half: each commit's `operationMetrics` against its actions ([deltaCommitTallies]),
+ * each checkpoint against the replay of the commits before it, `_last_checkpoint` against the
+ * checkpoint it names, and every live deletion vector's cardinality and CRC against its bitmap.
+ * The vectors are file reads, one per `.bin` range, which is why this sits behind a click like
+ * the other formats' reports. A checkpoint whose commits the log has cleaned up is not
+ * compared — the replay it would be compared with cannot be run.
+ */
+fun DeltaUnifiedTableModel.integrityReport(): IntegrityReport {
+    val t = Tallying()
+    var errors = readErrors.size
+    commits.forEach { c ->
+        val where = "version ${c.version}" + (c.commitInfo?.operation?.let { " ($it)" } ?: "")
+        deltaCommitTallies(c).forEach { t.count(IntegrityCheck.COMMIT_SUMMARY, where, it.label, it.recorded, it.counted, it.agrees) }
+    }
+    checkpoints.forEach { cp ->
+        val check = checkDeltaCheckpoint(cp)
+        val where = "checkpoint ${cp.version}"
+        if (check.readError != null) { errors++; return@forEach }
+        if (!check.fromCommits) return@forEach
+        val replayFiles = check.checkpointFileCount - check.onlyInCheckpoint.size + check.onlyInReplay.size
+        t.count(IntegrityCheck.CHECKPOINTS, where, "live files", check.checkpointFileCount, replayFiles, check.onlyInCheckpoint.isEmpty() && check.onlyInReplay.isEmpty())
+        t.count(IntegrityCheck.CHECKPOINTS, where, "tombstones not in the replay", check.tombstonesOnlyInCheckpoint.size, 0, check.tombstonesOnlyInCheckpoint.isEmpty())
+        t.count(IntegrityCheck.CHECKPOINTS, where, "protocol", "checkpoint's", if (check.protocolAgrees) "the same" else "another", check.protocolAgrees)
+        t.count(IntegrityCheck.CHECKPOINTS, where, "metadata", "checkpoint's", if (check.metadataAgrees) "the same" else "another", check.metadataAgrees)
+    }
+    lastCheckpointTallies().forEach { t.count(IntegrityCheck.METADATA_FIGURES, "_last_checkpoint", it.label, it.recorded, it.counted, it.agrees) }
+    current?.files?.values?.forEach { add ->
+        val vector = add.deletionVector ?: return@forEach
+        val decoded = service.DeltaGraphBuilder.readDeletionVector(this, vector)
+        val where = add.path.substringAfterLast('/')
+        if (decoded == null) { errors++; return@forEach }
+        t.count(IntegrityCheck.DELETION_VECTORS, where, "cardinality", vector.cardinality, decoded.cardinality, vector.cardinality?.let { it == decoded.cardinality })
+        if (vector.storageType != "i") t.count(IntegrityCheck.DELETION_VECTORS, where, "CRC-32", "recorded", if (decoded.checksumMatches) "the same" else "another", decoded.checksumMatches)
+    }
+    // No check here walks a capped closure — each commit, checkpoint and vector is compared — so
+    // the report reached every version.
+    return IntegrityReport(t.checked, t.findings, versions.size, versions.size, errors)
 }
 
 const val PAIMON_BUCKET_OPTION = "bucket"

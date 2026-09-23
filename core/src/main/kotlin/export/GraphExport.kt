@@ -1,9 +1,11 @@
 package export
 
 import model.DataFileContent
+import model.DeltaFileAction
 import model.GraphModel
 import model.GraphNode
 import model.Point
+import model.deltaPartitionText
 
 /**
  * Taking the drawing and the table out of the window.
@@ -203,6 +205,23 @@ object GraphExport {
                     ).joinToString("/"),
                 )
 
+                // An add is the file a version made live; a remove and a change-data file are rows
+                // of their own kind, since a spreadsheet of Delta files is the log's actions.
+                is GraphNode.DeltaFileNode -> listOf(
+                    node.id,
+                    "delta",
+                    when (node.action) {
+                        DeltaFileAction.ADD -> if (node.vector != null) "data+deletion-vector" else "data"
+                        DeltaFileAction.REMOVE -> "remove"
+                        DeltaFileAction.CDC -> "change-data"
+                    },
+                    "parquet",
+                    node.path,
+                    (node.stats?.numRecords ?: 0L).toString(),
+                    (node.size ?: 0L).toString(),
+                    deltaPartitionText(node.partitionColumns, node.partitionValues) ?: "",
+                )
+
                 else -> null
             }
         }
@@ -228,6 +247,9 @@ object GraphExport {
         is GraphNode.PaimonManifestListNode -> "MANIFEST LIST\n${node.kind}"
         is GraphNode.PaimonManifestNode -> "PAIMON MANIFEST ${node.simpleId}\n${fileName(node.data.fileName)}"
         is GraphNode.PaimonDataFileNode -> "PAIMON FILE ${node.simpleId}\n${fileName(node.entry.file?.fileName)}"
+        is GraphNode.DeltaVersionNode -> "VERSION ${node.version}\n${node.operation ?: ""}"
+        is GraphNode.DeltaFileNode -> "${node.action.name} ${node.simpleId}\n${fileName(node.path)}"
+        is GraphNode.DeltaCheckpointNode -> "CHECKPOINT ${node.checkpoint.version}\n${fileName(node.checkpoint.parts.firstOrNull()?.toString())}"
         is GraphNode.GroupNode -> "${node.kind.plural}\n${node.memberCount} not drawn"
     }
 

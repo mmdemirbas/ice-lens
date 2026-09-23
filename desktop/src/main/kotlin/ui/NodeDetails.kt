@@ -116,6 +116,9 @@ private fun multiSelectKey(node: GraphNode): String = when (node) {
     is GraphNode.PaimonManifestListNode -> node.kind
     is GraphNode.PaimonManifestNode -> node.data.fileName ?: "?"
     is GraphNode.PaimonDataFileNode -> "${node.entry.file?.fileName ?: "?"} (${node.entry.file?.rowCount ?: "?"} rows)"
+    is GraphNode.DeltaVersionNode -> "version ${node.version} @ ${node.commitTimeMs?.let { formatTimestamp(it).substringBefore('\n') } ?: "?"}"
+    is GraphNode.DeltaFileNode -> "${node.action.label} ${node.path.substringAfterLast('/')} (${node.stats?.numRecords ?: "?"} rows)"
+    is GraphNode.DeltaCheckpointNode -> "checkpoint ${node.checkpoint.version}"
     is GraphNode.GroupNode -> "${node.memberCount} ${node.kind.plural} not drawn"
 }
 
@@ -136,6 +139,9 @@ private fun nodeTitle(node: GraphNode): String = when (node) {
     is GraphNode.PaimonManifestListNode -> "PAIMON ${node.kind.uppercase()} MANIFEST LIST"
     is GraphNode.PaimonManifestNode -> "PAIMON MANIFEST ${node.simpleId}"
     is GraphNode.PaimonDataFileNode -> "PAIMON FILE ${node.simpleId}"
+    is GraphNode.DeltaVersionNode -> "DELTA VERSION ${node.version}"
+    is GraphNode.DeltaFileNode -> "DELTA ${node.action.label.uppercase()} ${node.simpleId}"
+    is GraphNode.DeltaCheckpointNode -> "DELTA CHECKPOINT ${node.checkpoint.version}"
     is GraphNode.GroupNode -> "NOT DRAWN: ${node.kind.plural.uppercase()}"
 }
 
@@ -552,6 +558,9 @@ private fun inspectorOpenPath(node: GraphNode): String? = when (node) {
     is GraphNode.PaimonManifestListNode -> node.localPath
     is GraphNode.PaimonManifestNode -> node.localPath
     is GraphNode.PaimonDataFileNode -> node.localPath
+    is GraphNode.DeltaVersionNode -> node.localPath
+    is GraphNode.DeltaFileNode -> node.localPath
+    is GraphNode.DeltaCheckpointNode -> node.checkpoint.parts.firstOrNull()?.toString()
     // A group stands for a set of files, not for one, so there is nothing to reveal in Finder.
     is GraphNode.GroupNode -> null
 }
@@ -1027,6 +1036,9 @@ fun NodeDetailsContent(
                     is GraphNode.PaimonManifestListNode -> PaimonManifestListPanel(node, currentGraph)
                     is GraphNode.PaimonManifestNode -> PaimonManifestPanel(node, currentGraph)
                     is GraphNode.PaimonDataFileNode -> PaimonDataFilePanel(node, currentGraph)
+                    is GraphNode.DeltaVersionNode -> DeltaVersionPanel(node)
+                    is GraphNode.DeltaFileNode -> DeltaFilePanel(node)
+                    is GraphNode.DeltaCheckpointNode -> DeltaCheckpointPanel(node)
                     is GraphNode.GroupNode -> GroupPanel(node, onExpandGroup, onExpandGroupFully)
                 }
             }
@@ -1693,6 +1705,35 @@ internal fun PaimonDeletionVectorSection(node: GraphNode.PaimonDataFileNode) {
                 "Index File" to "${range.indexFileName}, at offset ${range.offset} for ${formatBytesExact(range.length)}",
             ),
         )
+    }
+}
+
+/**
+ * The Delta twin: the vector an `add` or `remove` carries, decoded from the `.bin` file (or the
+ * inline bytes) on first use. A Delta vector's stored bytes are Iceberg's Puffin blob byte for
+ * byte, so the figures and the list are the same.
+ */
+@Composable
+internal fun DeltaDeletionVectorSection(node: GraphNode.DeltaFileNode) {
+    val descriptor = node.vector ?: return
+    val location = when (descriptor.storageType) {
+        "i" -> "inline in the log, ${descriptor.sizeInBytes ?: "?"} bytes"
+        else -> "${node.deletionVectorPath?.substringAfterLast('/') ?: descriptor.pathOrInlineDv}, at offset ${descriptor.offset ?: 1} for ${descriptor.sizeInBytes ?: "?"} bytes"
+    }
+    val vector = node.deletionVector.value
+    if (vector == null) {
+        Section("Deleted Rows") {
+            Text(
+                "The log records a vector for this file ($location, ${formatCount(descriptor.cardinality ?: 0L)} rows), " +
+                    "and it could not be read — the vector's file may have been removed by a VACUUM.",
+                fontSize = TypeScale.small,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    Section("Deleted Rows (${formatCount(vector.cardinality)})") {
+        DeletionVectorBody(vector, "this file", leadingRows = listOf("Vector" to location))
     }
 }
 
@@ -2468,7 +2509,7 @@ internal fun UnreferencedFilesSection(
                         plan.unlisted.takeIf { it > 0 }?.let { "${formatCounted(it, "file")} in a place it never lists" },
                     )
                     Text(
-                        "A bare remove_orphan_files now (older_than = ${plan.defaultIntervalText} ago, the default) would " +
+                        "A bare ${plan.procedure} now (older_than = ${plan.defaultIntervalText} ago, the default) would " +
                             "delete ${formatCounted(plan.removed.size, "file")} (${formatBytes(plan.removedBytes)})" +
                             (if (heldBack.isEmpty()) "." else "; held back: ${heldBack.joinToString(", ")}.") +
                             (if (report.unreachedFromCurrent.isNotEmpty()) {

@@ -1,6 +1,6 @@
 # Iceberg Lens
 
-**A read-only desktop view of what an Apache Iceberg or Apache Paimon table is made of —
+**A read-only desktop view of what an Apache Iceberg, Apache Paimon or Delta Lake table is made of —
 the metadata tree, snapshot by snapshot, down to the rows — with every recorded figure
 checked against the same figure counted.**
 
@@ -28,7 +28,7 @@ never changes one.
 - **Read-only** — never modifies tables or metadata; the object-store filesystem refuses writes by type
 - **Local-first** — folders on your machine, or `s3://`, `gs://` and `r2://` with a session-only key
 - **Offline** — no catalog, no service; a table is opened by its location
-- **Two formats** — Apache Iceberg (v1, v2 and v3) and Apache Paimon, detected per directory
+- **Three formats** — Apache Iceberg (v1, v2 and v3), Apache Paimon and Delta Lake, detected per directory
 - **Three faces** — a desktop app for macOS, Windows and Linux; an IntelliJ IDEA tool window;
   and `icelens`, a command line over the same engine for scripts, cron jobs and CI
 
@@ -115,6 +115,15 @@ path or partition or operation, arrow keys across the drawing, and export as SVG
 | Files | data, positional-delete, equality-delete, v3 deletion vectors (Puffin, decoded), partition tuples and column bounds decoded against the manifest's own schema, inherited sequence numbers and row ids | data files with LSM level and bucket, key and value bounds, file indexes (bloom filter, bitmap and bit-sliced, decoded), external paths, row tracking, data-evolution patch files paired with the file they patch, deletion vectors decoded from the index file |
 | Rows | Parquet and Avro via DuckDB (ORC has no DuckDB reader, and the card says so), capped at 50 per file, with `_row_id` and deleted rows marked, and what a read returns when the schema has moved on since the file — by field id, with v3 initial defaults and the name mapping, nested fields included | same, with `_ROW_ID`, the `+I` / `-U` / `+U` / `-D` kind of each key-value row, rows a deletion vector marks struck, and the read projection by the schema the file's own `_SCHEMA_ID` names |
 
+**Delta Lake** is read from its log: every commit under `_delta_log/`, checkpoints in all three
+namings (classic, multi-part, V2 with sidecars) and `_last_checkpoint`, each version replayed from
+the newest checkpoint by the protocol's reconciliation rules. A version shows the file actions
+its commit wrote — adds, removes, change-data files — with their statistics and partition values,
+and deletion vectors are decoded, relative, absolute or inline. One click checks each commit's
+`operationMetrics` against its actions, each checkpoint against the replay of the commits before
+it, `_last_checkpoint` against its checkpoint, and every live vector's cardinality and CRC. Row
+lookup, the live row count, scan pruning, column mapping and the change data feed are not read yet.
+
 Paimon has no Iceberg-style positional or equality delete files; removals are `_KIND=1`
 manifest entries, reported as *entries recording a removal* rather than as delete files, and
 row-level deletes on a table with `deletion-vectors.enabled` are vectors in the index file.
@@ -189,7 +198,7 @@ all it takes:
 ## Usage
 
 1. Click **Add to Workspace** (sidebar or empty state button).
-2. Choose a warehouse folder (contains multiple tables) or a single table folder (`metadata/` for Iceberg, `snapshot/` + `schema/` for Paimon).
+2. Choose a warehouse folder (contains multiple tables) or a single table folder (`metadata/` for Iceberg, `snapshot/` + `schema/` for Paimon, `_delta_log/` for Delta).
 3. Select a table from the Workspace panel.
 4. Explore graph nodes -- click to inspect, drag to rearrange.
 5. Click a node to see details in the **Inspector** panel.

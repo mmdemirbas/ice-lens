@@ -21,11 +21,18 @@ object FixtureCatalog {
     /** The Paimon tables under `example/paimon/db.db`, by directory name, sorted. */
     val paimon: List<String> = tables(File(repoRoot, "example/paimon/db.db"), "snapshot")
 
+    /** The Delta tables under `example/delta`, by directory name, sorted. */
+    val delta: List<String> = tables(File(repoRoot, "example/delta"), "_delta_log")
+
     fun icebergDir(name: String): File = File(repoRoot, "example/iceberg/default/$name")
     fun paimonDir(name: String): File = File(repoRoot, "example/paimon/db.db/$name")
 
+    fun deltaDir(name: String): File = File(repoRoot, "example/delta/$name")
+
     fun icebergModel(name: String) = UnifiedTableModel(Paths.get(icebergDir(name).absolutePath))
     fun paimonModel(name: String) = PaimonUnifiedTableModel(Paths.get(paimonDir(name).absolutePath))
+
+    fun deltaModel(name: String) = DeltaUnifiedTableModel(Paths.get(deltaDir(name).absolutePath))
 
     private fun tables(root: File, marker: String): List<String> =
         root.listFiles().orEmpty().filter { it.isDirectory && File(it, marker).isDirectory }.map { it.name }.sorted()

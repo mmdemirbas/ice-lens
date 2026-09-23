@@ -88,6 +88,7 @@ internal fun paimonSnapshotTracks(snapshots: List<GraphNode.PaimonSnapshotNode>)
 fun columnLabelsOf(node: GraphNode): List<model.SnapshotRefLabel> = when (node) {
     is GraphNode.SnapshotNode -> node.refs.filter { it.isBranch }
     is GraphNode.PaimonSnapshotNode -> listOf(model.SnapshotRefLabel(node.branch ?: model.MAIN_BRANCH, isBranch = true))
+    // A Delta log is one line with no refs; one column, which the caller already leaves unnamed.
     else -> emptyList()
 }
 

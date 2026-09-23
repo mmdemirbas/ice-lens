@@ -12,6 +12,7 @@ private val logger = LoggerFactory.getLogger(TableFormatDetector::class.java)
 enum class TableFormat {
     ICEBERG,
     PAIMON,
+    DELTA,
     UNKNOWN,
 }
 
@@ -19,6 +20,7 @@ enum class TableFormat {
  * Detects the table format of a directory by examining its structure.
  *
  * - **Paimon**: has both `snapshot/` and `schema/` subdirectories
+ * - **Delta**: has a `_delta_log/` subdirectory holding a commit or a checkpoint
  * - **Iceberg**: has a `metadata/` subdirectory containing at least one `*.metadata.json` file
  * - **Unknown**: none of the above markers found
  *
@@ -27,6 +29,8 @@ enum class TableFormat {
  * `<table>/metadata/` so an Iceberg reader can open the data files (`pic`). That directory is
  * the table's *export*, and the table is Paimon — opened as Iceberg, its snapshots, levels and
  * merge engine are invisible and its own `snapshot/`, `schema/` and `manifest/` read as orphans.
+ * Delta is asked before Iceberg for the same reason: a UniForm table writes Iceberg metadata
+ * beside its `_delta_log/`, and the log is the table.
  */
 object TableFormatDetector {
 
@@ -35,6 +39,7 @@ object TableFormatDetector {
         if (!Files.isDirectory(dir)) return TableFormat.UNKNOWN
         val format = when {
             isPaimonTable(dir) -> TableFormat.PAIMON
+            isDeltaTable(dir) -> TableFormat.DELTA
             isIcebergTable(dir) -> TableFormat.ICEBERG
             else -> TableFormat.UNKNOWN
         }
@@ -53,6 +58,21 @@ object TableFormatDetector {
         return runCatching {
             Files.list(metaDir).use { entries ->
                 entries.asSequence().any { isMetadataFileName(it.fileName.toString()) }
+            }
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Checks whether the given directory is a Delta table: `_delta_log/` holding a commit file or a
+     * checkpoint. The directory alone is not enough — a table whose first commit failed leaves an
+     * empty one, and a log cleaned up to its checkpoints holds no commit at version 0.
+     */
+    fun isDeltaTable(dir: Path): Boolean {
+        val logDir = dir.resolve(DeltaReader.LOG_DIR)
+        if (!Files.isDirectory(logDir)) return false
+        return runCatching {
+            Files.list(logDir).use { entries ->
+                entries.asSequence().any { DeltaReader.isVersionFileName(it.fileName.toString()) }
             }
         }.getOrDefault(false)
     }

@@ -173,19 +173,30 @@ object GraphTree {
             // strip is the strip it was.
             node.summary.metadataKeptApartAt?.let { "Metadata kept at" to it },
             node.summary.locationIsPaimonTable?.let { "Export of Paimon table" to it },
-        ) + listOf(
+        ) + (node.summary.delta?.let { d ->
+            listOf(
+                "Protocol" to d.describeProtocol,
+                "Versions" to node.summary.snapshotCount.toString(),
+                "Current version" to (node.summary.currentSnapshotId?.toString() ?: "—"),
+                "Partitioned by" to d.partitionColumns.joinToString(", ").ifEmpty { "none" },
+                "Checkpoints" to d.checkpointVersions.joinToString(", ").ifEmpty { "none" },
+            )
+        } ?: listOf(
             "Format version" to (node.summary.formatVersion?.toString() ?: "—"),
             "Snapshots" to node.summary.snapshotCount.toString(),
             "Current snapshot" to (node.summary.currentSnapshotId?.toString() ?: "—"),
+        )) + listOf(
             "Data files (current)" to node.summary.current.dataFileCount.toString(),
             "Records (current)" to "%,d".format(node.summary.current.recordCount) +
                 (node.summary.current.partialRecordCount.takeIf { it > 0 }?.let { " (%,d in partial-column files; %,d read)".format(it, node.summary.current.readRecordCount) } ?: ""),
             "Size (current)" to "%,d bytes".format(node.summary.current.dataSizeBytes),
+        ) + listOfNotNull(
             // The one maintenance line that costs no walk: an expiry is planned from the
             // metadata alone, and "what would expire_snapshots do now" is the question a table's
             // row is opened for most. The rest of the maintenance summary walks a closure and
-            // stays in the desktop shell.
-            "Expiry (older_than = now)" to expiryLine(node, nowMs),
+            // stays in the desktop shell. Delta has no expire_snapshots; its log retention is a
+            // table property, not a call.
+            if (node.summary.delta == null) "Expiry (older_than = now)" to expiryLine(node, nowMs) else null,
         )
         is GraphNode.MetadataNode -> listOf(
             "File" to node.fileName,
@@ -310,6 +321,38 @@ object GraphTree {
                 paimonPartitionBoundsChecks(partition, node.columnBounds, node.entry.file?.rowCount).map { Triple("partition ${it.field}", it.agrees, "${it.recorded} recorded, ${it.fromBounds ?: it.reason} from the bounds") }
             }.orEmpty() + node.statsModes.map { Triple("${it.column} stats-mode", it.agrees, "${it.recorded} recorded under ${it.configured.mode.spelled}: ${it.reason}") })
                 .takeIf { it.isNotEmpty() }?.let { CHECKS to checksLine(it) },
+        )
+        is GraphNode.DeltaVersionNode -> listOf(
+            "Version" to node.version.toString(),
+            "Operation" to (node.operation ?: "—"),
+            "Commit file" to (node.localPath ?: "—"),
+        ) + listOfNotNull(
+            node.commit?.let { c -> "Actions" to "%d add, %d remove, %d change-data".format(c.adds.size, c.removes.size, c.cdcs.size) },
+            node.unavailable?.let { "Not reconstructable" to it },
+            node.checkpoints.takeIf { it.isNotEmpty() }?.let { cps -> "Checkpoint" to cps.joinToString("; ") { "${it.naming.name.lowercase()}, ${it.parts.size} of ${it.expectedParts} parts" } },
+            node.commit?.commitInfo?.engineInfo?.let { "Engine" to it },
+            node.tallies.takeIf { it.isNotEmpty() }?.let { t -> CHECKS to checksLine(t.map { Triple(it.label, it.agrees, "${it.recorded} recorded, ${it.counted} in the actions") }) },
+        )
+        is GraphNode.DeltaFileNode -> listOf(
+            "Action" to node.action.label,
+            "Path" to node.path,
+            "Size" to (node.size?.let { "%,d bytes".format(it) } ?: "—"),
+            "Records" to (node.stats?.numRecords?.toString() ?: "—"),
+            "Partition" to (deltaPartitionText(node.partitionColumns, node.partitionValues) ?: "none"),
+        ) + listOfNotNull(
+            node.vector?.let { v -> "Deletion vector" to "${v.cardinality ?: "?"} rows marked" + (node.deletionVectorPath?.let { " in ${it.substringAfterLast('/')}" } ?: if (v.storageType == "i") " inline" else "") },
+            if (node.action == DeltaFileAction.ADD) "Live now" to when {
+                node.liveNow -> "yes"
+                node.pathLiveNow -> "no — a later commit re-added the file with another deletion vector, and it is live under that one"
+                else -> "no — a later commit removed it"
+            } else null,
+            node.remove?.deletionTimestamp?.let { "Removed at" to it.toString() },
+        )
+        is GraphNode.DeltaCheckpointNode -> listOf(
+            "Version" to node.checkpoint.version.toString(),
+            "Naming" to node.checkpoint.naming.name.lowercase(),
+            "Parts" to "${node.checkpoint.parts.size} of ${node.checkpoint.expectedParts}",
+            "File" to (node.checkpoint.parts.firstOrNull()?.toString() ?: "—"),
         )
         // A group is the one node that is not an artifact — it stands for the ones this drawing
         // left out, and saying how many is the whole of what it has to say.

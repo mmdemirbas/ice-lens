@@ -118,6 +118,14 @@ internal object SiblingOrder {
         fa.compareTo(fb)
     }
 
+    /** Versions oldest first, down the column: the log's own order. */
+    val DELTA_VERSION: Comparator<GraphNode> = compareBy { (it as? GraphNode.DeltaVersionNode)?.version ?: Long.MAX_VALUE }
+
+    /** A commit's actions in the order it wrote them — adds, removes and change files interleaved as in the file. */
+    val DELTA_FILE: Comparator<GraphNode> = compareBy { (it as? GraphNode.DeltaFileNode)?.simpleId ?: Int.MAX_VALUE }
+
+    val DELTA_CHECKPOINT: Comparator<GraphNode> = compareBy { (it as? GraphNode.DeltaCheckpointNode)?.simpleId ?: Int.MAX_VALUE }
+
     fun forKind(kind: AggregationKind, lineageRank: Map<String, Int>): Comparator<GraphNode> = when (kind) {
         AggregationKind.METADATA -> METADATA
         AggregationKind.SNAPSHOT -> snapshot(lineageRank)
@@ -129,5 +137,8 @@ internal object SiblingOrder {
         AggregationKind.PAIMON_MANIFEST_LIST -> PAIMON_MANIFEST_LIST
         AggregationKind.PAIMON_MANIFEST -> PAIMON_MANIFEST
         AggregationKind.PAIMON_FILE -> PAIMON_FILE
+        AggregationKind.DELTA_VERSION -> DELTA_VERSION
+        AggregationKind.DELTA_FILE -> DELTA_FILE
+        AggregationKind.DELTA_CHECKPOINT -> DELTA_CHECKPOINT
     }
 }

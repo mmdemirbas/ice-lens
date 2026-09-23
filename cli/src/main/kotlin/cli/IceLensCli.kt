@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import model.DeltaUnifiedTableModel
 import model.FormatTableModel
 import model.GraphModel
 import model.GraphNode
@@ -207,6 +208,7 @@ object IceLensCli {
         val report = when (model) {
             is UnifiedTableModel -> model.integrityReport()
             is PaimonUnifiedTableModel -> model.integrityReport()
+            is DeltaUnifiedTableModel -> model.integrityReport()
         }
         val files = if (parsed.has("files")) readFiles(model) else null
         if (parsed.has("json")) {
@@ -279,6 +281,12 @@ object IceLensCli {
         val input: LookupInput? = when (model) {
             is UnifiedTableModel -> model.rowLookupInput()
             is PaimonUnifiedTableModel -> model.paimonRowLookupInput()
+            // Not built yet: a Delta read pairs each file with its vector and nothing else, and
+            // the lookup that decides it is the next piece of Delta support.
+            is DeltaUnifiedTableModel -> {
+                err.println("lookup does not read Delta tables yet")
+                return EXIT_UNREADABLE
+            }
         }
         val result = input?.let { readAllPages(it, filter, ruledOut) }
         if (parsed.has("json")) {
@@ -442,7 +450,7 @@ object IceLensCli {
             .let { if (it.fileSystem == java.nio.file.FileSystems.getDefault()) it.toAbsolutePath().normalize() else it }
         if (!Files.isDirectory(path)) throw TableNotOpened("$location is not a directory")
         if (TableFormatDetector.detect(path) == TableFormat.UNKNOWN) {
-            throw TableNotOpened("$location is not an Iceberg or Paimon table: no metadata/ holding a *.metadata.json, and no snapshot/ with schema/")
+            throw TableNotOpened("$location is not an Iceberg, Paimon or Delta table: no metadata/ holding a *.metadata.json, no snapshot/ with schema/, and no _delta_log/ holding a commit")
         }
         return readTableModel(path)
     }
@@ -457,6 +465,7 @@ object IceLensCli {
     private fun formatName(model: FormatTableModel): String = when (model.format) {
         TableFormat.ICEBERG -> "Iceberg"
         TableFormat.PAIMON -> "Paimon"
+        TableFormat.DELTA -> "Delta"
         TableFormat.UNKNOWN -> "unknown format"
     }
 

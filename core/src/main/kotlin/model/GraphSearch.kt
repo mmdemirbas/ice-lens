@@ -91,6 +91,24 @@ object GraphSearch {
 
         is GraphNode.ErrorNode -> listOfNotNull(node.title, node.stage, node.path, node.message)
 
+        is GraphNode.DeltaVersionNode -> listOfNotNull(
+            "version ${node.version}",
+            node.operation,
+            node.localPath,
+            node.commit?.commitInfo?.engineInfo,
+            node.commit?.commitInfo?.txnId,
+        )
+
+        is GraphNode.DeltaFileNode -> listOfNotNull(
+            node.path,
+            node.localPath,
+            node.action.label,
+            deltaPartitionText(node.partitionColumns, node.partitionValues),
+            node.deletionVectorPath,
+        )
+
+        is GraphNode.DeltaCheckpointNode -> listOf("checkpoint", "checkpoint ${node.checkpoint.version}") + node.checkpoint.parts.map { it.toString() }
+
         is GraphNode.GroupNode -> emptyList()
     }.map { it.lowercase() }
 

@@ -11,6 +11,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import model.DeltaUnifiedTableModel
 import model.GraphModel
 import model.GraphNode
 import model.PaimonUnifiedTableModel
@@ -73,6 +74,13 @@ class CardHeightTest {
         )
     }
 
+    /** Every Delta table, each under its own name, the rows drawn. */
+    private fun deltaGraphs(): List<Pair<String, GraphModel>> = fixtureNames("example/delta", "_delta_log").map { name ->
+        "delta/$name" to GraphLayoutService.layoutGraph(
+            DeltaUnifiedTableModel(Paths.get(File(repoRoot, "example/delta/$name").absolutePath)), showRows = true,
+        )
+    }
+
     /**
      * Every card the app can draw, from every checked-in table, in both of the states a filter
      * puts them in.
@@ -90,6 +98,7 @@ class CardHeightTest {
                 .filterIsInstance<GraphNode.GroupNode>()
                 .forEach { node -> addAll(cardsFor("branched@1", node)) }
             paimonGraphs().forEach { (name, graph) -> graph.nodes.forEach { node -> addAll(cardsFor(name, node)) } }
+            deltaGraphs().forEach { (name, graph) -> graph.nodes.forEach { node -> addAll(cardsFor(name, node)) } }
             // No fixture is broken, so nothing produces an ErrorNode — and its card was therefore
             // the one kind never measured. Built by hand rather than left uncovered, with the
             // longest strings the node can hold: a read error names a path, and a path is long.
@@ -131,6 +140,9 @@ class CardHeightTest {
                     .forEach { node -> addAll(cardsFor("$fixture!", node)) }
             }
             paimonGraphs().forEach { (name, graph) ->
+                graph.nodes.mapNotNull(::stressed).forEach { node -> addAll(cardsFor("$name!", node)) }
+            }
+            deltaGraphs().forEach { (name, graph) ->
                 graph.nodes.mapNotNull(::stressed).forEach { node -> addAll(cardsFor("$name!", node)) }
             }
             // The chip-loaded snapshot: a long path *and* more refs than the two-line chip row
@@ -180,6 +192,15 @@ class CardHeightTest {
         is GraphNode.PaimonManifestListNode -> node.copy(localPath = LONG_PATH)
         is GraphNode.PaimonManifestNode -> node.copy(localPath = LONG_PATH)
         is GraphNode.PaimonDataFileNode -> node.copy(localPath = LONG_PATH)
+        is GraphNode.DeltaVersionNode -> node.copy(localPath = LONG_PATH)
+        // A Delta card prints the recorded path's last segment, so that is what is lengthened.
+        is GraphNode.DeltaFileNode -> node.copy(
+            add = node.add?.copy(path = "region=north-america/" + LONG_PATH.substringAfterLast('/')),
+            remove = node.remove?.copy(path = "region=north-america/" + LONG_PATH.substringAfterLast('/')),
+            cdc = node.cdc?.copy(path = "_change_data/" + LONG_PATH.substringAfterLast('/')),
+            localPath = LONG_PATH,
+        )
+        is GraphNode.DeltaCheckpointNode -> node
         is GraphNode.ErrorNode -> node.copy(path = LONG_PATH, message = LONG_ERROR)
         is GraphNode.RowNode -> null
         is GraphNode.GroupNode -> null

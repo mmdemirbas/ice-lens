@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import model.DataFileContent
+import model.DeltaFileAction
 import model.GraphNode
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
@@ -184,6 +185,21 @@ private fun nodeColorScheme(node: GraphNode): NodeColors = when (node) {
     is GraphNode.PaimonManifestListNode -> when (node.kind) { "delta" -> BLUE; "changelog" -> YELLOW; else -> GREY }
     is GraphNode.PaimonManifestNode     -> GREEN
     is GraphNode.PaimonDataFileNode     -> if (node.operationKind == 1) RED else GREEN
+    // A version is coloured by what the commit did, the way a Paimon snapshot is by its kind:
+    // a write is the ordinary case, a rewrite of existing rows the one a reader looks for.
+    is GraphNode.DeltaVersionNode -> when (node.operation) {
+        null -> GREY
+        "OPTIMIZE", "REORG" -> PURPLE
+        "DELETE", "UPDATE", "MERGE", "RESTORE" -> YELLOW
+        "CREATE TABLE", "CREATE OR REPLACE TABLE", "REPLACE TABLE", "SET TBLPROPERTIES", "ADD COLUMNS", "CHANGE COLUMN" -> TEAL
+        else -> BLUE
+    }
+    is GraphNode.DeltaFileNode -> when (node.action) {
+        DeltaFileAction.ADD -> GREEN
+        DeltaFileAction.REMOVE -> RED
+        DeltaFileAction.CDC -> YELLOW
+    }
+    is GraphNode.DeltaCheckpointNode -> PURPLE_MUTE
     // Deliberately neutral. A group is a statement about the drawing, not about the table, and
     // taking its siblings' colour would make it read as one more manifest or one more file.
     is GraphNode.GroupNode              -> GREY
@@ -416,6 +432,9 @@ fun NodeTooltip(node: GraphNode) {
             is GraphNode.PaimonManifestListNode -> "PAIMON ${node.kind.uppercase()} MANIFEST LIST"
             is GraphNode.PaimonManifestNode -> "PAIMON MANIFEST ${node.simpleId}"
             is GraphNode.PaimonDataFileNode -> "PAIMON FILE ${node.simpleId}"
+            is GraphNode.DeltaVersionNode -> "DELTA VERSION ${node.version}"
+            is GraphNode.DeltaFileNode -> "DELTA ${node.action.label.uppercase()} ${node.simpleId}"
+            is GraphNode.DeltaCheckpointNode -> "DELTA CHECKPOINT ${node.checkpoint.version}"
             is GraphNode.GroupNode -> "NOT DRAWN: ${node.kind.plural}"
         }
         
@@ -509,6 +528,23 @@ fun NodeTooltip(node: GraphNode) {
                     DetailRow("Rows", formatCount(node.entry.file?.rowCount), isDark = true)
                     DetailRow("Level", "${node.level ?: "N/A"}", isDark = true)
                     DetailRow("Kind", if (node.operationKind == 1) "DELETE" else "ADD", isDark = true)
+                }
+                is GraphNode.DeltaVersionNode -> {
+                    DetailRow("Version", "${node.version}", isDark = true)
+                    DetailRow("Operation", node.operation ?: "N/A — no commit file", isDark = true)
+                    DetailRow("Timestamp", formatTimestamp(node.commitTimeMs), isDark = true)
+                    node.commit?.let { DetailRow("Actions", "+${it.adds.size} / -${it.removes.size}", isDark = true) }
+                }
+                is GraphNode.DeltaFileNode -> {
+                    DetailRow("File", fileNameFromPath(node.path), isDark = true)
+                    DetailRow("Action", node.action.label, isDark = true)
+                    DetailRow("Rows", formatCount(node.stats?.numRecords), isDark = true)
+                    DetailRow("Size", formatBytes(node.size), isDark = true)
+                    node.vector?.let { DetailRow("Deletion Vector", "${formatCount(it.cardinality)} rows marked", isDark = true) }
+                }
+                is GraphNode.DeltaCheckpointNode -> {
+                    DetailRow("Version", "${node.checkpoint.version}", isDark = true)
+                    DetailRow("Parts", "${node.checkpoint.parts.size} of ${node.checkpoint.expectedParts}", isDark = true)
                 }
                 is GraphNode.GroupNode -> {
                     DetailRow(node.kind.plural.replaceFirstChar { it.uppercase() }, formatCount(node.memberCount), isDark = true)
@@ -620,6 +656,9 @@ fun GraphNodeCard(node: GraphNode, isSelected: Boolean = false, isPruned: Boolea
         is GraphNode.PaimonManifestListNode,
         is GraphNode.PaimonManifestNode,
         is GraphNode.PaimonDataFileNode -> PaimonNodeCard(node, isSelected = isSelected)
+        is GraphNode.DeltaVersionNode,
+        is GraphNode.DeltaFileNode,
+        is GraphNode.DeltaCheckpointNode -> DeltaNodeCard(node, isSelected = isSelected)
     }
 }
 
@@ -642,9 +681,17 @@ fun TableCard(node: GraphNode.TableNode, isSelected: Boolean = false) {
                 color = nodeCardTextSecondary()
             )
             Text(node.summary.tableName, fontWeight = FontWeight.Bold, fontSize = TypeScale.body, maxLines = 1, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
-            Text("Metadata: ${node.summary.metadataFileCount}", fontSize = TypeScale.small, color = nodeCardTextPrimary())
-            Text("Snapshots: ${node.summary.snapshotCount}", fontSize = TypeScale.small, color = nodeCardTextPrimary())
-            Text("Current Version: ${node.summary.currentMetadataVersion ?: "N/A"}", fontSize = TypeScale.micro, color = nodeCardTextSecondary())
+            val delta = node.summary.delta
+            if (delta != null) {
+                // A Delta table has no metadata files to count: the log is its versions.
+                Text("Versions: ${node.summary.snapshotCount}", fontSize = TypeScale.small, color = nodeCardTextPrimary())
+                Text("Protocol: r${delta.minReaderVersion ?: "?"} / w${delta.minWriterVersion ?: "?"}", fontSize = TypeScale.small, color = nodeCardTextPrimary())
+                Text("Current Version: ${node.summary.currentSnapshotId ?: "N/A"}", fontSize = TypeScale.micro, color = nodeCardTextSecondary())
+            } else {
+                Text("Metadata: ${node.summary.metadataFileCount}", fontSize = TypeScale.small, color = nodeCardTextPrimary())
+                Text("Snapshots: ${node.summary.snapshotCount}", fontSize = TypeScale.small, color = nodeCardTextPrimary())
+                Text("Current Version: ${node.summary.currentMetadataVersion ?: "N/A"}", fontSize = TypeScale.micro, color = nodeCardTextSecondary())
+            }
         }
     }
 }
@@ -1066,6 +1113,57 @@ fun PaimonNodeCard(node: GraphNode, isSelected: Boolean = false) {
                 else -> {
                     Text("?? ${node.id}", fontSize = TypeScale.micro, color = nodeCardTextPrimary())
                 }
+            }
+        }
+    }
+}
+
+/** The three Delta cards: a version, a file action, a checkpoint. The Paimon card's shape. */
+@Composable
+fun DeltaNodeCard(node: GraphNode, isSelected: Boolean = false) {
+    val dark = isDarkSurface(MaterialTheme.colorScheme.surface)
+    val borderWidth = if (isSelected) 5.dp else 2.dp
+    val borderColor = if (isSelected) selectionHighlightColor() else getGraphNodeBorderColor(node, dark)
+    Box(
+        modifier = Modifier
+            .cardBox(node)
+            .background(getGraphNodeColor(node, dark), RoundedCornerShape(8.dp))
+            .border(BorderStroke(borderWidth, borderColor), RoundedCornerShape(8.dp))
+    ) {
+        CardColumn(padding = 6.dp) {
+            when (node) {
+                is GraphNode.DeltaVersionNode -> {
+                    Text("DELTA VERSION ${node.version}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary(), maxLines = 1)
+                    Text(node.operation ?: "no commit file", fontSize = TypeScale.small, fontWeight = FontWeight.Bold, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val commit = node.commit
+                    val line = when {
+                        commit != null -> "+${commit.adds.size} / -${commit.removes.size}" + (if (commit.cdcs.isNotEmpty()) " / ${commit.cdcs.size} cdc" else "")
+                        node.unavailable != null -> "not reconstructable"
+                        else -> "from checkpoint"
+                    }
+                    Text(line, fontSize = TypeScale.micro, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // A checkpoint is the one thing about a version the card has room to flag.
+                    if (node.checkpoints.isNotEmpty()) Text("checkpointed", fontSize = TypeScale.micro, color = nodeCardTextSecondary(), maxLines = 1)
+                }
+                is GraphNode.DeltaFileNode -> {
+                    // An add that is not live now either lost its file to a later remove or had its
+                    // vector replaced — the file itself still read, under another vector.
+                    val state = when {
+                        node.action != DeltaFileAction.ADD || node.liveNow -> ""
+                        node.pathLiveNow -> " (superseded)"
+                        else -> " (removed)"
+                    }
+                    Text("DELTA ${node.action.label.uppercase()} ${node.simpleId}$state", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(fileNameFromPath(node.path), fontSize = TypeScale.micro, maxLines = 2, overflow = TextOverflow.Ellipsis, color = nodeCardTextPrimary())
+                    val dv = node.vector?.cardinality?.let { " · DV ${formatCount(it)}" } ?: ""
+                    Text(rowCountLabel(node.stats?.numRecords) + dv, fontSize = TypeScale.micro, color = nodeCardTextPrimary(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                is GraphNode.DeltaCheckpointNode -> {
+                    Text("DELTA CHECKPOINT ${node.checkpoint.version}", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = nodeCardTextSecondary(), maxLines = 1)
+                    Text(node.checkpoint.naming.name.lowercase().replace('_', '-'), fontSize = TypeScale.small, color = nodeCardTextPrimary(), maxLines = 1)
+                    Text(if (node.checkpoint.complete) formatCounted(node.checkpoint.parts.size, "part") else "${node.checkpoint.parts.size} of ${node.checkpoint.expectedParts} parts", fontSize = TypeScale.micro, color = nodeCardTextSecondary(), maxLines = 1)
+                }
+                else -> Text("?? ${node.id}", fontSize = TypeScale.micro, color = nodeCardTextPrimary())
             }
         }
     }

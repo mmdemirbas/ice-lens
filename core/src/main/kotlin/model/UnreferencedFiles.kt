@@ -76,6 +76,7 @@ data class UnreferencedFilesReport(
 fun referencedFiles(model: FormatTableModel): Set<Path> = when (model) {
     is UnifiedTableModel -> icebergReferencedFiles(model)
     is PaimonUnifiedTableModel -> paimonReferencedFiles(model)
+    is DeltaUnifiedTableModel -> deltaReferencedFiles(model)
 }.mapTo(mutableSetOf()) { it.toAbsolutePath().normalize() }
 
 fun findUnreferencedFiles(model: FormatTableModel): UnreferencedFilesReport {
@@ -90,6 +91,7 @@ fun findUnreferencedFiles(model: FormatTableModel): UnreferencedFilesReport {
             val branchNames = model.branches.map { it.name }
             ({ path -> paimonUnlistedBecause(root, path, keys, branchNames) })
         }
+        is DeltaUnifiedTableModel -> { path -> deltaUnlistedBecause(root, path) }
     }
     fun fileOf(path: Path, facts: DiskFile) = UnreferencedFile(path, facts.sizeBytes, facts.modifiedMs, unlisted(path))
     val unreferenced = onDisk
@@ -162,6 +164,48 @@ private fun icebergUnlistedBecause(root: Path, path: Path): String? {
         (n.startsWith("_") || n.startsWith(".")) && '=' !in n
     } ?: return null
     return "hidden to remove_orphan_files — `$hidden` starts with `_` or `.`"
+}
+
+/**
+ * VACUUM lists the table directory and leaves out a path with a segment starting `_` or `.` —
+ * `_delta_log/` among them — except a partition directory and `_change_data/`, whose files it
+ * deletes like data files once no retained action names them.
+ */
+private fun deltaUnlistedBecause(root: Path, path: Path): String? {
+    val hidden = root.relativize(path).firstOrNull { seg ->
+        val n = seg.toString()
+        (n.startsWith("_") || n.startsWith(".")) && '=' !in n && n != "_change_data"
+    } ?: return null
+    return "hidden to VACUUM — `$hidden` starts with `_` or `.`"
+}
+
+/**
+ * What a Delta log names: every commit file with its version checksum (`<v>.crc`), every
+ * checkpoint part and the sidecars it names, the log compactions, `_last_checkpoint`; and every
+ * data, change-data and deletion-vector file an action in the retained log — commit or
+ * checkpoint, `add`, `remove` or `cdc` — names. A `remove` counts: its file stays on disk until
+ * VACUUM passes the retention, and until then it is the table's, not an orphan.
+ */
+private fun deltaReferencedFiles(model: DeltaUnifiedTableModel): List<Path> {
+    val paths = mutableListOf<Path>()
+    val log = model.listing
+    log.commits.forEach { (v, p) ->
+        paths.add(p)
+        paths.add(p.resolveSibling("%020d.crc".format(v)))
+    }
+    model.checkpoints.forEach { cp ->
+        cp.parts.forEach { paths.add(it) }
+        model.checkpointRead(cp)?.sidecars?.forEach { (sidecar, _) -> paths.add(sidecar) }
+    }
+    log.compactions.forEach { paths.add(it.path) }
+    log.lastCheckpoint?.let { paths.add(it) }
+    val actions = model.commits.flatMap { it.actions } + model.checkpoints.flatMap { model.checkpointRead(it)?.allActions.orEmpty() }
+    for (a in actions) {
+        val recorded = a.add?.path ?: a.remove?.path ?: a.cdc?.path ?: continue
+        runCatching { model.resolve(recorded) }.getOrNull()?.let { paths.add(it) }
+        (a.add?.deletionVector ?: a.remove?.deletionVector)?.filePath(model.path)?.let { paths.add(it) }
+    }
+    return paths
 }
 
 private const val PAIMON_UNLISTED = "not in a directory remove_orphan_files lists (manifest/, index/, statistics/, " +

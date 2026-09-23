@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Delta Lake, the third format.** A table is detected by a `_delta_log/` holding a commit or a
+  checkpoint — after Paimon and before Iceberg, since a UniForm table writes Iceberg metadata
+  beside its log. Every commit is read; checkpoints (classic, multi-part, V2 with sidecars) are
+  read through DuckDB on first use; each version is replayed from the newest checkpoint by the
+  protocol's reconciliation rules, keyed by path and deletion vector. The graph draws each version
+  with the file actions its commit wrote and its checkpoints; rows carry the partition values the
+  file does not hold, and rows a deletion vector marks are struck. Panels for a version (commit
+  info, `operationMetrics` against the actions, operation parameters, the replayed state), a file
+  action (statistics, the vector decoded) and a checkpoint (against the replay of the commits
+  before it). The integrity report, the orphan walk, the CSV export, search, the IDE strip and the
+  command line all take Delta tables. Three engine-written fixtures, `dplain`, `ddv` and `dpart`,
+  from `docs/fixtures/delta/run.sh`.
 - **A command line, `icelens`** — the third shell, over `:core` alone: `summary`, `tree`
   (one line per node with its id, folded past the page size unless `--all`, `--depth N`,
   `--rows`), `show <node-id>` (a node's rows, the deferred ones read), `check` (the integrity

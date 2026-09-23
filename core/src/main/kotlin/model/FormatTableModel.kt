@@ -28,6 +28,7 @@ sealed interface FormatTableModel {
  */
 fun readTableModel(path: Path): FormatTableModel = when (service.TableFormatDetector.detect(path)) {
     TableFormat.PAIMON -> PaimonUnifiedTableModel(path)
+    TableFormat.DELTA -> DeltaUnifiedTableModel(path)
     TableFormat.ICEBERG, TableFormat.UNKNOWN -> UnifiedTableModel(path)
 }
 

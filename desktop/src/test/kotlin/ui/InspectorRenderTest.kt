@@ -173,6 +173,29 @@ class InspectorRenderTest {
         return GraphLayoutService.layoutGraph(PaimonUnifiedTableModel(Paths.get(tableDir.absolutePath)), showRows = false)
     }
 
+    private fun deltaGraphFor(fixture: String): GraphModel =
+        GraphLayoutService.layoutGraph(model.DeltaUnifiedTableModel(Paths.get(File(repoRoot, "example/delta/$fixture").absolutePath)), showRows = true)
+
+    /**
+     * The three Delta panels on `ddv` and `dplain`: a version whose commit replaced a deletion
+     * vector (the metrics table has the DV figures to judge), the file it replaced it on (the
+     * vector decoded, positions 1 and 2), the table's identity rows, and `dplain`'s checkpoint
+     * against the replay.
+     */
+    @Test
+    fun `the Delta panels render`() {
+        val ddv = deltaGraphFor("ddv")
+        renderInspector(ddv, "table_root", "delta-table-node", height = 2400)
+        renderInspector(ddv, "dver_5", "delta-version-node", height = 1800)
+        val vectorFile = ddv.nodes.filterIsInstance<GraphNode.DeltaFileNode>().first { it.liveNow && it.vector?.cardinality == 2L && it.stats?.numRecords == 1000L }
+        renderInspector(ddv, vectorFile.id, "delta-file-node", height = 2000)
+        val dplain = deltaGraphFor("dplain")
+        val checkpoint = dplain.nodes.filterIsInstance<GraphNode.DeltaCheckpointNode>().single()
+        assertTrue(checkpoint.check.value!!.agrees)
+        renderInspector(dplain, checkpoint.id, "delta-checkpoint-node", height = 900)
+        renderCanvas("graph-canvas-delta", deltaGraphFor("ddv"), pageSize = AggregationPolicy.DEFAULT_PAGE_SIZE)
+    }
+
     @Test
     fun `the table inspector renders`() {
         val graph = partedGraph()

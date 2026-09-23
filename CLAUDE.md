@@ -2,7 +2,7 @@
 
 ## Project overview
 
-**Iceberg Lens** is a read-only desktop application for inspecting Apache Iceberg and Apache Paimon table structure from local filesystems. It renders an interactive graph visualization (table → metadata → snapshots → manifests → data files → sample rows) alongside a detailed inspector panel.
+**Iceberg Lens** is a read-only desktop application for inspecting Apache Iceberg, Apache Paimon and Delta Lake table structure from local filesystems. It renders an interactive graph visualization (table → metadata → snapshots → manifests → data files → sample rows) alongside a detailed inspector panel.
 
 ## Tech stack
 
@@ -118,6 +118,10 @@ core/src/main/kotlin/
 │   ├── GraphSearch.kt         # What each node kind can be found by, and the matches in drawn order
 │   ├── GraphTree.kt           # The graph as a tree and what each node lists as rows — the narrow shells' vocabulary, the IDE strip's and the command line's
 │   ├── PuffinSchema.kt        # @Serializable Puffin footer + the decoded DeletionVector
+│   ├── DeltaSchema.kt         # @Serializable Delta log actions (commitInfo, metaData, protocol, add, remove, cdc, txn, domainMetadata, sidecar), add.stats, and the Spark schema as a DeltaType tree
+│   ├── DeltaUnifiedModel.kt   # DeltaUnifiedTableModel — the log listed, every commit read, checkpoints read on first use, stateAt(version) replayed by the protocol's reconciliation rules; path and deletion-vector resolution
+│   ├── DeltaChecks.kt         # operationMetrics against the commit's actions, a checkpoint against the replay, _last_checkpoint against its checkpoint
+│   ├── Z85.kt                 # ZeroMQ's Base85, which a Delta deletion vector's location and inline bytes are written in
 │   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
 ├── service/
 │   ├── AvroReader.kt          # Shared Avro file reader (reified readAvro<T>), used by both Iceberg and Paimon
@@ -143,6 +147,8 @@ core/src/main/kotlin/
 │   ├── PuffinReader.kt        # Puffin footer + `deletion-vector-v1` blob → the row positions a v3 vector marks
 │   ├── IcebergGraphBuilder.kt # Iceberg-specific graph construction: UnifiedTableModel → nodes + edges
 │   ├── PaimonGraphBuilder.kt  # Paimon-specific graph construction: PaimonUnifiedTableModel → nodes + edges
+│   ├── DeltaReader.kt         # The _delta_log/ listing (commits, three checkpoint namings, log compactions, _last_checkpoint), commit JSON lines, checkpoints and sidecars through DuckDB's to_json
+│   ├── DeltaGraphBuilder.kt   # Delta graph construction: versions → the file actions each commit wrote → rows; checkpoints beside a version's files
 │   ├── GraphAggregation.kt    # Format-agnostic: long sibling runs → one expandable GroupNode
 │   ├── SiblingOrder.kt        # One order per kind — read by layout AND by aggregation
 │   ├── SnapshotTracks.kt      # Which column each snapshot draws in, and which branch names it
@@ -183,6 +189,7 @@ desktop/src/main/kotlin/
     ├── NodePanels.kt          # Table, row, error and group panels
     ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
     ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
+    ├── DeltaNodePanels.kt     # Delta version, file action and checkpoint panels
     ├── RemoteLocations.kt      # A location in object storage and how to reach it — persisted, minus the secret
     ├── RemoteLocationDialog.kt # The form for a location no file chooser can browse to
     ├── Sidebar.kt             # Workspace panel — add/remove roots, search, drag-to-reorder, format badges (ICE/PMN)
@@ -3129,6 +3136,17 @@ run between nodes of one layer, which is exactly why ELK must not see them.
 
 Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, `e_row_*`, `e_err_*`.
 
+### Delta (`DeltaGraphBuilder`)
+
+- `table_root` — the single table root node (shared)
+- `dver_<version>` — a version: its commit file, or a checkpoint where the commit is gone
+- `dfile_<version>_<n>` — a file action the commit wrote (add, remove or cdc); `n` counts across the table
+- `dcp_<version>_<n>` — a checkpoint of that version
+- `row_<fileId>_<index>` — reuses RowNode, under an add or a cdc file
+
+Edge IDs: `e_table_*`, `e_file_*`, `e_cp_*`, `e_row_*`, `e_err_*`, and `e_lineage_*` between
+consecutive versions (`affectsLayout = false`).
+
 ## Known issues and tech debt
 
 1. **`App.kt` is ~600 lines** — business logic lives in `AppState.kt`, the toolbar in
@@ -3144,7 +3162,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,476 tests across 204 files (1,178 in :core, 288 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for both formats (Avro fixtures
+~1,486 tests across 206 files (1,187 in :core, 289 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3317,6 +3335,9 @@ container invocation and the traps in it:
 | `paimon/db.db/po`, `poa` | `OrphanRemovalPlanFixtureTest` | one partitioned primary-key table copied before `sys.remove_orphan_files` ran on it — a rollback's leftovers and six strays, one per directory rule; the eleven files the procedure deleted from `poa`, and the three it never lists |
 | `paimon/db.db/pbk`, `pbka` | `PaimonBucketCountFixtureTest` | a primary-key table whose `bucket` was raised from 1 to 2 after three writes, copied before the `INSERT OVERWRITE` that rescales it — three live files recording the old count, every write refused until the rescale; `pbka` after it, rescaled over two buckets and written to again |
 | `paimon/db.db/pru`, `prua` | `PaimonUnexistingFilesFixtureTest` | a partitioned primary-key table with two live data files deleted from disk, copied before `sys.remove_unexisting_files` ran on it — the APPEND with a DELETE entry per file and `deltaRecordCount -2` it commits, the older snapshots it leaves broken, and the `fr` copies that pin the level-0 rule |
+| `delta/dplain` | `DeltaLogFixtureTest`, `DeltaGraphFixtureTest` | delta-spark 3.2.1, unpartitioned, a classic checkpoint at 3 under `delta.checkpointInterval = 3`, then a copy-on-write `DELETE` and `UPDATE` — the replay to 5 starts from the checkpoint, and the checkpoint equals the replay of commits 0–3 |
+| `delta/ddv` | `DeltaLogFixtureTest`, `DeltaGraphFixtureTest` | deletion vectors — two `DELETE`s put a vector on each file and then replace one, an `UPDATE` replaces the other and writes a new file; `count(*)` 1000 of 1004 written |
+| `delta/dpart` | `DeltaLogFixtureTest`, `DeltaGraphFixtureTest` | partitioned by a string and a date, a null partition, a checkpoint at 2 under `writeStatsAsStruct` |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
@@ -4043,6 +4064,48 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   empty list on a Paimon table with no `branch/`, so the panel says "no branches" only where the
   format keeps them there. The change fingerprint stats every branch's three directories and
   `tag/`, or a branch commit — which touches nothing at the table root — never reloads the table.
+
+### Delta Lake
+- Detection: `_delta_log/` holding a commit (`<20 digits>.json`) or a checkpoint, asked **after
+  Paimon and before Iceberg** — a UniForm table writes Iceberg metadata beside its log
+  (`TableFormatDetector`, `ObjectStorage.globTables` and the desktop fingerprint agree on the order)
+- Reader: `DeltaReader` (commit files as JSON lines; checkpoints and sidecars through DuckDB,
+  `SELECT to_json(t) FROM read_parquet(?)`, so one decoder, `parseDeltaAction`, reads both)
+- Model: `DeltaUnifiedTableModel` → `DeltaGraphBuilder` → `GraphLayoutService`; the spec is
+  `PROTOCOL.md` at `branch-3.2` of delta-io/delta, and `docs/delta-design.md` maps its concepts onto
+  this app's
+- **A version is replayed, the Paimon shape, from the newest complete checkpoint at or below it.**
+  `stateAt(version)` applies the protocol's reconciliation: the latest protocol and metadata, the
+  latest `txn` per application and `domainMetadata` per domain, and of the file actions the newest
+  reference to each **logical file** — `DeltaFileKey`, the path with the deletion vector's
+  `uniqueId` — an `add` live, a `remove` a tombstone. A `DELETE` under vectors writes `remove(path,
+  old vector)` and `add(path, new vector)`, so one path is two logical files in turn (`ddv`). A
+  version whose commit is gone and that no checkpoint covers is `DeltaVersionUnavailable` — a state
+  the log's retention defines, the expired-snapshot rule. `stateFromCommits` replays ignoring every
+  checkpoint, which is what a checkpoint is checked against; `DeltaGraphFixtureTest` holds every
+  fixture's checkpoints to it, and dropping the metadata action from a checkpoint's read fails it
+- **A file action is drawn under the commit that wrote it and nowhere else.** The log records
+  change, not state, so drawing each live file under every version holding it would draw the table
+  once per commit; a version node carries its replayed state deferred, which the comparison, the
+  panels and `liveFiles()` read. A `DeltaFileNode` says whether its logical file is live now and,
+  when not, whether its path still is — re-added under another vector (`superseded`) — or removed
+- **`operationMetrics` are held to the commit's actions by the rules delta-spark 3.2.1 was seen to
+  follow, not a document** (`deltaCommitTallies`): a path removed and re-added under another vector
+  is neither a removed nor an added file, except that an `UPDATE`'s `numRemovedFiles` counts every
+  remove (`ddv` recorded 1 file and 0 bytes removed for a vector swap); the vector counts are adds
+  and removes carrying one; `numDeletedRows` under vectors is the cardinality the vectors gained.
+  Every fixture commit agrees; planting a byte count is named; reverting the `UPDATE` rule fails `ddv`
+- **A deletion vector's stored bytes are Iceberg's Puffin blob** — big-endian size, `D1 D3 39 64`,
+  portable 64-bit Roaring, big-endian CRC-32 — read at `offset` (1 when absent, after the file's
+  version byte) for `4 + sizeInBytes + 4` bytes by `PuffinReader.readDeletionVector`. A `u` vector
+  is `deletion_vector_<uuid>.bin` under the table, the UUID Z85-encoded in the last 20 characters
+  after an optional directory prefix; `p` is a path; `i` is inline and framed here. `ddv` puts both
+  of a `DELETE`'s vectors in one `.bin` at offsets 1 and 43
+- **A Delta writer does not put a partition column into the file**, so a row card is given the
+  partition values from the log beside the file's own columns (`dpart`); a null partition is JSON
+  null in the log and prints `null`
+- Not yet read (the `TODO.md` Delta section): row lookup, live row count, scan pruning from
+  `add.stats`, column mapping, change data feed, VACUUM / OPTIMIZE planners, UniForm
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

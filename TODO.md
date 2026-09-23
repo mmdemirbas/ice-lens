@@ -22,6 +22,24 @@ Neither is worth doing before the plugin has a reason to read a data file.
 
 ---
 
+## Delta Lake: what is left
+
+Read: the log, checkpoints of every naming, the replay, file actions, deletion vectors, the
+integrity checks (commit metrics, checkpoint against replay, `_last_checkpoint`, vectors).
+
+- **Row lookup and the live row count.** A Delta read pairs a file with its own vector and nothing
+  else, so both are simpler than Iceberg's; `icelens lookup` refuses a Delta table until then.
+- **Scan pruning from `add.stats` and `partitionValues`**, through the pruning bridge the Paimon
+  side uses. `tightBounds = false` is still sound for skipping.
+- **Column mapping** (`delta.columnMapping.mode` name and id): stats and files keyed by physical
+  names, parquet field ids. Needs `dcm` fixtures in both modes.
+- **Change data feed**: `cdc` actions and `_change_data/`, `_change_type`; needs a fixture.
+- **VACUUM, OPTIMIZE and checkpoint planners.** The orphan plan uses VACUUM's 7-day retention but
+  VACUUM also deletes files expired tombstones name; plan it properly from the tombstones.
+- **More fixtures**: V2 checkpoint with sidecars, multi-part checkpoint, log cleaned up past a
+  checkpoint, row tracking, RESTORE, OPTIMIZE / VACUUM before and after, UniForm.
+- **The table's maintenance summary** has no Delta lines yet.
+
 ## Format coverage gaps
 
 These are the differences between "renders the metadata tree" and "answers the questions a

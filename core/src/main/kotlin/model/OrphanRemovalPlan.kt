@@ -54,10 +54,18 @@ data class OrphanRemovalPlan(
     val tooYoung: Int get() = rows.count { it.fate == OrphanFate.TOO_YOUNG }
     val unlisted: Int get() = rows.count { it.fate == OrphanFate.UNLISTED }
 
+    /**
+     * The call this plans. On Delta it is VACUUM's half about files no action names; the other
+     * half — files only a tombstone past the retention names — is not planned here.
+     */
+    val procedure: String
+        get() = if (format == TableFormat.DELTA) "VACUUM" else "remove_orphan_files"
+
     /** The default interval, as the procedure's documentation states it. */
     val defaultIntervalText: String
         get() = when (format) {
             TableFormat.ICEBERG -> "3 days"
+            TableFormat.DELTA -> "7 days"
             else -> "1 day"
         }
 }
@@ -68,8 +76,19 @@ val ICEBERG_ORPHAN_INTERVAL_MS: Long = TimeUnit.DAYS.toMillis(3)
 /** Paimon's `remove_orphan_files` default: `System.currentTimeMillis() - TimeUnit.DAYS.toMillis(1)`. */
 val PAIMON_ORPHAN_INTERVAL_MS: Long = TimeUnit.DAYS.toMillis(1)
 
+/**
+ * VACUUM's default retention, `delta.deletedFileRetentionDuration = interval 1 week`. VACUUM is
+ * not only an orphan sweep — it also deletes files a tombstone past the retention names — so on
+ * Delta this plan answers only for the files no retained action names.
+ */
+val DELTA_VACUUM_RETENTION_MS: Long = TimeUnit.DAYS.toMillis(7)
+
 fun planOrphanRemoval(report: UnreferencedFilesReport, nowMs: Long, olderThanMs: Long? = null): OrphanRemovalPlan {
-    val interval = if (report.format == TableFormat.ICEBERG) ICEBERG_ORPHAN_INTERVAL_MS else PAIMON_ORPHAN_INTERVAL_MS
+    val interval = when (report.format) {
+        TableFormat.ICEBERG -> ICEBERG_ORPHAN_INTERVAL_MS
+        TableFormat.DELTA -> DELTA_VACUUM_RETENTION_MS
+        TableFormat.PAIMON, TableFormat.UNKNOWN -> PAIMON_ORPHAN_INTERVAL_MS
+    }
     val cutoff = olderThanMs ?: (nowMs - interval)
     fun rowOf(file: UnreferencedFile, olderVersionOnly: Boolean): OrphanRemovalRow {
         val unlisted = file.unlistedBecause

@@ -8,7 +8,7 @@ data class SnapshotFilterOption(
     val timestampMs: Long?,
 )
 
-/** Maps any snapshot-like node (Iceberg or Paimon) into a uniform filter option. */
+/** Maps any snapshot-like node (Iceberg, Paimon or a Delta version) into a uniform filter option. */
 fun GraphNode.asSnapshotFilterOption(): SnapshotFilterOption? = when (this) {
     is GraphNode.SnapshotNode -> SnapshotFilterOption(
         nodeId = id,
@@ -21,6 +21,12 @@ fun GraphNode.asSnapshotFilterOption(): SnapshotFilterOption? = when (this) {
         snapshotId = data.id,
         sequenceNumber = null,
         timestampMs = data.timeMillis,
+    )
+    is GraphNode.DeltaVersionNode -> SnapshotFilterOption(
+        nodeId = id,
+        snapshotId = version,
+        sequenceNumber = null,
+        timestampMs = commitTimeMs,
     )
     else -> null
 }

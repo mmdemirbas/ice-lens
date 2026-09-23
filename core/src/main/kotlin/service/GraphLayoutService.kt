@@ -94,6 +94,7 @@ object GraphLayoutService {
         val buildResult = when (tableModel) {
             is UnifiedTableModel -> IcebergGraphBuilder.buildGraph(tableModel)
             is PaimonUnifiedTableModel -> PaimonGraphBuilder.buildGraph(tableModel)
+            is DeltaUnifiedTableModel -> DeltaGraphBuilder.buildGraph(tableModel)
         }
         val aggregated = GraphAggregation.apply(buildResult.nodes, buildResult.edges, expandedGroupIds, policy)
         val withRows = if (showRows) {
@@ -342,6 +343,24 @@ object GraphLayoutService {
             reorder(fileChildren, SiblingOrder.PAIMON_FILE, minGap = 30.0)
         }
 
+        // Delta: versions oldest first; under each, the commit's file actions in the order it wrote
+        // them and the checkpoints after them — a checkpoint is what the version left, the files
+        // what it did.
+        val deltaVersions = nodesById.values.filterIsInstance<GraphNode.DeltaVersionNode>()
+        reorder(deltaVersions, SiblingOrder.DELTA_VERSION, minGap = 40.0)
+        // Over the whole column rather than per version: each version's children would otherwise
+        // keep the slots ELK gave them, interleaved with the next version's, and every edge from
+        // the version column would cross the file column to reach them.
+        val deltaColumn = nodesById.values.filter { it is GraphNode.DeltaFileNode || it is GraphNode.DeltaCheckpointNode }
+        reorder(
+            deltaColumn,
+            compareBy<GraphNode> { (it as? GraphNode.DeltaFileNode)?.version ?: (it as? GraphNode.DeltaCheckpointNode)?.checkpoint?.version ?: Long.MAX_VALUE }
+                .thenBy { if (it is GraphNode.DeltaCheckpointNode) 1 else 0 }
+                .then(SiblingOrder.DELTA_FILE)
+                .then(SiblingOrder.DELTA_CHECKPOINT),
+            minGap = 30.0,
+        )
+
         val orderedManifests = nodesById.values
             .filterIsInstance<GraphNode.ManifestNode>()
             .sortedBy { it.y }
@@ -447,6 +466,13 @@ object GraphLayoutService {
                 rowNode.y = currentY
             }
         }
+
+        // Delta rows over the whole column, in their files' order, for the reason the files are.
+        val deltaFilesInOrder = nodesById.values.filterIsInstance<GraphNode.DeltaFileNode>().sortedBy { it.y }
+        val deltaRowRank = deltaFilesInOrder.flatMap { parent ->
+            childrenByParent[parent.id].orEmpty().mapNotNull { nodesById[it] as? GraphNode.RowNode }.sortedWith(rowComparator)
+        }.withIndex().associate { (i, row) -> row.id to i }
+        reorder(deltaRowRank.keys.mapNotNull { nodesById[it] }, compareBy { deltaRowRank[it.id] ?: Int.MAX_VALUE }, minGap = 24.0)
 
         // Paimon: order row nodes by ID within each data file parent
         nodesById.values.filterIsInstance<GraphNode.PaimonDataFileNode>().forEach { parent ->
@@ -658,7 +684,7 @@ object GraphLayoutService {
         alignLayer(
             parents = typed(GraphNode.TableNode::class),
             upstreamFilter = { false },
-            childFilter = { it is GraphNode.MetadataNode || it is GraphNode.PaimonSnapshotNode }
+            childFilter = { it is GraphNode.MetadataNode || it is GraphNode.PaimonSnapshotNode || it is GraphNode.DeltaVersionNode }
         )
 
         // Paimon layers
@@ -681,6 +707,18 @@ object GraphLayoutService {
             parents = typed(GraphNode.PaimonSnapshotNode::class),
             upstreamFilter = { it is GraphNode.TableNode },
             childFilter = { it is GraphNode.PaimonManifestListNode }
+        )
+
+        // Delta layers
+        alignLayer(
+            parents = typed(GraphNode.DeltaFileNode::class),
+            upstreamFilter = { it is GraphNode.DeltaVersionNode },
+            childFilter = { it is GraphNode.RowNode }
+        )
+        alignLayer(
+            parents = typed(GraphNode.DeltaVersionNode::class),
+            upstreamFilter = { it is GraphNode.TableNode },
+            childFilter = { it is GraphNode.DeltaFileNode || it is GraphNode.DeltaCheckpointNode }
         )
     }
 
@@ -720,6 +758,10 @@ object GraphLayoutService {
         preventOverlapsInLayer(layer(AggregationKind.PAIMON_SCHEMA) + layer(AggregationKind.PAIMON_MANIFEST_LIST))
         preventOverlapsInLayer(layer(AggregationKind.PAIMON_MANIFEST))
         preventOverlapsInLayer(layer(AggregationKind.PAIMON_FILE), margin = 2.0)
+        // Delta: a checkpoint is a child of its version beside the commit's files, so the two
+        // kinds are one column.
+        preventOverlapsInLayer(layer(AggregationKind.DELTA_VERSION))
+        preventOverlapsInLayer(layer(AggregationKind.DELTA_FILE) + layer(AggregationKind.DELTA_CHECKPOINT), margin = 2.0)
     }
 
     /**

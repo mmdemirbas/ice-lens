@@ -93,14 +93,39 @@ internal fun ColumnScope.TablePanel(
             summary.metadataKeptApartAt?.let { DetailRow("Metadata Kept At", it, copyable = true) }
             summary.locationIsPaimonTable?.let { DetailRow("Export Of Paimon Table", it, copyable = true) }
             DetailRow("Table UUID", summary.tableUuid ?: "N/A", copyable = true)
-            DetailRow("Format Version", "${summary.formatVersion ?: "N/A"}")
-            DetailRow("Current Snapshot ID", currentSnapshotLabel(summary.currentSnapshotId))
-            DetailRow("Current Metadata Version", "${summary.currentMetadataVersion ?: "N/A"}")
-            DetailRow(
-                "version-hint.text",
-                summary.versionHintText?.takeIf { it.isNotBlank() }
-                    ?: "Not present — normal unless the table is HadoopCatalog-managed"
-            )
+            val delta = summary.delta
+            if (delta != null) {
+                // A Delta table's identity is its log: the protocol a reader must speak, the
+                // version it stands at, and where a reader's replay starts.
+                DetailRow("Protocol", delta.describeProtocol)
+                DetailRow("Current Version", "${summary.currentSnapshotId ?: "N/A"}")
+                DetailRow("Partitioned By", delta.partitionColumns.joinToString(", ").ifEmpty { "none" })
+                DetailRow("Column Mapping", delta.columnMappingMode)
+                DetailRow("Checkpoints", delta.checkpointVersions.joinToString(", ").ifEmpty { "none" })
+                DetailRow("_last_checkpoint", delta.lastCheckpointVersion?.let { "version $it" } ?: "Not present — a table with no checkpoint yet")
+                DetailRow(
+                    "Earliest Commit",
+                    delta.earliestCommit?.let { if (it == 0L) "0 — the whole log is on disk" else "$it — the commits before it were cleaned up after a checkpoint" } ?: "none",
+                )
+            } else {
+                DetailRow("Format Version", "${summary.formatVersion ?: "N/A"}")
+                DetailRow("Current Snapshot ID", currentSnapshotLabel(summary.currentSnapshotId))
+                DetailRow("Current Metadata Version", "${summary.currentMetadataVersion ?: "N/A"}")
+                DetailRow(
+                    "version-hint.text",
+                    summary.versionHintText?.takeIf { it.isNotBlank() }
+                        ?: "Not present — normal unless the table is HadoopCatalog-managed"
+                )
+            }
+        }
+        summary.delta?.let { delta ->
+            CountedSection("Table Properties", delta.configuration.size, "properties — metaData.configuration is empty") {
+                WideTable(
+                    headers = listOf("Property", "Value"),
+                    rows = delta.configuration.entries.sortedBy { it.key }.map { listOf(it.key, it.value ?: "null") },
+                    columnWidths = listOf(260.dp, 200.dp),
+                )
+            }
         }
         if (summary.metadataKeptApartAt != null) {
             Text(

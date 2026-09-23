@@ -65,6 +65,9 @@ class LayoutOverlapTest {
                 assertEquals(emptyList(), overlaps(iceberg(fixture), pageSize), "in $fixture")
             }
             assertEquals(emptyList(), overlaps(paimon(), pageSize), "in the Paimon fixture")
+            listOf("ddv", "dplain").forEach { fixture ->
+                assertEquals(emptyList(), overlaps(model.FixtureCatalog.deltaModel(fixture), pageSize), "in $fixture")
+            }
         }
     }
 
@@ -80,7 +83,7 @@ class LayoutOverlapTest {
     fun `no two nodes in one column overlap, whatever their kinds`() {
         val icebergFixtures = model.FixtureCatalog.iceberg
         val paimonFixtures = model.FixtureCatalog.paimon
-        val models = icebergFixtures.map(::iceberg) + paimonFixtures.map(::paimon)
+        val models = icebergFixtures.map(::iceberg) + paimonFixtures.map(::paimon) + model.FixtureCatalog.delta.map(model.FixtureCatalog::deltaModel)
         listOf(3, 24).forEach { pageSize ->
             models.forEach { model ->
                 val graph = GraphLayoutService.layoutGraph(model, showRows = false, policy = AggregationPolicy(pageSize = pageSize))

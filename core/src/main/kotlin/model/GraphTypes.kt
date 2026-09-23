@@ -314,6 +314,8 @@ data class TableSummary(
      * storage (`pih`), and the panel can name the table it belongs to. Null otherwise.
      */
     val locationIsPaimonTable: String? = null,
+    /** What a Delta table's log states about the table as a whole — see [DeltaTableFacts]; null on the other formats. */
+    val delta: DeltaTableFacts? = null,
 ) {
     /**
      * The table as it is now: the manifest closure of `current-snapshot-id`, live entries
@@ -1018,6 +1020,90 @@ sealed class GraphNode(
         // leaves nothing for rounding at another display scale.
     ) : GraphNode(id, initialX, initialY, 200.0, 64.0)
 
+    // --- Delta node types ---
+
+    /**
+     * One version of a Delta table — the commit file that wrote it. A version whose commit the log
+     * has cleaned up is drawn only where a checkpoint names it, with no commit and a note.
+     *
+     * The log is linear by construction — version `v` is written only on top of `v - 1`, which is
+     * what a writer's put-if-absent on the file name enforces — so the parent is `v - 1` and is
+     * stated rather than inferred, unlike Paimon's.
+     */
+    data class DeltaVersionNode(
+        override val id: String,
+        val version: Long,
+        val commit: DeltaCommit?,
+        val simpleId: Int,
+        val localPath: String? = null,
+        /** The checkpoints written at this version, every naming. */
+        val checkpoints: List<service.DeltaCheckpointFile> = emptyList(),
+        /** Why the log cannot rebuild this version; null where it can. */
+        val unavailable: String? = null,
+        /** The version rebuilt — see [DeltaUnifiedTableModel.stateAt]; read on first ask, since a replay walks the log. */
+        private val stateLoader: DeferredRead<DeltaState> = DeferredRead.none(),
+        /** What the commit's `operationMetrics` say against the commit's own actions — see [deltaCommitTallies]. */
+        val tallies: List<CommitTally> = emptyList(),
+        val initialX: Double = 0.0,
+        val initialY: Double = 0.0,
+    ) : GraphNode(id, initialX, initialY, 210.0, 66.0), ComparableSnapshot {
+        override val nodeId: String get() = id
+        override val displayNumber: Int get() = simpleId
+        override val commitId: Long get() = version
+        override val parentCommitId: Long? get() = (version - 1).takeIf { it >= 0 }
+        override val commitOrder: Long get() = version
+        override val commitTimeMs: Long? get() = commit?.timestampMs
+        override val liveFiles: List<LiveFile>? get() = stateLoader.value?.liveFiles()
+        override val canDiff: Boolean get() = stateLoader.isPresent
+        val state: DeltaState? get() = stateLoader.value
+        val operation: String? get() = commit?.commitInfo?.operation
+    }
+
+    /**
+     * One file action a commit wrote: an `add` (a file the version made live, with the vector
+     * that goes with it), a `remove` (a tombstone VACUUM reads), or a `cdc` (a change-data file).
+     * Drawn under the commit that wrote it and nowhere else — Delta's log is per commit, and a
+     * version's live set is the replay, which [DeltaVersionNode.state] holds.
+     */
+    data class DeltaFileNode(
+        override val id: String,
+        val action: DeltaFileAction,
+        val version: Long,
+        val simpleId: Int,
+        val add: DeltaAddFile? = null,
+        val remove: DeltaRemoveFile? = null,
+        val cdc: DeltaCdcFile? = null,
+        val localPath: String? = null,
+        val partitionColumns: List<String> = emptyList(),
+        /** An `add` whose logical file — path and vector — the latest version still holds. */
+        val liveNow: Boolean = false,
+        /** The path is live now under some vector — so an add that is not [liveNow] had its vector replaced, not its file removed. */
+        val pathLiveNow: Boolean = false,
+        /** Where the vector's bytes are — see [filePath]; null for an inline vector or none. */
+        val deletionVectorPath: String? = null,
+        /** The vector decoded on first use, shared with the file's rows so it is read once. */
+        val deletionVector: DeferredRead<DeletionVector> = DeferredRead.none(),
+        val initialX: Double = 0.0,
+        val initialY: Double = 0.0,
+    ) : GraphNode(id, initialX, initialY, 200.0, 64.0) {
+        val path: String get() = add?.path ?: remove?.path ?: cdc?.path ?: ""
+        val partitionValues: Map<String, String?> get() = add?.partitionValues ?: remove?.partitionValues ?: cdc?.partitionValues ?: emptyMap()
+        val size: Long? get() = add?.size ?: remove?.size ?: cdc?.size
+        val stats: DeltaStats? get() = add?.parsedStats ?: remove?.parsedStats
+        val vector: DeltaDeletionVector? get() = add?.deletionVector ?: remove?.deletionVector
+    }
+
+    /** A checkpoint of one version: the table's state at it, in one or more Parquet or JSON files. */
+    data class DeltaCheckpointNode(
+        override val id: String,
+        val checkpoint: service.DeltaCheckpointFile,
+        val simpleId: Int,
+        /** The checkpoint against the replay of the commits up to its version — see [checkDeltaCheckpoint]. */
+        val check: DeferredRead<DeltaCheckpointCheck> = DeferredRead.none(),
+        val initialX: Double = 0.0,
+        val initialY: Double = 0.0,
+    ) : GraphNode(id, initialX, initialY, 210.0, 54.0)
+
     data class ErrorNode(
         override val id: String,
         val title: String,
@@ -1097,6 +1183,9 @@ enum class AggregationKind(val key: String, val plural: String) {
     PAIMON_MANIFEST_LIST("pmanifestlist", "manifest lists"),
     PAIMON_MANIFEST("pmanifest", "manifests"),
     PAIMON_FILE("pfile", "files"),
+    DELTA_VERSION("dversion", "versions"),
+    DELTA_FILE("dfile", "files"),
+    DELTA_CHECKPOINT("dcheckpoint", "checkpoints"),
 }
 
 /**
@@ -1118,6 +1207,9 @@ fun GraphNode.aggregationKind(): AggregationKind? = when (this) {
     is GraphNode.PaimonManifestListNode -> AggregationKind.PAIMON_MANIFEST_LIST
     is GraphNode.PaimonManifestNode -> AggregationKind.PAIMON_MANIFEST
     is GraphNode.PaimonDataFileNode -> AggregationKind.PAIMON_FILE
+    is GraphNode.DeltaVersionNode -> AggregationKind.DELTA_VERSION
+    is GraphNode.DeltaFileNode -> AggregationKind.DELTA_FILE
+    is GraphNode.DeltaCheckpointNode -> AggregationKind.DELTA_CHECKPOINT
     is GraphNode.TableNode -> null
     is GraphNode.ErrorNode -> null
     is GraphNode.GroupNode -> null
@@ -1209,5 +1301,8 @@ fun GraphNode.displayLabel(): String = when (this) {
     is GraphNode.PaimonManifestNode -> "PManifest $simpleId"
     is GraphNode.PaimonDataFileNode ->
         "PFile $simpleId: ${entry.file?.fileName?.substringAfterLast("/") ?: ""}"
+    is GraphNode.DeltaVersionNode -> "Version $version: ${operation ?: "no commit"}"
+    is GraphNode.DeltaFileNode -> "${action.label} $simpleId: ${path.substringAfterLast("/")}"
+    is GraphNode.DeltaCheckpointNode -> "Checkpoint ${checkpoint.version}" + if (checkpoint.parts.size > 1) " (${checkpoint.parts.size} parts)" else ""
     is GraphNode.GroupNode -> "Not drawn: ${"%,d".format(memberCount)} more ${kind.plural}"
 }

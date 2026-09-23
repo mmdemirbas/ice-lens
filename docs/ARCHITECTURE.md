@@ -14,6 +14,7 @@ ice-lens is one headless engine (`core/` — `model`, `service`, `export`) under
 │  ├── snapshot/snapshot-*         (Paimon snapshot JSON)                 │
 │  ├── schema/schema-*             (Paimon schema JSON)                  │
 │  ├── manifest/*                  (Paimon manifest list + manifest Avro) │
+│  ├── _delta_log/*.json, *.checkpoint.*.parquet  (Delta log)            │
 │  └── data/**/*.parquet|.orc      (data files — shared by both formats)  │
 └──────────────┬──────────────────────────────────────────────────────────┘
                │
@@ -34,6 +35,10 @@ ice-lens is one headless engine (`core/` — `model`, `service`, `export`) under
 │  PaimonReader.readManifestList()         │  ← Avro → PaimonManifestFileMeta
 │  PaimonReader.readManifest()             │  ← Avro → PaimonManifestEntry
 │                                          │
+│  Delta:                                  │
+│  DeltaReader.readCommit()                │  ← JSON lines → DeltaAction
+│  DeltaReader.readCheckpoint()            │  ← Parquet via DuckDB to_json → DeltaAction
+│                                          │
 │  SampleRowReader.querySampleRows()       │  ← DuckDB → Map<String, Any>
 └──────────────┬───────────────────────────┘
                │
@@ -52,6 +57,10 @@ ice-lens is one headless engine (`core/` — `model`, `service`, `export`) under
 │    └── PaimonUnifiedSnapshot             │  Resolves base/delta/changelog manifests
 │          └── PaimonUnifiedManifest       │  Resolves manifest files
 │                └── PaimonUnifiedDataFile  │  Lazy row loading
+│                                          │
+│  Delta:                                  │
+│  DeltaUnifiedTableModel()                │  Lists _delta_log/, reads every commit
+│    └── stateAt(version)                  │  Checkpoint + later commits, reconciled
 └──────────────┬───────────────────────────┘
                │
                ▼
@@ -60,6 +69,7 @@ ice-lens is one headless engine (`core/` — `model`, `service`, `export`) under
 │                                          │
 │  IcebergGraphBuilder.buildGraph()        │  ← Iceberg model → nodes + edges
 │  PaimonGraphBuilder.buildGraph()         │  ← Paimon model → nodes + edges
+│  DeltaGraphBuilder.buildGraph()          │  ← Delta model → nodes + edges
 │    - Creates GraphNode/GraphEdge list    │
 │    - Builds TableSummary statistics      │
 │    - Manages node ID registry            │

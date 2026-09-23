@@ -187,10 +187,17 @@ object ObjectStorage {
             .mapNotNull { it.substringBeforeLast("/metadata/", "").takeIf(String::isNotEmpty) }
         val paimon = glob("$root/**/snapshot/snapshot-*")
             .mapNotNull { it.substringBeforeLast("/snapshot/", "").takeIf(String::isNotEmpty) }
+        // A commit or a checkpoint part: every name that states a version starts with its
+        // 20-digit zero-padded number, and `_last_checkpoint` does not.
+        val delta = glob("$root/**/_delta_log/0*")
+            .mapNotNull { it.substringBeforeLast("/_delta_log/", "").takeIf(String::isNotEmpty) }
+            .distinct()
         // Which glob matched *is* the format, so the caller gets it for nothing rather than
-        // opening each table again to ask. Iceberg wins a directory that somehow matched both,
-        // the same precedence `TableFormatDetector` applies.
-        return (paimon.associateWith { TableFormat.PAIMON } + iceberg.associateWith { TableFormat.ICEBERG })
+        // opening each table again to ask. A directory matching several takes the precedence
+        // `TableFormatDetector` applies — Paimon, then Delta, then Iceberg — since a Paimon table
+        // and a Delta UniForm table both write Iceberg metadata beside their own; a later entry
+        // in a `+` wins, so the order below is that precedence reversed.
+        return (iceberg.associateWith { TableFormat.ICEBERG } + delta.associateWith { TableFormat.DELTA } + paimon.associateWith { TableFormat.PAIMON })
             .toSortedMap()
     }
 
