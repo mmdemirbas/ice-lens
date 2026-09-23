@@ -27,11 +27,11 @@ Neither is worth doing before the plugin has a reason to read a data file.
 Read: the log, checkpoints of every naming, the replay, file actions, deletion vectors, the
 integrity checks (commit metrics, checkpoint against replay, `_last_checkpoint`, vectors), column
 mapping in both modes, the change data feed, a row's history across versions, and the VACUUM,
-OPTIMIZE and log-cleanup planners with their maintenance lines.
+OPTIMIZE and log-cleanup planners with their maintenance lines, row tracking on rows.
 
-- **Row tracking on rows** (`drt`): `baseRowId + position` as `_row_id` where the materialized
-  column is null, `rowIdHighWaterMark` checked against the adds, in-commit timestamps shown and
-  checked for order.
+- **In-commit timestamps' order**: the protocol requires each commit's `inCommitTimestamp` to be
+  above the previous one's, from `delta.inCommitTimestampEnablementVersion` on. The timestamps are
+  read (`DeltaCommit.timestampMs`) and not checked.
 - **Inline deletion vectors** are decoded on the file panel but the lookup cannot read one — it
   has no file — and leaves the row undecided. delta-spark 3.2.1 does not write them, so a fixture
   needs another writer.

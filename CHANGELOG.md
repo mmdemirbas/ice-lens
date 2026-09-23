@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Delta row tracking on rows.** A sampled row of a row-tracked table carries `_row_id` and
+  `_row_commit_version` — the materialised column where a rewrite kept the row's own id, else the
+  file's base plus its position — and each commit's `rowIdHighWaterMark` is checked against the
+  ids it handed out.
 - **Delta's VACUUM, OPTIMIZE and log cleanup, planned.** The table panel's `Vacuum` lists the table
   directory and says what a bare `VACUUM` deletes and why each file stays or goes — a live add, a
   tombstone within the retention, a vector, or nothing — with `RETAIN 0 HOURS` and its refusal

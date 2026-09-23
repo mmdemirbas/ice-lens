@@ -222,7 +222,7 @@ fun DeltaUnifiedTableModel.integrityReport(): IntegrityReport {
     var errors = readErrors.size
     commits.forEach { c ->
         val where = "version ${c.version}" + (c.commitInfo?.operation?.let { " ($it)" } ?: "")
-        deltaCommitTallies(c) { stateAt(c.version).getOrNull() }.forEach { t.count(IntegrityCheck.COMMIT_SUMMARY, where, it.label, it.recorded, it.counted, it.agrees) }
+        (deltaCommitTallies(c) { stateAt(c.version).getOrNull() } + deltaRowIdTallies(c) { stateAt(c.version - 1).getOrNull() }).forEach { t.count(IntegrityCheck.COMMIT_SUMMARY, where, it.label, it.recorded, it.counted, it.agrees) }
     }
     checkpoints.forEach { cp ->
         val check = checkDeltaCheckpoint(cp)

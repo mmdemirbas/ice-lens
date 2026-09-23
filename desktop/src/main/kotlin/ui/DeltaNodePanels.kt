@@ -167,7 +167,13 @@ internal fun ColumnScope.DeltaFilePanel(node: GraphNode.DeltaFileNode) {
                 },
             )
             node.add?.dataChange?.let { DetailRow("Data Change", if (it) "yes" else "no — a rearrangement such as OPTIMIZE; a streaming reader skips it") }
-            node.add?.baseRowId?.let { DetailRow("Base Row ID", "$it") }
+            node.add?.baseRowId?.let { base ->
+                val rows = node.stats?.numRecords
+                DetailRow(
+                    "Base Row ID",
+                    "$base" + (rows?.takeIf { it > 0 }?.let { " — ids $base..${base + it - 1} by position, where a row's materialised id is null; a rewrite keeps each row's own" } ?: ""),
+                )
+            }
             node.add?.defaultRowCommitVersion?.let { DetailRow("Default Row Commit Version", "$it") }
             node.add?.clusteringProvider?.let { DetailRow("Clustering", it) }
         }

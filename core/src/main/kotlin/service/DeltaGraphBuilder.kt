@@ -73,7 +73,7 @@ object DeltaGraphBuilder {
                 checkpoints = tableModel.listing.checkpoints[version].orEmpty(),
                 unavailable = (state.exceptionOrNull() as? DeltaVersionUnavailable)?.detail?.reason,
                 stateLoader = DeferredRead.of { tableModel.stateAt(version).getOrNull() },
-                tallies = commit?.let { c -> deltaCommitTallies(c) { state.getOrNull() } }.orEmpty(),
+                tallies = commit?.let { c -> deltaCommitTallies(c) { state.getOrNull() } + deltaRowIdTallies(c) { tableModel.stateAt(version - 1).getOrNull() } }.orEmpty(),
                 readInput = if (state.isSuccess) DeferredRead.of { tableModel.readInputAt(version) } else DeferredRead.none(),
             )
             edges += GraphEdge("e_table_$versionId", tableNodeId, versionId)
@@ -95,7 +95,7 @@ object DeltaGraphBuilder {
                 nodes += node
                 edges += GraphEdge("e_file_${versionId}_$fileId", versionId, fileId)
                 if (node.action != DeltaFileAction.REMOVE && node.localPath != null) {
-                    sampleRows[fileId] = sampleRowFactory(node)
+                    sampleRows[fileId] = sampleRowFactory(node, current?.metadata)
                 }
             }
 
@@ -185,7 +185,7 @@ object DeltaGraphBuilder {
      * put a partition column into the file — the value is in the log and the directory — so a
      * row read from the file alone would be missing it.
      */
-    private fun sampleRowFactory(node: GraphNode.DeltaFileNode): () -> List<GraphNode.RowNode> = {
+    private fun sampleRowFactory(node: GraphNode.DeltaFileNode, metadata: DeltaMetadata?): () -> List<GraphNode.RowNode> = {
         val localPath = node.localPath.orEmpty()
         if (!Files.exists(StorageLocation.pathOf(localPath))) {
             emptyList()
@@ -207,7 +207,11 @@ object DeltaGraphBuilder {
                                     put("file_no", node.simpleId)
                                     put("row_idx", rowIndex)
                                     put("local_file_path", localPath)
-                                    putAll(row.cells)
+                                    // A tracked file's rows carry their id and commit version, from the
+                                    // materialised columns where a rewrite wrote them, else the file's base.
+                                    val base = node.add?.baseRowId ?: node.remove?.baseRowId
+                                    val defaultVersion = node.add?.defaultRowCommitVersion ?: node.remove?.defaultRowCommitVersion
+                                    deltaRowLineage(row.cells, row.position, base, defaultVersion, metadata).forEach { (k, v) -> v?.let { put(k, it) } }
                                     node.partitionColumns.forEach { c -> put(c, node.partitionValues[c] ?: "null") }
                                     row.position?.let { put(GraphNode.RowNode.ROW_POSITION_KEY, it) }
                                 }

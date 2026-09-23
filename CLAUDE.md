@@ -123,6 +123,7 @@ core/src/main/kotlin/
 │   ├── DeltaChecks.kt         # operationMetrics against the commit's actions, a checkpoint against the replay, _last_checkpoint against its checkpoint
 │   ├── DeltaRead.kt           # A version as a RowLookupInput — the Iceberg read path over the log's adds, vectors and partition values — and the row history's inputs
 │   ├── DeltaChangeFeed.kt     # What the change data feed publishes per version — its cdc files, or its file actions and vectors — as CDCReader.changesToDF builds it
+│   ├── DeltaRowTracking.kt    # A row's _row_id and _row_commit_version — the materialised column, else the file's base plus its position — and rowIdHighWaterMark against the ids handed out
 │   ├── DeltaVacuumPlan.kt     # What VACUUM deletes — the table directory listed as VacuumCommand.gc lists it, against the state's adds, the tombstones within the retention and their vectors
 │   ├── DeltaOptimizePlan.kt   # What OPTIMIZE rewrites — the candidates by size and deleted-rows ratio, packed per partition smallest first, a bin of one left alone
 │   ├── DeltaLogCleanupPlan.kt # What the cleanup after a checkpoint deletes from _delta_log/ — the cutoff to UTC midnight, the times made increasing, a run decided by its last file
@@ -3170,7 +3171,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,519 tests across 213 files (1,219 in :core, 290 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,522 tests across 214 files (1,222 in :core, 290 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3351,7 +3352,7 @@ container invocation and the traps in it:
 | `delta/dmp`, `dv2` | `DeltaPhase3FixtureTest` | a multi-part checkpoint (`checkpoint.partSize = 2`); V2 checkpoints with sidecars (`delta.checkpointPolicy = v2`) and the `v2Checkpoint` block of `_last_checkpoint` |
 | `delta/dlc`, `dlcb` | `DeltaPhase3FixtureTest`, `DeltaLogCleanupPlanFixtureTest` | the log cleanup a checkpoint runs — commits 0–4 dated 2020, then two inserts: `dlc` keeps 5, 6 and the checkpoint at 6; `dlcb` is the copy before, the oracle for a cleanup plan |
 | `delta/drs` | `DeltaPhase3FixtureTest` | `RESTORE TABLE … TO VERSION AS OF 2` after a `DELETE`, and its six metrics |
-| `delta/drt` | `DeltaGraphFixtureTest` | `delta.enableRowTracking` and in-commit timestamps — `baseRowId`, `defaultRowCommitVersion`, the `rowIdHighWaterMark` domain, an `UPDATE`'s materialized row-id column |
+| `delta/drt` | `DeltaRowTrackingFixtureTest` | `delta.enableRowTracking` and in-commit timestamps — `baseRowId`, `defaultRowCommitVersion`, the `rowIdHighWaterMark` domain, an `UPDATE`'s materialized row-id column |
 | `delta/dvac`, `dvaca`, `dopt` | `DeltaVacuumPlanFixtureTest`, `DeltaOptimizePlanFixtureTest` | five inserts and a whole-file `DELETE`; `dopt` copied before the `OPTIMIZE` that compacted four files into one, `dvaca` after a `VACUUM … RETAIN 0 HOURS` that deleted six, with its `VACUUM START` and `VACUUM END` commits |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
@@ -4247,7 +4248,18 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   `Log Cleanup` and `Vacuum` under `Maintenance`, the last behind a listing; the sections read the
   panel clock **once** (`LocalExpiryClock` answers the current time on every call, and a plan
   keyed on it would be planned again every frame)
-- Not yet read (the `TODO.md` Delta section): row tracking shown on rows (`drt`), UniForm
+- **Row tracking puts `_row_id` and `_row_commit_version` on every sampled row**
+  (`model/DeltaRowTracking.kt`): the materialised column's value where the file holds one, else
+  the add's `baseRowId` plus the row's position and its `defaultRowCommitVersion`. A rewrite gives
+  the new file a fresh base and keeps each row's own id in the column named by
+  `delta.rowTracking.materializedRowIdColumnName` — `drt`'s `UPDATE` put rows 0..2 in a file
+  based at 5 — so reading the base alone would renumber every rewritten row. The materialised
+  columns are dropped from the card, their value now under the name `_metadata.row_id` gives it.
+  `rowIdHighWaterMark`, in the `delta.rowTracking` domain, is held per commit to the mark before
+  it and the last id of each file the commit added (`deltaRowIdTallies`, beside the metric
+  tallies): 2, 4, 7 on `drt`. `DeltaRowTrackingFixtureTest` holds every live row to Spark's
+  printed row id and commit version, and plants a mark one short
+- Not yet read (the `TODO.md` Delta section): UniForm, in-commit timestamps' order
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.
