@@ -16,6 +16,8 @@ import model.ScanFilterParse
 import model.UnifiedTableModel
 import model.evaluateScan
 import model.integrityReport
+import model.maintenanceSummary
+import model.planUnexistingFiles
 import model.paimonRowLookupInput
 import model.parseScanFilter
 import model.readTableModel
@@ -52,6 +54,9 @@ class IceLensCliTest {
     private val mor = fixture("example/iceberg/default/mor")
     private val dv = fixture("example/paimon/db.db/dv")
     private val pbk = fixture("example/paimon/db.db/pbk")
+    private val orph = fixture("example/iceberg/default/orph")
+    private val pe = fixture("example/paimon/db.db/pe")
+    private val pru = fixture("example/paimon/db.db/pru")
 
     private class Run(val code: Int, val out: String, val err: String)
 
@@ -245,6 +250,44 @@ class IceLensCliTest {
         val noFilter = icelens("lookup", mor)
         assertEquals(IceLensCli.EXIT_USAGE, noFilter.code)
         assertTrue(noFilter.err.contains("lookup needs a filter"), noFilter.err)
+    }
+
+    @Test
+    fun `plan prints maintenanceSummary with the orphan walk and the missing-file stat run, as of the time given`() {
+        val at = "2099-01-01T00:00:00Z"
+        val atMs = java.time.Instant.parse(at).toEpochMilli()
+        for (table in listOf(mor, orph, pe, pru)) {
+            val node = graphOf(table, AggregationPolicy.DEFAULT).nodes.filterIsInstance<GraphNode.TableNode>().first()
+            val orphans = if (node.unreferencedFiles.isPresent) node.unreferencedFiles.value else null
+            val unexisting = if (node.missingFiles.isPresent && node.paimonRowLookup.isPresent) {
+                node.missingFiles.value?.let { r -> node.paimonRowLookup.value?.let { planUnexistingFiles(r, it) } }
+            } else null
+            val expected = maintenanceSummary(node, atMs, orphans, unexisting)
+            val json = icelens("plan", table, "--at", at, "--json")
+            assertEquals(0, json.code, json.err)
+            val procedures = Json.parseToJsonElement(json.out).jsonObject["procedures"]!!.jsonArray.map { it.jsonObject }
+            assertEquals(expected.map { listOf(it.procedure, it.verdict, it.detail, it.where) },
+                procedures.map { p -> listOf("procedure", "verdict", "detail", "where").map { p[it]!!.jsonPrimitive.content } }, table)
+            val text = icelens("plan", table, "--at", at)
+            assertEquals(0, text.code, text.err)
+            expected.forEach { assertTrue(text.out.lines().any { l -> it.procedure in l && it.verdict in l }, "$table: ${it.procedure}") }
+        }
+        // The two lines the desktop plans behind a click are planned here: orph's ten files the
+        // procedure deleted, and pru's two missing files, neither of which the batch scan opens.
+        val orphLine = Json.parseToJsonElement(icelens("plan", orph, "--at", at, "--json").out).jsonObject["procedures"]!!.jsonArray
+            .map { it.jsonObject }.single { it["procedure"]!!.jsonPrimitive.content == "remove_orphan_files" }
+        assertEquals("would delete 10 files", orphLine["verdict"]!!.jsonPrimitive.content)
+        assertTrue(orphLine["acts"]!!.jsonPrimitive.boolean)
+        assertTrue(icelens("plan", pru, "--at", at).out.lines().any { "remove_unexisting_files" in it && "would remove 2 entries" in it })
+        // The same from a path relative to the working directory, which the model once rendered
+        // as given on one side of that match and absolute on the other, and planned nothing.
+        val relative = Paths.get("").toAbsolutePath().relativize(Paths.get(pru))
+        assertTrue(icelens("plan", relative.toString(), "--at", at).out.lines().any { "remove_unexisting_files" in it && "would remove 2 entries" in it })
+        // purge_files is the one Paimon line in the alert tone, marked `!` in the text.
+        assertTrue(icelens("plan", pe, "--at", at).out.lines().any { it.startsWith("!") && "purge_files" in it })
+        val bad = icelens("plan", mor, "--at", "yesterday")
+        assertEquals(2, bad.code)
+        assertTrue("--at takes epoch milliseconds" in bad.err)
     }
 
     @Test

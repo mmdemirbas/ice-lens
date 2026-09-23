@@ -419,13 +419,15 @@ What is left:
   each needs its own provider, and HDFS in particular drags in the Hadoop client.
 
 - **A command line — done, over the strip's vocabulary.** `icelens summary | tree | show |
-  check | export`, `cli/` over `:core` like the plugin, printing `GraphTree`'s rows and tree,
+  check | lookup | plan | export`, `cli/` over `:core` like the plugin, printing `GraphTree`'s rows and tree,
   `integrityReport` as an exit code and `GraphExport`'s three formats — `--json` on the first
   four. `GraphTree` moved to core for it, since a third shell with its own words for one set of
   things would have drifted from the other two; `check --files` is the desktop's second click,
   every live file and statistics file opened, and `lookup <table> <filter>` is the row-lookup
-  section, the rows a filter matches with each one's fate. What is left: the planners the
-  desktop offers per section have no command; and an object-storage URL opens only with the
+  section, the rows a filter matches with each one's fate; `plan` is the table panel's
+  `Maintenance` summary, moved into core for it. What is left: each planner's detail — the
+  file lists and per-group tables the desktop's sections draw — has no command beyond its
+  summary line; and an object-storage URL opens only with the
   credentials the environment carries, since there is no form to type a key into. The binary
   ships inside the installers as a second jpackage launcher; HDFS and ADLS are not yet read.
 

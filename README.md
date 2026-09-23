@@ -168,10 +168,12 @@ icelens check /wh/db/orders --files             # and every live data file and s
                                                 # a file that cannot be read is exit 1 as well
 icelens lookup /wh/db/orders "id = 42"          # the rows a filter matches, each with its fate:
                                                 # live, or deleted/superseded by which delete or write
+icelens plan /wh/db/orders                      # what each maintenance procedure would do if run now:
+                                                # rewrite, merge, expiry, compaction, orphans — one line each
 icelens export /wh/db/orders --format csv --out files.csv   # the file inventory; svg and json too
 ```
 
-`--json` on `summary`, `tree`, `show`, `check` and `lookup` prints the same as an object. Standard
+`--json` on `summary`, `tree`, `show`, `check`, `lookup` and `plan` prints the same as an object. Standard
 output carries the answer only; anything the engine logs goes to standard error.
 
 The installers carry the same command beside the app, over the app's own runtime, so a machine

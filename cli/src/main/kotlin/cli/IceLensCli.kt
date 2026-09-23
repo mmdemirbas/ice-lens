@@ -17,6 +17,10 @@ import model.GraphTree
 import model.IntegrityFinding
 import model.IntegrityReport
 import model.LookupInput
+import model.MaintenanceTone
+import model.maintenanceSummary
+import model.formatCounted
+import model.planUnexistingFiles
 import model.PaimonReadInput
 import model.PaimonUnifiedTableModel
 import model.RowLookupInput
@@ -49,12 +53,13 @@ import java.nio.file.Path
 /**
  * The engine from a terminal.
  *
- * Six commands, each the narrow shells' vocabulary and nothing of its own: `summary` and `show`
+ * Seven commands, each the narrow shells' vocabulary and nothing of its own: `summary` and `show`
  * print the rows `GraphTree.details` gives a node — the same rows the IDE strip draws — `tree`
  * prints `GraphTree.build`, `check` is `integrityReport` with the findings as an exit code,
  * `lookup` is `RowLookup`/`PaimonRowLookup` — the rows a filter matches and each one's fate, the
- * desktop's row-lookup section — and `export` writes what the desktop's export menu writes. Text
- * by default, `--json` where a script is the reader. What goes to standard output is the answer
+ * desktop's row-lookup section — `plan` is `maintenanceSummary`, the table panel's `Maintenance`
+ * lines with the orphan walk and the missing-file stat run rather than left for a click — and
+ * `export` writes what the desktop's export menu writes. Text by default, `--json` where a script is the reader. What goes to standard output is the answer
  * and only the answer; the engine's logging goes to standard error at `WARN`, so a pipe carries
  * nothing it did not ask for.
  *
@@ -90,6 +95,10 @@ object IceLensCli {
         |  lookup  <table> <filter> [--json]     the rows the filter matches, read from the current
         |                                        snapshot's live files it did not rule out, each with
         |                                        its fate — live, or deleted/superseded by what
+        |  plan    <table> [--at TIME] [--json]  what each maintenance procedure would do if run now —
+        |                                        rewrite, manifest merge, expiry, compaction, orphans —
+        |                                        a verdict per procedure, planned the way the engine
+        |                                        plans it; --at plans as of an epoch-ms or ISO instant
         |  export  <table> --format svg|json|csv [--out FILE] [--page-size N]
         |                                        the graph as a drawing, as structure, or the file
         |                                        inventory; the whole table unless a page size folds it
@@ -123,6 +132,7 @@ object IceLensCli {
                 "show" -> show(parsed, out, err)
                 "check" -> check(parsed, out, err)
                 "lookup" -> lookup(parsed, out, err)
+                "plan" -> plan(parsed, out, err)
                 "export" -> export(parsed, out, err)
                 else -> usageError(err, "unknown command `$command`")
             }
@@ -326,6 +336,57 @@ object IceLensCli {
      * desktop reads a page a click. `RowLookup.lookup` caps a file's hits at [RowLookup.MAX_HITS_PER_FILE]
      * whichever shell asks, which the headline says when it bites.
      */
+    /**
+     * The table panel's `Maintenance` section as a table: [maintenanceSummary] at [nowMs], with the
+     * two lines the desktop plans only behind a click — `remove_orphan_files` over the directory
+     * walk, `remove_unexisting_files` over the stat of every needed file — run here, since a
+     * command asked has nothing to click. Informational: the exit code is 0 whatever it says.
+     */
+    private fun plan(parsed: Parsed, out: PrintStream, err: PrintStream): Int {
+        parsed.allow("at", "json") ?: return usageError(err, "plan takes --at and --json")
+        val table = parsed.positional(0) ?: return usageError(err, "plan needs a table")
+        val nowMs = parsed.value("at")?.let { at ->
+            at.toLongOrNull() ?: runCatching { java.time.Instant.parse(at).toEpochMilli() }.getOrNull()
+                ?: return usageError(err, "--at takes epoch milliseconds or an ISO instant such as 2026-01-31T12:00:00Z, not `$at`")
+        } ?: System.currentTimeMillis()
+        val model = open(table)
+        val node = graphOf(model, showRows = false, policy = AggregationPolicy.DEFAULT).nodes.filterIsInstance<GraphNode.TableNode>().first()
+        val orphans = if (node.unreferencedFiles.isPresent) node.unreferencedFiles.value else null
+        val unexisting = if (node.missingFiles.isPresent && node.paimonRowLookup.isPresent) {
+            node.missingFiles.value?.let { report -> node.paimonRowLookup.value?.let { planUnexistingFiles(report, it) } }
+        } else null
+        val lines = maintenanceSummary(node, nowMs, orphans, unexisting)
+        if (parsed.has("json")) {
+            out.println(pretty(buildJsonObject {
+                put("table", model.name)
+                put("format", formatName(model))
+                put("path", model.path.toString())
+                put("at", nowMs)
+                put("procedures", JsonArray(lines.map { l ->
+                    buildJsonObject {
+                        put("procedure", l.procedure)
+                        put("verdict", l.verdict)
+                        put("acts", l.tone != MaintenanceTone.PLAIN)
+                        put("tone", l.tone.name.lowercase())
+                        put("detail", l.detail)
+                        put("where", l.where)
+                    }
+                }))
+            }))
+        } else {
+            out.println("${model.name}  ${formatName(model)}  ${model.path}")
+            val acting = lines.count { it.tone != MaintenanceTone.PLAIN }
+            out.println("${formatCounted(lines.size, "procedure")} planned as of ${java.time.Instant.ofEpochMilli(nowMs)}; " + if (acting == 0) "none would act" else "$acting would act")
+            out.println()
+            printTable(listOf("", "procedure", "verdict", "detail"), lines.map { l ->
+                listOf(when (l.tone) { MaintenanceTone.PLAIN -> ""; MaintenanceTone.ACTS -> "*"; MaintenanceTone.ALERT -> "!" }, l.procedure, l.verdict, l.detail)
+            }, out)
+            out.println()
+            out.println("* would act   ! would destroy data, be refused, or block a writer")
+        }
+        return EXIT_OK
+    }
+
     private fun readAllPages(input: LookupInput, filter: ScanFilter, ruledOut: Set<String>): RowLookupResult {
         fun page(from: Int) = when (input) {
             is RowLookupInput -> RowLookup.lookup(input, filter, ruledOut, from = from)
@@ -374,7 +435,11 @@ object IceLensCli {
     private class TableNotOpened(message: String) : RuntimeException(message)
 
     private fun open(location: String): FormatTableModel {
+        // A local path is made absolute here, as the desktop's workspace and the IDE's virtual
+        // files already are: the model renders paths as strings, some readers absolute and some
+        // as given, and a relative root made `pru`'s two missing files match no live file.
         val path = runCatching { StorageLocation.pathOf(location) }.getOrElse { throw TableNotOpened(it.message ?: "cannot open $location") }
+            .let { if (it.fileSystem == java.nio.file.FileSystems.getDefault()) it.toAbsolutePath().normalize() else it }
         if (!Files.isDirectory(path)) throw TableNotOpened("$location is not a directory")
         if (TableFormatDetector.detect(path) == TableFormat.UNKNOWN) {
             throw TableNotOpened("$location is not an Iceberg or Paimon table: no metadata/ holding a *.metadata.json, and no snapshot/ with schema/")
@@ -576,7 +641,7 @@ object IceLensCli {
     }
 
     /** The flags that take a value; every other flag is bare. */
-    private val VALUED = setOf("depth", "format", "out", "page-size")
+    private val VALUED = setOf("at", "depth", "format", "out", "page-size")
 
     private fun usageError(err: PrintStream, message: String): Int {
         err.println("icelens: $message")

@@ -74,6 +74,8 @@ core/src/main/kotlin/
 │   ├── SchemaEvolution.kt     # Each schema against the one before it, by field id — added, dropped, renamed, moved, promoted — with the first snapshot written under it, both formats
 │   ├── ManifestMergePlan.kt   # What the next commit does to the manifest list — ManifestMergeManager's bins and verdicts
 │   ├── MaintenanceInput.kt    # The newest metadata and the current snapshot's node, carried on the table node for the planners — never read off the drawn graph
+│   ├── MaintenanceSummary.kt  # Every maintenance procedure summed to a line — verdict, detail, where, tone — the desktop's Maintenance section and `icelens plan`
+│   ├── Figures.kt             # formatCount / formatCounted / formatBytes — the figures every shell prints
 │   ├── FileHistory.kt         # One file across the retained snapshots — added by, removed by, still listed live by — on either format
 │   ├── Integrity.kt           # Every recorded figure against the same figure counted, over the whole table at once — the panels' checks, run everywhere
 │   ├── UnreferencedFiles.kt   # What is under the table root that no metadata version names — the orphan question, asked from the directory
@@ -166,7 +168,7 @@ desktop/src/main/kotlin/
     ├── GraphCanvas.kt         # Interactive graph: zoom/pan, node selection/drag, marquee, mini-map, viewport culling
     ├── NodeComponents.kt      # Node card composables (Iceberg + Paimon node types) + tooltip + copy buttons
     ├── NodeDetails.kt         # Inspector panel — header, multi-select, the shared sections and helpers the panels reach for
-    ├── MaintenanceSections.kt # The planners' sections — rewrite, manifest merge, expiry and its files, compaction, the table's summary line per procedure
+    ├── MaintenanceSections.kt # The planners' sections — rewrite, manifest merge, expiry and its files, compaction — and the summary drawn from core's maintenanceSummary
     ├── FileHistorySection.kt  # A file's life on both file panels: which commit removed it, and what still keeps it on disk
     ├── IntegritySection.kt    # The whole-table check behind a click on the table panel, and its findings
     ├── PaimonMergedCountSection.kt # The rows a read of a Paimon snapshot returns, behind a click on a primary-key table
@@ -201,7 +203,7 @@ intellij/src/main/kotlin/plugin/
 
 cli/src/main/kotlin/cli/
 ├── Main.kt                     # `icelens <command> …` → exit code
-└── IceLensCli.kt               # summary, tree, show, check, export — text or --json, over GraphTree, integrityReport and GraphExport
+└── IceLensCli.kt               # summary, tree, show, check, lookup, plan, export — text or --json, over GraphTree, integrityReport, the lookups, maintenanceSummary and GraphExport
 
 ## Build & run
 
@@ -1814,14 +1816,18 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   history to the expiries that ran: a file the expiry deleted was not live now, and a file live
   now was not deleted
 - **The table panel sums the maintenance procedures to a line each, and computes none of them.**
-  `MaintenanceSection` in `ui/MaintenanceSections.kt` asks the four planners at the table's current
+  `maintenanceSummary` in `model/MaintenanceSummary.kt` asks the planners at the table's current
   snapshot — `planRewrite`, `planManifestMerge`, `planExpiry` with `planExpiryFiles` on Iceberg;
   `planCompaction` / `paimonAppendVerdict` and the two `PaimonExpiryOptions` calls on Paimon —
-  and prints a verdict, a detail and the panel that holds the reasoning, coloured only where a
-  procedure would act and in the error colour where a writer would block. It is on the table
+  and gives a verdict, a detail and the panel that holds the reasoning per procedure, with a
+  `MaintenanceTone` — `ACTS` where a procedure would act, `ALERT` where it would destroy data,
+  be refused or block a writer — which `MaintenanceSection` in `ui/MaintenanceSections.kt`
+  colours and `icelens plan` marks `*` and `!`. It is core so the two shells cannot word one
+  table two ways; the counts and sizes in it go through `formatCounted` / `formatBytes`, core's
+  now (`model/Figures.kt`) for that reason. It is on the table
   panel because that is where a reader starts and the verdicts otherwise sit three panels deep;
   it calls the same functions the detail sections call, so it cannot drift from them, and it
-  costs the current snapshot's deferred walk once. `formatCounted` in `ui/FormatUtils.kt` agrees
+  costs the current snapshot's deferred walk once. `formatCounted` agrees
   a count with its noun, because `1 candidates in 1 groups` was the first render. **What it
   plans from rides the table node** — `TableNode.maintenance`, a `MaintenanceInput` the builder
   fills off its full node set with the newest metadata and the current snapshot's node — and the
@@ -2549,8 +2555,16 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   argument the whole clause `parseScanFilter` takes (`"id = 4"`, `"id IN (1, 2)"`, `AND`/`OR`/
   `LIKE`; a parse failure points a caret at the offset), the current snapshot read to the end
   rather than a page a click, each hit printed with its fate — the same `RowFate` the panel
-  colours — and `export` is `GraphExport`'s SVG, JSON or CSV to
-  standard output or `--out`. `--json` on the first five is the same rows as an object, for a
+  colours — `plan` is `maintenanceSummary` at `--at` (epoch milliseconds or an ISO instant,
+  now by default), with the two lines the desktop plans only behind a click run rather than
+  left `not walked`: `remove_orphan_files` over `TableNode.unreferencedFiles`, and on Paimon
+  `remove_unexisting_files` over `missingFiles` and `planUnexistingFiles`; it exits 0 whatever
+  it says, being a plan and not a check — and `export` is `GraphExport`'s SVG, JSON or CSV to
+  standard output or `--out`. A local table path is made absolute before it is opened, as the
+  desktop's workspace and the IDE's virtual files already are: `MissingFilesReport` normalises
+  its paths and `PaimonLookupFile.localPath` is the path as given, so a relative root had
+  `pru`'s two missing files match no live file and `remove_unexisting_files` plan nothing.
+  `--json` on the first six is the same rows as an object, for a
   script. Three rules. **Standard output is the answer and nothing else**: the engine's logging
   goes to standard error at `WARN` (`cli/src/main/resources/logback-cli.xml` — named apart from
   the desktop's `logback.xml` because the two jars share the installed app's classpath, and
@@ -2577,7 +2591,9 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   function it prints — the rows to `GraphTree.details`, the tree line by line to `GraphTree.build`,
   `pbk`'s three bucket-count findings to `integrityReport`, `--files` on `mor`, `pstats` and
   `orcfmt` to the sweep and the statistics check it prints, `lookup` on `mor` (`id = 5` live)
-  and `lk` (`v = 'b'` superseded) to `RowLookup`/`PaimonRowLookup`, the CSV to
+  and `lk` (`v = 'b'` superseded) to `RowLookup`/`PaimonRowLookup`, `plan` on `mor`, `orph`,
+  `pe` and `pru` to `maintenanceSummary` line for line — `orph`'s ten orphans and `pru`'s two
+  entries, the procedures' own runs, and `pru` again from a relative path — the CSV to
   `GraphExport.toCsv` — and every refusal to its exit code and message, a bad filter to the
   caret
 - **The tree follows structural edges only.** An `affectsLayout = false` edge is an annotation —
@@ -2631,8 +2647,8 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   URL — so a reader turning it back into a path with `Paths.get` walks into the same trap one
   step later; five vector readers had, and `ObjectFileSystemTest` now holds every file in core
   to `pathOf`
-- `formatCount` / `formatBytes` / `formatBytesExact` live in `ui/FormatUtils.kt` — do not add
-  private copies to a UI file. Byte units are binary and labelled as such (KiB, not KB)
+- `formatCount` / `formatCounted` / `formatBytes` / `formatBytesExact` live in core's
+  `model/Figures.kt` — do not add private copies to a UI file or a shell. Byte units are binary and labelled as such (KiB, not KB)
 - **A `GraphNode`'s declared width/height is what ELK reserves, and Compose clips nothing.** A
   card that draws more than its node declares loses the overflow under its own border with
   nothing failing — `SnapshotNode` declares 112dp instead of 84dp when it carries ref chips, and
@@ -3128,7 +3144,7 @@ Edge IDs: `e_table_*`, `e_schema_*` (sibling), `e_ml_*`, `e_man_*`, `e_file_*`, 
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,475 tests across 204 files (1,178 in :core, 288 in :desktop, 1 in :intellij, 8 in :cli) covering full pipelines for both formats (Avro fixtures
+~1,476 tests across 204 files (1,178 in :core, 288 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for both formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
