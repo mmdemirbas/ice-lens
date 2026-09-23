@@ -3172,7 +3172,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,525 tests across 215 files (1,225 in :core, 290 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,526 tests across 215 files (1,226 in :core, 290 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -4280,7 +4280,13 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   `TxnDbUtil.prepDb` creates them — the script runs it from a `spark-shell` first; and **the
   Iceberg shaded into delta-iceberg 3.2.1 predates the no-lock commit** (`iceberg-core-c1872d0`, no
   `NoLock`), so `iceberg.engine.hive.lock-enabled = false` changes nothing
-- Not yet read (the `TODO.md` Delta section): in-commit timestamps' order
+- **In-commit timestamps are checked to rise** (`inCommitTimestampChecks`, under
+  `COMMIT_SUMMARY` in the integrity report): from `delta.inCommitTimestampEnablementVersion`, or
+  version 0 where the feature was on from the `CREATE`, each commit's `inCommitTimestamp` must be
+  above the previous one's, since a time travel by timestamp searches the versions by it. 3.2.1
+  spells both properties with `-preview` (`drt`), and both spellings are read
+- Not yet read (the `TODO.md` Delta section): inline deletion vectors in the lookup, `ZORDER BY`
+  and clustered tables in the OPTIMIZE plan
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

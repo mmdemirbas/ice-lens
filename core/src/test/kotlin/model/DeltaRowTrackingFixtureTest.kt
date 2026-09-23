@@ -47,6 +47,20 @@ class DeltaRowTrackingFixtureTest {
     }
 
     @Test
+    fun `in-commit timestamps rise commit by commit, and one that goes back is named`() {
+        val model = FixtureCatalog.deltaModel("drt")
+        val checks = model.inCommitTimestampChecks()
+        assertEquals(listOf(0L, 1L, 2L, 3L), checks.map { it.version }, "on from the CREATE, under the -preview spelling")
+        assertTrue(checks.all { it.agrees })
+        val v2 = model.commitByVersion.getValue(2)
+        val earlier = v2.copy(actions = v2.actions.map { a -> a.commitInfo?.let { a.copy(commitInfo = it.copy(inCommitTimestamp = model.commitByVersion.getValue(1).commitInfo!!.inCommitTimestamp)) } ?: a })
+        val planted = DeltaUnifiedTableModel(model.path, model.listing, model.commits.map { if (it.version == 2L) earlier else it }, model.lastCheckpoint, mutableListOf())
+        assertEquals(listOf(2L), planted.inCommitTimestampChecks().filter { !it.agrees }.map { it.version })
+        assertEquals(1, planted.integrityReport().findings.count { "inCommitTimestamp" in it.figure })
+        assertTrue(FixtureCatalog.deltaModel("ddv").inCommitTimestampChecks().isEmpty(), "a table without the feature")
+    }
+
+    @Test
     fun `a file without row tracking keeps its cells as they are`() {
         val cells = mapOf("id" to 1, "v" to "a")
         assertEquals(cells, deltaRowLineage(cells, 0, null, null, null))

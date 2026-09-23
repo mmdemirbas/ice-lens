@@ -237,6 +237,9 @@ fun DeltaUnifiedTableModel.integrityReport(): IntegrityReport {
         t.count(IntegrityCheck.CHECKPOINTS, where, "protocol", "checkpoint's", if (check.protocolAgrees) "the same" else "another", check.protocolAgrees)
         t.count(IntegrityCheck.CHECKPOINTS, where, "metadata", "checkpoint's", if (check.metadataAgrees) "the same" else "another", check.metadataAgrees)
     }
+    inCommitTimestampChecks().forEach { ict ->
+        t.count(IntegrityCheck.COMMIT_SUMMARY, "version ${ict.version}", "inCommitTimestamp after version ${ict.version - 1}'s", ict.timestamp ?: "none", ict.previous ?: "no earlier commit", ict.agrees)
+    }
     lastCheckpointTallies().forEach { t.count(IntegrityCheck.METADATA_FIGURES, "_last_checkpoint", it.label, it.recorded, it.counted, it.agrees) }
     // UniForm: an export behind the log is the conversion's normal lag, not a disagreement; a
     // file on one side only of the version it did convert is.

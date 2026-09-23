@@ -190,3 +190,32 @@ fun DeltaUnifiedTableModel.lastCheckpointTallies(): List<CommitTally> {
     }
     return tallies
 }
+
+/**
+ * One commit's `inCommitTimestamp` against the one before it. The protocol makes it the commit's
+ * authoritative time from `delta.inCommitTimestampEnablementVersion` on and requires it to be
+ * **greater** than the previous commit's, since a time travel by timestamp searches the versions
+ * by it; a clock that went backwards on a writer is what this finds. [timestamp] null is a commit
+ * the feature covers that recorded none. [previous] is null for the first covered commit, or one
+ * whose predecessor the log no longer holds.
+ */
+data class InCommitTimestampCheck(val version: Long, val timestamp: Long?, val previous: Long?) {
+    val agrees: Boolean get() = timestamp != null && (previous == null || timestamp > previous)
+}
+
+/**
+ * [InCommitTimestampCheck] for every commit the feature covers: from the enablement version the
+ * table records, or from version 0 where the feature was on from the start and records none.
+ * delta-spark 3.2.1 spells the properties with a `-preview` suffix; both spellings are read.
+ */
+fun DeltaUnifiedTableModel.inCommitTimestampChecks(): List<InCommitTimestampCheck> {
+    val config = current?.metadata?.configuration ?: return emptyList()
+    fun conf(key: String) = config[key] ?: config["$key-preview"]
+    val enabled = conf("delta.enableInCommitTimestamps").equals("true", ignoreCase = true)
+    if (!enabled) return emptyList()
+    val from = conf("delta.inCommitTimestampEnablementVersion")?.toLongOrNull() ?: 0L
+    return commits.filter { it.version >= from }.sortedBy { it.version }.map { c ->
+        val previous = commitByVersion[c.version - 1]?.takeIf { c.version - 1 >= from }?.commitInfo?.inCommitTimestamp
+        InCommitTimestampCheck(c.version, c.commitInfo?.inCommitTimestamp, previous)
+    }
+}
