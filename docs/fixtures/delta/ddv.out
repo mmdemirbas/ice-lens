@@ -1,0 +1,15 @@
+2
+1
+1
+count	1000
+rows	1	v1
+rows	4	v4
+rows	5	v5
+rows	1001	updated
+rows	1003	z
+5	2026-09-23 12:55:17.498	NULL	NULL	UPDATE	{"predicate":"["(id#3191 = 1001)"]"}	NULL	NULL	NULL	4	Serializable	false	{"executionTimeMs":"2416","numAddedBytes":"699","numAddedChangeFiles":"0","numAddedFiles":"1","numCopiedRows":"0","numDeletionVectorsAdded":"1","numDeletionVectorsRemoved":"1","numDeletionVectorsUpdated":"1","numRemovedBytes":"0","numRemovedFiles":"1","numUpdatedRows":"1","rewriteTimeMs":"119","scanTimeMs":"1935"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+4	2026-09-23 12:55:14.939	NULL	NULL	DELETE	{"predicate":"["(id#1725 = 3)"]"}	NULL	NULL	NULL	3	Serializable	false	{"executionTimeMs":"3007","numAddedBytes":"0","numAddedChangeFiles":"0","numAddedFiles":"0","numCopiedRows":"0","numDeletedRows":"1","numDeletionVectorsAdded":"1","numDeletionVectorsRemoved":"1","numDeletionVectorsUpdated":"1","numRemovedBytes":"0","numRemovedFiles":"0","rewriteTimeMs":"0","scanTimeMs":"0"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+3	2026-09-23 12:55:11.804	NULL	NULL	DELETE	{"predicate":"["id#217 IN (2,1002)"]"}	NULL	NULL	NULL	2	Serializable	false	{"executionTimeMs":"4478","numAddedBytes":"0","numAddedChangeFiles":"0","numAddedFiles":"0","numCopiedRows":"0","numDeletedRows":"2","numDeletionVectorsAdded":"2","numDeletionVectorsRemoved":"0","numDeletionVectorsUpdated":"0","numRemovedBytes":"0","numRemovedFiles":"0","rewriteTimeMs":"0","scanTimeMs":"0"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+2	2026-09-23 12:55:07.126	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	1	Serializable	true	{"numFiles":"1","numOutputBytes":"669","numOutputRows":"3"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+1	2026-09-23 12:55:06.827	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	0	Serializable	true	{"numFiles":"1","numOutputBytes":"8741","numOutputRows":"1000"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+0	2026-09-23 12:55:04.605	NULL	NULL	CREATE TABLE	{"clusterBy":"[]","description":null,"isManaged":"true","partitionBy":"[]","properties":"{"delta.enableDeletionVectors":"true"}"}	NULL	NULL	NULL	NULL	Serializable	true	{}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1

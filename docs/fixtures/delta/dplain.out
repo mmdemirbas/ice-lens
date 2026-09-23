@@ -1,0 +1,11 @@
+1
+1
+rows	1	alpha
+rows	3	charlie-updated
+rows	4	delta
+5	2026-09-23 12:54:55.544	NULL	NULL	UPDATE	{"predicate":"["(id#2344 = 3)"]"}	NULL	NULL	NULL	4	Serializable	false	{"executionTimeMs":"2265","numAddedBytes":"764","numAddedChangeFiles":"0","numAddedFiles":"1","numCopiedRows":"0","numDeletionVectorsAdded":"0","numDeletionVectorsRemoved":"0","numDeletionVectorsUpdated":"0","numRemovedBytes":"708","numRemovedFiles":"1","numUpdatedRows":"1","rewriteTimeMs":"95","scanTimeMs":"2169"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+4	2026-09-23 12:54:53.028	NULL	NULL	DELETE	{"predicate":"["(id#1207 = 2)"]"}	NULL	NULL	NULL	3	Serializable	false	{"executionTimeMs":"2803","numAddedBytes":"694","numAddedChangeFiles":"0","numAddedFiles":"1","numCopiedRows":"1","numDeletedRows":"1","numDeletionVectorsAdded":"0","numDeletionVectorsRemoved":"0","numDeletionVectorsUpdated":"0","numRemovedBytes":"693","numRemovedFiles":"1","rewriteTimeMs":"110","scanTimeMs":"2693"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+3	2026-09-23 12:54:45.889	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	2	Serializable	true	{"numFiles":"1","numOutputBytes":"694","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+2	2026-09-23 12:54:45.597	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	1	Serializable	true	{"numFiles":"1","numOutputBytes":"708","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+1	2026-09-23 12:54:45.273	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	0	Serializable	true	{"numFiles":"1","numOutputBytes":"693","numOutputRows":"2"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+0	2026-09-23 12:54:42.808	NULL	NULL	CREATE TABLE	{"clusterBy":"[]","description":null,"isManaged":"true","partitionBy":"[]","properties":"{"delta.checkpointInterval":"3","delta.enableDeletionVectors":"false"}"}	NULL	NULL	NULL	NULL	Serializable	true	{}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1

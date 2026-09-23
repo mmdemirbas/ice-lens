@@ -1,0 +1,8 @@
+rows	1	10.5	eu	2024-03-05
+rows	2	20.0	eu	2024-03-06
+rows	3	30.0	us	2024-03-05
+rows	4	40.0	NULL	2024-03-07
+rows	5	50.0	us	2024-03-07
+2	2026-09-23 12:55:31.601	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	1	Serializable	true	{"numFiles":"1","numOutputBytes":"711","numOutputRows":"1"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+1	2026-09-23 12:55:31.168	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	0	Serializable	true	{"numFiles":"4","numOutputBytes":"2844","numOutputRows":"4"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+0	2026-09-23 12:55:28.295	NULL	NULL	CREATE TABLE	{"clusterBy":"[]","description":null,"isManaged":"true","partitionBy":"["region","dt"]","properties":"{"delta.checkpointInterval":"2","delta.checkpoint.writeStatsAsStruct":"true"}"}	NULL	NULL	NULL	NULL	Serializable	true	{}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
