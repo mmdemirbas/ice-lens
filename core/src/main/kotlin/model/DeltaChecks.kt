@@ -26,12 +26,23 @@ import service.DeltaCheckpointFile
  * - A `RESTORE` counts its adds as `numRestoredFiles` / `restoredFilesSize`, its removes as
  *   `numRemovedFiles` / `removedFilesSize`, and the table it leaves as `numOfFilesAfterRestore` /
  *   `tableSizeAfterRestore` — which [stateAfter] answers, the replay at the commit's version.
- * - An `OPTIMIZE` records the smallest and largest file it wrote, and the vectors it purged with
- *   their rows and bytes.
+ * - An `OPTIMIZE` records the smallest and largest file it wrote, and as `numDeletionVectorsRemoved`
+ *   the vectors on every file it **considered**, not on the files it removed — the compaction
+ *   candidates, or every live file under `ZORDER BY` and clustering (`OptimizeTableCommand` takes
+ *   it from `filesToProcess`, before bins of one and cubes left out are dropped). So it is counted
+ *   from [optimizeBefore], the plan the commit ran, and only where that plan removes exactly the
+ *   commit's files — a session's options are not recorded, and a plan under others is another
+ *   run. `dcl`'s v11 recorded 1 against a removed file with no vector. Its
+ *   `numDeletionVectorRowsRemoved` and `numDeletionVectorBytesRemoved` are metrics of the run and
+ *   not of the commit: `DeltaOperations` keeps neither in `operationMetrics`.
  * A figure the actions cannot count — a row count where a remove carries no statistics — is left
  * out rather than compared.
  */
-fun deltaCommitTallies(commit: DeltaCommit, stateAfter: () -> DeltaState? = { null }): List<CommitTally> {
+fun deltaCommitTallies(
+    commit: DeltaCommit,
+    optimizeBefore: () -> DeltaOptimizePlan? = { null },
+    stateAfter: () -> DeltaState? = { null },
+): List<CommitTally> {
     val metrics = commit.commitInfo?.operationMetrics ?: return emptyList()
     val operation = commit.commitInfo?.operation
     val adds = commit.adds
@@ -65,7 +76,7 @@ fun deltaCommitTallies(commit: DeltaCommit, stateAfter: () -> DeltaState? = { nu
     tally("numRemovedBytes", goneRemoves.sumOf { it.size ?: 0L } + if (operation == "UPDATE") changeBytes else 0L)
     tally("numAddedChangeFiles", commit.cdcs.size.toLong())
     tally("numDeletionVectorsAdded", vectorsAdded)
-    tally("numDeletionVectorsRemoved", vectorsRemoved)
+    if (operation != "OPTIMIZE") tally("numDeletionVectorsRemoved", vectorsRemoved)
     tally("numDeletionVectorsUpdated", vectorsUpdated)
     if (operation == "MERGE") {
         tally("numTargetFilesAdded", newAdds.size.toLong())
@@ -91,8 +102,10 @@ fun deltaCommitTallies(commit: DeltaCommit, stateAfter: () -> DeltaState? = { nu
     if (operation == "OPTIMIZE") {
         tally("minFileSize", adds.minOfOrNull { it.size ?: 0L })
         tally("maxFileSize", adds.maxOfOrNull { it.size ?: 0L })
-        tally("numDeletionVectorRowsRemoved", removes.sumOf { it.deletionVector?.cardinality ?: 0L })
-        tally("numDeletionVectorBytesRemoved", removes.sumOf { (it.deletionVector?.sizeInBytes ?: 0).toLong() })
+        if ("numDeletionVectorsRemoved" in metrics) {
+            optimizeBefore()?.takeIf { plan -> plan.removed.map { it.add.key }.toSet() == removes.map { it.key }.toSet() }
+                ?.let { tally("numDeletionVectorsRemoved", it.deletionVectorsCounted.toLong()) }
+        }
     }
     if (operation == "DELETE" && adds.any { it.deletionVector != null }) {
         val gained = adds.sumOf { it.deletionVector?.cardinality ?: 0L } - removes.filter { it.path in addedPaths }.sumOf { it.deletionVector?.cardinality ?: 0L }

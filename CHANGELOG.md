@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Delta `OPTIMIZE` with `ZORDER BY` and liquid clustering, planned.** On a clustered table the
+  bare call now clusters: the unclustered files and the small cubes clustered by the table's
+  columns go into new cubes, while cubes clustered by other columns, cubes of 100 GiB or more and
+  a lone cube with nothing to merge are left, each with its reason. `ZORDER BY` takes every file
+  of each partition, a lone one too, and says how many files it may write; it is refused, with
+  the engine's message, on a clustered table, a partition column, a missing column or one without
+  statistics. The desktop's Optimize section plans `ZORDER BY` the columns typed into its field,
+  and `icelens plan <table> optimize --zorder a,b` does the same. The fixtures `dzo` and `dcl`
+  run each mode several times, and every run is checked against the plan at the version before.
+
 - **`icelens plan <table> <procedure>`** prints one maintenance line in full: the notes and
   tables the desktop's section draws — every snapshot, changelog, partition or tag an expiry
   removes and what keeps the rest, the files it frees, what `purge_files` takes and keeps, the
@@ -419,6 +429,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Paimon table the location is, when it is one
 
 ### Fixed
+- **A Delta `OPTIMIZE`'s `numDeletionVectorsRemoved` no longer reads as a disagreement** when a
+  file with a vector was considered and not rewritten: the engine counts the vectors on every file
+  the run considered, and the check now counts them from the plan the commit ran. The two vector
+  figures an `OPTIMIZE` never records are no longer listed among the ones it is checked on.
 - **The installers launched nothing.** Every `.dmg`, `.msi` and `.deb` built since logging
   arrived failed on the first logger with `NoClassDefFoundError: javax/naming/NamingException`:
   the jlinked runtime is built from `nativeDistributions.modules(...)` alone, the list held

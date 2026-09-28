@@ -44,7 +44,9 @@ fun List<MaintenanceLine>.forProcedure(procedure: String): MaintenanceLine? =
  * reason, and must be the ones the summary was given: each is a read of the directory, and a
  * detail starts none of them. [readFiles] is the one read a detail may start, and only where it
  * is asked for: the rewritten delete files `rewrite_position_delete_files` would read, for which
- * positions it keeps — the desktop's click under that section.
+ * positions it keeps — the desktop's click under that section. [zOrderBy] plans `OPTIMIZE …
+ * ZORDER BY` those columns in place of the bare call the line summarises — the command line's
+ * `--zorder`, the desktop's field.
  */
 fun maintenanceDetail(
     node: GraphNode.TableNode,
@@ -54,6 +56,7 @@ fun maintenanceDetail(
     unexistingPlan: PaimonUnexistingFilesPlan? = null,
     vacuumPlan: DeltaVacuumPlan? = null,
     readFiles: Boolean = false,
+    zOrderBy: List<String> = emptyList(),
 ): MaintenanceDetail {
     val key = line.key
     val out = DetailBuilder()
@@ -71,7 +74,7 @@ fun maintenanceDetail(
         key == "rewrite_table_path" -> out.rewriteTablePath(node)
         key == "vacuum" && input is DeltaMaintenanceInput -> out.vacuum(input.model, vacuumPlan, nowMs)
         key == "log_cleanup" && input is DeltaMaintenanceInput -> out.logCleanup(input.model, nowMs)
-        key == "optimize" && input is DeltaMaintenanceInput -> out.optimize(input.model)
+        key == "optimize" && input is DeltaMaintenanceInput -> out.optimize(input.model, zOrderBy)
         key == "rewrite_data_files" && input is IcebergMaintenanceInput -> out.rewriteDataFiles(input)
         key == "rewrite_position_delete_files" && input is IcebergMaintenanceInput -> out.positionDeleteRewrite(input, readFiles)
         key == "manifest_merge" && input is IcebergMaintenanceInput -> out.icebergManifestMerge(input)
@@ -716,28 +719,28 @@ private fun DetailBuilder.paimonFastForward(node: GraphNode.TableNode) {
     )
 }
 
-private fun DetailBuilder.optimize(model: DeltaUnifiedTableModel) {
-    val plan = model.planOptimize().getOrElse {
+private fun DetailBuilder.optimize(model: DeltaUnifiedTableModel, zOrderBy: List<String>) {
+    val plan = model.planOptimize(zOrderBy).getOrElse {
         notes += "not planned: ${it.message ?: "the latest version could not be rebuilt"}"
         return
     }
-    if (plan.clustered) {
-        notes += "a CLUSTER BY table: its OPTIMIZE clusters every file, which is not planned here"
-        return
+    if (zOrderBy.isNotEmpty()) notes += "ZORDER BY ${zOrderBy.joinToString(", ")}, in place of the bare call above: ${plan.headline}"
+    if (plan.refusal != null) return
+    notes += "at version ${plan.version}, ${plan.mode.label}: ${plan.ruleText}"
+    if (plan.deletionVectorsCounted > 0) {
+        notes += "numDeletionVectorsRemoved would record ${plan.deletionVectorsCounted}: the vectors on every file the run considers, not only the ones it removes"
     }
-    notes += "at version ${plan.version}, without ZORDER BY: a live file under optimize.minFileSize (${formatBytes(plan.options.minFileSize)}) or " +
-        "whose vector marks over optimize.maxDeletedRowsRatio (${(plan.options.maxDeletedRowsRatio * 100).toInt()}%) of its rows is a candidate; " +
-        "candidates are grouped by partition, sorted smallest first and packed into bins of at most optimize.maxFileSize " +
-        "(${formatBytes(plan.options.maxFileSize)}), and only a bin of two or more is rewritten — into one file, with dataChange false"
-    table(
-        "Bins",
-        listOf("Bin", "Partition", "Files", "Bytes"),
-        plan.bins.map { bin -> listOf(bin.verdictText, bin.partitionText, "${bin.files.size}", formatBytes(bin.bytes)) },
-    )
-    val binOf = plan.bins.flatMapIndexed { i, bin -> bin.files.map { it.add.path to i + 1 } }.toMap()
+    if (plan.bins.isNotEmpty()) {
+        table(
+            if (plan.mode == DeltaOptimizeMode.CLUSTERING) "New cubes" else "Bins",
+            listOf("Bin", "Partition", "Files", "Bytes"),
+            plan.bins.map { bin -> listOf(bin.verdictText, bin.partitionText, "${bin.files.size}", formatBytes(bin.bytes)) },
+        )
+    }
+    val binOf = plan.bins.flatMapIndexed { i, bin -> bin.files.map { it.add.key to i + 1 } }.toMap()
     table(
         "Files",
         listOf("Candidate", "Bin", "File", "Size", "Why"),
-        plan.files.map { f -> listOf(if (f.candidateBecause != null) "yes" else "no", binOf[f.add.path]?.toString() ?: "—", f.add.path, bytes(f.add.size), f.whyText) },
+        plan.files.map { f -> listOf(if (f.candidateBecause != null) "yes" else "no", binOf[f.add.key]?.toString() ?: "—", f.add.path, bytes(f.add.size), f.whyText) },
     )
 }

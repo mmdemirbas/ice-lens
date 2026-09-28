@@ -21,7 +21,9 @@ class DeltaOptimizePlanFixtureTest {
         val metrics = commit.commitInfo!!.operationMetrics!!
         assertEquals(metrics["numRemovedFiles"]!!.toInt(), plan.removed.size)
         assertEquals(metrics["numRemovedBytes"]!!.toLong(), plan.removedBytes)
-        assertEquals(metrics["numAddedFiles"]!!.toInt(), plan.filesAdded)
+        assertEquals(metrics["numAddedFiles"]!!.toInt().let { it..it }, plan.filesAdded)
+        assertEquals(metrics["numDeletionVectorsRemoved"]!!.toInt(), plan.deletionVectorsCounted)
+        assertEquals(DeltaOptimizeMode.COMPACTION, plan.mode)
         assertTrue(plan.commits)
     }
 

@@ -107,12 +107,13 @@ object IceLensCli {
         |                                        its fate — live, or deleted/superseded by what
         |  plan    <table> [<procedure>]         what each maintenance procedure would do if run now —
         |          [--at TIME] [--json]          rewrite, manifest merge, expiry, compaction, orphans —
-        |          [--files]                     a verdict per procedure, planned the way the engine
+        |          [--files] [--zorder COLS]     a verdict per procedure, planned the way the engine
         |                                        plans it; with a procedure named, its plan in full,
         |                                        every file or group it would act on; --at plans as of
         |                                        an epoch-ms or ISO instant; --files reads the delete
         |                                        files rewrite_position_delete_files would rewrite,
-        |                                        for which positions it keeps
+        |                                        for which positions it keeps; --zorder a,b plans a
+        |                                        Delta OPTIMIZE ZORDER BY those columns
         |  export  <table> --format svg|json|csv [--out FILE] [--page-size N]
         |                                        the graph as a drawing, as structure, or the file
         |                                        inventory; the whole table unless a page size folds it
@@ -361,7 +362,7 @@ object IceLensCli {
      * code is 0 whatever it says.
      */
     private fun plan(parsed: Parsed, out: PrintStream, err: PrintStream): Int {
-        parsed.allow("at", "json", "files") ?: return usageError(err, "plan takes --at, --json and --files")
+        parsed.allow("at", "json", "files", "zorder") ?: return usageError(err, "plan takes --at, --json, --files and --zorder")
         val table = parsed.positional(0) ?: return usageError(err, "plan needs a table")
         val procedure = parsed.positional(1)
         val nowMs = parsed.value("at")?.let { at ->
@@ -379,10 +380,15 @@ object IceLensCli {
         if (procedure != null) {
             val line = lines.forProcedure(procedure)
                 ?: return usageError(err, "this table plans no `$procedure`; it plans ${lines.joinToString(", ") { it.key }}")
-            val detail = maintenanceDetail(node, line, nowMs, orphans, unexisting, vacuum, readFiles = parsed.has("files"))
+            val zOrderBy = parsed.value("zorder")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+            if (parsed.has("zorder") && (line.key != "optimize" || zOrderBy.isEmpty())) {
+                return usageError(err, "--zorder takes the columns of a Delta OPTIMIZE ZORDER BY, as `plan <table> optimize --zorder a,b`")
+            }
+            val detail = maintenanceDetail(node, line, nowMs, orphans, unexisting, vacuum, readFiles = parsed.has("files"), zOrderBy = zOrderBy)
             if (parsed.has("json")) out.println(pretty(detailJson(model, nowMs, detail))) else printDetail(model, nowMs, detail, out)
             return EXIT_OK
         }
+        if (parsed.has("zorder")) return usageError(err, "--zorder takes a procedure: `plan <table> optimize --zorder a,b`")
         if (parsed.has("json")) {
             out.println(pretty(buildJsonObject {
                 put("table", model.name)
@@ -711,7 +717,7 @@ object IceLensCli {
     }
 
     /** The flags that take a value; every other flag is bare. */
-    private val VALUED = setOf("at", "depth", "format", "out", "page-size")
+    private val VALUED = setOf("at", "depth", "format", "out", "page-size", "zorder")
 
     private fun usageError(err: PrintStream, message: String): Int {
         err.println("icelens: $message")

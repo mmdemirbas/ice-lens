@@ -302,15 +302,20 @@ private fun deltaMaintenanceLines(model: DeltaUnifiedTableModel, nowMs: Long, va
     val rows = mutableListOf<MaintenanceLine>()
     rows += model.planOptimize().fold(
         onSuccess = { plan ->
+            val clustering = plan.mode == DeltaOptimizeMode.CLUSTERING
+            val by = if (clustering) "liquid clustering by ${plan.columns.joinToString(", ")}: " else ""
             when {
-                plan.clustered -> MaintenanceLine("not planned", "OPTIMIZE", "a CLUSTER BY table's OPTIMIZE clusters every file, which is not planned here", "table → Optimize", MaintenanceTone.PLAIN)
                 plan.commits -> MaintenanceLine(
-                    "would rewrite ${formatCounted(plan.removed.size, "file")} into ${plan.filesAdded}", "OPTIMIZE",
-                    "${formatBytes(plan.removedBytes)} in ${formatCounted(plan.filesAdded, "bin")}" + (if (plan.leftAlone.isNotEmpty()) "; ${formatCounted(plan.leftAlone.size, "candidate")} alone in a bin, left" else ""),
+                    "would rewrite ${formatCounted(plan.removed.size, "file")} into ${plan.filesAddedText}", "OPTIMIZE",
+                    by + "${formatBytes(plan.removedBytes)} in ${formatCounted(plan.rewrittenBins.size, if (clustering) "new cube" else "bin")}" + when {
+                        plan.leftAlone.isNotEmpty() -> "; ${formatCounted(plan.leftAlone.size, "candidate")} alone in a bin, left"
+                        plan.skipped.isNotEmpty() -> "; ${formatCounted(plan.skipped.size, "file")} left as clustered"
+                        else -> ""
+                    },
                     "table → Optimize", MaintenanceTone.ACTS,
                 )
                 plan.leftAlone.isNotEmpty() -> MaintenanceLine("left alone", "OPTIMIZE", "${formatCounted(plan.leftAlone.size, "candidate")} alone in a bin — a bin of one file is not rewritten", "table → Optimize", MaintenanceTone.PLAIN)
-                else -> MaintenanceLine("nothing to do", "OPTIMIZE", "no live file under optimize.minFileSize (${formatBytes(plan.options.minFileSize)}) or past the deleted-rows ratio", "table → Optimize", MaintenanceTone.PLAIN)
+                else -> MaintenanceLine("nothing to do", "OPTIMIZE", by + plan.nothingBecause, "table → Optimize", MaintenanceTone.PLAIN)
             }
         },
         onFailure = { MaintenanceLine("not planned", "OPTIMIZE", it.message ?: "the latest version could not be rebuilt", "table → Optimize", MaintenanceTone.PLAIN) },

@@ -62,6 +62,8 @@ class IceLensCliTest {
     private val dvac = fixture("example/delta/dvac")
     private val pru = fixture("example/paimon/db.db/pru")
     private val br = fixture("example/paimon/db.db/br")
+    private val dzo = fixture("example/delta/dzo")
+    private val dcl = fixture("example/delta/dcl")
 
     private class Run(val code: Int, val out: String, val err: String)
 
@@ -362,6 +364,20 @@ class IceLensCliTest {
         val bad = icelens("plan", mor, "vacuum", "--at", at)
         assertEquals(IceLensCli.EXIT_USAGE, bad.code)
         assertTrue("this table plans no `vacuum`; it plans rewrite_data_files" in bad.err, bad.err)
+    }
+
+    @Test
+    fun `plan optimize --zorder plans a Delta ZORDER BY, refused on a clustered table, and is OPTIMIZE's alone`() {
+        val z = icelens("plan", dzo, "optimize", "--zorder", "a,b")
+        assertEquals(IceLensCli.EXIT_OK, z.code, z.err)
+        assertTrue(z.out.lines().any { it.contains("ZORDER BY a, b, in place of the bare call above: Would rewrite 4 files") }, z.out)
+        val refused = icelens("plan", dcl, "optimize", "--zorder", "a")
+        assertEquals(IceLensCli.EXIT_OK, refused.code, refused.err)
+        assertTrue(refused.out.contains("Refused: OPTIMIZE command for Delta table with clustering cannot specify ZORDER BY. Please remove ZORDER BY (a)."), refused.out)
+        // The bare call on the clustered table is clustering, and at the latest version writes nothing.
+        assertTrue(icelens("plan", dcl).out.lines().any { it.contains("nothing to do") && it.contains("liquid clustering by b") }, icelens("plan", dcl).out)
+        assertEquals(IceLensCli.EXIT_USAGE, icelens("plan", dzo, "vacuum", "--zorder", "a").code)
+        assertEquals(IceLensCli.EXIT_USAGE, icelens("plan", dzo, "--zorder", "a").code)
     }
 
     @Test

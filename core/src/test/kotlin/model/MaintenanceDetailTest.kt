@@ -161,6 +161,27 @@ class MaintenanceDetailTest {
     }
 
     @Test
+    fun `OPTIMIZE ZORDER BY on dzo takes every file of each partition, and on the clustered dcl is refused`() {
+        val dzo = Planned(FixtureCatalog.deltaDir("dzo"), y2099)
+        val line = assertNotNull(dzo.lines.forProcedure("optimize"))
+        val z = maintenanceDetail(dzo.node, line, dzo.nowMs, dzo.orphans, dzo.unexisting, dzo.vacuum, zOrderBy = listOf("a", "b"))
+        assertTrue(z.notes.first().startsWith("ZORDER BY a, b, in place of the bare call above: Would rewrite 4 files"), z.notes.toString())
+        assertEquals(listOf("rewritten into one", "rewritten into one"), z.table("Bins").column("Bin"))
+        assertEquals(listOf("yes", "yes", "yes", "yes"), z.table("Files").column("Candidate"))
+        // The bare call leaves p=y's lone file alone; ZORDER BY rewrites it.
+        assertEquals(listOf("rewritten into one", "left — one file"), dzo.detail(line).table("Bins").column("Bin"))
+
+        val dcl = Planned(FixtureCatalog.deltaDir("dcl"), y2099)
+        val refused = maintenanceDetail(dcl.node, assertNotNull(dcl.lines.forProcedure("optimize")), dcl.nowMs, zOrderBy = listOf("a"))
+        assertEquals(listOf("ZORDER BY a, in place of the bare call above: Refused: OPTIMIZE command for Delta table with clustering cannot specify ZORDER BY. Please remove ZORDER BY (a)."), refused.notes)
+        assertTrue(refused.tables.isEmpty())
+        // The bare call there clusters: the cube clustered by a is left, the one by b alone.
+        val bare = dcl.detail("optimize")
+        assertEquals(listOf("no", "no"), bare.table("Files").column("Candidate"))
+        assertEquals("nothing to do", dcl.lines.forProcedure("optimize")!!.verdict)
+    }
+
+    @Test
     fun `compact_manifest on pmm rewrites its four manifests into the one of ten entries pmma's snapshot 13 lists`() {
         val detail = Planned(FixtureCatalog.paimonDir("pmm"), y2099).detail("sys.compact_manifest")
         val written = FixtureCatalog.paimonModel("pmma").snapshots.single { it.metadata.id == 13L }

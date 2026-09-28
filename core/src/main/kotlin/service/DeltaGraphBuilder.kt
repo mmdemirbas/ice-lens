@@ -76,7 +76,7 @@ object DeltaGraphBuilder {
                 checkpoints = tableModel.listing.checkpoints[version].orEmpty(),
                 unavailable = (state.exceptionOrNull() as? DeltaVersionUnavailable)?.detail?.reason,
                 stateLoader = DeferredRead.of { tableModel.stateAt(version).getOrNull() },
-                tallies = commit?.let { c -> deltaCommitTallies(c) { state.getOrNull() } + deltaRowIdTallies(c) { tableModel.stateAt(version - 1).getOrNull() } }.orEmpty(),
+                tallies = commit?.let { c -> deltaCommitTallies(c, optimizeBefore = { tableModel.planOptimizeBefore(c) }) { state.getOrNull() } + deltaRowIdTallies(c) { tableModel.stateAt(version - 1).getOrNull() } }.orEmpty(),
                 readInput = if (state.isSuccess) DeferredRead.of { tableModel.readInputAt(version) } else DeferredRead.none(),
             )
             edges += GraphEdge("e_table_$versionId", tableNodeId, versionId)

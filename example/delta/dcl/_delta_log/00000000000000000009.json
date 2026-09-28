@@ -1,0 +1,2 @@
+{"commitInfo":{"timestamp":1790590570493,"operation":"CLUSTER BY","operationParameters":{"oldClusteringColumns":"a","newClusteringColumns":"b"},"readVersion":8,"isolationLevel":"Serializable","isBlindAppend":true,"operationMetrics":{},"engineInfo":"Apache-Spark/3.5.4 Delta-Lake/3.2.1","txnId":"1f191b29-ed92-4f16-9d21-de8e88156415"}}
+{"domainMetadata":{"domain":"delta.clustering","configuration":"{\"clusteringColumns\":[[\"b\"]],\"domainName\":\"delta.clustering\"}","removed":false}}

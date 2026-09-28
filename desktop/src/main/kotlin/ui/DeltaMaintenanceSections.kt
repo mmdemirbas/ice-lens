@@ -1,8 +1,11 @@
 package ui
 
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -15,6 +18,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import model.DeltaOptimizeMode
+import model.DeltaOptimizePlan
 import model.DeltaUnifiedTableModel
 import model.DeltaVacuumPlan
 import model.LogCleanupFate
@@ -33,78 +38,118 @@ private const val MAX_DELTA_PLAN_ROWS = 200
 
 /**
  * What `OPTIMIZE` would rewrite — see [model.planDeltaOptimize] for the rules. Drawn from the log
- * alone, so no click: the bins first, the rewritten ones marked, then every live file with why it
- * is a candidate or not.
+ * alone, so no click: the bare call first — compaction, or liquid clustering on a clustered table
+ * — then, under a field for its columns, the same call with `ZORDER BY`. Each plan leads with
+ * what it does, then its bins, then every live file with why it is taken or left.
+ * [initialZOrder] seeds the field, which is how a capture reaches the state typing produces.
  */
 @Composable
-internal fun DeltaOptimizeSection(model: DeltaUnifiedTableModel) {
+internal fun DeltaOptimizeSection(model: DeltaUnifiedTableModel, initialZOrder: String = "") {
     val colors = MaterialTheme.colorScheme
     val plan = remember(model) { model.planOptimize() }.getOrNull()
+    var zOrder by remember(model) { mutableStateOf(initialZOrder) }
+    val zColumns = zOrder.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    val zPlan = remember(model, zColumns) { if (zColumns.isEmpty()) null else model.planOptimize(zColumns).getOrNull() }
     val title = "Optimize" + when {
         plan == null -> ""
-        plan.commits -> " — ${formatCounted(plan.removed.size, "file")} into ${plan.filesAdded}"
+        plan.commits -> " — ${formatCounted(plan.removed.size, "file")} into ${plan.filesAddedText}"
         else -> " — nothing to rewrite"
     }
     Section(title) {
-        Text(
-            "What OPTIMIZE does without ZORDER BY, as OptimizeExecutor plans it: a live file under optimize.minFileSize " +
-                "(1 GiB) or whose vector marks over optimize.maxDeletedRowsRatio (5%) of its rows is a candidate; candidates " +
-                "are grouped by partition, sorted smallest first and packed into bins of at most optimize.maxFileSize " +
-                "(1 GiB), and only a bin of two or more is rewritten — into one file, with dataChange false.",
-            fontSize = TypeScale.small,
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 4.dp),
-        )
         if (plan == null) {
             Text("Not planned: the latest version could not be rebuilt.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
             return@Section
         }
-        if (plan.clustered) {
-            Text("A CLUSTER BY table: its OPTIMIZE clusters every file, which this does not plan.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
-            return@Section
-        }
+        DeltaOptimizePlanBody(plan)
         Text(
-            when {
-                plan.commits -> "Would rewrite ${formatCounted(plan.removed.size, "file")} (${formatBytes(plan.removedBytes)}) into ${formatCounted(plan.filesAdded, "file")}" +
-                    if (plan.leftAlone.isNotEmpty()) "; ${formatCounted(plan.leftAlone.size, "candidate")} alone in a bin stays." else "."
-                plan.leftAlone.isNotEmpty() -> "Writes nothing: ${formatCounted(plan.leftAlone.size, "candidate")}, each alone in its bin."
-                else -> "Writes nothing: no live file is a candidate."
-            },
+            "ZORDER BY",
             fontSize = TypeScale.small,
             fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
+        )
+        Text(
+            "The same call with ZORDER BY the columns typed here, comma-separated. It is planned beside the bare call above, " +
+                "which is what the table's Maintenance line summarises.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
         )
-        if (plan.bins.isNotEmpty()) {
-            WideTable(
-                headers = listOf("Bin", "Partition", "Files", "Bytes"),
-                rows = plan.bins.map { bin ->
-                    listOf(
-                        bin.verdictText,
-                        bin.partitionText,
-                        bin.files.size.toString(),
-                        formatBytes(bin.bytes),
-                    )
-                },
-                columnWidths = listOf(170.dp, 200.dp, 70.dp, 110.dp),
-                leadCellColors = plan.bins.map { if (it.rewritten) verdictSkippedColor() else null },
-            )
-        }
-        val files = plan.files.take(MAX_DELTA_PLAN_ROWS)
+        OutlinedTextField(
+            value = zOrder, onValueChange = { zOrder = it }, singleLine = true,
+            label = { Text("columns", fontSize = TypeScale.small) },
+            textStyle = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.widthIn(max = ZORDER_FIELD_MAX_WIDTH).fillMaxWidth().padding(bottom = 4.dp),
+        )
+        zPlan?.let { DeltaOptimizePlanBody(it) }
+    }
+}
+
+private val ZORDER_FIELD_MAX_WIDTH = 360.dp
+
+@Composable
+private fun DeltaOptimizePlanBody(plan: DeltaOptimizePlan) {
+    val colors = MaterialTheme.colorScheme
+    val refusal = plan.refusal
+    if (refusal != null) {
+        Text("REFUSED — $refusal", fontSize = TypeScale.small, fontWeight = FontWeight.Bold, color = colors.error, modifier = Modifier.padding(top = 4.dp))
+        return
+    }
+    Text(
+        plan.ruleText,
+        fontSize = TypeScale.small,
+        color = colors.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 4.dp),
+    )
+    Text(
+        plan.headline,
+        fontSize = TypeScale.small,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(bottom = 4.dp),
+    )
+    val removedVectors = plan.removed.count { it.add.deletionVector != null }
+    if (plan.commits && plan.deletionVectorsCounted != removedVectors) {
+        Text(
+            "The commit would record numDeletionVectorsRemoved ${plan.deletionVectorsCounted} against ${formatCounted(removedVectors, "vector")} " +
+                "on the files it removes: it counts every file the run considers.",
+            fontSize = TypeScale.small,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+    }
+    if (plan.bins.isNotEmpty()) {
         WideTable(
-            headers = listOf("Candidate", "File", "Size", "Why"),
-            rows = files.map { f ->
+            headers = listOf(if (plan.mode == DeltaOptimizeMode.CLUSTERING) "New Cube" else "Bin", "Partition", "Files", "Bytes"),
+            rows = plan.bins.map { bin ->
                 listOf(
-                    if (f.candidateBecause != null) "yes" else "no",
-                    f.add.path.substringAfterLast('/'),
-                    formatBytes(f.add.size),
-                    f.whyText,
+                    bin.verdictText,
+                    bin.partitionText,
+                    bin.files.size.toString(),
+                    formatBytes(bin.bytes),
                 )
             },
-            columnWidths = listOf(90.dp, 320.dp, 100.dp, 420.dp),
+            columnWidths = listOf(170.dp, 200.dp, 70.dp, 110.dp),
+            // Only compaction leaves a bin: under the other modes every bin is rewritten, and a
+            // column marked on every row marks nothing.
+            leadCellColors = plan.bins.map { if (plan.mode == DeltaOptimizeMode.COMPACTION && it.rewritten) verdictSkippedColor() else null },
         )
-        if (plan.files.size > files.size) {
-            Text("…and ${formatCounted(plan.files.size - files.size, "more file")}.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
-        }
+    }
+    val files = plan.files.take(MAX_DELTA_PLAN_ROWS)
+    if (files.isEmpty()) return
+    WideTable(
+        headers = listOf("Candidate", "File", "Size", "Why"),
+        rows = files.map { f ->
+            listOf(
+                if (f.candidateBecause != null) "yes" else "no",
+                f.add.path.substringAfterLast('/'),
+                formatBytes(f.add.size),
+                f.whyText,
+            )
+        },
+        columnWidths = listOf(90.dp, 320.dp, 100.dp, 420.dp),
+        leadCellColors = files.map { if (plan.mode == DeltaOptimizeMode.CLUSTERING && it.candidateBecause == null) verdictUnevaluatedColor() else null },
+    )
+    if (plan.files.size > files.size) {
+        Text("…and ${formatCounted(plan.files.size - files.size, "more file")}.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
     }
 }
 

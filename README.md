@@ -190,6 +190,9 @@ icelens plan /wh/db/orders expire_snapshots     # one of them in full: every sna
 icelens plan /wh/db/orders rewrite_position_delete_files --files
                                                 # and the delete files it reads opened: which positions
                                                 # it keeps, which it drops as dangling
+icelens plan /wh/db/events optimize --zorder a,b
+                                                # a Delta OPTIMIZE ZORDER BY a, b: every file it rewrites,
+                                                # or the error the engine refuses it with
 icelens export /wh/db/orders --format csv --out files.csv   # the file inventory; svg and json too
 ```
 

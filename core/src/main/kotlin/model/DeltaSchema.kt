@@ -254,7 +254,7 @@ data class DeltaStats(
  * `coerceInputValues`: a checkpoint row turned into JSON spells every absent field as an explicit
  * `null`, and a list or map the class defaults to empty must read that as empty.
  */
-private val deltaJson = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+internal val deltaJson = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
 fun parseDeltaStats(text: String): DeltaStats? = runCatching {
     val o = deltaJson.parseToJsonElement(text).jsonObject

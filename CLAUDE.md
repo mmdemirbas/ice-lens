@@ -127,7 +127,7 @@ core/src/main/kotlin/
 │   ├── DeltaUniForm.kt        # UniForm's Iceberg metadata under metadata/, read as an Iceberg table, against the Delta version its delta-version names
 │   ├── DeltaRowTracking.kt    # A row's _row_id and _row_commit_version — the materialised column, else the file's base plus its position — and rowIdHighWaterMark against the ids handed out
 │   ├── DeltaVacuumPlan.kt     # What VACUUM deletes — the table directory listed as VacuumCommand.gc lists it, against the state's adds, the tombstones within the retention and their vectors
-│   ├── DeltaOptimizePlan.kt   # What OPTIMIZE rewrites — the candidates by size and deleted-rows ratio, packed per partition smallest first, a bin of one left alone
+│   ├── DeltaOptimizePlan.kt   # What OPTIMIZE rewrites in each mode — compaction's candidates packed per partition, a bin of one left; ZORDER BY's every file per partition; a clustered table's unclustered files and small cubes of its columns, packed into new cubes
 │   ├── DeltaLogCleanupPlan.kt # What the cleanup after a checkpoint deletes from _delta_log/ — the cutoff to UTC midnight, the times made increasing, a run decided by its last file
 │   ├── Z85.kt                 # ZeroMQ's Base85, which a Delta deletion vector's location and inline bytes are written in
 │   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
@@ -199,7 +199,7 @@ desktop/src/main/kotlin/
     ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
     ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
     ├── DeltaNodePanels.kt     # Delta version, file action and checkpoint panels
-    ├── DeltaMaintenanceSections.kt # The Delta table panel's Optimize, Log Cleanup and Vacuum sections, the last behind a listing
+    ├── DeltaMaintenanceSections.kt # The Delta table panel's Optimize (the bare call, and ZORDER BY under a field), Log Cleanup and Vacuum sections, the last behind a listing
     ├── RemoteLocations.kt      # A location in object storage and how to reach it — persisted, minus the secret
     ├── RemoteLocationDialog.kt # The form for a location no file chooser can browse to
     ├── Sidebar.kt             # Workspace panel — add/remove roots, search, drag-to-reorder, format badges (ICE/PMN)
@@ -2592,7 +2592,8 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   `PaimonFastForwardPlan`'s five cells, `DeltaOptimizeBin`'s). `--files` is the one read a
   detail starts, and only for `rewrite_position_delete_files`: the delete files rewrite-all
   would rewrite, opened through `PositionDeleteRewriteDrops` for which positions it keeps — the
-  desktop's click under that section. `plan` exits 0 whatever
+  desktop's click under that section. `--zorder a,b` plans a Delta `OPTIMIZE ZORDER BY` those
+  columns in place of the bare call, the desktop section's field. `plan` exits 0 whatever
   it says, being a plan and not a check — and `export` is `GraphExport`'s SVG, JSON or CSV to
   standard output or `--out`. A local table path is made absolute before it is opened, as the
   desktop's workspace and the IDE's virtual files already are: `MissingFilesReport` normalises
@@ -3198,7 +3199,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,538 tests across 216 files (1,237 in :core, 290 in :desktop, 1 in :intellij, 10 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,547 tests across 217 files (1,245 in :core, 290 in :desktop, 1 in :intellij, 11 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3381,6 +3382,8 @@ container invocation and the traps in it:
 | `delta/drs` | `DeltaPhase3FixtureTest` | `RESTORE TABLE … TO VERSION AS OF 2` after a `DELETE`, and its six metrics |
 | `delta/duni` | `DeltaUniFormFixtureTest` | UniForm — name-mode column mapping and IcebergCompatV2, four commits converted to Iceberg metadata under `metadata/`, each version recording its `delta-version`; the script's rows as the oracle for both readers |
 | `delta/drt` | `DeltaRowTrackingFixtureTest` | `delta.enableRowTracking` and in-commit timestamps — `baseRowId`, `defaultRowCommitVersion`, the `rowIdHighWaterMark` domain, an `UPDATE`'s materialized row-id column |
+| `delta/dzo` | `DeltaOptimizeModesFixtureTest` | `OPTIMIZE ZORDER BY` four times on one partitioned table with a vector — every file of both partitions, the lone `p=y` file included; the same again; after an insert by another column; and under `optimize.maxFileSize = 300`, asking for five files and writing four |
+| `delta/dcl` | `DeltaOptimizeModesFixtureTest` | liquid clustering — three unclustered files into a cube, a second run writing nothing, the small cube merged with a new file, then `ALTER TABLE CLUSTER BY (b)`: the new file alone into a cube by `b`, the cube by `a` left with its vector counted in `numDeletionVectorsRemoved`, and a last run writing nothing |
 | `delta/dvac`, `dvaca`, `dopt` | `DeltaVacuumPlanFixtureTest`, `DeltaOptimizePlanFixtureTest` | five inserts and a whole-file `DELETE`; `dopt` copied before the `OPTIMIZE` that compacted four files into one, `dvaca` after a `VACUUM … RETAIN 0 HOURS` that deleted six, with its `VACUUM START` and `VACUUM END` commits |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
@@ -4147,8 +4150,14 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   same rules; a `RESTORE`'s `numRestoredFiles` / `restoredFilesSize` are its adds, its
   `numRemovedFiles` / `removedFilesSize` its removes, and `numOfFilesAfterRestore` /
   `tableSizeAfterRestore` the state after it (`drs`: 1, 657, 1, 657, 2, 1,314); an `OPTIMIZE`'s
-  `minFileSize` / `maxFileSize` are over its adds, with `numDeletionVectorRowsRemoved` and
-  `numDeletionVectorBytesRemoved` the vectors its rewrite purged.
+  `minFileSize` / `maxFileSize` are over its adds, and **its `numDeletionVectorsRemoved` counts
+  the vectors on every file it considered, not on the ones it removed** — the compaction
+  candidates, bins of one included, or every live file under `ZORDER BY` and clustering, cubes
+  left out included (`OptimizeTableCommand` takes it from `filesToProcess`) — so it is counted
+  from the plan the commit ran (`planOptimizeBefore`), and only where that plan removes exactly
+  the commit's files, since a session's options are not recorded: `dcl`'s v11 recorded 1 and
+  removed no vector. `numDeletionVectorRowsRemoved` and `numDeletionVectorBytesRemoved` are
+  computed by the run and never reach the commit (`DeltaOperations` keeps neither).
   Every fixture commit agrees; planting a byte count is named; reverting the `UPDATE` rule fails `ddv`
   and `dcdf`, counting every add as output fails `dcdfdv`
 - **`_last_checkpoint` of a V2 checkpoint names the top-level file and its sidecars, and both are
@@ -4254,7 +4263,29 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   packed greedily into `optimize.maxFileSize` bins, and **only a bin of two or more is rewritten** —
   a lone small file stays, its vector with it. `dopt`'s plan is the four files `dvac`'s `OPTIMIZE`
   removed, with its `numRemovedFiles`, `numRemovedBytes` and `numAddedFiles`; the packing rules are
-  pinned on built inputs. A `CLUSTER BY` table and `ZORDER BY` take every file and are not planned
+  pinned on built inputs. **`ZORDER BY` takes every live file**, one bin per partition, and
+  rewrites every bin — a lone file too, so a second run rewrites all the first wrote — into
+  `max(1, bytes / optimize.maxFileSize)` range partitions, one file each that holds a row: one
+  under the default size, at most that many above it (`dzo`'s v10 under 300 bytes asked for three
+  and two and wrote three and one). It is refused on a table with the `clustering` feature, on a
+  partition column, on a column not in the data schema, and on columns outside the statistics
+  schema (`deltaStatsColumnPaths`: the data schema without partition columns, narrowed to
+  `delta.dataSkippingStatsColumns` or the first `delta.dataSkippingNumIndexedCols` leaves).
+  **A clustered table's bare `OPTIMIZE` clusters** (`OptimizeTableStrategy.getMode`: the
+  `clustering` feature and a column in the `delta.clustering` domain, whose physical name parts
+  are resolved to logical names): the live files sorted by `ZCUBE_ID`, unclustered first; left
+  out are another provider's files, a cube whose `ZCUBE_ZORDER_BY` is not the table's columns —
+  so after `ALTER TABLE … CLUSTER BY` the old cubes stay — a cube of 100 GiB or more by logical
+  size (the bytes scaled by the rows its vectors leave), and a lone remaining cube where no
+  unclustered file is left; the rest are packed into new cubes of up to 150 GiB, every one
+  rewritten, a lone file too, each output tagged with a new `ZCUBE_ID`, `ZCUBE_ZORDER_BY` and
+  `clusteringProvider` `liquid`. A plain `INSERT` clusters nothing. The oracles are the logs:
+  `DeltaOptimizeModesFixtureTest` plans every `OPTIMIZE` commit of `dzo` (four `ZORDER BY`) and
+  `dcl` (three clustering runs) at the version before it and requires its removes, bytes, file
+  count and vector count, and plans nothing where `dcl`'s two runs wrote no commit; turning off
+  the columns rule or the lone-cube rule each fails a run. The desktop section plans the bare
+  call and, under a field, `ZORDER BY` the typed columns; `icelens plan <table> optimize --zorder a,b`
+  is the same
 - **The log cleanup a checkpoint runs is planned from `MetadataCleanup.cleanUpExpiredLogs`**
   (`model/DeltaLogCleanupPlan.kt`): every commit and checkpoint file below the checkpoint
   `_last_checkpoint` names, modified at or before `now - delta.logRetentionDuration` (30 days)
@@ -4311,8 +4342,8 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   version 0 where the feature was on from the `CREATE`, each commit's `inCommitTimestamp` must be
   above the previous one's, since a time travel by timestamp searches the versions by it. 3.2.1
   spells both properties with `-preview` (`drt`), and both spellings are read
-- Not yet read (the `TODO.md` Delta section): inline deletion vectors in the lookup, `ZORDER BY`
-  and clustered tables in the OPTIMIZE plan
+- Not yet read (the `TODO.md` Delta section): inline deletion vectors in the lookup, and an
+  `OPTIMIZE … WHERE` on partitions in the plan
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

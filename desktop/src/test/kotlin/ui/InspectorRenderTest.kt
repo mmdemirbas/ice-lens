@@ -2704,6 +2704,19 @@ class InspectorRenderTest {
                 }
             }
         }
+        // OPTIMIZE's other two modes: liquid clustering on `dcl` at its latest version, where the
+        // bare call writes nothing — the cube clustered by a left for its columns, the one clustered
+        // by b alone — and ZORDER BY on `dzo`, every file of each partition, typed into the field.
+        renderScene("delta-optimize-clustered", width = 1400, height = 1300) {
+            Column(Modifier.padding(16.dp)) {
+                DeltaOptimizeSection((deltaGraphFor("dcl").nodes.filterIsInstance<GraphNode.TableNode>().single().maintenance.value as model.DeltaMaintenanceInput).model)
+            }
+        }
+        renderScene("delta-optimize-zorder", width = 1400, height = 2600) {
+            Column(Modifier.padding(16.dp)) {
+                DeltaOptimizeSection((deltaGraphFor("dzo").nodes.filterIsInstance<GraphNode.TableNode>().single().maintenance.value as model.DeltaMaintenanceInput).model, initialZOrder = "a, b")
+            }
+        }
         // UniForm on `duni`: the export at the latest version, naming the log's three files.
         val duni = deltaGraphFor("duni").nodes.filterIsInstance<GraphNode.TableNode>().single()
         renderUntil("delta-uniform", width = 1400, height = 520, ready = { duni.deltaUniForm.isRead }) {
