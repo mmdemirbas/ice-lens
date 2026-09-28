@@ -107,10 +107,12 @@ object IceLensCli {
         |                                        its fate — live, or deleted/superseded by what
         |  plan    <table> [<procedure>]         what each maintenance procedure would do if run now —
         |          [--at TIME] [--json]          rewrite, manifest merge, expiry, compaction, orphans —
-        |                                        a verdict per procedure, planned the way the engine
+        |          [--files]                     a verdict per procedure, planned the way the engine
         |                                        plans it; with a procedure named, its plan in full,
         |                                        every file or group it would act on; --at plans as of
-        |                                        an epoch-ms or ISO instant
+        |                                        an epoch-ms or ISO instant; --files reads the delete
+        |                                        files rewrite_position_delete_files would rewrite,
+        |                                        for which positions it keeps
         |  export  <table> --format svg|json|csv [--out FILE] [--page-size N]
         |                                        the graph as a drawing, as structure, or the file
         |                                        inventory; the whole table unless a page size folds it
@@ -359,7 +361,7 @@ object IceLensCli {
      * code is 0 whatever it says.
      */
     private fun plan(parsed: Parsed, out: PrintStream, err: PrintStream): Int {
-        parsed.allow("at", "json") ?: return usageError(err, "plan takes --at and --json")
+        parsed.allow("at", "json", "files") ?: return usageError(err, "plan takes --at, --json and --files")
         val table = parsed.positional(0) ?: return usageError(err, "plan needs a table")
         val procedure = parsed.positional(1)
         val nowMs = parsed.value("at")?.let { at ->
@@ -377,7 +379,7 @@ object IceLensCli {
         if (procedure != null) {
             val line = lines.forProcedure(procedure)
                 ?: return usageError(err, "this table plans no `$procedure`; it plans ${lines.joinToString(", ") { it.key }}")
-            val detail = maintenanceDetail(node, line, nowMs, orphans, unexisting, vacuum)
+            val detail = maintenanceDetail(node, line, nowMs, orphans, unexisting, vacuum, readFiles = parsed.has("files"))
             if (parsed.has("json")) out.println(pretty(detailJson(model, nowMs, detail))) else printDetail(model, nowMs, detail, out)
             return EXIT_OK
         }

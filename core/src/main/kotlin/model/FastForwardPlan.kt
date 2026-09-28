@@ -48,6 +48,8 @@ data class IcebergFastForwardPlan(
     val reason: String,
 ) {
     val moves: Boolean get() = verdict == IcebergFastForwardVerdict.MOVES || verdict == IcebergFastForwardVerdict.CREATES
+    /** The commits the move takes on, as both shells print it; `—` where the branch does not move onto a line. */
+    val gainsText: String get() = if (verdict == IcebergFastForwardVerdict.MOVES) formatCounted(gained.size, "commit") else "—"
 }
 
 /** `fast_forward(table, branch = [branch], to = [to])` on this metadata version. */
@@ -106,6 +108,34 @@ data class PaimonFastForwardPlan(
     /** Main's commits the call forgets: removed, less the ones the branch carries verbatim. */
     val droppedCommits: Int get() = removedSnapshots.size - identicalSnapshots.size
     val leftoverBytes: Long get() = leftovers.sumOf { it.sizeBytes ?: 0L }
+
+    /** The cells both shells print for the call: verdict, what main loses and gains, what is left named by nothing, and why. */
+    val verdictText: String get() = when {
+        refused != null -> "REFUSED"
+        droppedCommits > 0 -> "DROPS ${formatCounted(droppedCommits, "commit")} of main"
+        else -> "replaces main with its own line"
+    }
+    val losesText: String get() = if (refused != null) "—" else listOfNotNull(
+        removedSnapshots.takeIf { it.isNotEmpty() }?.let { "${plural("snapshot", it.size)} ${ids(it)}" },
+        removedSchemas.takeIf { it.isNotEmpty() }?.let { "${plural("schema", it.size)} ${it.sorted().joinToString(", ")}" },
+        removedTags.takeIf { it.isNotEmpty() }?.let { "${plural("tag", it.size)} ${it.joinToString(", ")}" },
+    ).joinToString("; ").ifEmpty { "nothing" }
+    val gainsText: String get() = if (refused != null) "—" else listOfNotNull(
+        "${plural("snapshot", arrivingSnapshots.size)} ${ids(arrivingSnapshots)}",
+        arrivingSchemas.takeIf { it.isNotEmpty() }?.let { "${plural("schema", it.size)} ${it.sorted().joinToString(", ")}" },
+        arrivingTags.takeIf { it.isNotEmpty() }?.let { "${plural("tag", it.size)} ${it.joinToString(", ")}" },
+    ).joinToString("; ")
+    val leftoversText: String get() = when {
+        refused != null -> "—"
+        leftovers.isEmpty() -> "nothing"
+        else -> "${formatCounted(leftovers.size, "file")}, ${formatBytes(leftoverBytes)}"
+    }
+    val whyText: String get() = refused ?: ("$branch's earliest snapshot is $earliestId" +
+        (if (identicalSnapshots.isNotEmpty()) "; ${plural("snapshot", identicalSnapshots.size)} ${ids(identicalSnapshots)} the branch carries verbatim" else "") +
+        (if (droppedCommits > 0) "; main's ${formatCounted(droppedCommits, "later commit")} ${if (droppedCommits == 1) "is" else "are"} forgotten" else ""))
+
+    private fun ids(xs: List<Long>) = xs.sorted().joinToString(", ")
+    private fun plural(noun: String, n: Int) = if (n == 1) noun else "${noun}s"
 }
 
 /** `sys.fast_forward(table, branch = [branch])` on main, as `FileSystemBranchManager.fastForward` does it; null for a branch the table lacks. */

@@ -62,6 +62,9 @@ data class PositionDeleteRewriteGroup(
     val rewritten: Boolean get() = reasons.isNotEmpty()
     val inputBytes: Long get() = files.sumOf { it.sizeBytes }
     val recordCount: Long get() = files.sumOf { it.recordCount }
+
+    /** [RewriteGroup.verdictText]'s wording, for a positional delete group. */
+    fun verdictText(minInputFiles: Int): String = rewriteGroupVerdict(reasons, files.size, minInputFiles)
 }
 
 data class PositionDeleteRewritePlan(

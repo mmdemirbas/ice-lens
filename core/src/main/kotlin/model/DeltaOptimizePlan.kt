@@ -32,7 +32,9 @@ data class DeltaOptimizeFile(
     val candidateBecause: String?,
     /** The marked rows over the recorded ones, where both are known. */
     val deletedRatio: Double?,
-)
+) {
+    val whyText: String get() = candidateBecause ?: "at or over optimize.minFileSize, and under the deleted-rows ratio"
+}
 
 data class DeltaOptimizeBin(
     val partitionValues: Map<String, String?>,
@@ -42,6 +44,9 @@ data class DeltaOptimizeBin(
 
     /** Only a bin of two or more is rewritten. */
     val rewritten: Boolean get() = files.size > 1
+
+    val verdictText: String get() = if (rewritten) "rewritten into one" else "left — one file"
+    val partitionText: String get() = partitionValues.entries.joinToString(", ") { "${it.key}=${it.value ?: "null"}" }.ifEmpty { "unpartitioned" }
 }
 
 data class DeltaOptimizePlan(

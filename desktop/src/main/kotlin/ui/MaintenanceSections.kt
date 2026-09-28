@@ -30,12 +30,10 @@ import model.PaimonExpiryFilePlan
 import model.PaimonCompactionOptions
 import model.ManifestMergeOptions
 import model.ManifestMergePlan
-import model.ManifestMergeVerdict
 import model.assumedManifestBytes
 import model.UnreferencedFilesReport
 import model.planManifestMerge
 import model.PaimonManifestMergeOptions
-import model.IcebergFastForwardVerdict
 import model.IcebergRollbackVerdict
 import model.CherryPickVerdict
 import model.planCherryPick
@@ -61,7 +59,9 @@ import model.normalizeFilePath
 import model.renderSparkSql
 import model.PositionDeleteRewriteOptions
 import model.ManifestRewriteOptions
+import model.kindText
 import model.planManifestRewrite
+import model.unmatchedVerdictText
 import model.PositionDeleteRewritePlan
 import model.planPositionDeleteRewrite
 import service.PositionDeleteRewriteDrops
@@ -1163,7 +1163,7 @@ internal fun IcebergFastForwardSection(node: GraphNode.MetadataNode) {
                     p.verdict.label,
                     p.branch,
                     p.to,
-                    if (p.verdict == IcebergFastForwardVerdict.MOVES) formatCounted(p.gained.size, "commit") else "—",
+                    p.gainsText,
                     p.reason,
                 )
             },
@@ -1208,32 +1208,10 @@ internal fun PaimonFastForwardSection(node: GraphNode.TableNode) {
             Text("Not readable here: the manifests could not be read.", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
             return@CountedSection
         }
-        fun ids(xs: List<Long>) = xs.sorted().joinToString(", ")
         WideTable(
             headers = listOf("Verdict", "Branch", "Main Loses", "Main Gains", "Left Named By Nothing", "Why"),
             columnWidths = listOf(200.dp, 90.dp, 260.dp, 240.dp, 200.dp, 520.dp),
-            rows = plans.map { p ->
-                val refused = p.refused
-                if (refused != null) listOf("REFUSED", p.branch, "—", "—", "—", refused)
-                else listOf(
-                    if (p.droppedCommits > 0) "DROPS ${formatCounted(p.droppedCommits, "commit")} of main" else "replaces main with its own line",
-                    p.branch,
-                    listOfNotNull(
-                        p.removedSnapshots.takeIf { it.isNotEmpty() }?.let { "snapshot${if (it.size == 1) "" else "s"} ${ids(it)}" },
-                        p.removedSchemas.takeIf { it.isNotEmpty() }?.let { "schema${if (it.size == 1) "" else "s"} ${it.sorted().joinToString(", ")}" },
-                        p.removedTags.takeIf { it.isNotEmpty() }?.let { "tag${if (it.size == 1) "" else "s"} ${it.joinToString(", ")}" },
-                    ).joinToString("; ").ifEmpty { "nothing" },
-                    listOfNotNull(
-                        "snapshot${if (p.arrivingSnapshots.size == 1) "" else "s"} ${ids(p.arrivingSnapshots)}",
-                        p.arrivingSchemas.takeIf { it.isNotEmpty() }?.let { "schema${if (it.size == 1) "" else "s"} ${it.sorted().joinToString(", ")}" },
-                        p.arrivingTags.takeIf { it.isNotEmpty() }?.let { "tag${if (it.size == 1) "" else "s"} ${it.joinToString(", ")}" },
-                    ).joinToString("; "),
-                    if (p.leftovers.isEmpty()) "nothing" else "${formatCounted(p.leftovers.size, "file")}, ${formatBytes(p.leftoverBytes)}",
-                    "${p.branch}'s earliest snapshot is ${p.earliestId}" +
-                        (if (p.identicalSnapshots.isNotEmpty()) "; snapshot${if (p.identicalSnapshots.size == 1) "" else "s"} ${ids(p.identicalSnapshots)} the branch carries verbatim" else "") +
-                        (if (p.droppedCommits > 0) "; main's ${formatCounted(p.droppedCommits, "later commit")} ${if (p.droppedCommits == 1) "is" else "are"} forgotten" else ""),
-                )
-            },
+            rows = plans.map { p -> listOf(p.verdictText, p.branch, p.losesText, p.gainsText, p.leftoversText, p.whyText) },
             leadCellColors = plans.map { if (it.refused == null && it.droppedCommits > 0) colors.error else null },
         )
         val leftovers = plans.flatMap { p -> p.leftovers.map { p.branch to it } }
@@ -1369,8 +1347,7 @@ internal fun RewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel, sca
                 columnWidths = listOf(190.dp, 190.dp, 70.dp, 110.dp, 100.dp, 150.dp),
                 rows = plan.groups.map { g ->
                     listOf(
-                        if (g.rewritten) "REWRITTEN — " + g.reasons.joinToString("; ") { it.label }
-                        else "left alone — ${g.files.size} of ${options.minInputFiles} files",
+                        g.verdictText(options.minInputFiles),
                         g.partition.ifEmpty { "(unpartitioned)" },
                         "${g.files.size}",
                         formatBytes(g.inputBytes),
@@ -1411,8 +1388,7 @@ internal fun RewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel, sca
                     columnWidths = listOf(190.dp, 190.dp, 70.dp, 110.dp, 100.dp, 150.dp),
                     rows = where.groups.map { g ->
                         listOf(
-                            if (g.rewritten) "REWRITTEN — " + g.reasons.joinToString("; ") { it.label }
-                            else "left alone — ${g.files.size} of ${options.minInputFiles} files",
+                            g.verdictText(options.minInputFiles),
                             g.partition.ifEmpty { "(unpartitioned)" },
                             "${g.files.size}",
                             formatBytes(g.inputBytes),
@@ -1446,13 +1422,9 @@ internal fun RewriteSection(node: GraphNode.SnapshotNode, graph: GraphModel, sca
                 columnWidths = listOf(190.dp, 260.dp, 100.dp, 60.dp, 110.dp, 190.dp),
                 rows = dangling.files.map { d ->
                     listOf(
-                        when {
-                            dangling.skipped != null && d.removed -> "kept — by the rule, gone"
-                            d.removed -> "REMOVED — ${d.reason}"
-                            else -> "kept — ${d.reason}"
-                        },
+                        dangling.verdictText(d),
                         fileNameFromPath(d.path),
-                        if (d.content == DataFileContent.EQUALITY_DELETES) "equality" else "positional",
+                        d.kindLabel,
                         "${d.sequenceNumber}",
                         d.floor?.toString() ?: "no data file",
                         d.partition.ifEmpty { "(unpartitioned)" },
@@ -1510,11 +1482,7 @@ internal fun ManifestRewriteSection(node: GraphNode.SnapshotNode, graph: GraphMo
         )
         val rows = plan.kinds.map { k ->
             listOf(
-                when {
-                    k.rewritten -> "REWRITTEN — ${k.matching.size} into ${k.targetNumManifests}"
-                    k.leftAlone?.startsWith(model.ManifestRewritePlan.REFUSED_PREFIX) == true -> k.leftAlone.orEmpty()
-                    else -> "left alone — ${k.leftAlone}"
-                },
+                k.verdictText,
                 "${k.label} manifests",
                 "${k.matching.size}",
                 formatBytes(k.inputBytes),
@@ -1522,8 +1490,8 @@ internal fun ManifestRewriteSection(node: GraphNode.SnapshotNode, graph: GraphMo
             )
         } + plan.unmatched.map { m ->
             listOf(
-                "kept — spec ${m.partitionSpecId ?: "?"} is not the output spec",
-                if ((m.content ?: ManifestContent.DATA) == ManifestContent.DELETES) "delete manifest" else "data manifest",
+                m.unmatchedVerdictText,
+                m.kindText,
                 "1",
                 m.manifestLength?.let { formatBytes(it) } ?: "N/A",
                 "—",
@@ -1600,8 +1568,7 @@ internal fun PositionDeleteRewriteSection(
                 val rows = listOf("bare call" to plan, "rewrite-all" to all).flatMap { (call, p) ->
                     p.groups.map { g ->
                         listOf(
-                            if (g.rewritten) "REWRITTEN — " + g.reasons.joinToString("; ") { it.label }
-                            else "left alone — ${g.files.size} of ${options.minInputFiles} files",
+                            g.verdictText(options.minInputFiles),
                             call,
                             g.partition.ifEmpty { "(unpartitioned)" },
                             "${g.files.size}",
@@ -1735,11 +1702,7 @@ internal fun ManifestMergeSection(node: GraphNode.SnapshotNode, graph: GraphMode
                 val rows = listOf("append" to data, "merge-on-read delete" to deletes).flatMap { (commit, plan) ->
                     plan.bins.map { bin ->
                         listOf(
-                            when (bin.verdict) {
-                                ManifestMergeVerdict.MERGED -> "MERGED — ${bin.manifests.size} into 1" + if (bin.holdsFirst) "" else ", holds no new manifest"
-                                ManifestMergeVerdict.UNDER_MIN_COUNT -> "kept — ${bin.manifests.size} of ${options.minCountToMerge}"
-                                ManifestMergeVerdict.ALONE -> "kept — alone in its bin"
-                            },
+                            bin.verdictText(options.minCountToMerge),
                             commit,
                             if (plan.content == ManifestContent.DATA) "data" else "deletes",
                             "${bin.specId}",
@@ -1807,12 +1770,7 @@ internal fun PaimonManifestMergeSection(node: GraphNode.PaimonSnapshotNode) {
                 columnWidths = listOf(190.dp, 90.dp, 90.dp, 90.dp, 90.dp, 520.dp),
                 rows = plan.bins.map { bin ->
                     listOf(
-                        when {
-                            bin.merged && bin.mergedEntries == 0 -> "MERGED — ${bin.manifests.size} into nothing"
-                            bin.merged -> "MERGED — ${bin.manifests.size} into 1"
-                            bin.manifests.size == 1 -> "kept — alone"
-                            else -> "kept — ${bin.manifests.size} of ${options.mergeMinCount}"
-                        },
+                        bin.verdictText(options.mergeMinCount),
                         "${bin.manifests.size}",
                         formatBytes(bin.bytes),
                         formatCount(bin.manifests.sumOf { it.entries.size }),

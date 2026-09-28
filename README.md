@@ -187,6 +187,9 @@ icelens plan /wh/db/orders                      # what each maintenance procedur
                                                 # rewrite, merge, expiry, compaction, orphans — one line each
 icelens plan /wh/db/orders expire_snapshots     # one of them in full: every snapshot and file it would
                                                 # remove, and what keeps the rest
+icelens plan /wh/db/orders rewrite_position_delete_files --files
+                                                # and the delete files it reads opened: which positions
+                                                # it keeps, which it drops as dangling
 icelens export /wh/db/orders --format csv --out files.csv   # the file inventory; svg and json too
 ```
 

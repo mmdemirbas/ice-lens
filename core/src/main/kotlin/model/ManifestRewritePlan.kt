@@ -48,7 +48,18 @@ data class ManifestRewriteKind(
     val rewritten: Boolean get() = leftAlone == null && matching.isNotEmpty()
     val inputBytes: Long get() = matching.sumOf { it.manifestLength ?: 0L }
     val label: String get() = if (content == ManifestContent.DELETES) "delete" else "data"
+
+    /** The verdict both shells print for the kind: rewritten into how many, the action's refusal, or why it is left alone. */
+    val verdictText: String get() = when {
+        rewritten -> "REWRITTEN — ${matching.size} into $targetNumManifests"
+        leftAlone?.startsWith(ManifestRewritePlan.REFUSED_PREFIX) == true -> leftAlone.orEmpty()
+        else -> "left alone — $leftAlone"
+    }
 }
+
+/** The verdict for a manifest of the list no kind matched, and its kind as a row names it. */
+val ManifestListEntry.unmatchedVerdictText: String get() = "kept — spec ${partitionSpecId ?: "?"} is not the output spec"
+val ManifestListEntry.kindText: String get() = if ((content ?: ManifestContent.DATA) == ManifestContent.DELETES) "delete manifest" else "data manifest"
 
 data class ManifestRewritePlan(
     val options: ManifestRewriteOptions,

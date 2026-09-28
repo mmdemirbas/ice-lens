@@ -441,9 +441,9 @@ What is left:
   section, the rows a filter matches with each one's fate; `plan` is the table panel's
   `Maintenance` summary, moved into core for it, and `plan <table> <procedure>` one of its lines
   in full — the expiries, the purge, the orphan and missing-file removals, `rewrite_table_path`,
-  `VACUUM` and the log cleanup as tables of what each acts on. What is left: the rewrite,
-  manifest-merge, manifest-rewrite and compaction planners and `fast_forward` print their line
-  alone; and an object-storage URL opens only with the
+  `VACUUM`, the log cleanup, the rewrites, the merges, the compactions, `OPTIMIZE` and
+  `fast_forward` as tables of what each acts on (`--files` opens the delete files a position
+  delete rewrite reads). What is left: an object-storage URL opens only with the
   credentials the environment carries, since there is no form to type a key into. The binary
   ships inside the installers as a second jpackage launcher; HDFS and ADLS are not yet read.
 

@@ -2584,9 +2584,15 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   procedure is named by its `maintenanceKey` — lower case, `sys.` and a parenthesised clause
   dropped, both manifest merges `manifest_merge` — or as the summary spells it, and a name the
   table plans nothing under is a usage error listing the keys it does; the summary's last line
-  lists them too. The expiries, `purge_files`, `remove_unexisting_files`, `remove_orphan_files`,
-  `rewrite_table_path`, `VACUUM` and the log cleanup print tables; the rewrite, merge and
-  compaction planners print their line alone so far. `plan` exits 0 whatever
+  lists them too. Every line has its tables — a sweep holds every fixture's lines to that — and
+  where the desktop draws only groups (a rewrite's, a merge's bins, a Delta OPTIMIZE's bins) the
+  detail lists the files or manifests in them too, since a terminal has no drill-down. Cells a
+  section built inline moved to the plan types for this (`RewriteGroup.verdictText`,
+  `DanglingDeletePlan.verdictText`, `ManifestRewriteKind.verdictText`, the merge bins',
+  `PaimonFastForwardPlan`'s five cells, `DeltaOptimizeBin`'s). `--files` is the one read a
+  detail starts, and only for `rewrite_position_delete_files`: the delete files rewrite-all
+  would rewrite, opened through `PositionDeleteRewriteDrops` for which positions it keeps — the
+  desktop's click under that section. `plan` exits 0 whatever
   it says, being a plan and not a check — and `export` is `GraphExport`'s SVG, JSON or CSV to
   standard output or `--out`. A local table path is made absolute before it is opened, as the
   desktop's workspace and the IDE's virtual files already are: `MissingFilesReport` normalises
@@ -2624,9 +2630,13 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   entries, the procedures' own runs, and `pru` again from a relative path — `plan` with a
   procedure on `br`, `mor` and `orph` to `maintenanceDetail` note for note and cell for cell
   (`MaintenanceDetailTest` finds and plans every line of every fixture, every row as wide as its
-  headers, and holds four plans to the run their fixture pair records: `sweep`'s expiry,
-  `br`'s purge, `orph`'s orphans and `dvac`'s VACUUM, the files the second table lacks being
-  the rows the plan says go) — the CSV to
+  headers, and holds the plans to the runs the fixtures record: `sweep`'s expiry, `br`'s purge,
+  `orph`'s orphans and `dvac`'s VACUUM, the files the second table lacks being the rows the plan
+  says go; `dopt`'s OPTIMIZE to the files `dvac`'s removed; `pmm`'s `compact_manifest` to the
+  manifest of ten `pmma`'s snapshot 13 lists; `br`'s fast-forward leftovers to `brf`'s orphans;
+  `sweepb`'s `dev` → `main` moving and the reverse refused; `mor`'s dangling deletes all kept, as
+  `rewrite-where.sql`'s run kept them, and `--files` keeping one position and dropping two files) —
+  the CSV to
   `GraphExport.toCsv` — and every refusal to its exit code and message, a bad filter to the
   caret
 - **The tree follows structural edges only.** An `affectsLayout = false` edge is an annotation —
@@ -3188,7 +3198,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,533 tests across 216 files (1,232 in :core, 290 in :desktop, 1 in :intellij, 10 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,538 tests across 216 files (1,237 in :core, 290 in :desktop, 1 in :intellij, 10 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

@@ -108,7 +108,13 @@ data class RewriteGroup(
 ) {
     val rewritten: Boolean get() = reasons.isNotEmpty()
     val inputBytes: Long get() = files.sumOf { it.sizeBytes }
+
+    /** The verdict both shells print for the group: why it is rewritten, or how far it is from `min-input-files`. */
+    fun verdictText(minInputFiles: Int): String = rewriteGroupVerdict(reasons, files.size, minInputFiles)
 }
+
+internal fun rewriteGroupVerdict(reasons: List<RewriteGroupReason>, files: Int, minInputFiles: Int): String =
+    if (reasons.isNotEmpty()) "REWRITTEN — " + reasons.joinToString("; ") { it.label } else "left alone — $files of $minInputFiles files"
 
 data class RewritePlan(
     val options: RewriteOptions,
@@ -235,7 +241,9 @@ data class DanglingDeleteFile(
     val floor: Long?,
     val removed: Boolean,
     val reason: String,
-)
+) {
+    val kindLabel: String get() = if (content == DataFileContent.EQUALITY_DELETES) "equality" else "positional"
+}
 
 data class DanglingDeletePlan(
     /** Why the action would not run, or null where it would. */
@@ -243,6 +251,13 @@ data class DanglingDeletePlan(
     val files: List<DanglingDeleteFile>,
 ) {
     val removed: List<DanglingDeleteFile> get() = if (skipped == null) files.filter { it.removed } else emptyList()
+
+    /** The verdict both shells print for [file]; a file the rule would take is kept when the action does not run. */
+    fun verdictText(file: DanglingDeleteFile): String = when {
+        skipped != null && file.removed -> "kept — by the rule, gone"
+        file.removed -> "REMOVED — ${file.reason}"
+        else -> "kept — ${file.reason}"
+    }
 }
 
 /**

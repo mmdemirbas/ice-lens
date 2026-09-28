@@ -1,5 +1,6 @@
 package model
 
+import service.PositionDeleteRewriteDrops
 import java.time.Instant
 
 /**
@@ -41,7 +42,9 @@ fun List<MaintenanceLine>.forProcedure(procedure: String): MaintenanceLine? =
  * [line] — one line of [maintenanceSummary] at [nowMs] — planned in full under the same calls
  * the summary made. The three inputs a summary takes from a caller are taken here for the same
  * reason, and must be the ones the summary was given: each is a read of the directory, and a
- * detail starts none of them.
+ * detail starts none of them. [readFiles] is the one read a detail may start, and only where it
+ * is asked for: the rewritten delete files `rewrite_position_delete_files` would read, for which
+ * positions it keeps — the desktop's click under that section.
  */
 fun maintenanceDetail(
     node: GraphNode.TableNode,
@@ -50,6 +53,7 @@ fun maintenanceDetail(
     orphanReport: UnreferencedFilesReport? = null,
     unexistingPlan: PaimonUnexistingFilesPlan? = null,
     vacuumPlan: DeltaVacuumPlan? = null,
+    readFiles: Boolean = false,
 ): MaintenanceDetail {
     val key = line.key
     val out = DetailBuilder()
@@ -67,7 +71,20 @@ fun maintenanceDetail(
         key == "rewrite_table_path" -> out.rewriteTablePath(node)
         key == "vacuum" && input is DeltaMaintenanceInput -> out.vacuum(input.model, vacuumPlan, nowMs)
         key == "log_cleanup" && input is DeltaMaintenanceInput -> out.logCleanup(input.model, nowMs)
-        else -> out.notes += "the plan's tables are not printed for this procedure yet; the line above is its summary"
+        key == "optimize" && input is DeltaMaintenanceInput -> out.optimize(input.model)
+        key == "rewrite_data_files" && input is IcebergMaintenanceInput -> out.rewriteDataFiles(input)
+        key == "rewrite_position_delete_files" && input is IcebergMaintenanceInput -> out.positionDeleteRewrite(input, readFiles)
+        key == "manifest_merge" && input is IcebergMaintenanceInput -> out.icebergManifestMerge(input)
+        key == "rewrite_manifests" && input is IcebergMaintenanceInput -> out.manifestRewrite(input)
+        key == "fast_forward" && input is IcebergMaintenanceInput -> out.icebergFastForward(input.metadata)
+        key == "manifest_merge" && input is PaimonMaintenanceInput -> out.paimonManifestMerge(input, compactManifest = false)
+        key == "compact_manifest" && input is PaimonMaintenanceInput -> out.paimonManifestMerge(input, compactManifest = true)
+        key == "compaction" && input is PaimonMaintenanceInput -> out.compaction(input)
+        key == "compact" && input is PaimonMaintenanceInput -> out.fullCompaction(input)
+        key == "fast_forward" -> out.paimonFastForward(node)
+        // Every line the summary writes has a case above, and MaintenanceDetailTest holds every
+        // fixture's lines to that; a line added without one says so rather than printing nothing.
+        else -> out.notes += "the plan's tables are not printed for this procedure; the line above is its summary"
     }
     return MaintenanceDetail(line, out.notes, out.tables)
 }
@@ -364,4 +381,363 @@ private fun DetailBuilder.logCleanup(model: DeltaUnifiedTableModel, nowMs: Long)
         plan.rows.sortedBy { it.fate != LogCleanupFate.DELETED }.map { r -> listOf(r.fate.label, r.path.fileName.toString(), r.reason, instant(r.modifiedMs)) },
     )
     table("Sidecars deleted", listOf("File"), plan.sidecarsDeleted.map { listOf(it.fileName.toString()) })
+}
+
+private fun partitionCell(partition: String): String = partition.ifEmpty { "(unpartitioned)" }
+
+/** The current snapshot of an Iceberg table whose manifests are still there, or a note saying why not. */
+private fun DetailBuilder.readableCurrent(input: IcebergMaintenanceInput): GraphNode.SnapshotNode? =
+    input.current?.takeIf { !it.expired } ?: run {
+        notes += "not readable: the current snapshot's manifests are not retained"
+        null
+    }
+
+private fun DetailBuilder.rewriteDataFiles(input: IcebergMaintenanceInput) {
+    val meta = input.metadata
+    val current = readableCurrent(input) ?: return
+    val live = current.liveFiles ?: return run { notes += "not readable: the current snapshot's manifests are not retained" }
+    val options = RewriteOptions.forTable(meta.properties, meta.defaultSpecId)
+    val plan = planRewrite(live, current.deleteReach.orEmpty(), options)
+    notes += "planned over snapshot ${current.simpleId}'s live files: a file is a candidate outside " +
+        "${formatBytes(options.minFileSizeBytes)}–${formatBytes(options.maxFileSizeBytes)} (75% and 180% of write.target-file-size-bytes, " +
+        "${formatBytes(options.targetFileSizeBytes)}) or when file-scoped deletes mark ${(options.deleteRatioThreshold * 100).toInt()}% of its rows; " +
+        "a group is rewritten with min-input-files (${options.minInputFiles}), more than the target in bytes, or a file past the delete ratio"
+    table(
+        "Groups",
+        listOf("Verdict", "Partition", "Files", "Bytes", "Output Files", "Highest Delete Ratio"),
+        plan.groups.map { g ->
+            listOf(
+                g.verdictText(options.minInputFiles), partitionCell(g.partition), "${g.files.size}", formatBytes(g.inputBytes),
+                if (g.rewritten) "${g.outputFiles}" else "—", "${((g.files.maxOfOrNull { it.deleteRatio } ?: 0.0) * 100).toInt()}%",
+            )
+        },
+    )
+    table(
+        "Candidates",
+        listOf("Group", "File", "Bytes", "Rows", "Delete Files", "Deleted Rows", "Why"),
+        plan.groups.flatMap { g ->
+            g.files.map { c ->
+                listOf(
+                    if (g.rewritten) "rewritten" else "left alone", c.path, formatBytes(c.sizeBytes), formatCount(c.recordCount),
+                    "${c.deleteFileCount}", formatCount(c.knownDeletedRecords), c.reasons.joinToString("; ") { it.label },
+                )
+            }
+        },
+    )
+    val deletes = live.count { it.content != DataFileContent.DATA }
+    if (deletes == 0) return
+    val unpartitionedSingleSpec = meta.partitionSpecs.size == 1 && meta.partitionSpecs.single().fields.isEmpty()
+    val dangling = planDanglingDeletes(live, plan, current.data.sequenceNumber ?: 0L, unpartitionedSingleSpec)
+    notes += "with remove-dangling-deletes: " + when {
+        dangling.skipped != null -> "nothing — ${dangling.skipped}"
+        dangling.removed.isEmpty() -> "nothing — every delete file is at or above its partition's floor after the rewrite"
+        else -> "${formatCounted(dangling.removed.size, "delete file")} of $deletes removed in a second replace"
+    }
+    table(
+        "Delete files after the rewrite (remove-dangling-deletes)",
+        listOf("Verdict", "Delete File", "Kind", "Seq", "Partition Floor", "Partition"),
+        dangling.files.map { d ->
+            listOf(dangling.verdictText(d), d.path, d.kindLabel, "${d.sequenceNumber}", d.floor?.toString() ?: "no data file", partitionCell(d.partition))
+        },
+    )
+}
+
+private fun DetailBuilder.positionDeleteRewrite(input: IcebergMaintenanceInput, readFiles: Boolean) {
+    val meta = input.metadata
+    val current = readableCurrent(input) ?: return
+    val live = current.liveFiles ?: return run { notes += "not readable: the current snapshot's manifests are not retained" }
+    val options = PositionDeleteRewriteOptions.forTable(meta.properties, meta.formatVersion)
+    val plan = planPositionDeleteRewrite(live, options)
+    val all = planPositionDeleteRewrite(live, options.copy(rewriteAll = true))
+    if (plan.refused != null) {
+        notes += "${plan.refused}: the action refuses format version ${options.formatVersion} outright, so its " +
+            "${formatCounted(plan.deleteFileCount, "positional delete file")} are never rewritten by it"
+        return
+    }
+    if (plan.deleteFileCount == 0) return
+    notes += "a live positional delete file is a candidate outside ${formatBytes(options.minFileSizeBytes)}–${formatBytes(options.maxFileSizeBytes)} " +
+        "(75% and 180% of write.delete.target-file-size-bytes, ${formatBytes(options.targetFileSizeBytes)}); a group is rewritten with " +
+        "min-input-files (${options.minInputFiles}), more than the target in bytes, or a file past the maximum; rewrite-all takes every file, " +
+        "and writes back only the positions whose file_path names a live data file of the partition"
+    val calls = listOf("bare call" to plan, "rewrite-all" to all)
+    table(
+        "Groups",
+        listOf("Verdict", "Call", "Partition", "Files", "Bytes", "Positions", "Output Files"),
+        calls.flatMap { (call, p) ->
+            p.groups.map { g ->
+                listOf(
+                    g.verdictText(options.minInputFiles), call, partitionCell(g.partition), "${g.files.size}", formatBytes(g.inputBytes),
+                    formatCount(g.recordCount), if (g.rewritten) "${g.outputFiles}" else "—",
+                )
+            }
+        },
+    )
+    val bare = plan.rewrittenFiles.map { it.path }.toSet()
+    val everyCall = all.rewrittenFiles.map { it.path }.toSet()
+    table(
+        "Delete files",
+        listOf("Bare Call", "Rewrite-All", "File", "Partition", "Bytes", "Positions"),
+        all.filesByPartition.flatMap { (partition, files) ->
+            files.map { f ->
+                listOf(
+                    if (f.path in bare) "rewritten" else "kept", if (f.path in everyCall) "rewritten" else "kept",
+                    f.path, partitionCell(partition), formatBytes(f.sizeBytes), formatCount(f.recordCount),
+                )
+            }
+        },
+    )
+    if (!readFiles || all.rewrittenFiles.isEmpty()) {
+        if (all.rewrittenFiles.isNotEmpty()) notes += "not read: which positions rewrite-all keeps and which it drops as dangling takes a read of its delete files"
+        return
+    }
+    val readInput = current.readInput.value ?: return run { notes += "not read: the snapshot's files could not be read" }
+    val result = runCatching { PositionDeleteRewriteDrops.read(all, live, readInput) }.getOrElse {
+        notes += "could not read the delete files: ${it.message ?: it::class.simpleName}"
+        return
+    }
+    notes += "rewrite-all keeps ${formatCount(result.kept)} ${if (result.kept == 1L) "position" else "positions"} and drops ${formatCount(result.dropped)} as dangling" +
+        " across ${formatCounted(result.files.size, "delete file")}" +
+        (if (result.failed > 0) "; ${formatCounted(result.failed, "file")} could not be read" else "") +
+        (if (result.filesLeft > 0) "; ${formatCounted(result.filesLeft, "file")} left unread by the cap of ${PositionDeleteRewriteDrops.MAX_FILES}" else "")
+    table(
+        "What rewrite-all writes back",
+        listOf("Verdict", "Delete File", "Positions", "Names Data File", "Why"),
+        result.files.flatMap { f ->
+            val error = f.error
+            if (error != null) listOf(listOf("not read", f.delete.path, "—", "—", error))
+            else f.targets.map { t -> listOf(if (t.kept) "kept" else "DROPPED", f.delete.path, formatCount(t.positions), t.dataFilePath, t.reason) }
+        },
+    )
+}
+
+private fun DetailBuilder.icebergManifestMerge(input: IcebergMaintenanceInput) {
+    val meta = input.metadata
+    val current = readableCurrent(input) ?: return
+    val options = ManifestMergeOptions.forTable(meta.properties)
+    if (!options.enabled) {
+        notes += "merging is off (commit.manifest-merge.enabled = false): every commit lists what it wrote beside everything kept"
+        return
+    }
+    val listed = current.manifestList
+    notes += "the next commit groups snapshot ${current.simpleId}'s manifests by partition spec and packs them from the oldest end into " +
+        "${formatBytes(options.targetSizeBytes)} bins (commit.manifest.target-size-bytes): a bin of one is kept, a bin holding the new manifest is " +
+        "kept under ${options.minCountToMerge} (commit.manifest.min-count-to-merge), and any other bin of two or more is merged whatever the count; " +
+        "data and delete manifests merge apart, the first plan for an append and the second for a merge-on-read delete"
+    val plans = listOf(ManifestContent.DATA, ManifestContent.DELETES).map { content ->
+        (if (content == ManifestContent.DATA) "append" else "merge-on-read delete") to
+            planManifestMerge(listed, content, assumedManifestBytes(listed, content), meta.defaultSpecId, options)
+    }
+    table(
+        "Bins",
+        listOf("Verdict", "Next Commit", "Content", "Spec", "Manifests", "Bytes"),
+        plans.flatMap { (commit, plan) ->
+            plan.bins.map { bin ->
+                listOf(
+                    bin.verdictText(options.minCountToMerge), commit, if (plan.content == ManifestContent.DATA) "data" else "deletes",
+                    "${bin.specId}", "${bin.manifests.size}" + if (bin.holdsFirst) " incl. new" else "", formatBytes(bin.bytes),
+                )
+            }
+        },
+    )
+    table(
+        "Manifests",
+        listOf("Next Commit", "Bin", "Merged", "Manifest", "Spec", "Bytes"),
+        plans.flatMap { (commit, plan) ->
+            plan.bins.flatMapIndexed { i, bin ->
+                bin.manifests.map { m ->
+                    listOf(
+                        commit, "${i + 1}", if (bin.merged) "yes" else "no", m.entry?.manifestPath ?: "(the manifest the commit writes)",
+                        "${m.specId}", formatBytes(m.lengthBytes),
+                    )
+                }
+            }
+        },
+    )
+}
+
+private fun DetailBuilder.manifestRewrite(input: IcebergMaintenanceInput) {
+    val meta = input.metadata
+    val current = readableCurrent(input) ?: return
+    val options = ManifestRewriteOptions.forTable(meta.properties, meta.defaultSpecId)
+    val plan = planManifestRewrite(current.manifestList, options)
+    notes += "per content kind, the manifests under the output spec (${options.specId ?: "none known"}) are rewritten whole into their total length " +
+        "over commit.manifest.target-size-bytes (${formatBytes(options.targetManifestSizeBytes)}), rounded up — unless the kind is one manifest that " +
+        "fits one target; a manifest under another spec is kept"
+    notes += "the commit records manifests-created ${plan.created}, manifests-kept ${plan.kept}, manifests-replaced ${plan.replaced}"
+    table(
+        "Kinds",
+        listOf("Verdict", "Kind", "Manifests", "Bytes", "Written"),
+        plan.kinds.map { k -> listOf(k.verdictText, "${k.label} manifests", "${k.matching.size}", formatBytes(k.inputBytes), if (k.rewritten) "${k.targetNumManifests}" else "—") } +
+            plan.unmatched.map { m -> listOf(m.unmatchedVerdictText, m.kindText, "1", bytes(m.manifestLength), "—") },
+    )
+    table(
+        "Manifests",
+        listOf("Verdict", "Kind", "Manifest", "Spec", "Bytes"),
+        plan.kinds.flatMap { k ->
+            k.matching.map { m -> listOf(if (k.rewritten) "replaced" else "kept", m.kindText, m.manifestPath ?: "—", m.partitionSpecId?.toString() ?: "?", bytes(m.manifestLength)) }
+        } + plan.unmatched.map { m -> listOf("kept", m.kindText, m.manifestPath ?: "—", m.partitionSpecId?.toString() ?: "?", bytes(m.manifestLength)) },
+    )
+}
+
+private fun DetailBuilder.icebergFastForward(meta: TableMetadata) {
+    notes += "fast_forward(branch, to) moves the branch to the ref's snapshot when its own tip is an ancestor of it, and is refused otherwise; " +
+        "a name with no ref is created there; nothing is deleted and no snapshot is written"
+    table(
+        "Pairs",
+        listOf("Verdict", "Branch", "To", "Gains", "Why"),
+        meta.fastForwardPlans().map { p -> listOf(p.verdict.label, p.branch, p.to, p.gainsText, p.reason) },
+    )
+}
+
+private fun DetailBuilder.paimonManifestMerge(input: PaimonMaintenanceInput, compactManifest: Boolean) {
+    val current = input.current ?: return
+    val manifests = current.manifestMergeInput.value.orEmpty()
+    val tableOptions = PaimonManifestMergeOptions.forTable(current.tableOptions)
+    val plan = if (compactManifest) planPaimonManifestCompaction(manifests, tableOptions) else planPaimonManifestMerge(manifests, tableOptions)
+    notes += if (compactManifest) {
+        "sys.compact_manifest runs the next commit's merge with manifest.merge-min-count and the full-compaction threshold both at 1: every manifest " +
+            "under the target size or holding a DELETE is rewritten at once, as a COMPACT snapshot with an empty delta list, and a list that comes " +
+            "out the same commits nothing — ${plan.describeCompaction}"
+    } else {
+        "the next commit's merge over snapshot ${current.simpleId}'s base and delta manifests, in that order: a full compaction when the manifests " +
+            "that must change — a DELETE entry, or under ${formatBytes(tableOptions.targetSizeBytes)} (manifest.target-file-size) — sum to " +
+            "${formatBytes(tableOptions.fullCompactionThresholdBytes)} (manifest.full-compaction-threshold-size), here ${formatBytes(plan.mustChangeBytes)}; " +
+            "otherwise bins close at the target size and the leftover bin merges at ${tableOptions.mergeMinCount} (manifest.merge-min-count) manifests — ${plan.describe}"
+    }
+    table(
+        "Bins",
+        listOf("Verdict", "Manifests", "Bytes", "Entries In", "Entries Out", "Why"),
+        plan.bins.map { bin ->
+            listOf(
+                bin.verdictText(plan.options.mergeMinCount), "${bin.manifests.size}", formatBytes(bin.bytes),
+                formatCount(bin.manifests.sumOf { it.entries.size }), bin.mergedEntries?.let { formatCount(it.toLong()) } ?: "as they are", bin.reason,
+            )
+        },
+    )
+    table(
+        "Manifests",
+        listOf("Bin", "Merged", "Manifest", "Bytes", "Adds", "Deletes"),
+        plan.bins.flatMapIndexed { i, bin ->
+            bin.manifests.map { m -> listOf("${i + 1}", if (bin.merged) "yes" else "no", m.name, formatBytes(m.sizeBytes), formatCount(m.addedFiles), formatCount(m.deletedFiles)) }
+        },
+    )
+}
+
+private fun DetailBuilder.compaction(input: PaimonMaintenanceInput) {
+    val current = input.current ?: return
+    val lsms = current.bucketLsms ?: return run { notes += "not readable: the latest snapshot's manifests could not be replayed" }
+    if (!current.hasPrimaryKey) {
+        val verdicts = lsms.groupBy { it.partition }.entries.sortedBy { it.key }.map { (partition, trees) ->
+            paimonAppendVerdict(partition, trees.flatMap { t -> t.runs.flatMap { it.files } }, current.tableOptions)
+        }
+        notes += "an append table compacts only when sys.compact or a compaction job runs: it packs the files under 7/10 of target-file-size " +
+            "per partition, and a pack is a task once it holds compaction.min.file-num files or twice the target in bytes"
+        table(
+            "Partitions",
+            listOf("sys.compact", "Partition", "Small Files", "Files", "Small Bytes", "Threshold"),
+            verdicts.map { v -> listOf(v.describe(), partitionCell(v.partition), "${v.smallFileCount}", "${v.fileCount}", formatBytes(v.smallFileBytes), formatBytes(v.compactionFileSizeBytes)) },
+        )
+        return
+    }
+    val options = PaimonCompactionOptions.from(current.tableOptions)
+    notes += "each bucket is an LSM tree — every level-0 file a sorted run, each higher level one — and the writer asks UniversalCompaction.pick() on " +
+        "every flush: under num-sorted-run.compaction-trigger (${options.trigger}) runs nothing; at it, by size — the runs newer than the oldest " +
+        "against ${options.maxSizeAmplificationPercent}% of the oldest, else the newest runs within ${options.sizeRatioPercent}% of each other; above " +
+        "it, regardless; past num-sorted-run.stop-trigger (${options.stopTrigger}) the writer waits" +
+        (if (options.forceUpLevel0) "; this table forces level 0 up on every flush (lookup, deletion vectors or first-row)" else "") +
+        (if (options.writeOnly) "; this table is write-only: nothing compacts" else "")
+    table(
+        "Buckets",
+        listOf("Next Flush", "Partition", "Bucket", "Sorted Runs", "Levels", "Files", "Bytes"),
+        lsms.map { it.planCompaction(options) }.map { v ->
+            listOf(
+                v.describe(), partitionCell(v.lsm.partition), "${v.lsm.bucket}", "${v.lsm.sortedRunCount} of ${options.trigger}",
+                v.lsm.describeLevels(), "${v.lsm.fileCount}", formatBytes(v.lsm.runs.sumOf { it.sizeBytes }),
+            )
+        },
+    )
+}
+
+private fun DetailBuilder.fullCompaction(input: PaimonMaintenanceInput) {
+    val current = input.current ?: return
+    val lsms = current.bucketLsms ?: return run { notes += "not readable: the latest snapshot's manifests could not be replayed" }
+    val options = PaimonFullCompactionOptions.from(current.tableOptions)
+    val vectored = current.readInput.value?.vectors?.map { it.dataFileName }?.toSet().orEmpty()
+    val verdicts = lsms.map { it.planFullCompaction(options, vectored) }
+    notes += "compact_strategy full, the default, as pickFullCompaction and MergeTreeCompactTask do it: a bucket whose only run is at the top level " +
+        "(${verdicts.firstOrNull()?.outputLevel ?: (options.numLevels - 1)}) is left alone unless a file carries a deletion vector, rewritten in " +
+        "place; otherwise every run goes into one unit cut into sections of intersecting key ranges — a section of several files is rewritten " +
+        "together, a lone file under compaction.file-size (${formatBytes(options.minFileSizeBytes)}) joins the pending rewrite, and a lone file at " +
+        "or over it is upgraded to the top level unless it holds -D rows" +
+        (if (options.forceRewriteAllFiles) "; compaction.force-rewrite-all-files is set: nothing is upgraded" else "") +
+        (if (options.recordLevelExpire) "; record-level.expire-time is set: files holding expired records are rewritten too, not evaluated here" else "")
+    table(
+        "Buckets",
+        listOf("sys.compact", "Partition", "Bucket", "Levels", "Files", "-D Rows Dropped"),
+        verdicts.map { v -> listOf(v.describe(), partitionCell(v.lsm.partition), "${v.lsm.bucket}", v.lsm.describeLevels(), "${v.lsm.fileCount}", "${v.deleteRowsDropped}") },
+    )
+    val files = verdicts.flatMap { v -> v.files.map { v to it } }
+    if (files.none { (_, f) -> f.action != PaimonFullCompactionAction.KEEP }) return
+    table(
+        "Files",
+        listOf("Action", "File", "Level", "Group", "Rows", "-D Rows", "Bytes", "Bucket", "Why"),
+        files.map { (v, f) ->
+            listOf(
+                f.action.label,
+                f.file.fileName ?: "—",
+                "${f.file.level ?: 0}" + (if (f.action != PaimonFullCompactionAction.KEEP && (f.file.level ?: 0) != v.outputLevel) " → ${v.outputLevel}" else ""),
+                f.group?.toString() ?: "—",
+                f.file.rowCount?.let { formatCount(it) } ?: "—",
+                f.file.deleteRowCount?.let { formatCount(it) } ?: "—",
+                bytes(f.file.fileSize),
+                "${v.lsm.bucket}",
+                f.reason,
+            )
+        },
+    )
+}
+
+private fun DetailBuilder.paimonFastForward(node: GraphNode.TableNode) {
+    val branches = node.summary.branches.orEmpty()
+    val plans = node.paimonExpiryFiles.value?.let { f -> branches.mapNotNull { f.planFastForward(it.name) } }
+        ?: return run { notes += "not readable: the manifests could not be read" }
+    notes += "sys.fast_forward(branch) replaces main from the branch's earliest snapshot id on: main's snapshot files from that id, its schema " +
+        "files from that snapshot's schema id and every tag at or above the id are deleted, and the branch's snapshot/, schema/ and tag/ are " +
+        "copied over main's; main's own commits from that id are not merged, and the files they wrote stay on disk named by nothing"
+    table(
+        "Branches",
+        listOf("Verdict", "Branch", "Main Loses", "Main Gains", "Left Named By Nothing", "Why"),
+        plans.map { p -> listOf(p.verdictText, p.branch, p.losesText, p.gainsText, p.leftoversText, p.whyText) },
+    )
+    table(
+        "Left named by nothing",
+        listOf("Kind", "File", "Bytes", "Written By", "After"),
+        plans.flatMap { p -> p.leftovers.map { f -> listOf(f.kind.label, f.path ?: f.name, bytes(f.sizeBytes), f.snapshotId?.let { "snapshot $it" } ?: "—", p.branch) } },
+    )
+}
+
+private fun DetailBuilder.optimize(model: DeltaUnifiedTableModel) {
+    val plan = model.planOptimize().getOrElse {
+        notes += "not planned: ${it.message ?: "the latest version could not be rebuilt"}"
+        return
+    }
+    if (plan.clustered) {
+        notes += "a CLUSTER BY table: its OPTIMIZE clusters every file, which is not planned here"
+        return
+    }
+    notes += "at version ${plan.version}, without ZORDER BY: a live file under optimize.minFileSize (${formatBytes(plan.options.minFileSize)}) or " +
+        "whose vector marks over optimize.maxDeletedRowsRatio (${(plan.options.maxDeletedRowsRatio * 100).toInt()}%) of its rows is a candidate; " +
+        "candidates are grouped by partition, sorted smallest first and packed into bins of at most optimize.maxFileSize " +
+        "(${formatBytes(plan.options.maxFileSize)}), and only a bin of two or more is rewritten — into one file, with dataChange false"
+    table(
+        "Bins",
+        listOf("Bin", "Partition", "Files", "Bytes"),
+        plan.bins.map { bin -> listOf(bin.verdictText, bin.partitionText, "${bin.files.size}", formatBytes(bin.bytes)) },
+    )
+    val binOf = plan.bins.flatMapIndexed { i, bin -> bin.files.map { it.add.path to i + 1 } }.toMap()
+    table(
+        "Files",
+        listOf("Candidate", "Bin", "File", "Size", "Why"),
+        plan.files.map { f -> listOf(if (f.candidateBecause != null) "yes" else "no", binOf[f.add.path]?.toString() ?: "—", f.add.path, bytes(f.add.size), f.whyText) },
+    )
 }

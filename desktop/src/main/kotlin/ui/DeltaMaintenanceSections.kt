@@ -79,8 +79,8 @@ internal fun DeltaOptimizeSection(model: DeltaUnifiedTableModel) {
                 headers = listOf("Bin", "Partition", "Files", "Bytes"),
                 rows = plan.bins.map { bin ->
                     listOf(
-                        if (bin.rewritten) "rewritten into one" else "left — one file",
-                        bin.partitionValues.entries.joinToString(", ") { "${it.key}=${it.value ?: "null"}" }.ifEmpty { "unpartitioned" },
+                        bin.verdictText,
+                        bin.partitionText,
                         bin.files.size.toString(),
                         formatBytes(bin.bytes),
                     )
@@ -97,7 +97,7 @@ internal fun DeltaOptimizeSection(model: DeltaUnifiedTableModel) {
                     if (f.candidateBecause != null) "yes" else "no",
                     f.add.path.substringAfterLast('/'),
                     formatBytes(f.add.size),
-                    f.candidateBecause ?: "at or over optimize.minFileSize, and under the deleted-rows ratio",
+                    f.whyText,
                 )
             },
             columnWidths = listOf(90.dp, 320.dp, 100.dp, 420.dp),

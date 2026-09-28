@@ -72,6 +72,13 @@ data class ManifestMergeBin(
     val bytes: Long get() = manifests.sumOf { it.lengthBytes }
     /** How many manifests the bin becomes in the next list. */
     val outputCount: Int get() = if (merged) 1 else manifests.size
+
+    /** The verdict both shells print for the bin, against `commit.manifest.min-count-to-merge`. */
+    fun verdictText(minCountToMerge: Int): String = when (verdict) {
+        ManifestMergeVerdict.MERGED -> "MERGED — ${manifests.size} into 1" + if (holdsFirst) "" else ", holds no new manifest"
+        ManifestMergeVerdict.UNDER_MIN_COUNT -> "kept — ${manifests.size} of $minCountToMerge"
+        ManifestMergeVerdict.ALONE -> "kept — alone in its bin"
+    }
 }
 
 data class ManifestMergePlan(

@@ -313,7 +313,7 @@ class IceLensCliTest {
     fun `plan with a procedure prints maintenanceDetail's notes and tables, the same as JSON, and refuses one the table does not plan`() {
         val at = "2099-01-01T00:00:00Z"
         val atMs = java.time.Instant.parse(at).toEpochMilli()
-        for ((table, procedure) in listOf(br to "purge_files", mor to "expire_snapshots", orph to "remove_orphan_files")) {
+        for ((table, procedure) in listOf(br to "purge_files", mor to "expire_snapshots", orph to "remove_orphan_files", mor to "rewrite_data_files", dv to "sys.compact")) {
             val node = graphOf(table, AggregationPolicy.DEFAULT).nodes.filterIsInstance<GraphNode.TableNode>().first()
             val orphans = if (node.unreferencedFiles.isPresent) node.unreferencedFiles.value else null
             val line = maintenanceSummary(node, atMs, orphans).forProcedure(procedure)!!
@@ -347,6 +347,12 @@ class IceLensCliTest {
                 table,
             )
         }
+        // --files is the one read a plan starts: the delete files rewrite-all would rewrite, opened.
+        val unread = icelens("plan", mor, "rewrite_position_delete_files", "--at", at).out.lines()
+        assertTrue(unread.none { it.startsWith("What rewrite-all writes back") }, unread.joinToString("\n"))
+        val read = icelens("plan", mor, "rewrite_position_delete_files", "--at", at, "--files")
+        assertEquals(IceLensCli.EXIT_OK, read.code, read.err)
+        assertTrue("What rewrite-all writes back (3)" in read.out.lines(), read.out)
         // br's purge takes the seventeen files brp lacks, and the procedure is found by its sys. name too.
         assertTrue("Taken (17)" in icelens("plan", br, "sys.purge_files", "--at", at).out.lines())
         // The summary names every key the second argument takes.

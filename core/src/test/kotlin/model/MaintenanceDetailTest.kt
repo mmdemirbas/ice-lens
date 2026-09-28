@@ -14,16 +14,16 @@ import kotlin.test.assertTrue
 /**
  * A maintenance line's plan in full — what `icelens plan <table> <procedure>` prints. Every line
  * of every checked-in table is reachable by its procedure's name and by its key and planned
- * without failing, every row is as wide as its headers, and four plans are held to the run of
- * the procedure a fixture pair records: the files the second table of each pair lacks are the
- * rows the plan says go.
+ * without failing, every row is as wide as its headers, and the plans are held to the runs of
+ * the procedures the fixtures record: where a fixture pair is a table before and after a
+ * procedure, the files the second lacks are the rows the plan says go.
  */
 class MaintenanceDetailTest {
 
     private val y2099 = Instant.parse("2099-01-01T00:00:00Z").toEpochMilli()
 
     /** The summary and its details under the inputs the command line gives them. */
-    private class Planned(dir: File, val nowMs: Long) {
+    private class Planned(dir: File, val nowMs: Long, val readFiles: Boolean = false) {
         val node = GraphLayoutService.assembleGraph(readTableModel(dir.toPath()), showRows = false, policy = AggregationPolicy.DEFAULT)
             .nodes.filterIsInstance<GraphNode.TableNode>().first()
         val orphans = if (node.unreferencedFiles.isPresent) node.unreferencedFiles.value else null
@@ -33,7 +33,7 @@ class MaintenanceDetailTest {
         val vacuum = (node.maintenance.value as? DeltaMaintenanceInput)?.model?.planVacuum(nowMs)?.getOrNull()
         val lines = maintenanceSummary(node, nowMs, orphans, unexisting, vacuum)
 
-        fun detail(line: MaintenanceLine) = maintenanceDetail(node, line, nowMs, orphans, unexisting, vacuum)
+        fun detail(line: MaintenanceLine) = maintenanceDetail(node, line, nowMs, orphans, unexisting, vacuum, readFiles)
         fun detail(procedure: String) = detail(assertNotNull(lines.forProcedure(procedure), "no $procedure line"))
     }
 
@@ -71,10 +71,6 @@ class MaintenanceDetailTest {
 
     @Test
     fun `every line of every table is found by its procedure and its key, and planned with every row as wide as its headers`() {
-        val batchA = setOf(
-            "expire_snapshots", "expire_changelogs", "expire_partitions", "expire_tags", "purge_files",
-            "remove_unexisting_files", "remove_orphan_files", "rewrite_table_path", "vacuum", "log_cleanup",
-        )
         val dirs = FixtureCatalog.iceberg.map(FixtureCatalog::icebergDir) +
             FixtureCatalog.paimon.map(FixtureCatalog::paimonDir) +
             FixtureCatalog.delta.map(FixtureCatalog::deltaDir)
@@ -92,9 +88,7 @@ class MaintenanceDetailTest {
                     assertTrue(t.rows.isNotEmpty(), "${dir.name} ${line.key}: ${t.title} drawn empty")
                     t.rows.forEach { r -> assertEquals(t.headers.size, r.size, "${dir.name} ${line.key}: ${t.title} row $r") }
                 }
-                if (line.key in batchA) {
-                    assertTrue(detail.notes.none { "not printed" in it }, "${dir.name} ${line.key}: ${detail.notes}")
-                }
+                assertTrue(detail.notes.none { "not printed" in it }, "${dir.name} ${line.key}: ${detail.notes}")
                 planned++
             }
         }
@@ -149,5 +143,66 @@ class MaintenanceDetailTest {
         assertEquals(gone, table.column("Path", where = "Fate", equals = VacuumFate.DELETED.label).toSet())
         // Deleted first: the table leads with the answer.
         assertEquals(VacuumFate.DELETED.label, table.rows.first()[0])
+    }
+
+    @Test
+    fun `OPTIMIZE on dopt rewrites into one the files dvac's OPTIMIZE removed`() {
+        val detail = Planned(FixtureCatalog.deltaDir("dopt"), y2099).detail("OPTIMIZE")
+        val commit = FixtureCatalog.deltaModel("dvac").commitByVersion.getValue(7)
+        val bins = detail.table("Bins")
+        val rewrittenBins = bins.column("Bin").withIndex().filter { it.value == "rewritten into one" }.map { "${it.index + 1}" }.toSet()
+        assertEquals(1, rewrittenBins.size, bins.rows.toString())
+        val files = detail.table("Files")
+        val binColumn = files.column("Bin")
+        assertEquals(
+            commit.removes.map { it.path }.toSet(),
+            files.column("File").filterIndexed { i, _ -> binColumn[i] in rewrittenBins }.toSet(),
+        )
+    }
+
+    @Test
+    fun `compact_manifest on pmm rewrites its four manifests into the one of ten entries pmma's snapshot 13 lists`() {
+        val detail = Planned(FixtureCatalog.paimonDir("pmm"), y2099).detail("sys.compact_manifest")
+        val written = FixtureCatalog.paimonModel("pmma").snapshots.single { it.metadata.id == 13L }
+        val bins = detail.table("Bins")
+        assertEquals(listOf("MERGED — 4 into 1"), bins.column("Verdict"))
+        assertEquals(listOf("${written.baseManifests.single().entries.size}"), bins.column("Entries Out"))
+        val merged = detail.table("Manifests").column("Manifest", where = "Merged", equals = "yes")
+        assertEquals(4, merged.size)
+        assertTrue(merged.none { it in written.baseManifests.map { m -> m.path.fileName.toString() } }, merged.toString())
+    }
+
+    @Test
+    fun `fast_forward on br leaves named by nothing what the orphan check finds on brf, and refuses the empty branch`() {
+        val detail = Planned(FixtureCatalog.paimonDir("br"), y2099).detail("fast_forward")
+        val orphans = findUnreferencedFiles(FixtureCatalog.paimonModel("brf")).unreferenced.map { it.path.fileName.toString() }.toSet()
+        assertEquals(orphans, detail.table("Left named by nothing").column("File", where = "After", equals = "dev").map { it.substringAfterLast('/') }.toSet())
+        assertEquals(listOf("REFUSED"), detail.table("Branches").column("Verdict", where = "Branch", equals = "empty"))
+    }
+
+    @Test
+    fun `fast_forward on sweepb moves dev onto main and refuses the other way, as the run did`() {
+        val pairs = Planned(FixtureCatalog.icebergDir("sweepb"), y2099).detail("fast_forward").table("Pairs")
+        fun verdict(branch: String, to: String) = pairs.rows.single { it[pairs.headers.indexOf("Branch")] == branch && it[pairs.headers.indexOf("To")] == to }[0]
+        assertEquals(IcebergFastForwardVerdict.MOVES.label, verdict("dev", "main"))
+        assertEquals(IcebergFastForwardVerdict.NOT_AN_ANCESTOR.label, verdict("main", "dev"))
+    }
+
+    @Test
+    fun `on mor remove-dangling-deletes keeps all three delete files, and rewrite-all read keeps one position and drops two files`() {
+        // rewrite-where.sql ran rewrite_data_files with remove-dangling-deletes on mor, which kept all
+        // three delete files; the script's two dangling deletes are what rewrite-all drops.
+        val rewrite = Planned(FixtureCatalog.icebergDir("mor"), y2099).detail("rewrite_data_files")
+        val dangling = rewrite.table("Delete files after the rewrite").column("Verdict")
+        assertEquals(3, dangling.size)
+        assertTrue(dangling.all { it.startsWith("kept") }, dangling.toString())
+
+        val unread = Planned(FixtureCatalog.icebergDir("mor"), y2099).detail("rewrite_position_delete_files")
+        assertTrue(unread.tables.none { it.title.startsWith("What rewrite-all writes back") })
+        assertTrue(unread.notes.any { it.startsWith("not read:") }, unread.notes.toString())
+        val read = Planned(FixtureCatalog.icebergDir("mor"), y2099, readFiles = true).detail("rewrite_position_delete_files")
+        val back = read.table("What rewrite-all writes back")
+        assertEquals(listOf("1"), back.column("Positions", where = "Verdict", equals = "kept"))
+        assertEquals(2, back.column("Delete File", where = "Verdict", equals = "DROPPED").toSet().size)
     }
 }

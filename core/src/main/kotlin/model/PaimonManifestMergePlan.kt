@@ -91,6 +91,14 @@ data class PaimonManifestMergeBin(
 ) {
     val bytes: Long get() = manifests.sumOf { it.sizeBytes }
 
+    /** The verdict both shells print for the bin, against `manifest.merge-min-count`. */
+    fun verdictText(mergeMinCount: Int): String = when {
+        merged && mergedEntries == 0 -> "MERGED — ${manifests.size} into nothing"
+        merged -> "MERGED — ${manifests.size} into 1"
+        manifests.size == 1 -> "kept — alone"
+        else -> "kept — ${manifests.size} of $mergeMinCount"
+    }
+
     /** Manifests in the next base list from this bin: the inputs when kept, one when merged into something, none when merged into nothing. */
     val outputCount: Int get() = when {
         !merged -> manifests.size

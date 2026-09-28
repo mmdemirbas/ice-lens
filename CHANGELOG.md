@@ -12,7 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tables the desktop's section draws — every snapshot, changelog, partition or tag an expiry
   removes and what keeps the rest, the files it frees, what `purge_files` takes and keeps, the
   orphans and missing files with each one's verdict, `rewrite_table_path`'s file list, VACUUM's
-  listing and the log cleanup's files — in the same words, text or `--json`. The procedure is
+  listing and the log cleanup's files, a rewrite's groups and candidate files, a manifest merge's
+  bins and the manifests in them, each bucket's compaction, OPTIMIZE's bins and files, and what a
+  fast-forward moves or leaves named by nothing — in the same words, text or `--json`. `--files`
+  opens the delete files `rewrite_position_delete_files` would rewrite, for which positions it
+  keeps and which it drops as dangling. The procedure is
   named as the summary spells it or by its key (`purge_files`, `vacuum`, `log_cleanup`), which
   the summary now lists; a name the table does not plan is a usage error naming the ones it does.
 - **UniForm.** A Delta table writing Iceberg metadata beside its log has it read as the Iceberg
