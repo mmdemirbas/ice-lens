@@ -50,10 +50,10 @@ import java.nio.file.spi.FileSystemProvider
  *
  * ### What it does not do
  *
- * There is no modification time. `glob` returns names and nothing else, so
- * [BasicFileAttributes.lastModifiedTime] is the epoch. Both places this app reads one treat it as
- * a last-resort tiebreaker behind the version number in the file's own name, and both already
- * tolerate not getting one. There is no [WatchService] and no `toFile()` — neither has a meaning
+ * Through DuckDB there is no modification time. `glob` returns names and nothing else, so
+ * [BasicFileAttributes.lastModifiedTime] is the epoch; on HDFS a listing carries one, and it is
+ * the file's. Both places this app reads one treat it as a last-resort tiebreaker behind the
+ * version number in the file's own name, and both already tolerate not getting one. There is no [WatchService] and no `toFile()` — neither has a meaning
  * here, and both say so rather than returning something that looks like an answer.
  */
 class ObjectFileSystem internal constructor(
@@ -349,7 +349,8 @@ private class ObjectAttributes(
     private val path: ObjectPath,
     private val directory: Boolean,
 ) : BasicFileAttributes {
-    override fun lastModifiedTime(): FileTime = FileTime.fromMillis(0)
+    override fun lastModifiedTime(): FileTime =
+        FileTime.fromMillis(if (directory) 0 else ObjectStorage.modifiedMs(path.location) ?: 0)
     override fun lastAccessTime(): FileTime = lastModifiedTime()
     override fun creationTime(): FileTime = lastModifiedTime()
     override fun isRegularFile(): Boolean = !directory
@@ -397,3 +398,9 @@ class GcsAltFileSystemProvider : ObjectFileSystemProvider("gcs")
 
 /** Cloudflare R2. */
 class R2FileSystemProvider : ObjectFileSystemProvider("r2")
+
+/** HDFS over the namenode's HTTP API ([WebHdfs]) — Hadoop's own name for it. */
+class WebHdfsFileSystemProvider : ObjectFileSystemProvider("webhdfs")
+
+/** The same over HTTPS. */
+class SecureWebHdfsFileSystemProvider : ObjectFileSystemProvider("swebhdfs")

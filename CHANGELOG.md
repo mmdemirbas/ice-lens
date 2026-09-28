@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Tables on HDFS are read over WebHDFS.** A `webhdfs://namenode:9870/…` location
+  (`swebhdfs://` over TLS) opens through the namenode's HTTP API, with no Hadoop client on the
+  classpath: the metadata is listed and read over HTTP, and DuckDB reads a local copy of each data
+  file, kept for the session and bounded at 2 GiB. `icelens` takes it with `--hdfs-user` for the
+  user to read as, which defaults to `HADOOP_USER_NAME`, else the login name. A refused path says
+  which user was refused. A Kerberos-secured cluster is refused, and the message says why. A
+  warehouse scan passes over a directory the user may not list, with a warning in the log.
+  `docs/fixtures/hdfs-lab.sh` starts a local HDFS holding the Iceberg, Paimon
+  and Delta fixtures. The new fixture `hdfsw` was written by Spark into it, so it records
+  `hdfs://` paths the way a table on a cluster does. Each table on HDFS is checked against the
+  same table on disk. The desktop's location form does not offer HDFS yet.
+
 - **`icelens` opens a table in object storage with a key.** The command line configured no
   credentials, so an `s3://`, `gs://` or `r2://` table opened only if its bucket was public. It now
   takes the fields the desktop's location form has — `--endpoint`, `--no-ssl`, `--url-style`,

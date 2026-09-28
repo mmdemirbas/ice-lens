@@ -2,7 +2,9 @@
 # `FileScanTask.deletes()`, printed by docs/fixtures/iceberg-scan-plans.scala (run 2026-09-19). One section per
 # table; `<data file> -> <delete files, comma-joined>`; a `!` line is a table that Iceberg could not open.
 # `variant`'s section is from the same script under Iceberg 1.10.0 (the Spark 3.5 runtime jar dropped into the
-# image), since 1.8.1 refuses the table: `Cannot parse type string to primitive: variant`.
+# image), since 1.8.1 refuses the table: `Cannot parse type string to primitive: variant`. `hdfsw`'s is from
+# docs/fixtures/hdfsw-scan-plans.scala, run where the table was written (the HDFS lab), since its metadata
+# records `hdfs://` paths a copy cannot be opened at.
 
 -- avrofmt
 00000-0-b2b28d71-9742-46e1-aea8-17484fb15ab0-0-00001.avro -> 00000-3-eb682071-31d1-426e-a690-e5d6ec8f0b3c-00001-deletes.avro
@@ -57,6 +59,11 @@
 -- gzmeta
 00000-0-c0c0eed2-33ca-4c68-a4ea-8e43bf8ba559-0-00001.parquet ->
 00000-1-034cc8e9-8a0d-4baf-b075-ed6f310b9b2b-0-00001.parquet ->
+-- hdfsw
+00000-1-72663dc6-7325-4449-9efc-e8c1b73db40a-0-00001.parquet ->
+00000-1-72663dc6-7325-4449-9efc-e8c1b73db40a-0-00002.parquet -> 00000-5-3608d790-02b3-4081-b393-d0a750311547-00001-deletes.parquet
+00000-3-ef5f971b-3c26-4bf7-b27e-0fbfb76c8b63-0-00001.parquet ->
+00000-3-ef5f971b-3c26-4bf7-b27e-0fbfb76c8b63-0-00002.parquet ->
 -- lineage
 00000-10-ab6a7fe5-a042-4129-8c95-b7316b2c5085-0-00001.parquet ->
 00000-11-1a863870-1a43-4e16-941b-55c47c6242ef-0-00001.parquet ->

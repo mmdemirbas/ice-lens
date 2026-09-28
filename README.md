@@ -213,6 +213,14 @@ printf '%s\n' "$SECRET" | icelens summary s3://warehouse/db/orders \
 On a terminal, `--secret-stdin` asks for the secret without echoing it. With no key option the
 store is asked anonymously, which opens a public bucket only.
 
+A table on HDFS is named by its namenode's WebHDFS address — `swebhdfs://` over TLS — and read as
+the user `--hdfs-user` names, else as `HADOOP_USER_NAME` or the login name, the way Hadoop's own
+client reads under simple authentication:
+
+```bash
+icelens summary webhdfs://namenode:9870/warehouse/db/orders --hdfs-user etl
+```
+
 The installers carry the same command beside the app, over the app's own runtime, so a machine
 with Iceberg Lens installed has `icelens` with no Java of its own — a link onto the `PATH` is
 all it takes:
@@ -272,7 +280,8 @@ Stated plainly, because a tool you inspect internals with has to be honest about
 
 - **No catalog integration.** Hive, Glue, REST, Nessie and Polaris are not spoken to; a table
   is opened by its location. S3, GCS and R2 are read through DuckDB with a key that is never
-  persisted; HDFS and ADLS are not.
+  persisted. HDFS is read over WebHDFS under simple authentication by the command line, not yet
+  by the desktop app, and a Kerberos-secured cluster not at all; ADLS is not read.
 - **Iceberg v3 is modelled up to what Spark 3.5 can write.** Deletion vectors, row lineage and
   the `added-rows` allocation are read from real tables; the variant / geometry / geography /
   `timestamp_ns` types and column defaults are parsed without error but have no fixture, because

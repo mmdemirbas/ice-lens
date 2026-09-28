@@ -2,3 +2,5 @@ service.S3FileSystemProvider
 service.GcsFileSystemProvider
 service.GcsAltFileSystemProvider
 service.R2FileSystemProvider
+service.WebHdfsFileSystemProvider
+service.SecureWebHdfsFileSystemProvider

@@ -102,7 +102,8 @@ object SampleRowReader {
      * the extension is looked at, so a path that climbs out of the table cannot arrive wearing a
      * `.parquet` suffix. A remote one cannot be canonicalised and is not stat-ed either: an
      * existence check would be a round trip to learn what the read is about to report anyway. What
-     * *is* still checked is the extension, because it decides which query is built.
+     * *is* still checked is the extension, because it decides which query is built. A file on HDFS
+     * is handed over as a local copy ([WebHdfs.localCopyOf]), since DuckDB reads no `webhdfs://`.
      */
     internal fun resolveForQuery(filePath: String): Pair<String, String> {
         val (path, ext) = resolveDataFile(filePath)
@@ -117,6 +118,8 @@ object SampleRowReader {
             val name = filePath.substringAfterLast('/')
             val ext = name.substringAfterLast('.', "").lowercase()
             requireReadable(ext, name)
+            // DuckDB has no HDFS reader: a file there is read through a copy on this machine.
+            if (WebHdfs.serves(filePath)) return WebHdfs.localCopyOf(filePath) to ext
             return filePath to ext
         }
         val canonicalFile = File(filePath).canonicalFile

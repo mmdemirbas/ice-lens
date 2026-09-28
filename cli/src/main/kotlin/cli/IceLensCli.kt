@@ -60,6 +60,7 @@ import service.StatsCheckReader
 import service.StorageLocation
 import service.TableFormat
 import service.TableFormatDetector
+import service.WebHdfs
 import java.io.InputStream
 import java.io.PrintStream
 import java.nio.file.Files
@@ -87,6 +88,8 @@ import java.nio.file.Path
  * so the two shells scope and name a key alike. **The secret is never an argument**: a command
  * line sits in the shell's history and in every process listing, so `--secret-stdin` reads it
  * from standard input (without echo where that is a terminal) and `--secret` is refused by name.
+ * A table on HDFS is read over WebHDFS as the user `--hdfs-user` names, else the one Hadoop's
+ * own client would send ([WebHdfs.defaultUser]); the object-storage options are refused there.
  */
 object IceLensCli {
 
@@ -133,8 +136,9 @@ object IceLensCli {
         |  version                               the build
         |
         |<table> is the directory holding the table — Iceberg's `metadata/`, Paimon's `snapshot/` and
-        |`schema/`, Delta's `_delta_log/` — or an object-storage URL (s3://, gs://, gcs://, r2://).
-        |For a URL every command takes:
+        |`schema/`, Delta's `_delta_log/` — or an object-storage URL (s3://, gs://, gcs://, r2://),
+        |or a directory on HDFS by its namenode's WebHDFS address (webhdfs://namenode:9870/path,
+        |swebhdfs:// over TLS). For an object-storage URL every command takes:
         |  --endpoint HOST:PORT                  a store other than AWS — MinIO, Ceph, OBS
         |  --no-ssl  --url-style path|vhost      plain http, and path-style URLs for a bare host:port
         |  --region NAME
@@ -145,6 +149,10 @@ object IceLensCli {
         |                                        second — and never from an argument, which would sit
         |                                        in the shell's history and the process list
         |With none of these the store is asked without a key, which opens a public bucket only.
+        |For HDFS:
+        |  --hdfs-user NAME                      the user WebHDFS reads as, under simple
+        |                                        authentication; HADOOP_USER_NAME, else the login
+        |                                        name, without it. A Kerberos cluster is not read yet
         |
         |<filter> for `lookup` is one clause — `"id = 4"`, `"amount >= 10 AND region = 'eu'"`,
         |`"id IN (1, 2)"`, `"name LIKE 'al%'"` — quoted so the shell keeps it as one argument.
@@ -585,6 +593,9 @@ object IceLensCli {
 
     /** The options that say how to reach a table in object storage; every command takes them. */
     private val STORAGE_VALUED = setOf("endpoint", "region", "url-style", "key-id")
+
+    /** The one option a table on HDFS takes: who it is read as. */
+    private const val HDFS_USER = "hdfs-user"
     private val STORAGE_OPTIONS = STORAGE_VALUED + setOf("no-ssl", "credential-chain", "secret-stdin")
 
     private sealed interface StorageSetup {
@@ -594,10 +605,11 @@ object IceLensCli {
     }
 
     /**
-     * Configures DuckDB for the table named by the first positional from the storage options, and
-     * hands the command its own options back. With none given the credentials are cleared, so a
-     * key from an earlier run in the same process never reaches this one. Refused — a usage
-     * error — where the options contradict each other or the table is not an object-storage URL.
+     * Configures DuckDB for the table named by the first positional from the storage options, or
+     * WebHDFS's user for a table on HDFS, and hands the command its own options back. With none
+     * given the credentials and the user are cleared, so a key or a user from an earlier run in
+     * the same process never reaches this one. Refused — a usage error — where the options
+     * contradict each other or do not fit the table's scheme.
      */
     private fun configureStorage(parsed: Parsed, input: InputStream): StorageSetup {
         if (parsed.has("secret")) {
@@ -607,12 +619,27 @@ object IceLensCli {
             )
         }
         val given = parsed.options.keys.filter { it in STORAGE_OPTIONS }
-        val rest = Parsed(parsed.positionals, parsed.options - STORAGE_OPTIONS)
+        val rest = Parsed(parsed.positionals, parsed.options - STORAGE_OPTIONS - HDFS_USER)
+        val table = parsed.positional(0)
+        val onHdfs = table != null && WebHdfs.serves(table)
+        val hdfsUser = parsed.value(HDFS_USER)
+        if (parsed.has(HDFS_USER) && (hdfsUser.isNullOrBlank() || !onHdfs)) {
+            return StorageSetup.Refused(
+                if (!onHdfs) "--$HDFS_USER is for a table on HDFS, and ${table ?: "no table"} is not a webhdfs:// or swebhdfs:// URL"
+                else "--$HDFS_USER needs the user name to read as",
+            )
+        }
+        WebHdfs.setUsers(if (table != null && hdfsUser != null) mapOf(table to hdfsUser) else emptyMap())
         if (given.isEmpty()) {
             DuckDb.setCredentials(emptyList())
             return StorageSetup.Ready(rest)
         }
-        val table = parsed.positional(0)
+        if (onHdfs) {
+            return StorageSetup.Refused(
+                "--${given.first()} is for object storage; a table on HDFS is read as a user — give --$HDFS_USER NAME, " +
+                    "or nothing to read as HADOOP_USER_NAME, else the login name",
+            )
+        }
         if (table == null || !StorageLocation.isRemote(table)) {
             return StorageSetup.Refused("--${given.first()} is for a table in object storage, and ${table ?: "no table"} is not an object-storage URL")
         }
@@ -865,7 +892,7 @@ object IceLensCli {
     }
 
     /** The flags that take a value; every other flag is bare. */
-    private val VALUED = setOf("at", "depth", "format", "out", "page-size", "where", "zorder") + STORAGE_VALUED
+    private val VALUED = setOf("at", "depth", "format", "out", "page-size", "where", "zorder", HDFS_USER) + STORAGE_VALUED
 
     private fun usageError(err: PrintStream, message: String): Int {
         err.println("icelens: $message")

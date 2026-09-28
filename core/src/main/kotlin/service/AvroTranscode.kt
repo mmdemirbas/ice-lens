@@ -9,7 +9,6 @@ import org.apache.avro.generic.GenericRecord
 import org.slf4j.LoggerFactory
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * A copy of an Avro file under a codec DuckDB reads, written once per session and handed to
@@ -21,71 +20,40 @@ import java.util.concurrent.atomic.AtomicLong
  * decoded, the header's own metadata carried over. It costs a read and a write of the file,
  * which for a reader that scans it anyway is about one extra scan, paid once.
  *
- * **The copy keeps the file's name**, in a directory of its own under the session's temp root,
- * because the Paimon readers tell a `UNION ALL`'s files apart by the `filename` column's last
- * segment. The cache is bounded by [maxBytes]: past it the least recently used copies go, and
- * a file larger than it on its own is refused with the sentence the readers print. The root is
- * removed when the JVM exits; nothing under the table is ever written.
+ * The copies are kept in a [LocalCopyCache] bounded by [maxBytes] — under the file's own name,
+ * the least recently used going first — and a file larger than it on its own is refused with the
+ * sentence the readers print, which names the codec.
  */
 class AvroTranscodeCache(private val maxBytes: Long) {
-    private val root: Path by lazy {
-        Files.createTempDirectory("ice-lens-avro").also { dir ->
-            Runtime.getRuntime().addShutdownHook(Thread { runCatching { deleteTree(dir) } })
-        }
-    }
-    private val copies = LinkedHashMap<String, Copy>(16, 0.75f, true)
-    private var held = 0L
-    private val next = AtomicLong()
-
-    private class Copy(val path: Path, val bytes: Long)
+    private val copies = LocalCopyCache(maxBytes, "ice-lens-avro")
 
     /** Copies made this session, for the tests. */
-    val size: Int @Synchronized get() = copies.size
+    val size: Int get() = copies.size
 
     /**
      * The path of a copy of [localPath] under `deflate`, written now if not yet this session.
      * Keyed by the path with the file's size and modification time where the filesystem gives
      * them, so a file regenerated in place is copied again.
      */
-    @Synchronized
     fun readablePathOf(localPath: String): String {
         val source = StorageLocation.pathOf(localPath)
         val sourceBytes = runCatching { Files.size(source) }.getOrNull()
         val key = "$localPath|$sourceBytes|${runCatching { Files.getLastModifiedTime(source).toMillis() }.getOrNull()}"
-        copies[key]?.let { copy ->
-            if (Files.isRegularFile(copy.path)) return copy.path.toString()
-            copies.remove(key); held -= copy.bytes
-        }
         val name = localPath.substringAfterLast('/')
         // Nothing is written for a file that cannot fit: a copy decompresses to at least the source's size.
-        require(sourceBytes == null || sourceBytes <= maxBytes) {
-            "${SampleRowReader.avroCodecUnreadable(runCatching { AvroReader.codecOf(localPath) }.getOrNull() ?: "?", name)}, and at " +
-                "${sourceBytes} bytes it is larger than the ${maxBytes} bytes of copies this session keeps"
-        }
-        val dir = Files.createDirectories(root.resolve(next.incrementAndGet().toString()))
-        val target = dir.resolve(name)
-        transcode(source, target)
-        val bytes = Files.size(target)
-        require(bytes <= maxBytes) {
-            Files.deleteIfExists(target)
-            "${SampleRowReader.avroCodecUnreadable(runCatching { AvroReader.codecOf(localPath) }.getOrNull() ?: "?", name)}, and a copy " +
-                "under deflate is $bytes bytes, larger than the $maxBytes bytes of copies this session keeps"
-        }
-        evictUntilRoomFor(bytes)
-        copies[key] = Copy(target, bytes)
-        held += bytes
-        logger.info("Copied {} under deflate for DuckDB: {} bytes at {}", name, bytes, target)
-        return target.toString()
-    }
-
-    private fun evictUntilRoomFor(bytes: Long) {
-        val it = copies.entries.iterator()
-        while (held + bytes > maxBytes && it.hasNext()) {
-            val (_, copy) = it.next()
-            it.remove()
-            held -= copy.bytes
-            runCatching { Files.deleteIfExists(copy.path); Files.deleteIfExists(copy.path.parent) }
-        }
+        return copies.copyOf(
+            key = key,
+            name = name,
+            sourceBytes = sourceBytes,
+            tooLarge = { bytes, written ->
+                val codec = SampleRowReader.avroCodecUnreadable(runCatching { AvroReader.codecOf(localPath) }.getOrNull() ?: "?", name)
+                if (written) "$codec, and a copy under deflate is $bytes bytes, larger than the $maxBytes bytes of copies this session keeps"
+                else "$codec, and at $bytes bytes it is larger than the $maxBytes bytes of copies this session keeps"
+            },
+        ) { target ->
+            transcode(source, target)
+            logger.info("Copied {} under deflate for DuckDB: {} bytes at {}", name, Files.size(target), target)
+        }.toString()
     }
 
     private fun transcode(source: Path, target: Path) {
@@ -97,9 +65,6 @@ class AvroTranscodeCache(private val maxBytes: Long) {
         }
     }
 
-    private fun deleteTree(dir: Path) {
-        Files.walk(dir).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach { runCatching { Files.deleteIfExists(it) } } }
-    }
 
     companion object {
         private val logger = LoggerFactory.getLogger(AvroTranscodeCache::class.java)

@@ -481,6 +481,9 @@ class IceLensCliTest {
         refused("summary", mor, "--endpoint", "127.0.0.1:9000", says = "is not an object-storage URL")
         refused("summary", url, "--key-id", "AKIAEXAMPLE", "--secret-stdin", input = "", says = "found no secret")
         refused("summary", url, "--key-id", "AKIAEXAMPLE", "--secret-stdin", input = "\n", says = "found no secret")
+        refused("summary", url, "--hdfs-user", "hadoop", says = "is not a webhdfs:// or swebhdfs:// URL")
+        refused("summary", "webhdfs://127.0.0.1:9870/warehouse/db/mor", "--endpoint", "127.0.0.1:9000", says = "give --hdfs-user NAME")
+        refused("summary", "webhdfs://127.0.0.1:9870/warehouse/db/mor", "--hdfs-user", "", says = "needs the user name")
     }
 
     /**
@@ -514,5 +517,38 @@ class IceLensCliTest {
         val closed = icelens("summary", "s3://warehouse/db/mor", "--endpoint", "127.0.0.1:1", "--no-ssl", "--url-style", "path", "--key-id", "minioadmin", "--secret-stdin", input = "minioadmin\n")
         assertEquals(IceLensCli.EXIT_UNREADABLE, closed.code, closed.out)
         assertTrue("Could not reach the store" in closed.err, closed.err)
+    }
+
+    /**
+     * A table on HDFS read over WebHDFS, against the same table on disk. Needs
+     * `docs/fixtures/hdfs-lab.sh up`, which seeds `mor`, `dv` and `dplain` under `/warehouse/db`
+     * and a second `mor` under `/warehouse/private`, readable by `hadoop` alone; skipped without it.
+     */
+    @Test
+    fun `a table on HDFS opens as a named user and prints what the local one prints`() {
+        val hdfs = "webhdfs://127.0.0.1:9870/warehouse"
+        val probe = icelens("summary", "$hdfs/db/mor", "--hdfs-user", "icelens")
+        assumeTrue(probe.code == IceLensCli.EXIT_OK, "HDFS is not serving $hdfs/db — start it with docs/fixtures/hdfs-lab.sh up")
+
+        fun remoteMatchesLocal(local: String, remote: String, vararg command: String) {
+            val here = icelens(command[0], local, *command.drop(1).toTypedArray())
+            val there = icelens(command[0], remote, *command.drop(1).toTypedArray(), "--hdfs-user", "icelens")
+            assertEquals(here.code, there.code, there.err)
+            assertEquals(here.out.replace(local, "<table>"), there.out.replace(remote, "<table>"), command.joinToString(" "))
+        }
+        remoteMatchesLocal(mor, "$hdfs/db/mor", "summary")
+        // --files opens every live data file, which on HDFS is a local copy of each for DuckDB.
+        remoteMatchesLocal(mor, "$hdfs/db/mor", "check", "--files")
+        remoteMatchesLocal(dv, "$hdfs/db/dv", "tree")
+        remoteMatchesLocal(fixture("example/delta/dplain"), "$hdfs/db/dplain", "lookup", "id = 2")
+
+        val refused = icelens("summary", "$hdfs/private/mor", "--hdfs-user", "intruder")
+        assertEquals(IceLensCli.EXIT_UNREADABLE, refused.code, refused.out)
+        assertTrue("Permission denied" in refused.err && "'intruder'" in refused.err, refused.err)
+        assertEquals(IceLensCli.EXIT_OK, icelens("summary", "$hdfs/private/mor", "--hdfs-user", "hadoop").code)
+
+        val closed = icelens("summary", "webhdfs://127.0.0.1:1/warehouse/db/mor")
+        assertEquals(IceLensCli.EXIT_UNREADABLE, closed.code, closed.out)
+        assertTrue("Could not reach the namenode" in closed.err, closed.err)
     }
 }

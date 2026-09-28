@@ -6,7 +6,14 @@ import org.slf4j.LoggerFactory
 private val logger = LoggerFactory.getLogger("service.ObjectStorage")
 
 /**
- * Reading object storage through DuckDB.
+ * Reading object storage through DuckDB — and HDFS through WebHDFS, behind the same calls.
+ *
+ * Everything here rests on two primitives, a glob and a read, and those are what differ between
+ * the two ways a remote location is reached ([RemoteBackend]): DuckDB's httpfs for `s3`, `gs`,
+ * `gcs` and `r2`, and the namenode's HTTP API for `webhdfs` and `swebhdfs` ([WebHdfs]), since
+ * DuckDB has no HDFS reader. The caches, the listing derived from them and the filesystem over
+ * them ([ObjectFileSystem]) are shared, so every caller that asks a remote question asks it here
+ * whichever store answers.
  *
  * ### Why DuckDB rather than a filesystem library
  *
@@ -46,11 +53,33 @@ object ObjectStorage {
     /** How many objects' bytes are retained. Metadata files, so a small count is a lot of table. */
     private const val CONTENT_CACHE_ENTRIES = 64
 
-    /** What a listing found directly under a prefix. */
-    data class Entry(val name: String, val isDirectory: Boolean)
+    /**
+     * What a listing found directly under a prefix. [size] and [modifiedMs] where the store says
+     * them: a WebHDFS listing does, a DuckDB glob returns names and nothing else.
+     */
+    data class Entry(val name: String, val isDirectory: Boolean, val size: Long? = null, val modifiedMs: Long? = null)
+
+    /**
+     * How a remote location is reached. Every other answer here — whether a name is a file, its
+     * size, the one-level listing a directory stream draws — is derived from these, with the caches
+     * in between, so a new store is a backend and not a second copy of the logic above it.
+     */
+    internal interface RemoteBackend {
+        /** What sits directly under [root]; empty when nothing does. A refusal is thrown. */
+        fun list(root: String): List<Entry>
+
+        /** The files [pattern] matches — `*` and `?` within a segment, `**` across segments. */
+        fun glob(pattern: String): List<String>
+
+        fun isDirectory(location: String): Boolean
+        fun read(location: String): ByteArray
+        fun globTables(root: String): Map<String, TableFormat>
+    }
+
+    private fun backendFor(location: String): RemoteBackend = if (WebHdfs.serves(location)) WebHdfs else DuckDbStore
 
     /** A read that reached the store and was refused or came back wrong. */
-    class ObjectStorageException(val location: String, message: String, cause: Throwable? = null) :
+    open class ObjectStorageException(val location: String, message: String, cause: Throwable? = null) :
         java.io.IOException(message, cause)
 
     private val listings = Collections.synchronizedMap(mutableMapOf<String, List<Entry>>())
@@ -85,29 +114,15 @@ object ObjectStorage {
     }
 
     /**
-     * What sits directly under [prefix].
+     * What sits directly under [prefix], cached per prefix.
      *
-     * Globs the whole subtree with a recursive wildcard and derives the one level from it, rather
-     * than globbing a single level, because object storage has no directory entries: a one-level
-     * glob returns the objects at that level and **silently omits every subdirectory**. Deriving
-     * from the subtree is the only way the answer is complete.
-     *
-     * The cost of that is real and bounded by where it is used: this app lists `metadata/`,
-     * `snapshot/` and `schema/`, which hold tens of files. Do not point it at a warehouse root —
-     * use a targeted glob for that, which is what [globTables] is.
+     * On HDFS one `LISTSTATUS`. Through DuckDB a glob of the whole subtree, the one level derived
+     * from it ([DuckDbStore.list] says why), which is real cost bounded by where it is used: this
+     * app lists `metadata/`, `snapshot/` and `schema/`, which hold tens of files. Do not point it
+     * at a warehouse root — use [globTables] for that.
      */
-    fun list(prefix: String): List<Entry> = listings.getOrPut(prefix.trimEnd('/')) {
-        val root = prefix.trimEnd('/')
-        val found = glob("$root/**")
-        val entries = LinkedHashMap<String, Entry>()
-        found.forEach { url ->
-            val relative = url.removePrefix("$root/")
-            if (relative.isEmpty() || relative == url) return@forEach
-            val cut = relative.indexOf('/')
-            if (cut < 0) entries[relative] = Entry(relative, isDirectory = false)
-            else relative.substring(0, cut).let { entries.putIfAbsent(it, Entry(it, isDirectory = true)) }
-        }
-        entries.values.toList()
+    fun list(prefix: String): List<Entry> = prefix.trimEnd('/').let { root ->
+        listings.getOrPut(root) { backendFor(root).list(root) }
     }
 
     /** Whether [location] names an object. Answered from its parent's listing, so it is cached. */
@@ -121,34 +136,23 @@ object ObjectStorage {
      * about one. A one-level glob is enough here — a prefix with any direct child is a directory,
      * and every directory this app asks about (`metadata/`, `snapshot/`, `schema/`) holds files.
      */
-    fun isDirectory(location: String): Boolean {
-        val root = location.trimEnd('/')
-        listings[root]?.let { return it.isNotEmpty() }
-        return runCatching { glob("$root/*").isNotEmpty() }.getOrDefault(false)
-    }
+    fun isDirectory(location: String): Boolean = backendFor(location).isDirectory(location)
 
     fun exists(location: String): Boolean = isRegularFile(location) || isDirectory(location)
 
-    /** The object's size, from its bytes — see [readBytes] for why that is not as costly as it reads. */
-    fun size(location: String): Long = readBytes(location).size.toLong()
+    /**
+     * The object's size: the listing's where the store gave one, else from its bytes — see
+     * [readBytes] for why that is not as costly as it reads.
+     */
+    fun size(location: String): Long = entryOf(location)?.size ?: readBytes(location).size.toLong()
+
+    /** When the object was last written, where the store's listing says — null through DuckDB. */
+    fun modifiedMs(location: String): Long? = entryOf(location)?.modifiedMs
 
     /** [location]'s bytes, retained so the several readers that open one artifact pay one round trip. */
     fun readBytes(location: String): ByteArray {
         contents[location]?.let { return it }
-        val bytes = runCatching {
-            DuckDb.withConnection { conn ->
-                conn.prepareStatement("SELECT content FROM read_blob(?)").use { statement ->
-                    statement.setString(1, location)
-                    statement.executeQuery().use { rows ->
-                        if (!rows.next()) throw ObjectStorageException(location, "No object at $location")
-                        rows.getBytes(1) ?: ByteArray(0)
-                    }
-                }
-            }
-        }.getOrElse { failure ->
-            if (failure is ObjectStorageException) throw failure
-            throw ObjectStorageException(location, describe(location, failure.message.orEmpty()), failure)
-        }
+        val bytes = backendFor(location).read(location)
         if (bytes.size > MAX_OBJECT_BYTES) {
             throw ObjectStorageException(
                 location, "$location is ${bytes.size} bytes; this reader holds at most $MAX_OBJECT_BYTES",
@@ -161,63 +165,14 @@ object ObjectStorage {
     fun readText(location: String): String = readBytes(location).decodeToString()
 
     /**
-     * Every Iceberg or Paimon table under [warehouse], as one glob per format.
-     *
-     * A warehouse scan on a local disk walks directories; over object storage that is a request per
-     * level per table. Two globs answer the same question in two round trips, because the marker
-     * each format is detected by is a path shape: a `.metadata.json` under the table's `metadata`
-     * directory for Iceberg, a `snapshot-` file under its `snapshot` directory for Paimon.
-     *
-     * That path shape is also the *answer* to which format a table is, which is why this returns
-     * the two together. Detecting it separately would open every table again over the network to
-     * learn something the listing had already established.
-     *
-     * **A refusal is thrown, not returned as an empty warehouse.** Both globs used to be wrapped in
-     * a `runCatching { }.getOrDefault(emptyList())`, which was reaching for the wrong thing: [glob]
-     * already answers an empty list for a prefix with nothing under it, so the only failures that
-     * wrapper could ever absorb were the real ones. A key that no longer opens the bucket came back
-     * as "this warehouse holds no tables" — the same answer as an empty warehouse, and the reader
-     * had nothing to open that might have said otherwise.
+     * Every table under [warehouse], each with its format. Through DuckDB a glob per format
+     * ([DuckDbStore.globTables]); on HDFS a walk that stops at each table it finds
+     * ([WebHdfs.globTables]). A refusal is thrown, never returned as an empty warehouse.
      */
-    fun globTables(warehouse: String): Map<String, TableFormat> {
-        val root = warehouse.trimEnd('/')
-        // `*.metadata.json*` takes the gzip-compressed `.metadata.json.gz` spelling too; the
-        // `.gz.metadata.json` one the plain suffix already matches.
-        val iceberg = glob("$root/**/metadata/*.metadata.json*")
-            .mapNotNull { it.substringBeforeLast("/metadata/", "").takeIf(String::isNotEmpty) }
-        val paimon = glob("$root/**/snapshot/snapshot-*")
-            .mapNotNull { it.substringBeforeLast("/snapshot/", "").takeIf(String::isNotEmpty) }
-        // A commit or a checkpoint part: every name that states a version starts with its
-        // 20-digit zero-padded number, and `_last_checkpoint` does not.
-        val delta = glob("$root/**/_delta_log/0*")
-            .mapNotNull { it.substringBeforeLast("/_delta_log/", "").takeIf(String::isNotEmpty) }
-            .distinct()
-        // Which glob matched *is* the format, so the caller gets it for nothing rather than
-        // opening each table again to ask. A directory matching several takes the precedence
-        // `TableFormatDetector` applies — Paimon, then Delta, then Iceberg — since a Paimon table
-        // and a Delta UniForm table both write Iceberg metadata beside their own; a later entry
-        // in a `+` wins, so the order below is that precedence reversed.
-        return (iceberg.associateWith { TableFormat.ICEBERG } + delta.associateWith { TableFormat.DELTA } + paimon.associateWith { TableFormat.PAIMON })
-            .toSortedMap()
-    }
+    fun globTables(warehouse: String): Map<String, TableFormat> = backendFor(warehouse).globTables(warehouse.trimEnd('/'))
 
     /** The raw glob. A pattern that matches nothing is an empty list, not an error. */
-    fun glob(pattern: String): List<String> = DuckDb.withConnection { conn ->
-        runCatching {
-            conn.prepareStatement("SELECT file FROM glob(?)").use { statement ->
-                statement.setString(1, pattern)
-                statement.executeQuery().use { rows ->
-                    buildList { while (rows.next()) add(rows.getString(1)) }
-                }
-            }
-        }.getOrElse { failure ->
-            // A glob over a prefix with nothing under it is not an error, but a refusal is. The
-            // distinction is the whole reason this goes through DuckDB rather than Files.exists.
-            val message = failure.message.orEmpty()
-            if (message.contains("404") || message.contains("No files found")) emptyList()
-            else throw ObjectStorageException(pattern, describe(pattern, message), failure)
-        }
-    }
+    fun glob(pattern: String): List<String> = backendFor(pattern).glob(pattern)
 
     /**
      * A store's own error, said in terms a reader can act on.
@@ -240,8 +195,111 @@ object ObjectStorage {
         else -> "Could not read $location: $message"
     }
 
+
+    /** Object storage through DuckDB's httpfs — the one route to `s3`, `gs`, `gcs` and `r2`. */
+    private object DuckDbStore : RemoteBackend {
+        /**
+         * What sits directly under [root], derived from a glob of the whole subtree.
+         *
+         * Globs the whole subtree with a recursive wildcard and derives the one level from it, rather
+         * than globbing a single level, because object storage has no directory entries: a one-level
+         * glob returns the objects at that level and **silently omits every subdirectory**. Deriving
+         * from the subtree is the only way the answer is complete.
+         */
+        override fun list(root: String): List<Entry> {
+            val entries = LinkedHashMap<String, Entry>()
+            glob("$root/**").forEach { url ->
+                val relative = url.removePrefix("$root/")
+                if (relative.isEmpty() || relative == url) return@forEach
+                val cut = relative.indexOf('/')
+                if (cut < 0) entries[relative] = Entry(relative, isDirectory = false)
+                else relative.substring(0, cut).let { entries.putIfAbsent(it, Entry(it, isDirectory = true)) }
+            }
+            return entries.values.toList()
+        }
+
+        /** A prefix with any direct child — see [ObjectStorage.isDirectory] for why one level is enough. */
+        override fun isDirectory(location: String): Boolean {
+            val root = location.trimEnd('/')
+            listings[root]?.let { return it.isNotEmpty() }
+            return runCatching { glob("$root/*").isNotEmpty() }.getOrDefault(false)
+        }
+
+        override fun read(location: String): ByteArray = runCatching {
+            DuckDb.withConnection { conn ->
+                conn.prepareStatement("SELECT content FROM read_blob(?)").use { statement ->
+                    statement.setString(1, location)
+                    statement.executeQuery().use { rows ->
+                        if (!rows.next()) throw ObjectStorageException(location, "No object at $location")
+                        rows.getBytes(1) ?: ByteArray(0)
+                    }
+                }
+            }
+        }.getOrElse { failure ->
+            if (failure is ObjectStorageException) throw failure
+            throw ObjectStorageException(location, describe(location, failure.message.orEmpty()), failure)
+        }
+
+        /**
+         * Every Iceberg or Paimon table under [warehouse], as one glob per format.
+         *
+         * A warehouse scan on a local disk walks directories; over object storage that is a request per
+         * level per table. Two globs answer the same question in two round trips, because the marker
+         * each format is detected by is a path shape: a `.metadata.json` under the table's `metadata`
+         * directory for Iceberg, a `snapshot-` file under its `snapshot` directory for Paimon.
+         *
+         * That path shape is also the *answer* to which format a table is, which is why this returns
+         * the two together. Detecting it separately would open every table again over the network to
+         * learn something the listing had already established.
+         *
+         * **A refusal is thrown, not returned as an empty warehouse.** Both globs used to be wrapped in
+         * a `runCatching { }.getOrDefault(emptyList())`, which was reaching for the wrong thing: [ObjectStorage.glob]
+         * already answers an empty list for a prefix with nothing under it, so the only failures that
+         * wrapper could ever absorb were the real ones. A key that no longer opens the bucket came back
+         * as "this warehouse holds no tables" — the same answer as an empty warehouse, and the reader
+         * had nothing to open that might have said otherwise.
+         */
+        override fun globTables(root: String): Map<String, TableFormat> {
+            // `*.metadata.json*` takes the gzip-compressed `.metadata.json.gz` spelling too; the
+            // `.gz.metadata.json` one the plain suffix already matches.
+            val iceberg = glob("$root/**/metadata/*.metadata.json*")
+                .mapNotNull { it.substringBeforeLast("/metadata/", "").takeIf(String::isNotEmpty) }
+            val paimon = glob("$root/**/snapshot/snapshot-*")
+                .mapNotNull { it.substringBeforeLast("/snapshot/", "").takeIf(String::isNotEmpty) }
+            // A commit or a checkpoint part: every name that states a version starts with its
+            // 20-digit zero-padded number, and `_last_checkpoint` does not.
+            val delta = glob("$root/**/_delta_log/0*")
+                .mapNotNull { it.substringBeforeLast("/_delta_log/", "").takeIf(String::isNotEmpty) }
+                .distinct()
+            // Which glob matched *is* the format, so the caller gets it for nothing rather than
+            // opening each table again to ask. A directory matching several takes the precedence
+            // `TableFormatDetector` applies — Paimon, then Delta, then Iceberg — since a Paimon table
+            // and a Delta UniForm table both write Iceberg metadata beside their own; a later entry
+            // in a `+` wins, so the order below is that precedence reversed.
+            return (iceberg.associateWith { TableFormat.ICEBERG } + delta.associateWith { TableFormat.DELTA } + paimon.associateWith { TableFormat.PAIMON })
+                .toSortedMap()
+        }
+
+        override fun glob(pattern: String): List<String> = DuckDb.withConnection { conn ->
+            runCatching {
+                conn.prepareStatement("SELECT file FROM glob(?)").use { statement ->
+                    statement.setString(1, pattern)
+                    statement.executeQuery().use { rows ->
+                        buildList { while (rows.next()) add(rows.getString(1)) }
+                    }
+                }
+            }.getOrElse { failure ->
+                // A glob over a prefix with nothing under it is not an error, but a refusal is. The
+                // distinction is the whole reason this goes through DuckDB rather than Files.exists.
+                val message = failure.message.orEmpty()
+                if (message.contains("404") || message.contains("No files found")) emptyList()
+                else throw ObjectStorageException(pattern, describe(pattern, message), failure)
+            }
+        }
+    }
+
     /** [location]'s entry in its parent's listing, or null when the parent holds no such name. */
-    private fun entryOf(location: String): Entry? {
+    internal fun entryOf(location: String): Entry? {
         val trimmed = location.trimEnd('/')
         val cut = trimmed.lastIndexOf('/')
         if (cut <= 0) return null

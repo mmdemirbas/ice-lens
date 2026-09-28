@@ -429,10 +429,13 @@ What is left:
   doing if the downward layout gets used, and `GraphLayoutAlgorithm.refinesLayers` is where it
   attaches.
 
-- **Remote storage — done for object storage, open for HDFS and ADLS.** `s3://`, `gs://`, `gcs://`
-  and `r2://` are read through a `java.nio` `FileSystemProvider` over DuckDB
-  (`service/ObjectFileSystem.kt`). `hdfs://` and `abfs://` are not: neither is a DuckDB scheme, so
-  each needs its own provider, and HDFS in particular drags in the Hadoop client.
+- **Remote storage — done for object storage and for HDFS over WebHDFS, open for ADLS.** `s3://`,
+  `gs://`, `gcs://` and `r2://` are read through a `java.nio` `FileSystemProvider` over DuckDB
+  (`service/ObjectFileSystem.kt`); `webhdfs://` and `swebhdfs://` through the same provider over
+  the namenode's HTTP API (`service/WebHdfs.kt`), with no Hadoop client, DuckDB reading local
+  copies. Open: the desktop's location form does not offer HDFS yet; a Kerberos-secured cluster
+  (SPNEGO) is refused with a sentence saying so; a standby namenode is named, not failed over
+  from; `abfs://` is not a DuckDB scheme and needs its own provider.
 
 - **A command line — done, over the strip's vocabulary.** `icelens summary | tree | show |
   check | lookup | plan | export`, `cli/` over `:core` like the plugin, printing `GraphTree`'s rows and tree,
@@ -447,7 +450,7 @@ What is left:
   `fast_forward` as tables of what each acts on (`--files` opens the delete files a position
   delete rewrite reads). A table in object storage takes the desktop form's fields as options,
   the secret on standard input and never as an argument. The binary ships inside the installers
-  as a second jpackage launcher; HDFS and ADLS are not yet read.
+  as a second jpackage launcher; a table on HDFS takes `--hdfs-user`, and ADLS is not yet read.
 
 - **IntelliJ IDEA plugin — done, and *not* through `ComposePanel`.** That was the plan and it does
   not work: IntelliJ ships its own Skiko, a plugin cannot override a platform class, and bundling

@@ -139,6 +139,7 @@ core/src/main/kotlin/
 │   ├── SampleRowReader.kt     # DuckDB JDBC queries for sample rows (Parquet and Avro, the table function chosen by extension; ORC refused with the reason — max 50)
 │   ├── AvroRows.kt            # An Avro data file's first rows read in this process — the row cards' way through a codec DuckDB refuses
 │   ├── AvroTranscode.kt       # A copy of such a file under deflate, once per session, bounded — the SQL readers' way through the same
+│   ├── LocalCopyCache.kt      # Copies of files on this machine for DuckDB, once per session, bounded, under the file's own name — the Avro copies' and HDFS's
 │   ├── RowLookup.kt           # The rows a filter matches, read through DuckDB, and each one's fate under the delete files paired with its file
 │   ├── PaimonRowLookup.kt     # The same on Paimon: a record's fate under its file's vector, its own `_VALUE_KIND`, and the bucket's later writes for its key
 │   ├── RowHistoryTrace.kt     # Either lookup run at every retained snapshot on main, one file read per trace on Iceberg
@@ -150,8 +151,9 @@ core/src/main/kotlin/
 │   ├── PaimonSequenceGroups.kt # partial-update's remove-record-on-sequence-group, folded over a key's records in sequence order
 │   ├── StorageLocation.kt     # A location string → the Path that opens it. The one place a scheme is resolved
 │   ├── DuckDb.kt              # The shared DuckDB connection, and the object-store credentials configured on it
-│   ├── ObjectStorage.kt       # Listing and reading object storage through DuckDB, with the caches that make it viable
-│   ├── ObjectFileSystem.kt    # A read-only java.nio FileSystem over ObjectStorage (s3/gs/gcs/r2)
+│   ├── ObjectStorage.kt       # Listing and reading remote storage, with the caches that make it viable — object storage through DuckDB, HDFS through WebHdfs
+│   ├── ObjectFileSystem.kt    # A read-only java.nio FileSystem over ObjectStorage (s3/gs/gcs/r2, webhdfs/swebhdfs)
+│   ├── WebHdfs.kt             # HDFS over the namenode's HTTP API — LISTSTATUS, OPEN, a user per namenode, and local copies for DuckDB
 │   ├── PuffinReader.kt        # Puffin footer + `deletion-vector-v1` blob → the row positions a v3 vector marks
 │   ├── IcebergGraphBuilder.kt # Iceberg-specific graph construction: UnifiedTableModel → nodes + edges
 │   ├── PaimonGraphBuilder.kt  # Paimon-specific graph construction: PaimonUnifiedTableModel → nodes + edges
@@ -2455,6 +2457,37 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   "all data access is read-only" is a type here and not only a rule in this file.** `toFile()`
   throws for the same reason: returning a plausible `java.io.File` is exactly how a remote path
   silently becomes a read of a local path that is not there
+- **HDFS is read over WebHDFS, behind the same calls, and with no Hadoop client.**
+  `ObjectStorage`'s five primitives — list, glob, is-directory, read, find tables — sit behind a
+  `RemoteBackend` chosen by scheme: `DuckDbStore` for the object stores, `WebHdfs` for
+  `webhdfs://` and `swebhdfs://` (Hadoop's own names), and the caches and `ObjectFileSystem` above
+  them are shared, so the model reads HDFS through `java.nio` exactly as it reads a bucket. The
+  HDFS client is the namenode's RPC and tens of megabytes of `hadoop-client`; WebHDFS is HTTP and
+  JSON the JDK already reads, on by default at 9870 (50070 on Hadoop 2). Four behaviours of it
+  shape the code, each seen on `apache/hadoop:3.4.1`. **A listing carries lengths and times**
+  (`LISTSTATUS`, one request per directory), so `Entry` has a size and a modification time on
+  HDFS where DuckDB's glob gives neither, and a directory is a directory — the table root is
+  one, unlike a bucket's. **An `OPEN` is a 307 to a datanode named by the hostname it registered
+  with**, which often does not resolve outside the cluster; the redirect is followed by hand so
+  the failure names the datanode. **A `LISTSTATUS` on a file answers the file itself** with an
+  empty `pathSuffix`, which reads as nothing under it. **A refusal is a `RemoteException` whose
+  class names the case** — `AccessControlException` (403, with the user and the inode), a
+  standby, a missing path (404), and 401 for a cluster wanting Kerberos, which is not spoken —
+  and `WebHdfs.failure` says each in terms of what to do; `WebHdfs.PermissionDenied` is its own
+  type because the warehouse walk (`globTables`, a breadth-first walk put to
+  `TableFormatDetector` at each directory, stopping at every table) passes over a directory the
+  user may not list with a warning, where a refusal on the root is thrown — permissions on HDFS
+  are per directory, and one private database would otherwise hide a whole warehouse. The user
+  is simple authentication's `user.name`: per namenode from `WebHdfs.setUsers`, else what
+  Hadoop's client sends, `HADOOP_USER_NAME` or the login name. **DuckDB reads no `webhdfs://`**,
+  so `SampleRowReader.resolveDataFile` hands every SQL reader a local copy (`WebHdfs.localCopyOf`),
+  streamed once per session into a `LocalCopyCache` — the Avro transcode's cache, extracted —
+  bounded at 2 GiB, keyed by the file's length and time, under the file's own name. **A table
+  written on HDFS records `hdfs://namenode:8020/…` everywhere**, and nothing here opens that
+  scheme, so `resolveRecordedOrRebuilt`'s `pathOf` fails inside its `runCatching` and every path
+  resolves by the rebuild under the table root — `hdfsw` is that table, written by Spark into the
+  lab, and it reads with the rows Spark read both from the copy and over WebHDFS, its positional
+  delete still matched to its data file by the recorded `hdfs://` path
 - **Every `read_parquet` passes `hive_partitioning = false`, and the sweep that found why is the
   statistics check.** Both formats lay files out under `name=value` directories and both write
   the partition columns into the file, so the path is a layout convention and the file is the
@@ -2647,7 +2680,10 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   (`DuckDb.rejectedMessage`) rather than DuckDB's `Secret Validation Failure`. `IceLensCliTest`
   holds `summary`, `check`, `tree` and `lookup` on the lab's `mor`, `dv` and `dplain` to their
   local output, a wrong key and a closed port to their messages with the secret in neither, and
-  every refusal without a store
+  every refusal without a store. **A table on HDFS takes `--hdfs-user NAME`** and no other storage
+  option, the object-storage ones refused there by name; without it the user is Hadoop's
+  default. The same test holds `summary`, `check --files`, `tree` and `lookup` over WebHDFS to the
+  local output, a refused user to `Permission denied` naming it, and a closed port
   **And the binary ships inside the installers**, as jpackage's second launcher
   (`desktop/launchers/icelens.properties`, `--add-launcher` on the app-image build alone, since
   the .dmg, .msi and .deb are packaged from that image): `Contents/MacOS/icelens` in the .app,
@@ -3233,7 +3269,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,570 tests across 219 files (1,265 in :core, 290 in :desktop, 1 in :intellij, 14 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,580 tests across 221 files (1,276 in :core, 290 in :desktop, 1 in :intellij, 15 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3347,6 +3383,7 @@ container invocation and the traps in it:
 | `default/rolled` | `RolledBackFixtureTest` | main set back to an earlier snapshot by `set_current_snapshot` — a second `snapshot-log` entry for the target, the abandoned commit retained on no ref, the next commit forking from the target |
 | `default/retained` | `RetainedFixtureTest` | refs with retention — a tag `RETAIN 90 DAYS`, a branch `RETAIN 30 DAYS WITH SNAPSHOT RETENTION 2 SNAPSHOTS` — and an `expire_snapshots` that kept what each ref's own settings say |
 | `default/extdata` | `ExternalDataPathFixtureTest` | `write.data.path` outside the table — no `data/` under it, two files beside it under `example/iceberg/extdata-files/` |
+| `default/hdfsw` | `HdfsWrittenFixtureTest`, `WebHdfsTableTest` | Spark writing straight into the HDFS lab — every recorded path `hdfs://icelens-hdfs:8020/…`, none opened as written, and a positional delete naming its data file by that path; Iceberg's own plan for it run where it was written (`hdfsw-scan-plans.scala`) |
 | `default/variant` | `VariantFixtureTest` | a v3 `variant` column, written by Spark 4.0.2 with the 1.10.0 Spark 4.0 runtime — eighteen rows over every shape the encoding has, the column a Parquet group of `metadata` and `value` with the schema's id, counts and no bounds recorded for it, and DuckDB's JSON of every row held to the script's `to_json(v)` |
 | `default/wmp` | `WriteMetadataPathFixtureTest` | `write.metadata.path` apart from the location, written by `JdbcCatalog` over SQLite — the metadata under `default/wmp/metadata/` named the metastore way from `00000-<uuid>`, no version hint, no `data/`; the two data files under `example/iceberg/wmp-data/data/`, the location |
 | `default/sorted` | `SortedFixtureTest` | three sort orders, a commit under each, then a sort compaction — rows sorted inside every file, `sort_order_id 0` on every file |
@@ -3429,7 +3466,11 @@ starts a loopback-only MinIO and uploads `example/iceberg/default/mor` to `s3://
 with `example/paimon/db.db/dv` and `example/delta/dplain` beside it; `RemoteTableTest` then opens
 `mor` *and* the one on disk and requires the two models and the two graphs to agree, and each of
 the three to be detected and read as its own format, and `IceLensCliTest` runs the command line
-over all three against their local output. That comparison is the whole point — a decoder fed truncated or misordered
+over all three against their local output. `docs/fixtures/hdfs-lab.sh up` is the HDFS twin — one
+container running a namenode and a datanode, WebHDFS on `127.0.0.1:9870`, the same three tables
+under `/warehouse/db`, a copy of `mor` under a `700` directory only `hadoop` reads, and `hdfsw` at
+the path Spark wrote it to — and `WebHdfsTableTest` holds the same comparisons over WebHDFS, with
+the counts, the lookup and the row cards read through local copies. That comparison is the whole point — a decoder fed truncated or misordered
 bytes produces a model that is internally consistent and wrong, and every assertion written against
 the remote side alone would pass. The tests skip rather than fail when the container is absent, so
 a checkout without Docker stays green.

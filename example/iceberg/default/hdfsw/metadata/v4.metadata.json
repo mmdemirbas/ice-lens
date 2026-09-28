@@ -1,0 +1,155 @@
+{
+  "format-version" : 2,
+  "table-uuid" : "5894f25c-ca41-4459-981b-74507c906569",
+  "location" : "hdfs://icelens-hdfs:8020/warehouse/spark/default/hdfsw",
+  "last-sequence-number" : 3,
+  "last-updated-ms" : 1790624224667,
+  "last-column-id" : 3,
+  "current-schema-id" : 0,
+  "schemas" : [ {
+    "type" : "struct",
+    "schema-id" : 0,
+    "fields" : [ {
+      "id" : 1,
+      "name" : "id",
+      "required" : false,
+      "type" : "int"
+    }, {
+      "id" : 2,
+      "name" : "name",
+      "required" : false,
+      "type" : "string"
+    }, {
+      "id" : 3,
+      "name" : "region",
+      "required" : false,
+      "type" : "string"
+    } ]
+  } ],
+  "default-spec-id" : 0,
+  "partition-specs" : [ {
+    "spec-id" : 0,
+    "fields" : [ {
+      "name" : "region",
+      "transform" : "identity",
+      "source-id" : 3,
+      "field-id" : 1000
+    } ]
+  } ],
+  "last-partition-id" : 1000,
+  "default-sort-order-id" : 0,
+  "sort-orders" : [ {
+    "order-id" : 0,
+    "fields" : [ ]
+  } ],
+  "properties" : {
+    "owner" : "hadoop",
+    "write.delete.mode" : "merge-on-read",
+    "write.parquet.compression-codec" : "zstd"
+  },
+  "current-snapshot-id" : 5182553870260060380,
+  "refs" : {
+    "main" : {
+      "snapshot-id" : 5182553870260060380,
+      "type" : "branch"
+    }
+  },
+  "snapshots" : [ {
+    "sequence-number" : 1,
+    "snapshot-id" : 6140038259249425084,
+    "timestamp-ms" : 1790624218980,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1790624208621",
+      "added-data-files" : "2",
+      "added-records" : "3",
+      "added-files-size" : "1869",
+      "changed-partition-count" : "2",
+      "total-records" : "3",
+      "total-files-size" : "1869",
+      "total-data-files" : "2",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1790624208621",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "hdfs://icelens-hdfs:8020/warehouse/spark/default/hdfsw/metadata/snap-6140038259249425084-1-755b076f-41e3-4bcb-b98b-0e57a685eed0.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 2,
+    "snapshot-id" : 4802284720816758327,
+    "parent-snapshot-id" : 6140038259249425084,
+    "timestamp-ms" : 1790624221144,
+    "summary" : {
+      "operation" : "append",
+      "spark.app.id" : "local-1790624208621",
+      "added-data-files" : "2",
+      "added-records" : "2",
+      "added-files-size" : "1805",
+      "changed-partition-count" : "2",
+      "total-records" : "5",
+      "total-files-size" : "3674",
+      "total-data-files" : "4",
+      "total-delete-files" : "0",
+      "total-position-deletes" : "0",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1790624208621",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "hdfs://icelens-hdfs:8020/warehouse/spark/default/hdfsw/metadata/snap-4802284720816758327-1-adddf7a4-1751-4f43-968d-0d0d6b91a2f6.avro",
+    "schema-id" : 0
+  }, {
+    "sequence-number" : 3,
+    "snapshot-id" : 5182553870260060380,
+    "parent-snapshot-id" : 4802284720816758327,
+    "timestamp-ms" : 1790624224667,
+    "summary" : {
+      "operation" : "delete",
+      "spark.app.id" : "local-1790624208621",
+      "added-position-delete-files" : "1",
+      "added-delete-files" : "1",
+      "added-files-size" : "1616",
+      "added-position-deletes" : "1",
+      "changed-partition-count" : "1",
+      "total-records" : "5",
+      "total-files-size" : "5290",
+      "total-data-files" : "4",
+      "total-delete-files" : "1",
+      "total-position-deletes" : "1",
+      "total-equality-deletes" : "0",
+      "engine-version" : "3.5.5",
+      "app-id" : "local-1790624208621",
+      "engine-name" : "spark",
+      "iceberg-version" : "Apache Iceberg 1.8.1 (commit 9ce0fcf0af7becf25ad9fc996c3bad2afdcfd33d)"
+    },
+    "manifest-list" : "hdfs://icelens-hdfs:8020/warehouse/spark/default/hdfsw/metadata/snap-5182553870260060380-1-b47f4c83-4ec2-421f-9e69-d776df509a36.avro",
+    "schema-id" : 0
+  } ],
+  "statistics" : [ ],
+  "partition-statistics" : [ ],
+  "snapshot-log" : [ {
+    "timestamp-ms" : 1790624218980,
+    "snapshot-id" : 6140038259249425084
+  }, {
+    "timestamp-ms" : 1790624221144,
+    "snapshot-id" : 4802284720816758327
+  }, {
+    "timestamp-ms" : 1790624224667,
+    "snapshot-id" : 5182553870260060380
+  } ],
+  "metadata-log" : [ {
+    "timestamp-ms" : 1790624212712,
+    "metadata-file" : "hdfs://icelens-hdfs:8020/warehouse/spark/default/hdfsw/metadata/v1.metadata.json"
+  }, {
+    "timestamp-ms" : 1790624218980,
+    "metadata-file" : "hdfs://icelens-hdfs:8020/warehouse/spark/default/hdfsw/metadata/v2.metadata.json"
+  }, {
+    "timestamp-ms" : 1790624221144,
+    "metadata-file" : "hdfs://icelens-hdfs:8020/warehouse/spark/default/hdfsw/metadata/v3.metadata.json"
+  } ]
+}

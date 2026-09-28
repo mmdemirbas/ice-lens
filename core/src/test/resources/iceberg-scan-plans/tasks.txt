@@ -10,6 +10,8 @@
 # `variant`'s sections are from the same script under Iceberg 1.10.0 (the Spark 3.5 runtime jar dropped into the
 # image), since 1.8.1 refuses the table (`Cannot parse type string to primitive: variant`); its partition line is
 # `!` because the 1.10.0 Spark 3.5 module refuses the type on a DataFrame read (`Unsupported type: variant`).
+# `hdfsw`'s sections are from docs/fixtures/hdfsw-scan-plans.scala, run where the table was written (the HDFS
+# lab), since its metadata records `hdfs://` paths a copy cannot be opened at.
 -- avrofmt: tasks default
 00000-1-ccc6b252-ed6c-4c6b-8365-5fe79b3aa54e-0-00001.avro:0+710,00000-0-b2b28d71-9742-46e1-aea8-17484fb15ab0-0-00001.avro:0+750
 -- avrofmt: tasks default = 1 tasks
@@ -206,6 +208,21 @@
 00000-0-c0c0eed2-33ca-4c68-a4ea-8e43bf8ba559-0-00001.parquet:4+660,00000-1-034cc8e9-8a0d-4baf-b075-ed6f310b9b2b-0-00001.parquet:4+674
 -- gzmeta: tasks split=32KiB cost=0 = 1 tasks
 -- gzmeta: spark partitions = 1 (parallelism 200)
+-- hdfsw: tasks default
+00000-1-72663dc6-7325-4449-9efc-e8c1b73db40a-0-00001.parquet:4+916,00000-1-72663dc6-7325-4449-9efc-e8c1b73db40a-0-00002.parquet:4+945,00000-3-ef5f971b-3c26-4bf7-b27e-0fbfb76c8b63-0-00001.parquet:4+895,00000-3-ef5f971b-3c26-4bf7-b27e-0fbfb76c8b63-0-00002.parquet:4+902
+-- hdfsw: tasks default = 1 tasks
+-- hdfsw: tasks default again
+00000-1-72663dc6-7325-4449-9efc-e8c1b73db40a-0-00001.parquet:4+916,00000-1-72663dc6-7325-4449-9efc-e8c1b73db40a-0-00002.parquet:4+945,00000-3-ef5f971b-3c26-4bf7-b27e-0fbfb76c8b63-0-00001.parquet:4+895,00000-3-ef5f971b-3c26-4bf7-b27e-0fbfb76c8b63-0-00002.parquet:4+902
+-- hdfsw: tasks default again = 1 tasks
+-- hdfsw: tasks split=8MiB
+00000-1-72663dc6-7325-4449-9efc-e8c1b73db40a-0-00001.parquet:4+916,00000-3-ef5f971b-3c26-4bf7-b27e-0fbfb76c8b63-0-00001.parquet:4+895
+00000-1-72663dc6-7325-4449-9efc-e8c1b73db40a-0-00002.parquet:4+945
+00000-3-ef5f971b-3c26-4bf7-b27e-0fbfb76c8b63-0-00002.parquet:4+902
+-- hdfsw: tasks split=8MiB = 3 tasks
+-- hdfsw: tasks split=32KiB cost=0
+00000-1-72663dc6-7325-4449-9efc-e8c1b73db40a-0-00001.parquet:4+916,00000-1-72663dc6-7325-4449-9efc-e8c1b73db40a-0-00002.parquet:4+945,00000-3-ef5f971b-3c26-4bf7-b27e-0fbfb76c8b63-0-00001.parquet:4+895,00000-3-ef5f971b-3c26-4bf7-b27e-0fbfb76c8b63-0-00002.parquet:4+902
+-- hdfsw: tasks split=32KiB cost=0 = 1 tasks
+-- hdfsw: spark partitions = 2 (parallelism 200)
 -- lineage: tasks default
 00000-11-1a863870-1a43-4e16-941b-55c47c6242ef-0-00001.parquet:4+1730,00000-10-ab6a7fe5-a042-4129-8c95-b7316b2c5085-0-00001.parquet:4+1657
 -- lineage: tasks default = 1 tasks
