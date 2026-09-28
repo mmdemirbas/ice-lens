@@ -708,9 +708,19 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   read from the changelog files the snapshot names.** The history above is what a batch read
   returns at each snapshot; a downstream consumer receives the changelog, and the two differ
   by producer on the same statements. `model/PaimonChangelog.kt` (`paimonChangelogInputs`, a
-  `DeferredRead` on `TableNode.paimonChangelog` where any snapshot names a changelog) lists the
-  retained snapshots on `main` whose changelog manifest list names files, oldest first, capped at
-  `MAX_HISTORY_SNAPSHOTS`, each with its `changelogRecordCount`; `service/PaimonChangelogTrace.kt`
+  `DeferredRead` on `TableNode.paimonChangelog` where any commit names a changelog) lists, per
+  line — `main` and then each branch (`paimonChangelogLines`) — the commits whose changelog
+  manifest list names files, oldest first, capped at `MAX_HISTORY_SNAPSHOTS`, each with its
+  `changelogRecordCount`: the retained snapshots **and the long-lived changelogs under
+  `changelog/`**, which a streaming reader is handed where the snapshot has expired
+  (`NextSnapshotFetcher.getNextSnapshot` at release-1.3.1) — `pcl` publishes at 5 from
+  `changelog/`, while its `COMPACT` at 6 publishes nothing under `input`. A branch publishes a
+  stream of its own and is read under its latest schema; a branch created from a tag starts with
+  the tag's snapshot, changelog list included. `pbc` is the oracle for the branch, Paimon's own
+  `paimon_incremental_query` over each line's `$audit_log` under `incremental-between-scan-mode
+  = changelog`, one snapshot at a time; the stage draws one table per line under its name when
+  there is more than one, and the history's `Published` column takes `main`'s, the line the
+  history walks; `service/PaimonChangelogTrace.kt`
   reads every file for the lookup's filter through the lookup's own projection (a changelog file
   is a key-value file — `_KEY_*`, `_SEQUENCE_NUMBER`, `_VALUE_KIND`, the values — under the latest
   schema's names) in file order, and the `Changelog` stage under the lookup lists each record's
@@ -721,8 +731,9 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   `-D (3, c)` at 6 — while under `input` the APPEND publishes the input as it arrived, so the
   same update is a bare `+I (2, B)` at snapshot 2 with no before image, which is what the
   history's "changed at the APPEND" and the changelog's "-U/+U at the COMPACT" say between
-  them. `PaimonChangelogFixtureTest` holds both, and every changelog-naming snapshot of every
-  Paimon fixture, unfiltered, to its own `changelogRecordCount`
+  them. `PaimonChangelogFixtureTest` holds both, `pbc`'s two lines and `pcl`'s long-lived
+  changelog to their scripts, and every changelog-naming commit of every line of every Paimon
+  fixture, unfiltered, to its own `changelogRecordCount`
 - **The one question asked from the directory rather than from the metadata is "what is here that
   nothing names".** `model/UnreferencedFiles.kt` walks the table root and subtracts every path the
   model resolved — manifest lists, manifests, data and delete files, Puffin vectors and statistics,
@@ -3201,7 +3212,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,563 tests across 219 files (1,260 in :core, 290 in :desktop, 1 in :intellij, 12 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,565 tests across 219 files (1,262 in :core, 290 in :desktop, 1 in :intellij, 12 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3369,6 +3380,7 @@ container invocation and the traps in it:
 | `paimon/db.db/pu`, `ag`, `fr` | `PaimonMergeEngineFixtureTest` | one primary-key table per merge engine other than the default — `partial-update` folding two writes and removing a key on `-D` until its re-insert, `aggregation` summing, and `first-row`, whose DELETE Spark ran as a file rewrite to level 0 that a batch read of a first-row table never reads: Paimon's own reads printed one row where the statements describe two |
 | `paimon/db.db/sgm` | `PaimonMergeEngineFixtureTest` | `partial-update` with a sequence group of two fields, `fields.g1,g2.sequence-group = a`, and `remove-record-on-sequence-group = g2` — an insert with a null in the tuple ordered below the row's, and Paimon's read at every snapshot |
 | `paimon/db.db/sg`, `sgd` | `PaimonMergeEngineFixtureTest` | `partial-update` with two sequence groups — `sg` inserts only, a lower group value not overriding a higher; `sgd` with `remove-record-on-sequence-group = ga`, a DELETE writing a `-D` that removes the key and an insert bringing it back, Paimon's read at every snapshot |
+| `paimon/db.db/pbc` | `PaimonChangelogFixtureTest` | a primary-key table under `changelog-producer = input` with a branch `dev` created from a tag and written to — main publishing `+I 1 a, +I 2 b` then `+I 2 x`, the branch its copied first commit then `+I 2 B, +I 3 c` and `-D 1 a`; Paimon's `paimon_incremental_query` over each line's `$audit_log` printed as the oracle |
 | `paimon/db.db/pcl`, `pcn` | `PaimonChangelogLifecycleFixtureTest` | `changelog.num-retained.max` above `snapshot.num-retained.max`, every expiry run at commit — `snapshot/` holds 7 and 8, `changelog/` holds 5 and 6; `pcl` under `changelog-producer = input`, its changelog lists and files kept and its base and delta lists gone; `pcn` with no producer, where the delta list is the change stream and the base and delta lists and every `APPEND` file stay — the five files the compaction removed still on disk |
 | `paimon/db.db/pmm`, `pmma` | `PaimonManifestMergeFixtureTest` | an append table under `manifest.merge-min-count = 5` — twelve commits with a DELETE that removes a whole file in the sixth, whose base lists grow to four and merge to one twice, the second merge folding that DELETE against the ADD it met; `pmma` the same table after `sys.compact_manifest` rewrote its four small manifests into one, and a second call wrote nothing |
 | `paimon/db.db/po`, `poa` | `OrphanRemovalPlanFixtureTest` | one partitioned primary-key table copied before `sys.remove_orphan_files` ran on it — a rollback's leftovers and six strays, one per directory rule; the eleven files the procedure deleted from `poa`, and the three it never lists |

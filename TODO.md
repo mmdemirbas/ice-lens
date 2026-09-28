@@ -146,9 +146,10 @@ table-format engineer opens a debugger for". Ordered by how often the question c
 
 - **A row's changelog is read under the lookup on Paimon — what each commit published, beside
   the history's what each snapshot returns.** `model/PaimonChangelog.kt` and
-  `service/PaimonChangelogTrace.kt`, held to `lk` (`lookup`) and `cl` (`input`). What is left:
-  a tag-only snapshot's changelog is not traced (its list is what an expiry deletes, `tg`), a
-  branch's changelog is not read. The two stages are joined on the snapshot once both are read —
+  `service/PaimonChangelogTrace.kt`, held to `lk` (`lookup`) and `cl` (`input`), every branch's
+  stream beside main's (`pbc`), and the long-lived changelogs under `changelog/` in place of the
+  snapshots they outlived (`pcl`). What is left: a tag-only snapshot's changelog is not traced
+  (its list is what an expiry deletes, `tg`). The two stages are joined on the snapshot once both are read —
   the history table's `Published` column lists each snapshot's changelog kinds for the rows, so
   "changed at the APPEND" sits beside "-U, +U at the COMPACT".
 

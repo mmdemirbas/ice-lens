@@ -3053,6 +3053,25 @@ class InspectorRenderTest {
                 ) { lookupSettled.set(true) }
             }
         }
+        // And a branch's stream beside main's (`pbc`): key 2 published on each line under its
+        // name, the branch's first commit being main's copied from the tag.
+        data class Scene(val fixture: String, val name: String, val filter: String, val height: Int)
+        for ((fixture, name, text, height) in listOf(
+            Scene("pbc", "paimon-row-changelog-branch", "k = 2", 2400),
+            // A long-lived changelog read where its snapshot expired (`pcl`), said under the rule.
+            Scene("pcl", "paimon-row-changelog-long-lived", "k >= 1", 2150),
+        )) {
+            val graph = GraphLayoutService.layoutGraph(PaimonUnifiedTableModel(Paths.get(File(repoRoot, "example/paimon/db.db/$fixture").absolutePath)), showRows = false)
+            val node = graph.nodes.filterIsInstance<GraphNode.TableNode>().single()
+            val filter = (model.parseScanFilter(text) as model.ScanFilterParse.Parsed).filter
+            val read = java.util.concurrent.atomic.AtomicBoolean(false)
+            val found = java.util.concurrent.atomic.AtomicBoolean(false)
+            renderUntil(name, width = 1400, height = height, ready = { read.get() && found.get() }) {
+                Column(Modifier.padding(16.dp)) {
+                    RowLookupSection(node, graph, filter, startRequested = true, changelogRequested = true, onChangelogSettled = { read.set(true) }) { found.set(true) }
+                }
+            }
+        }
         // And on `pu`, partial-update: records folded into one row, a key removed by a -D and
         // re-inserted, the rule stated under the headline.
         val pu = GraphLayoutService.layoutGraph(

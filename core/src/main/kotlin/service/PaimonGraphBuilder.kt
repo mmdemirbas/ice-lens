@@ -58,7 +58,7 @@ object PaimonGraphBuilder {
             fileStats = DeferredRead.of { tableModel.fileStatsTargets() },
             paimonRowLookup = DeferredRead.of { tableModel.paimonRowLookupInput() },
             rowHistory = DeferredRead.of { tableModel.rowHistoryInputs() },
-            paimonChangelog = if (tableModel.snapshots.any { it.changelogManifests.isNotEmpty() }) DeferredRead.of { tableModel.paimonChangelogInputs() } else DeferredRead.none(),
+            paimonChangelog = if (tableModel.hasChangelog()) DeferredRead.of { tableModel.paimonChangelogLines() } else DeferredRead.none(),
             schemaEvolution = schemaSteps,
             icebergExport = icebergExport,
             // Read after the traversal fills `logicalNodes`, so the latest snapshot's node is

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **A Paimon branch's changelog is read under the row lookup, and so is a changelog that
+  outlived its snapshot.** The `Changelog` stage read `main`'s snapshots only. It now reads every
+  branch's stream too, each under its own name, and it reads the long-lived changelogs under
+  `changelog/` that a streaming reader is handed once their snapshots expire. The new fixture
+  `pbc` writes to main and to a branch created from a tag, and Paimon's own incremental read of
+  each line's changelog is the check.
+
 - **Inline Delta deletion vectors are read everywhere a stored one is.** A vector the log holds
   itself (`storageType` `i`) was decoded on the file panel only; the row lookup left a row it
   marks undecided, and the live count reported it unreadable. The lookup, the count, the row

@@ -44,7 +44,7 @@ class PaimonMergedCountFixtureTest {
         // a primary-key column renamed between writes: `_KEY_k` in one file, `_KEY_id` in two
         "pkr" to 3,
         // stats modes: a counts default with per-column overrides, and a per-level none whose file was upgraded
-        "psm" to 4, "psl" to 2, "pcl" to 5, "pcn" to 5, "ppx" to 4, "ppxa" to 2, "ptt" to 3, "ptta" to 3, "prb" to 4, "prba" to 2, "pbk" to 3, "pbka" to 4, "po" to 1, "poa" to 1, "pmm" to 10, "pmma" to 10, "brf" to 4, "prua" to 2, "brp" to 0,
+        "psm" to 4, "psl" to 2, "pcl" to 5, "pcn" to 5, "ppx" to 4, "ppxa" to 2, "ptt" to 3, "ptta" to 3, "prb" to 4, "prba" to 2, "pbk" to 3, "pbka" to 4, "po" to 1, "poa" to 1, "pmm" to 10, "pmma" to 10, "brf" to 4, "prua" to 2, "brp" to 0, "pbc" to 2,
         // append tables, from the metadata
         "ad" to 5, "ao" to 6, "rt" to 5, "de" to 3, "der" to 2, "fa" to 5, "ft" to 3, "fb" to 8, "fbs" to 1008, "frb" to 1010, "pse" to 4, "pne" to 3, "psk" to 2,
     )
@@ -114,5 +114,8 @@ class PaimonMergedCountFixtureTest {
         val br = model("br")
         val dev = br.branches.single { it.name == "dev" }
         assertEquals(4L, countOf(br, dev.snapshots.last()).merged, "keys 1, 2, 3 from the tag and 5 from the branch")
+        // pbc's script reads dev as (2, B), (3, c) — key 1 deleted on the branch and not on main.
+        val pbc = model("pbc")
+        assertEquals(2L, countOf(pbc, pbc.branches.single { it.name == "dev" }.snapshots.last()).merged)
     }
 }

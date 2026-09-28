@@ -6,9 +6,11 @@ import model.ScanFilter
 import model.ScanFilterParse
 import model.parseScanFilter
 import model.paimonChangelogInputs
+import model.paimonChangelogLines
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -61,21 +63,68 @@ class PaimonChangelogFixtureTest {
         assertEquals(listOf(listOf(1L, "APPEND", "+I", 3, "c"), listOf(3L, "APPEND", "-D", 3, "c")), trace("cl", "k = 3").records.map(::record))
     }
 
-    /** Unfiltered, the records read from each snapshot's files are the count the writer recorded — on every fixture that names a changelog. */
+    @Test
+    fun `a branch publishes a stream of its own, read under the branch's name`() {
+        val pbc = FixtureCatalog.paimonModel("pbc")
+        val lines = pbc.paimonChangelogLines()
+        assertEquals(listOf("main", "dev"), lines.map { it.branch })
+        val all = ScanFilter.of(emptyList())
+        fun stream(line: String) = PaimonChangelogTrace.trace(lines.single { it.branch == line }, all).also { assertEquals(line, it.line) }.records.map(::record)
+        // Paimon's own read of each line's changelog, one snapshot at a time (paimon-pbc.sql).
+        assertEquals(
+            listOf(listOf(1L, "APPEND", "+I", 1, "a"), listOf(1L, "APPEND", "+I", 2, "b"), listOf(2L, "APPEND", "+I", 2, "x")),
+            stream("main"),
+        )
+        // The branch's snapshot 1 is main's, copied from the tag with its changelog list.
+        assertEquals(
+            listOf(
+                listOf(1L, "APPEND", "+I", 1, "a"), listOf(1L, "APPEND", "+I", 2, "b"),
+                listOf(2L, "APPEND", "+I", 2, "B"), listOf(2L, "APPEND", "+I", 3, "c"),
+                listOf(3L, "APPEND", "-D", 1, "a"),
+            ),
+            stream("dev"),
+        )
+        assertNull(pbc.paimonChangelogInputs("nope"))
+        // The table node carries both lines, main first.
+        val table = GraphLayoutService.assembleGraph(pbc, showRows = false).nodes.filterIsInstance<model.GraphNode.TableNode>().single()
+        assertEquals(listOf("main", "dev"), table.paimonChangelog.value?.map { it.branch })
+    }
+
+    @Test
+    fun `a long-lived changelog is read in place of the snapshot it outlived`() {
+        // pcl: seven inserts under changelog-producer = input, a COMPACT at 6, snapshot/ holding 7
+        // and 8 and changelog/ holding 5 and 6. The COMPACT publishes nothing under input, so the
+        // stream is the fifth, sixth and seventh insert — the fifth read from changelog/.
+        val pcl = assertNotNull(FixtureCatalog.paimonModel("pcl").paimonChangelogInputs())
+        assertEquals(listOf(5L to true, 7L to false, 8L to false), pcl.snapshots.map { it.snapshotId to it.longLived })
+        val traced = PaimonChangelogTrace.trace(pcl, ScanFilter.of(emptyList()))
+        assertEquals(
+            listOf(listOf(5L, "APPEND", "+I", 4, "d"), listOf(7L, "APPEND", "+I", 5, "e"), listOf(8L, "APPEND", "+I", 2, "B")),
+            traced.records.map(::record),
+        )
+        assertEquals(listOf(5L), traced.longLived)
+    }
+
+    /** Unfiltered, the records read from each commit's files are the count the writer recorded — on every line of every fixture that names a changelog. */
     @Test
     fun `every changelog snapshot's records read are its recorded changelogRecordCount`() {
         var checked = 0
+        val lines = mutableSetOf<String>()
         for (fixture in FixtureCatalog.paimon) {
-            val inputs = FixtureCatalog.paimonModel(fixture).paimonChangelogInputs() ?: continue
-            val all = PaimonChangelogTrace.trace(inputs, ScanFilter.of(emptyList()))
-            assertEquals(0, all.unreadable, "$fixture: ${all.filesRead.filter { it.error != null }}")
-            for (snapshot in inputs.snapshots) {
-                val read = all.records.count { it.snapshotId == snapshot.snapshotId }.toLong()
-                assertEquals(snapshot.recordCount, read, "$fixture snapshot ${snapshot.snapshotId}")
-                checked++
+            for (inputs in FixtureCatalog.paimonModel(fixture).paimonChangelogLines()) {
+                val all = PaimonChangelogTrace.trace(inputs, ScanFilter.of(emptyList()))
+                val at = "$fixture ${inputs.branch}"
+                assertEquals(0, all.unreadable, "$at: ${all.filesRead.filter { it.error != null }}")
+                for (snapshot in inputs.snapshots) {
+                    val read = all.records.count { it.snapshotId == snapshot.snapshotId }.toLong()
+                    assertEquals(snapshot.recordCount, read, "$at snapshot ${snapshot.snapshotId}")
+                    checked++
+                }
+                assertEquals(inputs.snapshots.map { it.snapshotId }, all.publishedAt, "$at: every traced snapshot published something")
+                lines += at
             }
-            assertEquals(inputs.snapshots.map { it.snapshotId }, all.publishedAt, "$fixture: every traced snapshot published something")
         }
-        assertTrue(checked >= 6, "lk's three and cl's three at least: $checked")
+        assertTrue(checked >= 14, "lk's, cl's, pcl's and pbc's two lines at least: $checked")
+        assertTrue("pbc dev" in lines, lines.toString())
     }
 }

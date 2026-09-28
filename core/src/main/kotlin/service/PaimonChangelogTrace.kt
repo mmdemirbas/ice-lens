@@ -47,7 +47,7 @@ object PaimonChangelogTrace {
                 }
             }
         }
-        return Changelog(records, reads, inputs.capped, inputs.withChangelog, inputs.producerRule)
+        return Changelog(records, reads, inputs.capped, inputs.withChangelog, inputs.producerRule, line = inputs.branch, longLived = inputs.snapshots.filter { it.longLived }.map { it.snapshotId })
     }
 
     private fun readRecords(localPath: String, source: FileProjection, where: String, params: List<String>): List<Map<String, Any?>> {

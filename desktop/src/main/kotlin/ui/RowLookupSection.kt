@@ -228,6 +228,8 @@ private fun LookupSection(
  * batch read returns at each snapshot, and this is the other side of `changelog-producer`: the
  * stream a downstream consumer receives, which under `lookup` carries the change in the COMPACT
  * commit after the append that made it, and under `input` carries the write as it arrived.
+ * A Paimon branch publishes a stream of its own, so every line is read and drawn under its
+ * name; the history's `Published` column takes `main`'s, the line the history walks.
  */
 @Composable
 private fun ChangelogStage(
@@ -240,21 +242,21 @@ private fun ChangelogStage(
 ) {
     val colors = MaterialTheme.colorScheme
     var requested by remember(node.id, filter) { mutableStateOf(startRequested) }
-    val outcome by produceState<Result<Changelog>?>(null, node.id, filter, requested) {
+    val outcome by produceState<Result<List<Changelog>>?>(null, node.id, filter, requested) {
         value = null
         onRead(null)
         if (requested) {
             value = withContext(Dispatchers.IO) {
                 runCatching {
-                    if (node.deltaChangeFeed.isPresent) DeltaChangeFeedTrace.trace(requireNotNull(node.deltaChangeFeed.value) { "no change data feed to read" }, filter)
-                    else PaimonChangelogTrace.trace(requireNotNull(node.paimonChangelog.value) { "no changelog to read" }, filter)
+                    if (node.deltaChangeFeed.isPresent) listOf(DeltaChangeFeedTrace.trace(requireNotNull(node.deltaChangeFeed.value) { "no change data feed to read" }, filter))
+                    else requireNotNull(node.paimonChangelog.value) { "no changelog to read" }.map { PaimonChangelogTrace.trace(it, filter) }
                 }
             }
-            onRead(value?.getOrNull())
+            onRead(value?.getOrNull()?.firstOrNull { it.line == null || it.line == "main" })
             onSettled()
         }
     }
-    val changelog = outcome?.getOrNull()
+    val lines = outcome?.getOrNull()
     Text(
         if (node.deltaChangeFeed.isPresent) "Change Data Feed" else "Changelog",
         fontSize = TypeScale.small,
@@ -266,9 +268,26 @@ private fun ChangelogStage(
             Text("Read what each commit published for these rows")
         }
         outcome == null -> Text(if (node.deltaChangeFeed.isPresent) "Reading each version's change data feed…" else "Reading each snapshot's changelog…", fontSize = TypeScale.small, color = colors.onSurfaceVariant)
-        changelog == null -> Text("Could not read: ${outcome?.exceptionOrNull()?.message ?: "unknown error"}", fontSize = TypeScale.small, color = colors.error)
-        else -> ChangelogBody(changelog)
+        lines == null -> Text("Could not read: ${outcome?.exceptionOrNull()?.message ?: "unknown error"}", fontSize = TypeScale.small, color = colors.error)
+        lines.size == 1 -> ChangelogBody(lines.single())
+        else -> lines.forEach { changelog ->
+            Text(
+                if (changelog.line == "main") "On main" else "On branch ${changelog.line}",
+                fontSize = TypeScale.small,
+                fontWeight = FontWeight.Bold,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp),
+            )
+            ChangelogBody(changelog)
+        }
     }
+}
+
+/** The commits read from `changelog/`, in a sentence — empty where every one is a retained snapshot. */
+private fun longLivedNote(changelog: Changelog): String = when (changelog.longLived.size) {
+    0 -> ""
+    1 -> " Snapshot ${changelog.longLived.single()} has expired, and its changelog outlived it under changelog/, which a streaming reader is handed in its place."
+    else -> " Snapshots ${changelog.longLived.dropLast(1).joinToString(", ")} and ${changelog.longLived.last()} have expired, and their changelogs outlived them under changelog/, which a streaming reader is handed in their place."
 }
 
 @Composable
@@ -284,7 +303,8 @@ private fun ChangelogBody(changelog: Changelog) {
         modifier = Modifier.padding(bottom = 4.dp),
     )
     Text(
-        changelog.rule + (if (changelog.capped) ". Older ${changelog.unit}s are not read." else "."),
+        changelog.rule + (if (changelog.capped) ". Older ${changelog.unit}s are not read." else ".") +
+            longLivedNote(changelog),
         fontSize = TypeScale.small,
         color = colors.onSurfaceVariant,
         modifier = Modifier.padding(bottom = 4.dp),

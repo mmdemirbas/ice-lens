@@ -417,8 +417,8 @@ sealed class GraphNode(
         val paimonRowLookup: DeferredRead<PaimonReadInput> = DeferredRead.none(),
         /** The retained snapshots on `main` with what looking a row up in each takes — see [RowHistoryInputs]; both formats. */
         val rowHistory: DeferredRead<RowHistoryInputs> = DeferredRead.none(),
-        /** The changelog files each retained snapshot on `main` names, with what reading them takes — see [PaimonChangelogInputs]; only where some snapshot names one. */
-        val paimonChangelog: DeferredRead<PaimonChangelogInputs> = DeferredRead.none(),
+        /** The changelog files each line's commits name — `main` first, then each branch — with what reading them takes; see [PaimonChangelogInputs]. Only where some commit names one. */
+        val paimonChangelog: DeferredRead<List<PaimonChangelogInputs>> = DeferredRead.none(),
         /** What each version's change data feed carries, with what reading it takes — see [DeltaChangeFeedInputs]; only where the current metadata enables the feed. */
         val deltaChangeFeed: DeferredRead<DeltaChangeFeedInputs> = DeferredRead.none(),
         /** UniForm's Iceberg metadata against the log — a read of the Iceberg tree, so deferred. */

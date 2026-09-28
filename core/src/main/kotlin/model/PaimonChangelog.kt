@@ -16,21 +16,29 @@ data class ChangelogSnapshot(
     val recordCount: Long?,
     /** The changelog files the snapshot names, every one an `ADD` — the stream, not the table. */
     val files: List<PaimonLookupFile>,
+    /** Read from `changelog/changelog-<id>`: the snapshot has expired and its changelog outlived it. */
+    val longLived: Boolean = false,
 )
 
 /**
- * The retained snapshots on `main` that name a changelog, oldest first, capped at
- * [MAX_HISTORY_SNAPSHOTS] newest, and the schema the files are read under — the latest, the
- * lookup's rule. A `DeferredRead` on the table node, since building it walks every snapshot's
- * changelog manifests.
+ * The commits of one line — [branch], `main` or a branch — that name a changelog, oldest first,
+ * capped at [MAX_HISTORY_SNAPSHOTS] newest, and the schema the files are read under — the line's
+ * latest, the lookup's rule. The commits are the line's retained snapshots **and its long-lived
+ * changelogs** (`changelog/changelog-<id>`), since a streaming reader is handed the second where
+ * the first is gone (`NextSnapshotFetcher.getNextSnapshot` at release-1.3.1, under a decoupled
+ * lifecycle): `pcl` publishes at 5 from `changelog/` and at 7 and 8 from `snapshot/`. A
+ * branch publishes a stream of its own (`pbc`), and a branch created from a tag starts with the
+ * tag's snapshot and so with its changelog. The table node carries every line's as a
+ * `DeferredRead`, since building one walks every commit's changelog manifests.
  */
 data class PaimonChangelogInputs(
     /** `changelog-producer` as the latest schema records it — `none` when unset. */
     val producer: String,
     val schema: PaimonSchema,
     val snapshots: List<ChangelogSnapshot>,
-    /** How many retained snapshots on `main` name a changelog, so a capped trace can say so. */
+    /** How many of the line's commits name a changelog, so a capped trace can say so. */
     val withChangelog: Int,
+    val branch: String = "main",
 ) {
     val capped: Boolean get() = snapshots.size < withChangelog
     val readSchema: IcebergSchemaModel by lazy { paimonSchemaAsIceberg(schema, systemColumns = true) }
@@ -73,7 +81,9 @@ data class ChangelogFileRead(val snapshotId: Long, val fileName: String, val mat
  * changelog files ([PaimonChangelogTrace]) or Delta's change data feed (`DeltaChangeFeedTrace`),
  * one shape so the lookup draws either. [unit] is what the format calls a commit, `snapshot` or
  * `version`; [publishing] how many of them published something, of which the last are read when
- * [capped]; [rule] is the sentence saying what the format publishes for a change.
+ * [capped]; [rule] is the sentence saying what the format publishes for a change; [line] the
+ * Paimon branch the stream is of, null where the format has one line; [longLived] the commits
+ * read from `changelog/`, whose snapshots have expired.
  */
 data class Changelog(
     val records: List<ChangelogRecord>,
@@ -82,6 +92,8 @@ data class Changelog(
     val publishing: Int,
     val rule: String,
     val unit: String = "snapshot",
+    val line: String? = null,
+    val longLived: List<Long> = emptyList(),
 ) {
     val snapshotsRead: Int get() = filesRead.map { it.snapshotId }.distinct().size
     val unreadable: Int get() = filesRead.count { it.error != null }
@@ -89,16 +101,29 @@ data class Changelog(
     val publishedAt: List<Long> get() = records.map { it.snapshotId }.distinct()
 }
 
-fun PaimonUnifiedTableModel.paimonChangelogInputs(): PaimonChangelogInputs? {
-    val schema = latestSchema ?: return null
-    val named = snapshots.filter { it.changelogManifests.isNotEmpty() }.sortedBy { it.metadata.id ?: Long.MIN_VALUE }
+/** Every line's changelog inputs, `main` first and then the branches by name; the lines that name none are left out. */
+fun PaimonUnifiedTableModel.paimonChangelogLines(): List<PaimonChangelogInputs> =
+    listOfNotNull(paimonChangelogInputs()) + branches.sortedBy { it.name }.mapNotNull { paimonChangelogInputs(it.name) }
+
+/** Whether any line's commit names a changelog — [paimonChangelogLines] without reading one. */
+fun PaimonUnifiedTableModel.hasChangelog(): Boolean =
+    (snapshots + changelogs + branches.flatMap { it.snapshots + it.changelogs }).any { it.changelogManifests.isNotEmpty() }
+
+/** [branch]'s changelog inputs — `main` unless named — or null where none of its commits names one. */
+fun PaimonUnifiedTableModel.paimonChangelogInputs(branch: String = "main"): PaimonChangelogInputs? {
+    val line = if (branch == "main") null else branches.firstOrNull { it.name == branch } ?: return null
+    val schema = (if (line == null) latestSchema else line.schemas.maxByOrNull { it.id ?: -1 }) ?: return null
+    val commits = if (line == null) snapshots + changelogs else line.snapshots + line.changelogs
+    val named = commits.filter { it.changelogManifests.isNotEmpty() }
+        .distinctBy { it.metadata.id }
+        .sortedBy { it.metadata.id ?: Long.MIN_VALUE }
     if (named.isEmpty()) return null
     val traced = named.takeLast(MAX_HISTORY_SNAPSHOTS).mapNotNull { snapshot ->
         val id = snapshot.metadata.id ?: return@mapNotNull null
         val files = snapshot.changelogManifests.flatMap { manifest -> manifest.entries }
             .filter { it.metadata.kind == PaimonEntryKind.ADD }
             .mapNotNull { it.asLookupFile() }
-        ChangelogSnapshot(id, snapshot.metadata.timeMillis, snapshot.metadata.commitKind, snapshot.metadata.changelogRecordCount, files)
+        ChangelogSnapshot(id, snapshot.metadata.timeMillis, snapshot.metadata.commitKind, snapshot.metadata.changelogRecordCount, files, snapshot.longLivedChangelog)
     }
-    return PaimonChangelogInputs(schema.options["changelog-producer"] ?: "none", schema, traced, named.size)
+    return PaimonChangelogInputs(schema.options["changelog-producer"] ?: "none", schema, traced, named.size, branch)
 }
