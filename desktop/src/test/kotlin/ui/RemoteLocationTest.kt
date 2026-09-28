@@ -52,7 +52,7 @@ class RemoteLocationTest {
     fun `the persisted form cannot carry a secret`() {
         assertTrue("minioadmin" in minio.serialize(), "the key id is not a secret and is kept")
         // Every field, joined — if a secret field is ever added, it lands here and this fails.
-        assertEquals(7, minio.serialize().split("|").size, "the persisted field count changed")
+        assertEquals(8, minio.serialize().split("|").size, "the persisted field count changed")
     }
 
     /**
@@ -123,9 +123,30 @@ class RemoteLocationTest {
         assertTrue(RemoteLocation.validate("/wh/db/t").orEmpty().contains("scheme"))
         assertTrue(RemoteLocation.validate("file:///wh/db").orEmpty().contains("Add to Workspace"))
         // A scheme nothing on the classpath serves, named rather than accepted and failed later.
-        val unserved = RemoteLocation.validate("hdfs://nn:8020/wh").orEmpty()
-        assertTrue("hdfs" in unserved && "s3, gs, gcs, r2" in unserved, unserved)
+        val unserved = RemoteLocation.validate("abfs://container@account/wh").orEmpty()
+        assertTrue("abfs" in unserved && "s3, gs, gcs, r2, webhdfs, swebhdfs" in unserved, unserved)
         assertTrue(RemoteLocation.validate("s3://").orEmpty().contains("bucket"))
+        // HDFS's own scheme points at the address that is read: the same namenode's HTTP port.
+        val rpc = RemoteLocation.validate("hdfs://nn:8020/wh").orEmpty()
+        assertTrue("webhdfs://namenode:9870" in rpc && "8020" in rpc, rpc)
+        assertNull(RemoteLocation.validate("webhdfs://namenode:9870/warehouse"))
+        assertNull(RemoteLocation.validate("swebhdfs://namenode:9871/warehouse"))
+        assertTrue(RemoteLocation.validate("webhdfs:///warehouse").orEmpty().contains("namenode"))
+    }
+
+    /**
+     * An HDFS location keeps its user, and a location saved before the field existed still loads —
+     * seven fields, the eighth read as absent — since dropping a saved location on upgrade would
+     * take the reader's workspace root with it.
+     */
+    @Test
+    fun `an HDFS location keeps its user, and a seven-field location still loads`() {
+        val hdfs = RemoteLocation(url = "webhdfs://namenode:9870/warehouse", hdfsUser = "etl")
+        assertTrue(hdfs.onHdfs && !minio.onHdfs)
+        assertEquals(hdfs, RemoteLocation.deserialize(hdfs.serialize()))
+        val saved = minio.serialize().substringBeforeLast('|')
+        assertEquals(7, saved.split("|").size)
+        assertEquals(minio, RemoteLocation.deserialize(saved))
     }
 
     /**

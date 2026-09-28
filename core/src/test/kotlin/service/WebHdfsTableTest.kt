@@ -215,6 +215,19 @@ class WebHdfsTableTest {
         assertTrue("'intruder'" in failure.message.orEmpty() && "Permission denied" in failure.message.orEmpty(), failure.message)
         // At the root of a scan the refusal is thrown, not read as a warehouse holding nothing.
         assertTrue(runCatching { ObjectStorage.globTables("$warehouse/private") }.exceptionOrNull() is WebHdfs.PermissionDenied)
+
+        // A user given for the table alone opens it, though the directory it sits in is one only
+        // that user may list and every other path is read as someone who may not: the table's
+        // own root is asked about as the table's user, never through its parent's listing.
+        WebHdfs.setUsers(mapOf("$warehouse/private/mor" to "hadoop", namenode to "intruder"))
+        assertTrue(Files.isDirectory(StorageLocation.pathOf("$warehouse/private/mor")))
+        assertEquals(
+            listOf("version-hint.text", "v7.metadata.json"),
+            ObjectStorage.glob("$warehouse/private/mor/metadata/*").map { it.substringAfterLast('/') }
+                .filter { it == "version-hint.text" || it == "v7.metadata.json" }.sortedDescending(),
+        )
+        assertEquals(TableFormat.ICEBERG, TableFormatDetector.detect(StorageLocation.pathOf("$warehouse/private/mor")))
+        assertTrue(UnifiedTableModel(StorageLocation.pathOf("$warehouse/private/mor")).readErrors.isEmpty())
     }
 
     @Test
@@ -244,8 +257,22 @@ class WebHdfsTableTest {
         assertTrue("Kerberos" in said(401, "", "").message.orEmpty())
         assertTrue("check the path" in said(404, "FileNotFoundException", "File does not exist").message.orEmpty())
         assertTrue("HTTP 500 IOException: boom" in WebHdfs.failure(mor, 500, """{"RemoteException":{"exception":"IOException","message":"boom"}}""").message.orEmpty())
-        assertEquals("webhdfs://127.0.0.1:9870", WebHdfs.scopeOf("$mor/metadata"))
         assertEquals("intruder", WebHdfs.userFor("$mor/data"))
         assertEquals(WebHdfs.defaultUser, WebHdfs.userFor("webhdfs://elsewhere:9870/x"))
+    }
+
+    /**
+     * A user is scoped to the location it was given, the longest one holding a path winning —
+     * two locations on one namenode read as two users, as two buckets on one store take two keys.
+     */
+    @Test
+    fun `a user is scoped to its location, and the nearest location decides`() {
+        WebHdfs.setUsers(mapOf("$warehouse/db/" to "etl", "$warehouse/private" to "hadoop", namenode to "icelens"))
+        assertEquals("etl", WebHdfs.userFor("$mor/metadata/v1.metadata.json"))
+        assertEquals("etl", WebHdfs.userFor("$warehouse/db"))
+        assertEquals("hadoop", WebHdfs.userFor("$warehouse/private/mor"))
+        assertEquals("icelens", WebHdfs.userFor("$warehouse/dbx/mor"), "a sibling sharing a prefix is not under it")
+        assertEquals("icelens", WebHdfs.userFor("WEBHDFS://127.0.0.1:9870/warehouse"))
+        assertEquals(WebHdfs.defaultUser, WebHdfs.userFor("webhdfs://127.0.0.1:9871/warehouse/db"))
     }
 }

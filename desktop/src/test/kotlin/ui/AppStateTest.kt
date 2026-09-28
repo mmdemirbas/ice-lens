@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import model.WorkspaceItem
 import model.WorkspaceTableStatus
+import model.displayLabel
 import java.io.File
 import java.util.prefs.Preferences
 import kotlin.test.*
@@ -803,6 +804,92 @@ class AppStateTest {
         assertNull(cache["key-1"])
         assertNull(cache["key-2"])
         assertNotNull(cache["key-7"])
+    }
+
+    /**
+     * An HDFS location's user goes to WebHDFS and nothing about it goes to DuckDB. Its default is
+     * the credential chain, whose `CREATE SECRET` fails where no AWS key is found — handed to
+     * DuckDB, it would either make a secret for a scheme DuckDB does not read or fail the whole
+     * set and drop the object-store key beside it. Either way the secret names below differ.
+     */
+    @Test
+    fun `an HDFS location's user goes to WebHDFS, and DuckDB is given the object stores alone`() {
+        val minio = RemoteLocation(
+            url = "s3://warehouse/db", useCredentialChain = false, keyId = "minioadmin",
+            region = "us-east-1", endpoint = "127.0.0.1:9000", useSsl = false, urlStyle = "path",
+        )
+        val hdfs = RemoteLocation(url = "webhdfs://namenode:9870/warehouse", hdfsUser = "etl")
+        try {
+            state.saveRemoteLocation(minio, "minio-secret")
+            state.saveRemoteLocation(hdfs, null)
+            assertEquals("etl", service.WebHdfs.userFor("webhdfs://namenode:9870/warehouse/db/orders"))
+            val secrets = service.DuckDb.withConnection { conn ->
+                conn.createStatement().use { st ->
+                    st.executeQuery("SELECT name FROM duckdb_secrets()").use { rows ->
+                        buildList { while (rows.next()) add(rows.getString(1)) }
+                    }
+                }
+            }
+            assertEquals(listOf(minio.secretName), secrets.filter { it.startsWith("icelens_") })
+
+            state.forgetRemoteLocation(hdfs.url)
+            assertEquals(service.WebHdfs.defaultUser, service.WebHdfs.userFor(hdfs.url))
+        } finally {
+            state.forgetRemoteLocation(minio.url)
+            state.forgetRemoteLocation(hdfs.url)
+        }
+    }
+
+    /**
+     * The desktop's half of HDFS against `docs/fixtures/hdfs-lab.sh`, through the calls the form
+     * and the workspace panel make: a location saved with a user, added as a root, scanned and
+     * opened — and `mor` drawn exactly as the copy on disk is, rows included, which is the local
+     * copies for DuckDB reached from the desktop. `private/` is a `700` directory only `hadoop`
+     * lists: added under a location naming another user the probe is refused with that user in
+     * the message and nothing is added; named `hadoop` it is added, and `db/` is still read as
+     * its own user. Skipped when the lab is not up.
+     */
+    @Test
+    fun `an HDFS warehouse is added, scanned and opened as the user its location names`() {
+        val namenode = "webhdfs://127.0.0.1:9870"
+        val db = RemoteLocation(url = "$namenode/warehouse/db", hdfsUser = "icelens")
+        val private = RemoteLocation(url = "$namenode/warehouse/private", hdfsUser = "intruder")
+        val repoRoot = generateSequence(File(".").absoluteFile) { it.parentFile }.first { File(it, "settings.gradle.kts").isFile }
+        fun drawn(): Map<String, Any?> = state.graphModel!!.nodes.associate { node ->
+            node.id to if (node is model.GraphNode.RowNode) node.resolvedData - "local_file_path" else node.displayLabel()
+        }
+        try {
+            state.saveRemoteLocation(db, null)
+            org.junit.jupiter.api.Assumptions.assumeTrue(
+                runCatching { service.ObjectStorage.list("${db.url}/mor/metadata").isNotEmpty() }.getOrDefault(false),
+                "HDFS is not serving ${db.url} — start it with docs/fixtures/hdfs-lab.sh up",
+            )
+            runBlocking { state.addRemoteWorkspaceRoot(db.url) }
+            val warehouse = assertIs<WorkspaceItem.Warehouse>(state.workspaceItems.single())
+            assertEquals(listOf("dplain", "dv", "mor"), warehouse.tables.map { it.substringAfterLast('/') }.sorted())
+
+            state.loadTable("${db.url}/mor")
+            assertNull(state.errorMsg)
+            val remote = drawn()
+            assertTrue(remote.values.any { it is Map<*, *> && it.isNotEmpty() }, "no row card was read")
+            state.loadTable(File(repoRoot, "example/iceberg/default/mor").canonicalPath)
+            assertEquals(drawn(), remote)
+
+            state.saveRemoteLocation(private, null)
+            val refused = assertFailsWith<service.ObjectStorage.ObjectStorageException> {
+                runBlocking { state.addRemoteWorkspaceRoot(private.url) }
+            }
+            assertTrue("'intruder'" in refused.message.orEmpty(), refused.message)
+            assertEquals(1, state.workspaceItems.size)
+
+            state.saveRemoteLocation(private.copy(hdfsUser = "hadoop"), null)
+            runBlocking { state.addRemoteWorkspaceRoot(private.url) }
+            assertEquals(listOf("mor"), (state.workspaceItems.last() as WorkspaceItem.Warehouse).tables.map { it.substringAfterLast('/') })
+            assertEquals("icelens", service.WebHdfs.userFor("${db.url}/mor"))
+        } finally {
+            state.forgetRemoteLocation(db.url)
+            state.forgetRemoteLocation(private.url)
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════

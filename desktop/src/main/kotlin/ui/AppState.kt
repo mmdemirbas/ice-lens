@@ -21,6 +21,7 @@ import service.ObjectStorage
 import service.StorageLocation
 import service.TableFormat
 import service.TableFormatDetector
+import service.WebHdfs
 import java.io.File
 import java.nio.file.NoSuchFileException
 import org.slf4j.LoggerFactory
@@ -460,16 +461,21 @@ class AppState(
     }
 
     /**
-     * Hands every configured location's credentials to DuckDB, replacing whatever was there.
+     * Hands every configured location's credentials to DuckDB, and every HDFS location's user to
+     * [WebHdfs], replacing whatever was there.
      *
      * Replacing rather than adding: a location removed from the workspace must have its key gone
      * from the engine too, and DuckDB has no way to drop one secret by name that is cheaper than
-     * rebuilding the set.
+     * rebuilding the set. An HDFS location never reaches DuckDB — its default is the credential
+     * chain, whose `CREATE SECRET` fails where the chain finds no key, and that failure would take
+     * every object-store key in the set with it.
      */
     fun applyRemoteCredentials() {
+        val (hdfs, objectStores) = remoteLocations.partition { it.onHdfs }
         runCatching {
-            DuckDb.setCredentials(remoteLocations.map { it.credentials(remoteSecrets[it.url]) })
+            DuckDb.setCredentials(objectStores.map { it.credentials(remoteSecrets[it.url]) })
         }.onFailure { logger.warn("Could not apply object-store credentials: {}", it.message) }
+        WebHdfs.setUsers(hdfs.mapNotNull { location -> location.hdfsUser?.let { location.url to it } }.toMap())
     }
 
     /** Adds or replaces a remote location. [secret] is kept for this session only. */

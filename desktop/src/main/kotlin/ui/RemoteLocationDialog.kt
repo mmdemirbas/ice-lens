@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import service.WebHdfs
 
 /**
  * What the reader has to say to open a table that is not on this machine.
@@ -39,6 +40,10 @@ import androidx.compose.ui.unit.dp
  * be asking a reader to copy a secret into one more place. The typed-key branch exists for MinIO,
  * Ceph and OBS, which is also why the endpoint field is beside it rather than hidden behind an
  * "advanced" disclosure: an endpoint is the *ordinary* case for those, not an exception.
+ *
+ * **A `webhdfs://` location asks for a user and nothing else.** HDFS under simple authentication
+ * takes the name it is sent, so the form swaps the key and endpoint sections for one field, and
+ * says who is read as when it is left empty.
  */
 @Composable
 fun RemoteLocationDialog(
@@ -53,9 +58,13 @@ fun RemoteLocationDialog(
     var region by remember { mutableStateOf(existing?.region.orEmpty()) }
     var endpoint by remember { mutableStateOf(existing?.endpoint.orEmpty()) }
     var useSsl by remember { mutableStateOf(existing?.useSsl ?: true) }
+    var hdfsUser by remember { mutableStateOf(existing?.hdfsUser.orEmpty()) }
 
     val problem = RemoteLocation.validate(url)
-    fun build() = RemoteLocation(
+    val onHdfs = WebHdfs.serves(url.trim())
+    fun build() = if (onHdfs) {
+        RemoteLocation(url = url.trim().trimEnd('/'), hdfsUser = hdfsUser.trim().ifBlank { null })
+    } else RemoteLocation(
         url = url.trim().trimEnd('/'),
         useCredentialChain = useChain,
         keyId = keyId.trim().ifBlank { null },
@@ -69,7 +78,11 @@ fun RemoteLocationDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                if (existing == null) "Add a location in object storage" else "Credentials for this location",
+                when {
+                    existing == null -> "Add a remote location"
+                    existing.onHdfs -> "User for this location"
+                    else -> "Credentials for this location"
+                },
                 fontSize = TypeScale.body,
             )
         },
@@ -82,11 +95,12 @@ fun RemoteLocationDialog(
                 region = region, onRegionChange = { region = it },
                 endpoint = endpoint, onEndpointChange = { endpoint = it },
                 useSsl = useSsl, onUseSslChange = { useSsl = it },
+                hdfsUser = hdfsUser, onHdfsUserChange = { hdfsUser = it },
             )
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(build(), secret.takeIf { !useChain && it.isNotBlank() }) },
+                onClick = { onConfirm(build(), secret.takeIf { !onHdfs && !useChain && it.isNotBlank() }) },
                 enabled = problem == null,
             ) { Text(if (existing == null) "Add" else "Save") }
         },
@@ -112,6 +126,8 @@ fun RemoteLocationForm(
     onEndpointChange: (String) -> Unit,
     useSsl: Boolean,
     onUseSslChange: (Boolean) -> Unit,
+    hdfsUser: String = "",
+    onHdfsUserChange: (String) -> Unit = {},
 ) {
     val colors = MaterialTheme.colorScheme
     Column(
@@ -127,10 +143,15 @@ fun RemoteLocationForm(
             // The supported schemes are on screen from the start rather than only once the reader
             // has typed an unsupported one: which stores this build can open is the question.
             supportingText = {
-                CompactText { Text(problem ?: "A warehouse or a single table. s3://, gs://, gcs:// or r2://") }
+                CompactText { Text(problem ?: "A warehouse or a single table. s3://, gs://, gcs:// or r2://, or webhdfs://namenode:9870 for HDFS") }
             },
             modifier = Modifier.fillMaxWidth(),
         )
+
+        if (WebHdfs.serves(url.trim())) {
+            HdfsUserSection(hdfsUser, onHdfsUserChange)
+            return@Column
+        }
 
         Spacer(Modifier.height(8.dp))
         Text(
@@ -207,6 +228,31 @@ fun RemoteLocationForm(
             }
         }
     }
+}
+
+/**
+ * What an HDFS location asks for in place of a key: the user WebHDFS reads as. Who that is when
+ * the field is left empty is printed, since it is decided by this machine's environment.
+ */
+@Composable
+private fun HdfsUserSection(hdfsUser: String, onHdfsUserChange: (String) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Spacer(Modifier.height(8.dp))
+    Text("USER", fontSize = TypeScale.micro, fontWeight = FontWeight.Bold, color = colors.onSurfaceVariant)
+    OutlinedTextField(
+        value = hdfsUser, onValueChange = onHdfsUserChange, singleLine = true,
+        label = { Text("User name") },
+        supportingText = {
+            CompactText {
+                Text(
+                    "HDFS reads as this user under simple authentication. Left empty: " +
+                        "'${WebHdfs.defaultUser}', from HADOOP_USER_NAME or the login name. " +
+                        "A Kerberos-secured cluster is not read yet.",
+                )
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 /**

@@ -18,7 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/fixtures/hdfs-lab.sh` starts a local HDFS holding the Iceberg, Paimon
   and Delta fixtures. The new fixture `hdfsw` was written by Spark into it, so it records
   `hdfs://` paths the way a table on a cluster does. Each table on HDFS is checked against the
-  same table on disk. The desktop's location form does not offer HDFS yet.
+  same table on disk. The desktop's `Add remote storage…` form takes a `webhdfs://` location
+  with the user to read it as, in place of a key, and each user applies to its own location, so
+  two locations on one cluster can be read as two users. `AppStateTest` adds the lab's warehouse
+  through the form's own calls and draws `mor` exactly as the copy on disk is drawn.
 
 - **`icelens` opens a table in object storage with a key.** The command line configured no
   credentials, so an `s3://`, `gs://` or `r2://` table opened only if its bucket was public. It now

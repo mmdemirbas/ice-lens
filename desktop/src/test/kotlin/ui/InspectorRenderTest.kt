@@ -1251,7 +1251,7 @@ class InspectorRenderTest {
      */
     @Test
     fun `a workspace root says why its store could not be read`() {
-        renderScene("workspace-unreachable-1", width = 520, height = 420, density = 2f) {
+        renderScene("workspace-unreachable-1", width = 520, height = 560, density = 2f) {
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp)) {
                 Column {
                     WorkspaceRootItem(
@@ -1270,6 +1270,16 @@ class InspectorRenderTest {
                     WorkspaceRootItem(
                         item = model.WorkspaceItem.SingleTable("s3://warehouse/db/orders", "orders"),
                         isSelected = false, isExpanded = false,
+                        onToggleExpand = {}, onSelect = {}, onRemove = {},
+                    )
+                    // HDFS reads as a user rather than with a key, so the control is named for that.
+                    WorkspaceRootItem(
+                        item = model.WorkspaceItem.Warehouse("webhdfs://namenode:9870/warehouse/private", "private", listOf("orders")),
+                        isSelected = false, isExpanded = false,
+                        unreachable = "Permission denied as 'etl' at webhdfs://namenode:9870/warehouse/private. " +
+                            "Read it as a user HDFS lets list and read this path. HDFS said: Permission denied: " +
+                            "user=etl, access=READ_EXECUTE, inode=\"/warehouse/private\":hadoop:supergroup:drwx------",
+                        onFixCredentials = {},
                         onToggleExpand = {}, onSelect = {}, onRemove = {},
                     )
                 }
@@ -1322,6 +1332,23 @@ class InspectorRenderTest {
             }
         }
         File(outputDir, "remote-location-invalid-1.png").writeBytes(png)
+
+        // An HDFS location asks for a user in place of a key and an endpoint.
+        val hdfs = renderPng("remote-location-hdfs-1", width = 1000, height = 900, density = 2f) {
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).padding(16.dp)) {
+                RemoteLocationForm(
+                    url = "webhdfs://namenode:9870/warehouse",
+                    onUrlChange = {},
+                    problem = null,
+                    useChain = true, onUseChainChange = {},
+                    keyId = "", onKeyIdChange = {}, secret = "", onSecretChange = {},
+                    region = "", onRegionChange = {}, endpoint = "", onEndpointChange = {},
+                    useSsl = true, onUseSslChange = {},
+                    hdfsUser = "etl", onHdfsUserChange = {},
+                )
+            }
+        }
+        File(outputDir, "remote-location-hdfs-1.png").writeBytes(hdfs)
     }
 
     @Test

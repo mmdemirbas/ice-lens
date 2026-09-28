@@ -2,9 +2,14 @@ package ui
 
 import service.ObjectStoreCredentials
 import service.StorageLocation
+import service.WebHdfs
 
 /**
- * A warehouse or table in object storage, and how to reach it.
+ * A warehouse or table in object storage or on HDFS, and how to reach it.
+ *
+ * On HDFS ([onHdfs]) the one setting is [hdfsUser], the user WebHDFS reads as under simple
+ * authentication, and the object-storage fields are unused; the two kinds are routed apart in
+ * [AppState.applyRemoteCredentials].
  *
  * ### The secret is deliberately not here
  *
@@ -27,7 +32,11 @@ data class RemoteLocation(
     val endpoint: String? = null,
     val useSsl: Boolean = true,
     val urlStyle: String? = null,
+    val hdfsUser: String? = null,
 ) {
+    /** A `webhdfs://` or `swebhdfs://` location, which DuckDB is never configured for. */
+    val onHdfs: Boolean get() = WebHdfs.serves(url)
+
     /** The bucket, which is the widest scope a key should ever be handed. */
     val bucket: String get() = url.substringAfter("://").substringBefore('/')
 
@@ -53,7 +62,7 @@ data class RemoteLocation(
 
     fun serialize(): String = listOf(
         url, useCredentialChain.toString(), keyId.orEmpty(), region.orEmpty(),
-        endpoint.orEmpty(), useSsl.toString(), urlStyle.orEmpty(),
+        endpoint.orEmpty(), useSsl.toString(), urlStyle.orEmpty(), hdfsUser.orEmpty(),
     ).joinToString("|") { encodeField(it) }
 
     companion object {
@@ -76,6 +85,8 @@ data class RemoteLocation(
                 endpoint = parts[4].ifBlank { null },
                 useSsl = parts[5].toBooleanStrictOrNull() ?: true,
                 urlStyle = parts[6].ifBlank { null },
+                // The eighth field arrived with HDFS; a location saved before it has seven.
+                hdfsUser = parts.getOrNull(7)?.ifBlank { null },
             )
         }
 
@@ -96,15 +107,21 @@ data class RemoteLocation(
             val trimmed = url.trim()
             return when {
                 trimmed.isBlank() -> "Enter a location, for example s3://warehouse/db"
+                // HDFS's own scheme is the RPC protocol, which nothing here speaks; the same
+                // namenode answers WebHDFS on its HTTP port, which is the address to give.
+                StorageLocation.schemeOf(trimmed) == "hdfs" ->
+                    "HDFS is read over WebHDFS: give the namenode's HTTP address, for example " +
+                        "webhdfs://namenode:9870/warehouse — not the RPC port 8020"
                 !trimmed.contains("://") -> "A remote location needs a scheme, for example s3://warehouse/db"
                 StorageLocation.schemeOf(trimmed) == "file" -> "Use Add to Workspace for a local path"
                 // Before the scheme check, not after: `s3://` with no bucket is a URI that
                 // `pathOf` also rejects, and reporting that as "nothing reads s3://" would be
                 // false about the one part of the input that was right.
                 trimmed.substringAfter("://").substringBefore('/').isBlank() ->
-                    "Name a bucket, for example s3://warehouse/db"
+                    if (WebHdfs.serves(trimmed)) "Name the namenode and its WebHDFS port, for example webhdfs://namenode:9870/warehouse"
+                    else "Name a bucket, for example s3://warehouse/db"
                 runCatching { StorageLocation.pathOf(trimmed) }.isFailure ->
-                    "Nothing here reads '${StorageLocation.schemeOf(trimmed)}://'. Supported: s3, gs, gcs, r2"
+                    "Nothing here reads '${StorageLocation.schemeOf(trimmed)}://'. Supported: s3, gs, gcs, r2, webhdfs, swebhdfs"
                 else -> null
             }
         }

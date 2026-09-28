@@ -34,12 +34,14 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import model.WorkspaceItem
 import model.WorkspaceTableStatus
 import java.io.File
 import service.StorageLocation
+import service.WebHdfs
 
 
 @Composable
@@ -291,7 +293,7 @@ fun WorkspacePanel(
         TextButton(onClick = onAddRemote, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.CloudQueue, contentDescription = null, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Add object storage…", fontSize = TypeScale.small)
+            Text("Add remote storage…", fontSize = TypeScale.small)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -747,16 +749,26 @@ fun WorkspaceRootItem(
                 if (onFixCredentials != null) {
                     // A key is held for the session only, so this is the ordinary state on the
                     // second launch rather than an exceptional one — which is exactly why the way
-                    // out is a control here and not a mode of "Add object storage…" that the
+                    // out is a control here and not a mode of "Add remote storage…" that the
                     // reader has to know doubles as "edit".
                     // No horizontal content padding: the button's text is a field of this block
                     // and starts on the same x as the message above it. A default TextButton
                     // indents its label, which leaves the two lines ragged against each other.
-                    TextButton(
-                        onClick = onFixCredentials,
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier.height(24.dp),
-                    ) { Text("Credentials…", fontSize = TypeScale.micro) }
+                    // Two minimums do the same to a label narrower than them, each centring it: the
+                    // 48dp interactive size a clickable surface lays itself out at, and the row's
+                    // ButtonDefaults.MinWidth where its incoming minimum is zero. "User…" is both,
+                    // so the one is switched off here and a nonzero minimum stands the other down;
+                    // the target stays 24dp tall and as wide as its label.
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                        TextButton(
+                            onClick = onFixCredentials,
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.height(24.dp).widthIn(min = 1.dp),
+                        ) {
+                            // HDFS is read as a user and not with a key, so its refusal is fixed there.
+                            Text(if (WebHdfs.serves(item.path)) "User…" else "Credentials…", fontSize = TypeScale.micro)
+                        }
+                    }
                 }
             }
         }

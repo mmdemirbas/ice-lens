@@ -36,9 +36,10 @@ import java.util.concurrent.ConcurrentHashMap
  * time of every child, which object storage through DuckDB never gives — and `OPEN` for a file's
  * bytes. Nothing else: this backend issues `GET` and never a `PUT`, `POST` or `DELETE`, so the
  * read-only rule is a property of the code rather than of the caller. Requests carry simple
- * authentication's `user.name` — the name [setUsers] gave for the namenode, else what Hadoop's
- * own client sends when nothing is configured ([defaultUser]). A Kerberos-secured cluster asks
- * for SPNEGO, which this does not speak; it answers 401 and the message says so.
+ * authentication's `user.name` — the name [setUsers] gave for the nearest location holding the
+ * path, else what Hadoop's own client sends when nothing is configured ([defaultUser]). A
+ * Kerberos-secured cluster asks for SPNEGO, which this does not speak; it answers 401 and the
+ * message says so.
  *
  * ### The redirect is followed here, not by the HTTP client
  *
@@ -81,10 +82,10 @@ object WebHdfs : ObjectStorage.RemoteBackend {
 
     fun serves(location: String): Boolean = StorageLocation.schemeOf(location) in SCHEMES
 
-    /** `webhdfs://namenode:9870` — what a user name is configured for. */
-    fun scopeOf(location: String): String {
-        val (scheme, authority, _) = split(location)
-        return "$scheme://$authority"
+    /** A location as [setUsers] keys it and [userFor] matches it: scheme lower-cased, no trailing `/`. */
+    private fun scopeOf(location: String): String {
+        val (scheme, authority, path) = split(location)
+        return "$scheme://$authority${path.trimEnd('/')}"
     }
 
     /**
@@ -95,9 +96,13 @@ object WebHdfs : ObjectStorage.RemoteBackend {
         get() = System.getenv("HADOOP_USER_NAME")?.takeIf { it.isNotBlank() } ?: System.getProperty("user.name")
 
     /**
-     * The user each namenode is asked as, keyed by any location on it. Replaces what was there,
-     * and forgets every cached listing, since a listing made as one user says nothing about what
-     * another may read.
+     * The user each location is read as, for everything under it — a namenode's root to cover
+     * the whole cluster. Replaces what was there, and forgets every cached listing, since a
+     * listing made as one user says nothing about what another may read.
+     *
+     * Scoped to the location and not to its namenode, the way an object-store key is scoped to
+     * its bucket: permissions on HDFS are per directory, so two locations on one cluster may
+     * need two users, and one per namenode would read both as whichever was set last.
      */
     fun setUsers(byLocation: Map<String, String>) {
         users.clear()
@@ -105,7 +110,14 @@ object WebHdfs : ObjectStorage.RemoteBackend {
         ObjectStorage.clearCache()
     }
 
-    fun userFor(location: String): String = users[scopeOf(location)] ?: defaultUser
+    /** The user of the longest location [setUsers] was given that is [location] or holds it, else [defaultUser]. */
+    fun userFor(location: String): String {
+        val scope = scopeOf(location)
+        return users.entries
+            .filter { (key, _) -> scope == key || scope.startsWith("$key/") }
+            .maxByOrNull { (key, _) -> key.length }
+            ?.value ?: defaultUser
+    }
 
     override fun list(root: String): List<ObjectStorage.Entry> {
         val body = try {
@@ -132,16 +144,18 @@ object WebHdfs : ObjectStorage.RemoteBackend {
     /**
      * A directory is a directory here, empty or not — unlike object storage, HDFS has them.
      * Answered from the parent's cached listing, so a table's detection costs its root's one
-     * `LISTSTATUS` and not a request per marker; the namenode's root, which has no parent, is
-     * asked directly.
+     * `LISTSTATUS` and not a request per marker. The path is asked directly instead where the
+     * parent would be listed as another user — a location's user reaches the location and what is
+     * under it, not the directory above, which that user's table may sit in unable to list — and
+     * at the namenode's root, which has no parent.
      */
     override fun isDirectory(location: String): Boolean {
         val (scheme, authority, path) = split(location)
         val trimmed = path.trimEnd('/')
-        if (trimmed.isEmpty()) {
+        val parent = "$scheme://$authority${trimmed.substringBeforeLast('/')}"
+        if (trimmed.isEmpty() || userFor(parent) != userFor(location)) {
             return runCatching { get(location, "GETFILESTATUS").contains("\"DIRECTORY\"") }.getOrDefault(false)
         }
-        val parent = "$scheme://$authority${trimmed.substringBeforeLast('/')}"
         val name = trimmed.substringAfterLast('/')
         return runCatching { ObjectStorage.list(parent).firstOrNull { it.name == name }?.isDirectory == true }
             .getOrDefault(false)
@@ -185,11 +199,17 @@ object WebHdfs : ObjectStorage.RemoteBackend {
      * so through its cache: `*` and `?` within one segment, `**` for any number of segments, a
      * trailing `**` for every file below. Directories are never returned, as DuckDB's glob
      * returns none. A directory that is not there matches nothing; a refusal is thrown.
+     *
+     * The literal segments before the first wildcard are descended into, not matched from their
+     * parents' listings: a request fewer per segment, and what lets a user given for a location
+     * glob inside it when the directory above is one that user may not list.
      */
     override fun glob(pattern: String): List<String> {
         val (scheme, authority, path) = split(pattern)
+        val segments = path.split('/').filter { it.isNotEmpty() }
+        val literal = segments.dropLast(1).takeWhile { segment -> '*' !in segment && '?' !in segment }
         val found = LinkedHashSet<String>()
-        walk("$scheme://$authority", path.split('/').filter { it.isNotEmpty() }, found)
+        walk("$scheme://$authority" + literal.joinToString("") { "/$it" }, segments.drop(literal.size), found)
         return found.toList()
     }
 
@@ -333,10 +353,13 @@ object WebHdfs : ObjectStorage.RemoteBackend {
             status == 401 || exception == "AuthenticationException" ->
                 "The namenode at $authority asked for authentication. This reader sends simple authentication's " +
                     "user name only; a Kerberos-secured cluster (SPNEGO) is not read yet."
+            // What to do comes before the namenode's own sentence, which repeats the user and names
+            // the inode's owner and mode: a workspace row shows four lines, and it is the detail
+            // that can be cut, not the remedy.
             exception == "AccessControlException" -> return PermissionDenied(
                 location,
-                "Permission denied reading $location as '${userFor(location)}': $message. Read it as a user HDFS " +
-                    "lets list and read this path.",
+                "Permission denied as '${userFor(location)}' at $location. Read it as a user HDFS lets list and " +
+                    "read this path. HDFS said: $message",
             )
             exception == "StandbyException" ->
                 "The namenode at $authority is a standby and serves no reads. Open the active namenode's address."

@@ -433,7 +433,7 @@ What is left:
   `gs://`, `gcs://` and `r2://` are read through a `java.nio` `FileSystemProvider` over DuckDB
   (`service/ObjectFileSystem.kt`); `webhdfs://` and `swebhdfs://` through the same provider over
   the namenode's HTTP API (`service/WebHdfs.kt`), with no Hadoop client, DuckDB reading local
-  copies. Open: the desktop's location form does not offer HDFS yet; a Kerberos-secured cluster
+  copies, from the desktop's form and the command line. Open: a Kerberos-secured cluster
   (SPNEGO) is refused with a sentence saying so; a standby namenode is named, not failed over
   from; `abfs://` is not a DuckDB scheme and needs its own provider.
 

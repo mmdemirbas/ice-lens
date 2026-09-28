@@ -153,7 +153,7 @@ core/src/main/kotlin/
 │   ├── DuckDb.kt              # The shared DuckDB connection, and the object-store credentials configured on it
 │   ├── ObjectStorage.kt       # Listing and reading remote storage, with the caches that make it viable — object storage through DuckDB, HDFS through WebHdfs
 │   ├── ObjectFileSystem.kt    # A read-only java.nio FileSystem over ObjectStorage (s3/gs/gcs/r2, webhdfs/swebhdfs)
-│   ├── WebHdfs.kt             # HDFS over the namenode's HTTP API — LISTSTATUS, OPEN, a user per namenode, and local copies for DuckDB
+│   ├── WebHdfs.kt             # HDFS over the namenode's HTTP API — LISTSTATUS, OPEN, a user per location, and local copies for DuckDB
 │   ├── PuffinReader.kt        # Puffin footer + `deletion-vector-v1` blob → the row positions a v3 vector marks
 │   ├── IcebergGraphBuilder.kt # Iceberg-specific graph construction: UnifiedTableModel → nodes + edges
 │   ├── PaimonGraphBuilder.kt  # Paimon-specific graph construction: PaimonUnifiedTableModel → nodes + edges
@@ -202,7 +202,7 @@ desktop/src/main/kotlin/
     ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
     ├── DeltaNodePanels.kt     # Delta version, file action and checkpoint panels
     ├── DeltaMaintenanceSections.kt # The Delta table panel's Optimize (the bare call, and WHERE and ZORDER BY under two fields), Log Cleanup and Vacuum sections, the last behind a listing
-    ├── RemoteLocations.kt      # A location in object storage and how to reach it — persisted, minus the secret
+    ├── RemoteLocations.kt      # A location in object storage or on HDFS and how to reach it — persisted, minus the secret
     ├── RemoteLocationDialog.kt # The form for a location no file chooser can browse to
     ├── Sidebar.kt             # Workspace panel — add/remove roots, search, drag-to-reorder, format badges (ICE/PMN)
     ├── NavigationTree.kt      # Structure tree view — flatten graph, search, expand/collapse
@@ -2478,8 +2478,16 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   `TableFormatDetector` at each directory, stopping at every table) passes over a directory the
   user may not list with a warning, where a refusal on the root is thrown — permissions on HDFS
   are per directory, and one private database would otherwise hide a whole warehouse. The user
-  is simple authentication's `user.name`: per namenode from `WebHdfs.setUsers`, else what
-  Hadoop's client sends, `HADOOP_USER_NAME` or the login name. **DuckDB reads no `webhdfs://`**,
+  is simple authentication's `user.name`: from `WebHdfs.setUsers`, **scoped to a location and the
+  nearest one holding a path deciding** — a user per namenode read two locations on one cluster
+  as whichever was set last, where permissions are per directory — else what Hadoop's client
+  sends, `HADOOP_USER_NAME` or the login name. A location's user reaches the location and what is
+  under it and never the directory above, so `isDirectory` asks the path itself where its parent
+  resolves to another user, and `glob` descends the literal segments before its first wildcard
+  rather than matching each from its parent's listing — `icelens --hdfs-user hadoop` on a table
+  inside a directory only `hadoop` may list was refused at that directory until both did. The refusal leads with the user and the remedy and
+  puts the namenode's own sentence last, since a workspace row shows four lines and the inode's
+  owner and mode are the part that may be cut. **DuckDB reads no `webhdfs://`**,
   so `SampleRowReader.resolveDataFile` hands every SQL reader a local copy (`WebHdfs.localCopyOf`),
   streamed once per session into a `LocalCopyCache` — the Avro transcode's cache, extracted —
   bounded at 2 GiB, keyed by the file's length and time, under the file's own name. **A table
@@ -2726,10 +2734,18 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   under the field rather than leaving it to be discovered at the next launch, and the default is the
   ambient credential chain, which on a machine with the AWS CLI configured needs no paste at all.
   A key is scoped to its **bucket**, never to the store: a workspace holding two buckets in two
-  accounts must not send one account's key to the other's endpoint
+  accounts must not send one account's key to the other's endpoint. **An HDFS location carries a
+  user and no key** (`RemoteLocation.hdfsUser`, the eighth persisted field; an entry of seven
+  still loads): the form shows a user field in place of the credential block for a `webhdfs://`
+  or `swebhdfs://` URL, names the default it falls back to, and `applyRemoteCredentials` hands
+  such locations to `WebHdfs.setUsers` and **never to DuckDB** — the credential chain is their
+  default, and a chain `CREATE SECRET` that finds no key fails the whole set, dropping every
+  object-store key beside it. An `hdfs://` URL is refused with the WebHDFS address to use
+  instead, since 8020 is the RPC port. The workspace row's fix control reads `User…` there, not
+  `Credentials…`
 - **A remote root is added by a second control, and the reading happens off the main thread.** The
   native chooser cannot browse a bucket — there is no directory to point at until credentials
-  exist — so `Add object storage…` is its own affordance rather than a mode of `Add to Workspace`,
+  exist — so `Add remote storage…` is its own affordance rather than a mode of `Add to Workspace`,
   at secondary weight because a local warehouse is still the common case.
   `AppState.addRemoteWorkspaceRoot` is `suspend`: "is this a table" and "what is under it" are one
   filesystem call locally and network round trips here, so they run on `Dispatchers.IO` and only
@@ -3269,7 +3285,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,580 tests across 221 files (1,276 in :core, 290 in :desktop, 1 in :intellij, 15 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,580 tests across 221 files (1,277 in :core, 293 in :desktop, 1 in :intellij, 15 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
