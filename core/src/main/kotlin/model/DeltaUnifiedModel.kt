@@ -6,9 +6,12 @@ import service.DeltaLogListing
 import service.DeltaReader
 import service.StorageLocation
 import service.TableFormat
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
+import java.util.zip.CRC32
 
 /** One commit file: its version, where it is, and what it holds. */
 data class DeltaCommit(
@@ -250,6 +253,29 @@ fun DeltaDeletionVector.filePath(tableRoot: Path): Path? {
         else -> null
     }
 }
+
+/**
+ * An inline vector (`storageType = i`) framed the way a stored one is written — a 4-byte
+ * big-endian size, the magic and bitmap, a 4-byte big-endian CRC-32 — so the one decoder a stored
+ * vector goes through reads it too. The log holds the magic and bitmap alone, as Z85 text padded
+ * to four bytes, so the text is cut to [sizeInBytes] and the CRC is computed, there being none to
+ * check. The oracle is `dinl`'s two, which delta-spark's classes serialized and read back.
+ * `PROTOCOL.md`'s own inline example is not one: its bytes are the Native layout written
+ * big-endian (`64 39 D3 D0`, a count, a size), and delta-spark 3.2.1's `RoaringBitmapArray.readFrom`
+ * refuses it (`Unexpected RoaringBitmapArray magic number -791463580`,
+ * `docs/fixtures/delta/dinl-protocol-example.scala`), as the decoder here does. The Native layout
+ * written little-endian, which that reader accepts and no writer of the release produces for a
+ * vector, is not decoded here: such a vector reads as one that could not be read.
+ */
+fun deltaInlineVectorBlob(z85: String, sizeInBytes: Int?): ByteArray {
+    val data = Z85.decode(z85).let { bytes -> sizeInBytes?.let { bytes.copyOf(it) } ?: bytes }
+    val crc = CRC32().apply { update(data) }.value.toInt()
+    return ByteBuffer.allocate(4 + data.size + 4).order(ByteOrder.BIG_ENDIAN).putInt(data.size).put(data).putInt(crc).array()
+}
+
+/** [deltaInlineVectorBlob] of this vector, or null where it is stored in a file. */
+fun DeltaDeletionVector.inlineBlob(): ByteArray? =
+    if (storageType == "i") deltaInlineVectorBlob(pathOrInlineDv.orEmpty(), sizeInBytes) else null
 
 /** The three file actions a commit writes. */
 enum class DeltaFileAction(val label: String) { ADD("Add"), REMOVE("Remove"), CDC("Change data") }

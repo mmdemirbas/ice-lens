@@ -43,6 +43,12 @@ data class LookupDeleteFile(
     val recordCount: Long? = null,
     /** An equality delete's field ids, resolved to the current schema's column names where it names them. */
     val equalityColumns: List<String> = emptyList(),
+    /**
+     * A vector the metadata holds itself rather than a file — Delta's `storageType = i` — as the
+     * log's Z85 text of its magic and bitmap; [contentSizeInBytes] is then its framed length, as a
+     * stored vector's is, and [deltaInlineVectorBlob] frames it.
+     */
+    val inlineVector: String? = null,
 )
 
 /**

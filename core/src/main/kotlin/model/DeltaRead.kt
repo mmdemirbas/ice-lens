@@ -102,8 +102,10 @@ fun IcebergSchemaModel.withConstants(values: Map<String, String?>): IcebergSchem
  * column renamed between two versions is one column at every step (column mapping keys files and
  * partition values by physical name, which a rename does not change).
  *
- * An inline vector (`storageType = i`) has no file to open, so it is listed with no location and
- * a row it could mark is left undecided — said, never guessed. The display names are the
+ * An inline vector (`storageType = i`) has no file to open: it is listed with the log's text of
+ * its bytes ([LookupDeleteFile.inlineVector]), which the readers frame and decode as they would a
+ * stored one — `dinl`'s two, written through delta-spark's classes, are held to its reads. The
+ * display names are the
  * partition columns' keys only without column mapping; under it `partitionValues` is keyed by the
  * physical name, which is mapped back here.
  */
@@ -127,7 +129,7 @@ fun DeltaUnifiedTableModel.readInputAt(version: Long, readUnder: DeltaStructType
         // Named by its file and offset where it has one — what a reader can find on disk — rather
         // than by the Z85 string the log records.
         val name = file?.let { runCatching { path.relativize(it).toString() }.getOrDefault(it.toString()) + "@" + (dv.offset ?: 1) }
-            ?: "inline vector"
+            ?: "inline vector on ${add.path.substringAfterLast('/')}"
         deletes += LookupDeleteFile(
             recordedPath = name,
             localPath = location ?: "inline vector ${dv.uniqueId}",
@@ -136,6 +138,7 @@ fun DeltaUnifiedTableModel.readInputAt(version: Long, readUnder: DeltaStructType
             contentOffset = (dv.offset ?: 1).toLong(),
             contentSizeInBytes = dv.sizeInBytes?.let { 4L + it + 4L },
             recordCount = dv.cardinality,
+            inlineVector = dv.pathOrInlineDv.takeIf { dv.storageType == "i" },
         )
         reach += DeleteReach(
             deletePath = name,

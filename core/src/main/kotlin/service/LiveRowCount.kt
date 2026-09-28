@@ -87,12 +87,7 @@ object LiveRowCount {
     }
 
     private fun vectorCardinality(delete: LookupDeleteFile, file: LookupDataFile): Long? =
-        runCatching {
-            PuffinReader.readDeletionVector(
-                StorageLocation.pathOf(delete.localPath), requireNotNull(delete.contentOffset), requireNotNull(delete.contentSizeInBytes),
-                file.recordedPath, delete.recordCount,
-            ).cardinality
-        }.onFailure { logger.warn("Could not read the vector in {}: {}", delete.localPath, it.message) }.getOrNull()
+        runCatching { RowLookup.readVector(delete, file.recordedPath).cardinality }.onFailure { logger.warn("Could not read the vector in {}: {}", delete.localPath, it.message) }.getOrNull()
 
     /** The distinct positions every reaching delete removes from one data file, the file opened once. */
     private fun removedFrom(file: LookupDataFile, deletes: List<LookupDeleteFile>, vectors: MutableMap<String, BitSet?>, input: RowLookupInput): Long {
@@ -101,7 +96,7 @@ object LiveRowCount {
         val bits = BitSet()
         deletes.filter { it.kind == DeleteFileKind.DELETION_VECTOR }.forEach { vector ->
             val positions = vectors.getOrPut(vector.key) {
-                runCatching { PuffinReader.readDeletionVectorPositions(StorageLocation.pathOf(vector.localPath), requireNotNull(vector.contentOffset), requireNotNull(vector.contentSizeInBytes)) }
+                runCatching { RowLookup.readVectorPositions(vector) }
                     .onFailure { logger.warn("Could not read the vector in {}: {}", vector.localPath, it.message) }
                     .getOrNull()
             } ?: throw IllegalStateException("the vector in ${vector.recordedPath.substringAfterLast('/')} could not be read")

@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Inline Delta deletion vectors are read everywhere a stored one is.** A vector the log holds
+  itself (`storageType` `i`) was decoded on the file panel only; the row lookup left a row it
+  marks undecided, and the live count reported it unreadable. The lookup, the count, the row
+  history and the row cards now apply it. delta-spark 3.2.1 writes no inline vector from SQL, so
+  the new fixture `dinl` commits two through delta-spark's own classes and uses delta-spark's
+  reads of them as the check. `PROTOCOL.md`'s own inline example turned out to be one delta-spark
+  3.2.1 refuses (a big-endian byte order its reader does not accept), and it is refused here too.
+
 - **Delta `OPTIMIZE … WHERE`, planned.** A predicate over partition columns narrows the plan in
   every mode to the partitions it matches, read exactly as Spark does: a comparison with a null
   partition value is false, so `p <> 'x'` leaves the null partition out. A predicate naming a

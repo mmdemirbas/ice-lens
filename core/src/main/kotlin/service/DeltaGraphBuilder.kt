@@ -2,10 +2,7 @@ package service
 
 import model.*
 import org.slf4j.LoggerFactory
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.nio.file.Files
-import java.util.zip.CRC32
 
 private val logger = LoggerFactory.getLogger(DeltaGraphBuilder::class.java)
 
@@ -154,15 +151,13 @@ object DeltaGraphBuilder {
      * A vector's bytes decoded. A stored vector is read at `offset` (1 where it is absent: the
      * file opens with a version byte) for its 4-byte size, its `sizeInBytes` of magic and bitmap,
      * and its 4-byte CRC — Iceberg's Puffin blob byte for byte, which the spec made it on purpose.
-     * An inline vector carries the magic and bitmap alone, so it is framed here and its CRC is
-     * computed rather than read: there is none to check.
+     * An inline vector carries the magic and bitmap alone, so it is framed ([inlineBlob]) and its
+     * CRC is computed rather than read: there is none to check.
      */
     internal fun readDeletionVector(tableModel: DeltaUnifiedTableModel, vector: DeltaDeletionVector): DeletionVector? = runCatching {
-        if (vector.storageType == "i") {
-            val data = Z85.decode(vector.pathOrInlineDv.orEmpty()).let { bytes -> vector.sizeInBytes?.let { bytes.copyOf(it) } ?: bytes }
-            val crc = CRC32().apply { update(data) }.value.toInt()
-            val blob = ByteBuffer.allocate(4 + data.size + 4).order(ByteOrder.BIG_ENDIAN).putInt(data.size).put(data).putInt(crc).array()
-            PuffinReader.decodeDeletionVector(blob, recordedCardinality = vector.cardinality)
+        val inline = vector.inlineBlob()
+        if (inline != null) {
+            PuffinReader.decodeDeletionVector(inline, recordedCardinality = vector.cardinality)
         } else {
             val file = requireNotNull(vector.filePath(tableModel.path)) { "the vector's location ${vector.pathOrInlineDv} does not decode" }
             val size = requireNotNull(vector.sizeInBytes) { "the vector records no sizeInBytes" }
@@ -172,10 +167,9 @@ object DeltaGraphBuilder {
 
     /** Every position [vector] marks, uncapped — for a change feed or a count that must be exact; null where it cannot be read. */
     internal fun readDeletionVectorPositions(tableRoot: java.nio.file.Path, vector: DeltaDeletionVector): java.util.BitSet? = runCatching {
-        if (vector.storageType == "i") {
-            val data = Z85.decode(vector.pathOrInlineDv.orEmpty()).let { bytes -> vector.sizeInBytes?.let { bytes.copyOf(it) } ?: bytes }
-            val crc = CRC32().apply { update(data) }.value.toInt()
-            PuffinReader.positionsOf(ByteBuffer.allocate(4 + data.size + 4).order(ByteOrder.BIG_ENDIAN).putInt(data.size).put(data).putInt(crc).array())
+        val inline = vector.inlineBlob()
+        if (inline != null) {
+            PuffinReader.positionsOf(inline)
         } else {
             val file = requireNotNull(vector.filePath(tableRoot)) { "the vector's location ${vector.pathOrInlineDv} does not decode" }
             val size = requireNotNull(vector.sizeInBytes) { "the vector records no sizeInBytes" }

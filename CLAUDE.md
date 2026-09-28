@@ -3201,7 +3201,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,557 tests across 218 files (1,254 in :core, 290 in :desktop, 1 in :intellij, 12 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,563 tests across 219 files (1,260 in :core, 290 in :desktop, 1 in :intellij, 12 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3387,6 +3387,7 @@ container invocation and the traps in it:
 | `delta/dzo` | `DeltaOptimizeModesFixtureTest` | `OPTIMIZE ZORDER BY` four times on one partitioned table with a vector — every file of both partitions, the lone `p=y` file included; the same again; after an insert by another column; and under `optimize.maxFileSize = 300`, asking for five files and writing four |
 | `delta/dcl` | `DeltaOptimizeModesFixtureTest` | liquid clustering — three unclustered files into a cube, a second run writing nothing, the small cube merged with a new file, then `ALTER TABLE CLUSTER BY (b)`: the new file alone into a cube by `b`, the cube by `a` left with its vector counted in `numDeletionVectorsRemoved`, and a last run writing nothing |
 | `delta/dow` | `DeltaOptimizeWhereFixtureTest` | `OPTIMIZE … WHERE` on a table partitioned by a string and a date, a null partition and a vector in `p=y` — `p = 'x'` compacting two partitions and counting no vector, the same again and `p = 'q'` writing nothing, `d >= '2024-03-06'` against the date, `p <> 'x' ZORDER BY (a)` leaving the null partition out, and `NOT (p LIKE '%y') OR p IS NULL ZORDER BY (a, id)`; each commit's predicate as Catalyst's `toString` |
+| `delta/dinl` | `DeltaInlineVectorFixtureTest` | inline deletion vectors, committed by `dinl.scala` through delta-spark's own classes after a `DELETE` wrote a vector file — the first file's vector written again inline, a new inline one marking three rows of the second — then a `DELETE` reading the inline vector and writing the union to a file; delta-spark's reads at version 4 and after as the oracle |
 | `delta/dvac`, `dvaca`, `dopt` | `DeltaVacuumPlanFixtureTest`, `DeltaOptimizePlanFixtureTest` | five inserts and a whole-file `DELETE`; `dopt` copied before the `OPTIMIZE` that compacted four files into one, `dvaca` after a `VACUUM … RETAIN 0 HOURS` that deleted six, with its `VACUUM START` and `VACUUM END` commits |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
@@ -4216,8 +4217,20 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   portable 64-bit Roaring, big-endian CRC-32 — read at `offset` (1 when absent, after the file's
   version byte) for `4 + sizeInBytes + 4` bytes by `PuffinReader.readDeletionVector`. A `u` vector
   is `deletion_vector_<uuid>.bin` under the table, the UUID Z85-encoded in the last 20 characters
-  after an optional directory prefix; `p` is a path; `i` is inline and framed here. `ddv` puts both
-  of a `DELETE`'s vectors in one `.bin` at offsets 1 and 43
+  after an optional directory prefix; `p` is a path; `ddv` puts both of a `DELETE`'s vectors in one
+  `.bin` at offsets 1 and 43. **`i` is inline**: the log's Z85 text holds the magic and bitmap
+  alone, padded to four bytes, so `deltaInlineVectorBlob` cuts it to `sizeInBytes` and frames it
+  as a stored vector is, the CRC computed — one decoder for both. The lookup's delete file carries
+  the text (`LookupDeleteFile.inlineVector`) and `RowLookup.readVector` / `.readVectorPositions`
+  are the one reading the lookup, the live count and the history share. delta-spark 3.2.1 writes
+  no inline vector from SQL, so `dinl` commits two through its own classes (`dinl.scala`:
+  `RoaringBitmapArray` in the portable format, `DeletionVectorDescriptor.inlineInLog`,
+  `AddFile.removeRows`, a `Manual Update` commit), and its reads after them are the oracle;
+  `DeltaInlineVectorFixtureTest` holds the lookup, the count, the history and the row cards to
+  them. **`PROTOCOL.md`'s own inline example is not one**: its bytes are the Native layout written
+  big-endian (`64 39 D3 D0`, a count, a size), and delta-spark's little-endian
+  `RoaringBitmapArray.readFrom` refuses it — `Unexpected RoaringBitmapArray magic number
+  -791463580`, run in `dinl-protocol-example.scala` — as the decoder here does
 - **A Delta writer does not put a partition column into the file**, so a row card is given the
   partition values from the log beside the file's own columns (`dpart`); a null partition is JSON
   null in the log and prints `null`
@@ -4364,7 +4377,8 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   version 0 where the feature was on from the `CREATE`, each commit's `inCommitTimestamp` must be
   above the previous one's, since a time travel by timestamp searches the versions by it. 3.2.1
   spells both properties with `-preview` (`drt`), and both spellings are read
-- Not yet read (the `TODO.md` Delta section): inline deletion vectors in the lookup
+- Not yet read (the `TODO.md` Delta section): a vector in the Native layout, which delta-spark
+  3.2.1 reads and writes for no vector
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

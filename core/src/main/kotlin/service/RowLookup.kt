@@ -10,12 +10,14 @@ import model.RowFate
 import model.RowHit
 import model.RowLookupInput
 import model.RowLookupResult
+import model.deltaInlineVectorBlob
 import model.IcebergSchemaModel
 import model.NameMapping
 import model.ScanFilter
 import model.normalizeFilePath
 import model.toSql
 import org.slf4j.LoggerFactory
+import java.util.BitSet
 
 /**
  * Finding rows and deciding their fate, over the files a filter leaves — see [RowLookupInput]
@@ -31,6 +33,31 @@ import org.slf4j.LoggerFactory
  */
 object RowLookup {
     private val logger = LoggerFactory.getLogger(RowLookup::class.java)
+
+    /**
+     * [delete]'s vector decoded: read from its file at its offset, or — held in the metadata
+     * itself ([LookupDeleteFile.inlineVector]) — framed from that text. The one reading of a
+     * vector the lookup and the live count share, so an inline one is not a third case in each.
+     */
+    internal fun readVector(delete: LookupDeleteFile, referencedDataFile: String?): DeletionVector {
+        delete.inlineVector?.let { return PuffinReader.decodeDeletionVector(inlineBlobOf(delete, it), referencedDataFile, delete.recordCount) }
+        return PuffinReader.readDeletionVector(
+            StorageLocation.pathOf(delete.localPath), requireNotNull(delete.contentOffset), requireNotNull(delete.contentSizeInBytes),
+            referencedDataFile, delete.recordCount,
+        )
+    }
+
+    /** Every position [delete]'s vector marks, uncapped — [readVector]'s twin for an exact count. */
+    internal fun readVectorPositions(delete: LookupDeleteFile): BitSet {
+        delete.inlineVector?.let { return PuffinReader.positionsOf(inlineBlobOf(delete, it)) }
+        return PuffinReader.readDeletionVectorPositions(
+            StorageLocation.pathOf(delete.localPath), requireNotNull(delete.contentOffset), requireNotNull(delete.contentSizeInBytes),
+        )
+    }
+
+    /** The recorded framed length less the size and CRC fields is the magic and bitmap the text holds. */
+    private fun inlineBlobOf(delete: LookupDeleteFile, z85: String): ByteArray =
+        deltaInlineVectorBlob(z85, delete.contentSizeInBytes?.let { (it - 8).toInt() })
 
     /** Data files opened in one lookup; the filter is supposed to have narrowed them. */
     const val MAX_FILES = 64
@@ -127,12 +154,7 @@ object RowLookup {
             when (delete.kind) {
                 DeleteFileKind.DELETION_VECTOR -> {
                     val vector = vectors.getOrPut(delete.key) {
-                        runCatching {
-                            PuffinReader.readDeletionVector(
-                                StorageLocation.pathOf(delete.localPath), requireNotNull(delete.contentOffset), requireNotNull(delete.contentSizeInBytes),
-                                file.recordedPath, delete.recordCount,
-                            )
-                        }.onFailure { logger.warn("Could not read the vector in {}: {}", delete.localPath, it.message) }.getOrNull()
+                        runCatching { readVector(delete, file.recordedPath) }.onFailure { logger.warn("Could not read the vector in {}: {}", delete.localPath, it.message) }.getOrNull()
                     }
                     if (vector == null) { note = "a vector could not be read"; continue }
                     if (position!! in vector.positions) return RowHit(path, position, cells, RowFate.VECTOR_DELETED, delete.recordedPath)

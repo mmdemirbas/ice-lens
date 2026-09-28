@@ -1,0 +1,29 @@
+1
+fixture: part-00000-cfa704ef-f279-4c0d-8006-abe427a5f9d3-c000.snappy.parquet ids 2 at 1 -> i ^Bg9^0rr910000000000iXQKl0rr91000005c8Xg0rr91 sizeInBytes 34 cardinality 1
+fixture: part-00000-6c35ad34-0304-4114-a910-9224312f7691-c000.snappy.parquet ids 6,8,10 at 1,3,5 -> i ^Bg9^0rr910000000000iXQKl0rr91000625c8Xg0rri41POJ5 sizeInBytes 38 cardinality 3
+fixture: committed version 4
+fixture: done
+v4	1	a
+v4	3	c
+v4	4	d
+v4	5	e
+v4	7	g
+v4	9	i
+1
+rows	1	a
+rows	4	d
+rows	5	e
+rows	7	g
+rows	9	i
+asof4	1	a
+asof4	3	c
+asof4	4	d
+asof4	5	e
+asof4	7	g
+asof4	9	i
+5	2026-09-28 12:14:19.662	NULL	NULL	DELETE	{"predicate":"["(id#1202 = 3)"]"}	NULL	NULL	NULL	4	Serializable	false	{"executionTimeMs":"2043","numAddedBytes":"0","numAddedChangeFiles":"0","numAddedFiles":"0","numCopiedRows":"0","numDeletedRows":"1","numDeletionVectorsAdded":"1","numDeletionVectorsRemoved":"1","numDeletionVectorsUpdated":"1","numRemovedBytes":"0","numRemovedFiles":"0","rewriteTimeMs":"0","scanTimeMs":"0"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+4	2026-09-28 12:14:00.848	NULL	NULL	Manual Update	{}	NULL	NULL	NULL	3	Serializable	false	{}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+3	2026-09-28 12:13:42.675	NULL	NULL	DELETE	{"predicate":"["(id#216 = 2)"]"}	NULL	NULL	NULL	2	Serializable	false	{"executionTimeMs":"7254","numAddedBytes":"0","numAddedChangeFiles":"0","numAddedFiles":"0","numCopiedRows":"0","numDeletedRows":"1","numDeletionVectorsAdded":"1","numDeletionVectorsRemoved":"0","numDeletionVectorsUpdated":"0","numRemovedBytes":"0","numRemovedFiles":"0","rewriteTimeMs":"0","scanTimeMs":"0"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+2	2026-09-28 12:13:35.046	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	1	Serializable	true	{"numFiles":"1","numOutputBytes":"694","numOutputRows":"6"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+1	2026-09-28 12:13:34.538	NULL	NULL	WRITE	{"mode":"Append","partitionBy":"[]"}	NULL	NULL	NULL	0	Serializable	true	{"numFiles":"1","numOutputBytes":"678","numOutputRows":"4"}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1
+0	2026-09-28 12:13:28.964	NULL	NULL	CREATE TABLE	{"clusterBy":"[]","description":null,"isManaged":"true","partitionBy":"[]","properties":"{"delta.enableDeletionVectors":"true"}"}	NULL	NULL	NULL	NULL	Serializable	true	{}	NULL	Apache-Spark/3.5.4 Delta-Lake/3.2.1

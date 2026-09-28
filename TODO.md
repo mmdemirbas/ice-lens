@@ -28,13 +28,14 @@ Read: the log, checkpoints of every naming, the replay, file actions, deletion v
 integrity checks (commit metrics, checkpoint against replay, `_last_checkpoint`, vectors), column
 mapping in both modes, the change data feed, a row's history across versions, and the VACUUM,
 OPTIMIZE planner in its three modes — compaction, ZORDER BY, liquid clustering — with a WHERE
-over partition columns, and the
-log-cleanup planner with their maintenance lines, row tracking on rows, UniForm's
-Iceberg metadata against the log, in-commit timestamps' order.
+over partition columns, and the log-cleanup planner with their maintenance lines, row tracking on
+rows, UniForm's Iceberg metadata against the log, in-commit timestamps' order, and inline deletion
+vectors wherever a stored one is read.
 
-- **Inline deletion vectors** are decoded on the file panel but the lookup cannot read one — it
-  has no file — and leaves the row undecided. delta-spark 3.2.1 does not write them, so a fixture
-  needs another writer.
+- **A vector in RoaringBitmapArray's Native layout** (magic 1681511376, little-endian) is one
+  delta-spark 3.2.1's reader accepts and no writer of that release produces for a vector; it reads
+  here as a vector that could not be read. Worth doing only when a writer is found that emits it —
+  `PROTOCOL.md`'s example is the layout written big-endian, which delta-spark refuses too.
 
 ## Format coverage gaps
 

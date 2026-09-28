@@ -7,7 +7,11 @@
 # command runs in the container's shell, and the SQL after it in a fresh spark-sql. That is how a
 # table is copied on disk before a procedure runs on the original (`--! cp -R /wh/t /wh/tb`), and
 # how a log file is aged past a retention (`--! touch -d 2020-01-01 …`) — the two things SQL
-# cannot do and an oracle for a destructive procedure needs.
+# cannot do and an oracle for a destructive procedure needs. `--! scala /scripts/<name>.scala`
+# runs a spark-shell script from this directory (mounted at /scripts) with the same jars and
+# confs, for what the writer's classes can do and its SQL cannot — an inline deletion vector.
+# Only its lines starting `fixture: ` reach the .out, and it must print `fixture: done` last,
+# since spark-shell exits 0 whether the script compiled or not.
 #
 # Each script runs in its own spark-sql on apache/spark:3.5.4-java17 with the released
 # delta-spark_2.12-3.2.1, delta-storage-3.2.1 and delta-iceberg_2.12-3.2.1 jars from lakelab's
@@ -34,7 +38,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 CACHE=~/code/spark-kit/lakelab/.cache
-SPARK_SQL="/opt/spark/bin/spark-sql --master 'local[1]' \
+SPARK_CONF="--master 'local[1]' \
   --jars /opt/delta-spark.jar,/opt/delta-storage.jar,/opt/delta-iceberg.jar \
   --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
   --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \
@@ -42,6 +46,8 @@ SPARK_SQL="/opt/spark/bin/spark-sql --master 'local[1]' \
   --conf spark.databricks.delta.retentionDurationCheck.enabled=false \
   --conf spark.ui.enabled=false \
   --conf spark.sql.session.timeZone=UTC"
+SPARK_SQL="/opt/spark/bin/spark-sql $SPARK_CONF"
+SPARK_SHELL="/opt/spark/bin/spark-shell $SPARK_CONF"
 for name in "$@"; do
   wh=$(mktemp -d)
   fx=$(mktemp -d)
@@ -50,6 +56,7 @@ for name in "$@"; do
   {
     echo "set -e; cd /tmp"
     echo "sql() { $SPARK_SQL -f \"\$1\" 2>>/tmp/err.log || { tail -40 /tmp/err.log >&2; exit 1; }; }"
+    echo "scala() { $SPARK_SHELL -i \"\$1\" < /dev/null > /tmp/shell.log 2>>/tmp/err.log; grep '^fixture: ' /tmp/shell.log; grep -q '^fixture: done' /tmp/shell.log || { tail -60 /tmp/shell.log >&2; exit 1; }; }"
   } > "$fx/driver.sh"
   awk -v dir="$fx" '
     function phase() { n++; f = dir "/phase-" n ".sql"; printf "" > f; print "sql /fx/phase-" n ".sql" >> (dir "/driver.sh") }
@@ -60,6 +67,7 @@ for name in "$@"; do
   docker run --rm --entrypoint bash --user 0 \
     -v "$wh:/wh" \
     -v "$fx:/fx:ro" \
+    -v "$PWD/docs/fixtures/delta:/scripts:ro" \
     -v "$CACHE/delta-spark_2.12-3.2.1.jar:/opt/delta-spark.jar:ro" \
     -v "$CACHE/delta-storage-3.2.1.jar:/opt/delta-storage.jar:ro" \
     -v "$CACHE/delta-iceberg_2.12-3.2.1.jar:/opt/delta-iceberg.jar:ro" \
