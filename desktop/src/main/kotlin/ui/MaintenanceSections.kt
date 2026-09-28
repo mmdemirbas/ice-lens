@@ -347,11 +347,7 @@ internal fun ExpirySection(metadata: TableMetadata, nowMs: Long) {
             rows = ordered.map { id ->
                 val defaults = byDefaults.snapshots.first { it.snapshotId == id }
                 val age = byAgeById.getValue(id)
-                listOf(
-                    if (defaults.retained) "kept — " + defaults.describeKeptBy() else "REMOVED",
-                    id.toString(),
-                    if (age.retained) "kept — " + age.describeKeptBy() else "REMOVED",
-                )
+                listOf(defaults.verdictText(), id.toString(), age.verdictText())
             },
             leadCellColors = ordered.map { id ->
                 if (byDefaults.snapshots.first { it.snapshotId == id }.retained) null else colors.error
@@ -657,16 +653,11 @@ internal fun PaimonExpirySection(input: PaimonExpiryInput, nowMs: Long) {
             modifier = Modifier.padding(bottom = 4.dp),
         )
         val byAgeById = byAgePlan.snapshots.associateBy { it.snapshotId }
-        fun verdict(v: model.PaimonSnapshotExpiryVerdict): String = when {
-            v.retained -> "kept — " + v.describeKeptBy()
-            v.tags.isNotEmpty() -> "REMOVED — lives on as tag " + v.tags.joinToString(", ")
-            else -> "REMOVED"
-        }
         WideTable(
             headers = listOf("Under the table's options", "Snapshot ID", "With retain_min = 1, older_than = now"),
             columnWidths = listOf(190.dp, 120.dp, 300.dp),
             rows = byDefaults.snapshots.map { v ->
-                listOf(verdict(v), v.snapshotId.toString(), verdict(byAgeById.getValue(v.snapshotId)))
+                listOf(v.snapshotVerdictText(), v.snapshotId.toString(), byAgeById.getValue(v.snapshotId).snapshotVerdictText())
             },
             leadCellColors = byDefaults.snapshots.map { if (it.retained) null else colors.error },
         )
@@ -722,12 +713,11 @@ internal fun PaimonChangelogExpirySection(input: PaimonExpiryInput, nowMs: Long)
             return@CountedSection
         }
         val byAgeById = byAgePlan.changelogs.associateBy { it.snapshotId }
-        fun verdict(v: model.PaimonSnapshotExpiryVerdict): String = if (v.retained) "kept — " + v.describeKeptBy().ifEmpty { "the latest changelog, never removed by the run" } else "REMOVED"
         WideTable(
             headers = listOf("Under the table's options", "Changelog ID", "With retain_min = 1, older_than = now"),
             columnWidths = listOf(190.dp, 120.dp, 300.dp),
             rows = byDefaults.changelogs.map { v ->
-                listOf(verdict(v), v.snapshotId.toString(), verdict(byAgeById.getValue(v.snapshotId)))
+                listOf(v.changelogVerdictText(), v.snapshotId.toString(), byAgeById.getValue(v.snapshotId).changelogVerdictText())
             },
             leadCellColors = byDefaults.changelogs.map { if (it.retained) null else colors.error },
         )
@@ -780,7 +770,7 @@ internal fun PaimonPartitionExpirySection(input: PaimonExpiryInput, nowMs: Long)
             columnWidths = listOf(120.dp, 220.dp, 360.dp, 60.dp, 80.dp, 100.dp, 200.dp),
             rows = rows.map { v ->
                 listOf(
-                    if (v.entry.partition.path in droppedPaths) "DROPPED" else if (v.expired) "held back" else "kept",
+                    plan.verdictText(v),
                     v.entry.partition.display,
                     v.reason,
                     formatCount(v.entry.fileCount),
@@ -823,20 +813,19 @@ internal fun PaimonTagExpirySection(node: GraphNode.TableNode, input: PaimonExpi
             modifier = Modifier.padding(bottom = 4.dp),
         )
         val byAgeByName = byAge.tags.associateBy { it.tag.name }
-        fun verdict(v: model.PaimonTagExpiryVerdict): String = if (v.expired) "REMOVED — " + v.reason else "kept — " + v.reason
         WideTable(
             headers = listOf("Under a bare call", "Tag", "Snapshot", "Created", "Retained", "Expires", "With older_than = now", "Removal Frees"),
             columnWidths = listOf(230.dp, 120.dp, 80.dp, 170.dp, 90.dp, 170.dp, 300.dp, 360.dp),
             rows = bare.tags.map { v ->
                 val deletion = deletions[v.tag.name]
                 listOf(
-                    verdict(v),
+                    v.verdictText(),
                     v.tag.name,
                     v.tag.snapshotId?.toString() ?: "—",
                     v.createdMs?.let(::formatAppTimestamp) ?: "not recorded",
                     v.tag.timeRetainedMs?.let(::formatPaimonDurationMs) ?: "none",
                     v.expiresAtMs?.let(::formatAppTimestamp) ?: "—",
-                    verdict(byAgeByName.getValue(v.tag.name)),
+                    byAgeByName.getValue(v.tag.name).verdictText(),
                     deletion?.let { d -> d.describe + " — " + d.note } ?: "not readable",
                 )
             },

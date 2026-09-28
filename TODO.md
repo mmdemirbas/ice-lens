@@ -439,9 +439,11 @@ What is left:
   things would have drifted from the other two; `check --files` is the desktop's second click,
   every live file and statistics file opened, and `lookup <table> <filter>` is the row-lookup
   section, the rows a filter matches with each one's fate; `plan` is the table panel's
-  `Maintenance` summary, moved into core for it. What is left: each planner's detail — the
-  file lists and per-group tables the desktop's sections draw — has no command beyond its
-  summary line; and an object-storage URL opens only with the
+  `Maintenance` summary, moved into core for it, and `plan <table> <procedure>` one of its lines
+  in full — the expiries, the purge, the orphan and missing-file removals, `rewrite_table_path`,
+  `VACUUM` and the log cleanup as tables of what each acts on. What is left: the rewrite,
+  manifest-merge, manifest-rewrite and compaction planners and `fast_forward` print their line
+  alone; and an object-storage URL opens only with the
   credentials the environment carries, since there is no form to type a key into. The binary
   ships inside the installers as a second jpackage launcher; HDFS and ADLS are not yet read.
 

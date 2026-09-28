@@ -41,7 +41,10 @@ data class PaimonTagExpiryVerdict(
     val expiresAtMs: Long?,
     val expired: Boolean,
     val reason: String,
-)
+) {
+    /** The cell every shell prints for it. */
+    fun verdictText(): String = (if (expired) "REMOVED — " else "kept — ") + reason
+}
 
 data class PaimonTagExpiryPlan(
     val nowMs: Long,

@@ -75,6 +75,7 @@ core/src/main/kotlin/
 │   ├── ManifestMergePlan.kt   # What the next commit does to the manifest list — ManifestMergeManager's bins and verdicts
 │   ├── MaintenanceInput.kt    # The newest metadata and the current snapshot's node, carried on the table node for the planners — never read off the drawn graph
 │   ├── MaintenanceSummary.kt  # Every maintenance procedure summed to a line — verdict, detail, where, tone — the desktop's Maintenance section and `icelens plan`
+│   ├── MaintenanceDetail.kt   # One of those lines planned in full — notes and tables of what it acts on, in the desktop's words — `icelens plan <table> <procedure>`
 │   ├── Figures.kt             # formatCount / formatCounted / formatBytes — the figures every shell prints
 │   ├── FileHistory.kt         # One file across the retained snapshots — added by, removed by, still listed live by — on either format
 │   ├── Integrity.kt           # Every recorded figure against the same figure counted, over the whole table at once — the panels' checks, run everywhere
@@ -219,7 +220,7 @@ intellij/src/main/kotlin/plugin/
 
 cli/src/main/kotlin/cli/
 ├── Main.kt                     # `icelens <command> …` → exit code
-└── IceLensCli.kt               # summary, tree, show, check, lookup, plan, export — text or --json, over GraphTree, integrityReport, the lookups, maintenanceSummary and GraphExport
+└── IceLensCli.kt               # summary, tree, show, check, lookup, plan, export — text or --json, over GraphTree, integrityReport, the lookups, maintenanceSummary, maintenanceDetail and GraphExport
 
 ## Build & run
 
@@ -2575,7 +2576,17 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   now by default), with the two lines the desktop plans only behind a click run rather than
   left `not walked`: `remove_orphan_files` over `TableNode.unreferencedFiles`, on Paimon
   `remove_unexisting_files` over `missingFiles` and `planUnexistingFiles`, and on Delta
-  `VACUUM` over `planVacuum`'s listing; it exits 0 whatever
+  `VACUUM` over `planVacuum`'s listing; `plan <table> <procedure>` is `maintenanceDetail` over
+  one of those lines (`model/MaintenanceDetail.kt`) — the plan in full, as notes and tables of
+  every snapshot, file, partition or tag it acts on, each verdict cell in the words the
+  desktop's section prints, which is why `verdictText()` on the expiry verdicts and `label` on
+  `OrphanFate`, `VacuumFate` and `LogCleanupFate` are core's now and the sections call them. The
+  procedure is named by its `maintenanceKey` — lower case, `sys.` and a parenthesised clause
+  dropped, both manifest merges `manifest_merge` — or as the summary spells it, and a name the
+  table plans nothing under is a usage error listing the keys it does; the summary's last line
+  lists them too. The expiries, `purge_files`, `remove_unexisting_files`, `remove_orphan_files`,
+  `rewrite_table_path`, `VACUUM` and the log cleanup print tables; the rewrite, merge and
+  compaction planners print their line alone so far. `plan` exits 0 whatever
   it says, being a plan and not a check — and `export` is `GraphExport`'s SVG, JSON or CSV to
   standard output or `--out`. A local table path is made absolute before it is opened, as the
   desktop's workspace and the IDE's virtual files already are: `MissingFilesReport` normalises
@@ -2610,7 +2621,12 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   `orcfmt` to the sweep and the statistics check it prints, `lookup` on `mor` (`id = 5` live)
   and `lk` (`v = 'b'` superseded) to `RowLookup`/`PaimonRowLookup`, `plan` on `mor`, `orph`,
   `pe` and `pru` to `maintenanceSummary` line for line — `orph`'s ten orphans and `pru`'s two
-  entries, the procedures' own runs, and `pru` again from a relative path — the CSV to
+  entries, the procedures' own runs, and `pru` again from a relative path — `plan` with a
+  procedure on `br`, `mor` and `orph` to `maintenanceDetail` note for note and cell for cell
+  (`MaintenanceDetailTest` finds and plans every line of every fixture, every row as wide as its
+  headers, and holds four plans to the run their fixture pair records: `sweep`'s expiry,
+  `br`'s purge, `orph`'s orphans and `dvac`'s VACUUM, the files the second table lacks being
+  the rows the plan says go) — the CSV to
   `GraphExport.toCsv` — and every refusal to its exit code and message, a bad filter to the
   caret
 - **The tree follows structural edges only.** An `affectsLayout = false` edge is an annotation —
@@ -3172,7 +3188,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,526 tests across 215 files (1,226 in :core, 290 in :desktop, 1 in :intellij, 9 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,533 tests across 216 files (1,232 in :core, 290 in :desktop, 1 in :intellij, 10 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.

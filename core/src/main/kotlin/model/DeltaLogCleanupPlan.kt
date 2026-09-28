@@ -32,20 +32,20 @@ import java.util.TimeZone
  * — the filesystem by default. The oracle is `dlcb` / `dlc`: the table before and after the
  * cleanup the checkpoint at 6 ran, with versions 0 to 4 dated 2020 by the script.
  */
-enum class LogCleanupFate {
-    DELETED,
+enum class LogCleanupFate(val label: String) {
+    DELETED("deleted"),
 
     /** At or above the checkpoint: the cleanup never deletes what reading from that checkpoint needs. */
-    KEPT_AT_CHECKPOINT,
+    KEPT_AT_CHECKPOINT("kept — at the checkpoint"),
 
     /** Modified after the cutoff. */
-    KEPT_YOUNG,
+    KEPT_YOUNG("kept — too young"),
 
     /** Old enough and below the checkpoint, but its run ends in a file that is not. */
-    KEPT_WITH_ITS_RUN,
+    KEPT_WITH_ITS_RUN("kept with its run"),
 
     /** The cleanup is switched off. */
-    KEPT_DISABLED,
+    KEPT_DISABLED("kept — cleanup off"),
 }
 
 data class DeltaLogCleanupRow(

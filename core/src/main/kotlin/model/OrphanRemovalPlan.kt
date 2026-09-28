@@ -21,15 +21,15 @@ import java.util.concurrent.TimeUnit
  * `older_than` inside the last 24 hours (`validateInterval`, skipped under `spark.testing`), and
  * Paimon's refuses one in the future ("The arg olderThan must be less than now").
  */
-enum class OrphanFate {
+enum class OrphanFate(val label: String) {
     /** Listed, and modified before the cutoff. */
-    REMOVED,
+    REMOVED("REMOVED"),
 
     /** Listed, but modified at or after the cutoff — kept as possibly still being written. */
-    TOO_YOUNG,
+    TOO_YOUNG("too young"),
 
     /** In a place the procedure never lists, whatever its age. */
-    UNLISTED,
+    UNLISTED("never listed"),
 }
 
 data class OrphanRemovalRow(

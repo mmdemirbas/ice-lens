@@ -16,6 +16,9 @@ import model.ScanFilterParse
 import model.UnifiedTableModel
 import model.evaluateScan
 import model.integrityReport
+import model.forProcedure
+import model.key
+import model.maintenanceDetail
 import model.maintenanceSummary
 import model.planUnexistingFiles
 import model.paimonRowLookupInput
@@ -58,6 +61,7 @@ class IceLensCliTest {
     private val pe = fixture("example/paimon/db.db/pe")
     private val dvac = fixture("example/delta/dvac")
     private val pru = fixture("example/paimon/db.db/pru")
+    private val br = fixture("example/paimon/db.db/br")
 
     private class Run(val code: Int, val out: String, val err: String)
 
@@ -303,6 +307,55 @@ class IceLensCliTest {
         val bad = icelens("plan", mor, "--at", "yesterday")
         assertEquals(2, bad.code)
         assertTrue("--at takes epoch milliseconds" in bad.err)
+    }
+
+    @Test
+    fun `plan with a procedure prints maintenanceDetail's notes and tables, the same as JSON, and refuses one the table does not plan`() {
+        val at = "2099-01-01T00:00:00Z"
+        val atMs = java.time.Instant.parse(at).toEpochMilli()
+        for ((table, procedure) in listOf(br to "purge_files", mor to "expire_snapshots", orph to "remove_orphan_files")) {
+            val node = graphOf(table, AggregationPolicy.DEFAULT).nodes.filterIsInstance<GraphNode.TableNode>().first()
+            val orphans = if (node.unreferencedFiles.isPresent) node.unreferencedFiles.value else null
+            val line = maintenanceSummary(node, atMs, orphans).forProcedure(procedure)!!
+            val expected = maintenanceDetail(node, line, atMs, orphans)
+            assertTrue(expected.tables.isNotEmpty(), "$table $procedure plans no table")
+
+            val text = icelens("plan", table, procedure, "--at", at)
+            assertEquals(IceLensCli.EXIT_OK, text.code, text.err)
+            val lines = text.out.lines()
+            assertTrue(lines[1].startsWith("${line.procedure} as of $at:") && line.verdict in lines[1], lines[1])
+            expected.notes.forEach { assertTrue("  $it" in lines, "$table: note $it") }
+            expected.tables.forEach { t ->
+                val at0 = lines.indexOf("${t.title} (${t.rows.size})")
+                assertTrue(at0 > 0, "$table: ${t.title}")
+                // The header, the rule under it, then one line per row, the cells in order.
+                t.rows.forEachIndexed { i, row ->
+                    val printed = lines[at0 + 3 + i]
+                    var from = 0
+                    row.forEach { cell -> from = printed.indexOf(cell, from).also { assertTrue(it >= 0, "$table ${t.title}: `$cell` in `$printed`") } + cell.length }
+                }
+            }
+
+            val json = Json.parseToJsonElement(icelens("plan", table, procedure, "--at", at, "--json").out).jsonObject
+            assertEquals(line.key, json["key"]!!.jsonPrimitive.content)
+            assertEquals(expected.notes, json["notes"]!!.jsonArray.map { it.jsonPrimitive.content })
+            assertEquals(
+                expected.tables.map { t -> t.title to t.rows.map { row -> t.headers.zip(row).toMap() } },
+                json["tables"]!!.jsonArray.map { it.jsonObject }.map { t ->
+                    t["title"]!!.jsonPrimitive.content to t["rows"]!!.jsonArray.map { r -> r.jsonObject.mapValues { (_, v) -> v.jsonPrimitive.content } }
+                },
+                table,
+            )
+        }
+        // br's purge takes the seventeen files brp lacks, and the procedure is found by its sys. name too.
+        assertTrue("Taken (17)" in icelens("plan", br, "sys.purge_files", "--at", at).out.lines())
+        // The summary names every key the second argument takes.
+        val keys = maintenanceSummary(graphOf(pe, AggregationPolicy.DEFAULT).nodes.filterIsInstance<GraphNode.TableNode>().first(), atMs).map { it.key }
+        assertTrue(icelens("plan", pe, "--at", at).out.lines().last { it.isNotBlank() } == "icelens plan <table> <procedure> prints one in full: ${keys.joinToString(", ")}")
+        // A procedure the table does not plan is a usage error that lists the ones it does.
+        val bad = icelens("plan", mor, "vacuum", "--at", at)
+        assertEquals(IceLensCli.EXIT_USAGE, bad.code)
+        assertTrue("this table plans no `vacuum`; it plans rewrite_data_files" in bad.err, bad.err)
     }
 
     @Test

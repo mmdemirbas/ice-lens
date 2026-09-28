@@ -2526,11 +2526,7 @@ internal fun UnreferencedFilesSection(
                         columnWidths = listOf(110.dp, 520.dp, 90.dp, 170.dp, 560.dp),
                         rows = plan.rows.take(MAX_UNREFERENCED_ROWS).map { row ->
                             listOf(
-                                when (row.fate) {
-                                    OrphanFate.REMOVED -> "REMOVED"
-                                    OrphanFate.TOO_YOUNG -> "too young"
-                                    OrphanFate.UNLISTED -> "never listed"
-                                },
+                                row.fate.label,
                                 row.relativePath,
                                 formatBytes(row.file.sizeBytes),
                                 formatAppTimestamp(row.file.modifiedMs),

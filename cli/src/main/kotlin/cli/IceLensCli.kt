@@ -19,7 +19,13 @@ import model.GraphTree
 import model.IntegrityFinding
 import model.IntegrityReport
 import model.LookupInput
+import model.MaintenanceDetail
+import model.MaintenanceLine
 import model.MaintenanceTone
+import model.key
+import model.forProcedure
+import model.maintenanceDetail
+import model.formatCount
 import model.maintenanceSummary
 import model.formatCounted
 import model.planUnexistingFiles
@@ -99,10 +105,12 @@ object IceLensCli {
         |  lookup  <table> <filter> [--json]     the rows the filter matches, read from the current
         |                                        snapshot's live files it did not rule out, each with
         |                                        its fate — live, or deleted/superseded by what
-        |  plan    <table> [--at TIME] [--json]  what each maintenance procedure would do if run now —
-        |                                        rewrite, manifest merge, expiry, compaction, orphans —
+        |  plan    <table> [<procedure>]         what each maintenance procedure would do if run now —
+        |          [--at TIME] [--json]          rewrite, manifest merge, expiry, compaction, orphans —
         |                                        a verdict per procedure, planned the way the engine
-        |                                        plans it; --at plans as of an epoch-ms or ISO instant
+        |                                        plans it; with a procedure named, its plan in full,
+        |                                        every file or group it would act on; --at plans as of
+        |                                        an epoch-ms or ISO instant
         |  export  <table> --format svg|json|csv [--out FILE] [--page-size N]
         |                                        the graph as a drawing, as structure, or the file
         |                                        inventory; the whole table unless a page size folds it
@@ -353,6 +361,7 @@ object IceLensCli {
     private fun plan(parsed: Parsed, out: PrintStream, err: PrintStream): Int {
         parsed.allow("at", "json") ?: return usageError(err, "plan takes --at and --json")
         val table = parsed.positional(0) ?: return usageError(err, "plan needs a table")
+        val procedure = parsed.positional(1)
         val nowMs = parsed.value("at")?.let { at ->
             at.toLongOrNull() ?: runCatching { java.time.Instant.parse(at).toEpochMilli() }.getOrNull()
                 ?: return usageError(err, "--at takes epoch milliseconds or an ISO instant such as 2026-01-31T12:00:00Z, not `$at`")
@@ -365,6 +374,13 @@ object IceLensCli {
         } else null
         val vacuum = (node.maintenance.value as? DeltaMaintenanceInput)?.model?.planVacuum(nowMs)?.getOrNull()
         val lines = maintenanceSummary(node, nowMs, orphans, unexisting, vacuum)
+        if (procedure != null) {
+            val line = lines.forProcedure(procedure)
+                ?: return usageError(err, "this table plans no `$procedure`; it plans ${lines.joinToString(", ") { it.key }}")
+            val detail = maintenanceDetail(node, line, nowMs, orphans, unexisting, vacuum)
+            if (parsed.has("json")) out.println(pretty(detailJson(model, nowMs, detail))) else printDetail(model, nowMs, detail, out)
+            return EXIT_OK
+        }
         if (parsed.has("json")) {
             out.println(pretty(buildJsonObject {
                 put("table", model.name)
@@ -374,6 +390,7 @@ object IceLensCli {
                 put("procedures", JsonArray(lines.map { l ->
                     buildJsonObject {
                         put("procedure", l.procedure)
+                        put("key", l.key)
                         put("verdict", l.verdict)
                         put("acts", l.tone != MaintenanceTone.PLAIN)
                         put("tone", l.tone.name.lowercase())
@@ -392,8 +409,49 @@ object IceLensCli {
             }, out)
             out.println()
             out.println("* would act   ! would destroy data, be refused, or block a writer")
+            out.println("icelens plan <table> <procedure> prints one in full: ${lines.joinToString(", ") { it.key }}")
         }
         return EXIT_OK
+    }
+
+    /** One procedure's plan: its summary line, what it was planned under, and every table, uncapped. */
+    private fun printDetail(model: FormatTableModel, nowMs: Long, detail: MaintenanceDetail, out: PrintStream) {
+        val l = detail.line
+        out.println("${model.name}  ${formatName(model)}  ${model.path}")
+        out.println("${l.procedure} as of ${java.time.Instant.ofEpochMilli(nowMs)}: ${toneMark(l)}${l.verdict} — ${l.detail}")
+        detail.notes.forEach { out.println("  $it") }
+        detail.tables.forEach { t ->
+            out.println()
+            out.println("${t.title} (${formatCount(t.rows.size)})")
+            printTable(t.headers, t.rows, out)
+        }
+    }
+
+    private fun toneMark(line: MaintenanceLine): String = when (line.tone) {
+        MaintenanceTone.PLAIN -> ""
+        MaintenanceTone.ACTS -> "* "
+        MaintenanceTone.ALERT -> "! "
+    }
+
+    private fun detailJson(model: FormatTableModel, nowMs: Long, detail: MaintenanceDetail): JsonObject = buildJsonObject {
+        val l = detail.line
+        put("table", model.name)
+        put("format", formatName(model))
+        put("path", model.path.toString())
+        put("at", nowMs)
+        put("procedure", l.procedure)
+        put("key", l.key)
+        put("verdict", l.verdict)
+        put("tone", l.tone.name.lowercase())
+        put("detail", l.detail)
+        put("where", l.where)
+        put("notes", JsonArray(detail.notes.map { JsonPrimitive(it) }))
+        put("tables", JsonArray(detail.tables.map { t ->
+            buildJsonObject {
+                put("title", t.title)
+                put("rows", JsonArray(t.rows.map { row -> buildJsonObject { t.headers.zip(row).forEach { (h, c) -> put(h, c) } } }))
+            }
+        }))
     }
 
     private fun readAllPages(input: LookupInput, filter: ScanFilter, ruledOut: Set<String>): RowLookupResult {

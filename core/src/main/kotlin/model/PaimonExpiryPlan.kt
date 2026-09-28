@@ -65,6 +65,17 @@ data class PaimonSnapshotExpiryVerdict(
     fun describeKeptBy(): String = keptBy.joinToString("; ") { keep ->
         if (keep.consumers.isEmpty()) keep.rule.label else "${keep.rule.label} ${keep.consumers.joinToString(", ")}"
     }
+
+    /** The cell every shell prints for a snapshot: kept and why, or removed — living on as a tag that names it. */
+    fun snapshotVerdictText(): String = when {
+        retained -> "kept — " + describeKeptBy()
+        tags.isNotEmpty() -> "REMOVED — lives on as tag " + tags.joinToString(", ")
+        else -> "REMOVED"
+    }
+
+    /** The same for a long-lived changelog, which a tag does not keep: a tag retains data, not the stream. */
+    fun changelogVerdictText(): String =
+        if (retained) "kept — " + describeKeptBy().ifEmpty { "the latest changelog, never removed by the run" } else "REMOVED"
 }
 
 data class PaimonExpiryPlan(

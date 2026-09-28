@@ -166,13 +166,7 @@ internal fun DeltaLogCleanupSection(model: DeltaUnifiedTableModel) {
             headers = listOf("Fate", "File", "Why", "Modified"),
             rows = rows.map { r ->
                 listOf(
-                    when (r.fate) {
-                        LogCleanupFate.DELETED -> "deleted"
-                        LogCleanupFate.KEPT_AT_CHECKPOINT -> "kept — at the checkpoint"
-                        LogCleanupFate.KEPT_YOUNG -> "kept — too young"
-                        LogCleanupFate.KEPT_WITH_ITS_RUN -> "kept with its run"
-                        LogCleanupFate.KEPT_DISABLED -> "kept — cleanup off"
-                    },
+                    r.fate.label,
                     r.path.fileName.toString(),
                     r.reason,
                     r.modifiedMs?.let { "${formatOrphanAge(p.nowMs - it)} ago" } ?: "unknown",
@@ -267,12 +261,7 @@ private fun VacuumPlanBody(plan: DeltaVacuumPlan, retainZero: DeltaVacuumPlan?) 
         headers = listOf("Fate", "Path", "Why", "Size", "Modified"),
         rows = rows.map { r ->
             listOf(
-                when (r.fate) {
-                    VacuumFate.DELETED -> "deleted"
-                    VacuumFate.DIRECTORY_NOT_EMPTY -> "tried — not empty"
-                    VacuumFate.TOO_YOUNG -> "kept — too young"
-                    VacuumFate.KEPT -> "kept"
-                },
+                r.fate.label,
                 r.relativePath + if (r.isDirectory) "/" else "",
                 r.reason + if (r.companions.isNotEmpty()) "; its .crc goes with it" else "",
                 if (r.isDirectory) "" else formatBytes(r.sizeBytes),

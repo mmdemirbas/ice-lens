@@ -60,6 +60,9 @@ data class SnapshotExpiryVerdict(
         val refs = keeps.mapNotNull { it.ref }
         if (refs.isEmpty()) rule.label else "${rule.label} ${refs.joinToString(", ")}"
     }
+
+    /** The cell every shell prints for it: kept and why, or removed. */
+    fun verdictText(): String = if (retained) "kept — " + describeKeptBy() else "REMOVED"
 }
 
 data class RefExpiryVerdict(val name: String, val retained: Boolean, val reason: String)

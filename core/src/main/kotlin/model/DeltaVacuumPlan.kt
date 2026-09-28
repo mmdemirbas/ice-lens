@@ -40,18 +40,18 @@ import java.nio.file.attribute.BasicFileAttributes
  * The oracle is `dvac` / `dvaca`: the table before and after `VACUUM … RETAIN 0 HOURS`, whose
  * `VACUUM START` recorded `numFilesToDelete 6` and `sizeOfDataToDelete 3661`.
  */
-enum class VacuumFate {
+enum class VacuumFate(val label: String) {
     /** Listed, older than the cutoff, and kept by nothing: deleted. */
-    DELETED,
+    DELETED("deleted"),
 
     /** A directory the call tries to delete and cannot, because something is still under it. */
-    DIRECTORY_NOT_EMPTY,
+    DIRECTORY_NOT_EMPTY("tried — not empty"),
 
     /** Kept by nothing, but modified at or after the cutoff. */
-    TOO_YOUNG,
+    TOO_YOUNG("kept — too young"),
 
     /** Named by a live `add`, a tombstone within the cutoff, or as one's vector or directory. */
-    KEPT,
+    KEPT("kept"),
 }
 
 data class DeltaVacuumRow(

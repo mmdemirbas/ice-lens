@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`icelens plan <table> <procedure>`** prints one maintenance line in full: the notes and
+  tables the desktop's section draws — every snapshot, changelog, partition or tag an expiry
+  removes and what keeps the rest, the files it frees, what `purge_files` takes and keeps, the
+  orphans and missing files with each one's verdict, `rewrite_table_path`'s file list, VACUUM's
+  listing and the log cleanup's files — in the same words, text or `--json`. The procedure is
+  named as the summary spells it or by its key (`purge_files`, `vacuum`, `log_cleanup`), which
+  the summary now lists; a name the table does not plan is a usage error naming the ones it does.
 - **UniForm.** A Delta table writing Iceberg metadata beside its log has it read as the Iceberg
   table it is and checked against the log: the Delta version the newest metadata converted
   against the latest, and its current snapshot's files against the Delta state at that version.

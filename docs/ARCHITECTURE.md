@@ -109,7 +109,7 @@ ice-lens is one headless engine (`core/` — `model`, `service`, `export`) under
 │  GraphCanvas.kt   Zoomable/pannable canvas, node/edge rendering, viewport culling
 │  NodeComponents.kt   Per-type node card rendering, copy-to-clipboard
 │  NodeDetails.kt      Inspector panel: header, multi-select, shared sections and helpers
-│  MaintenanceSections.kt  The planners' sections: rewrite, manifest merge, expiry and its files, compaction; the table's summary is core's maintenanceSummary, which `icelens plan` prints too
+│  MaintenanceSections.kt  The planners' sections: rewrite, manifest merge, expiry and its files, compaction; the table's summary is core's maintenanceSummary, which `icelens plan` prints too, and a line's verdict cells are core's words, which `icelens plan <table> <procedure>` prints through maintenanceDetail
 │  FileHistorySection.kt   A file's life across the retained snapshots, and whether an expiry would free it
 │  IntegritySection.kt     The whole-table check behind a click: every recorded figure against the same figure counted
 │  PaimonMergedCountSection.kt  What a read of a Paimon snapshot returns — the merge over the bucket files, behind a click

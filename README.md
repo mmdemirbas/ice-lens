@@ -185,6 +185,8 @@ icelens lookup /wh/db/orders "id = 42"          # the rows a filter matches, eac
                                                 # live, or deleted/superseded by which delete or write
 icelens plan /wh/db/orders                      # what each maintenance procedure would do if run now:
                                                 # rewrite, merge, expiry, compaction, orphans — one line each
+icelens plan /wh/db/orders expire_snapshots     # one of them in full: every snapshot and file it would
+                                                # remove, and what keeps the rest
 icelens export /wh/db/orders --format csv --out files.csv   # the file inventory; svg and json too
 ```
 

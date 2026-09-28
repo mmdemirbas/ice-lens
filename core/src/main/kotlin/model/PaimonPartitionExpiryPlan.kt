@@ -92,6 +92,13 @@ data class PaimonPartitionExpiryPlan(
     /** Expired but past the cap — the next run's. */
     val heldBack: Int get() = (expiredInOrder.size - maxNum).coerceAtLeast(0)
 
+    /** The cell every shell prints for [verdict]: dropped by this run, expired but past the cap, or kept. */
+    fun verdictText(verdict: PaimonPartitionExpiryVerdict): String = when {
+        dropped.any { it.entry.partition.path == verdict.entry.partition.path } -> "DROPPED"
+        verdict.expired -> "held back"
+        else -> "kept"
+    }
+
     private val expiredInOrder: List<PaimonPartitionExpiryVerdict>
         get() = partitions.filter { it.expired }.sortedBy { v -> v.entry.partition.values.joinToString(",") { paimonPartitionValueText(it) ?: "" } }
 }
