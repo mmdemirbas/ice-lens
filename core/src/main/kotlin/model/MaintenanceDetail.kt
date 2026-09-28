@@ -44,9 +44,9 @@ fun List<MaintenanceLine>.forProcedure(procedure: String): MaintenanceLine? =
  * reason, and must be the ones the summary was given: each is a read of the directory, and a
  * detail starts none of them. [readFiles] is the one read a detail may start, and only where it
  * is asked for: the rewritten delete files `rewrite_position_delete_files` would read, for which
- * positions it keeps — the desktop's click under that section. [zOrderBy] plans `OPTIMIZE …
- * ZORDER BY` those columns in place of the bare call the line summarises — the command line's
- * `--zorder`, the desktop's field.
+ * positions it keeps — the desktop's click under that section. [zOrderBy] and [where] plan
+ * `OPTIMIZE … WHERE … ZORDER BY …` in place of the bare call the line summarises — the command
+ * line's `--zorder` and `--where`, the desktop's two fields.
  */
 fun maintenanceDetail(
     node: GraphNode.TableNode,
@@ -57,6 +57,7 @@ fun maintenanceDetail(
     vacuumPlan: DeltaVacuumPlan? = null,
     readFiles: Boolean = false,
     zOrderBy: List<String> = emptyList(),
+    where: DeltaOptimizeWhere? = null,
 ): MaintenanceDetail {
     val key = line.key
     val out = DetailBuilder()
@@ -74,7 +75,7 @@ fun maintenanceDetail(
         key == "rewrite_table_path" -> out.rewriteTablePath(node)
         key == "vacuum" && input is DeltaMaintenanceInput -> out.vacuum(input.model, vacuumPlan, nowMs)
         key == "log_cleanup" && input is DeltaMaintenanceInput -> out.logCleanup(input.model, nowMs)
-        key == "optimize" && input is DeltaMaintenanceInput -> out.optimize(input.model, zOrderBy)
+        key == "optimize" && input is DeltaMaintenanceInput -> out.optimize(input.model, zOrderBy, where)
         key == "rewrite_data_files" && input is IcebergMaintenanceInput -> out.rewriteDataFiles(input)
         key == "rewrite_position_delete_files" && input is IcebergMaintenanceInput -> out.positionDeleteRewrite(input, readFiles)
         key == "manifest_merge" && input is IcebergMaintenanceInput -> out.icebergManifestMerge(input)
@@ -719,12 +720,12 @@ private fun DetailBuilder.paimonFastForward(node: GraphNode.TableNode) {
     )
 }
 
-private fun DetailBuilder.optimize(model: DeltaUnifiedTableModel, zOrderBy: List<String>) {
-    val plan = model.planOptimize(zOrderBy).getOrElse {
+private fun DetailBuilder.optimize(model: DeltaUnifiedTableModel, zOrderBy: List<String>, where: DeltaOptimizeWhere?) {
+    val plan = model.planOptimize(zOrderBy, where).getOrElse {
         notes += "not planned: ${it.message ?: "the latest version could not be rebuilt"}"
         return
     }
-    if (zOrderBy.isNotEmpty()) notes += "ZORDER BY ${zOrderBy.joinToString(", ")}, in place of the bare call above: ${plan.headline}"
+    if (zOrderBy.isNotEmpty() || where != null) notes += "${deltaOptimizeCall(where, zOrderBy)}, in place of the bare call above: ${plan.headline}"
     if (plan.refusal != null) return
     notes += "at version ${plan.version}, ${plan.mode.label}: ${plan.ruleText}"
     if (plan.deletionVectorsCounted > 0) {

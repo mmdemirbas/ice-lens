@@ -127,7 +127,7 @@ core/src/main/kotlin/
 │   ├── DeltaUniForm.kt        # UniForm's Iceberg metadata under metadata/, read as an Iceberg table, against the Delta version its delta-version names
 │   ├── DeltaRowTracking.kt    # A row's _row_id and _row_commit_version — the materialised column, else the file's base plus its position — and rowIdHighWaterMark against the ids handed out
 │   ├── DeltaVacuumPlan.kt     # What VACUUM deletes — the table directory listed as VacuumCommand.gc lists it, against the state's adds, the tombstones within the retention and their vectors
-│   ├── DeltaOptimizePlan.kt   # What OPTIMIZE rewrites in each mode — compaction's candidates packed per partition, a bin of one left; ZORDER BY's every file per partition; a clustered table's unclustered files and small cubes of its columns, packed into new cubes
+│   ├── DeltaOptimizePlan.kt   # What OPTIMIZE rewrites in each mode — compaction's candidates packed per partition, a bin of one left; ZORDER BY's every file per partition; a clustered table's unclustered files and small cubes of its columns, packed into new cubes; a WHERE over partition columns first, read exactly, and the predicate a commit records read back from Catalyst's toString
 │   ├── DeltaLogCleanupPlan.kt # What the cleanup after a checkpoint deletes from _delta_log/ — the cutoff to UTC midnight, the times made increasing, a run decided by its last file
 │   ├── Z85.kt                 # ZeroMQ's Base85, which a Delta deletion vector's location and inline bytes are written in
 │   └── WorkspaceTypes.kt      # WorkspaceItem sealed class (Warehouse / SingleTable), serialization
@@ -199,7 +199,7 @@ desktop/src/main/kotlin/
     ├── IcebergNodePanels.kt   # Metadata, snapshot, manifest and file panels
     ├── PaimonNodePanels.kt    # Paimon snapshot, schema, manifest list, manifest and data file panels
     ├── DeltaNodePanels.kt     # Delta version, file action and checkpoint panels
-    ├── DeltaMaintenanceSections.kt # The Delta table panel's Optimize (the bare call, and ZORDER BY under a field), Log Cleanup and Vacuum sections, the last behind a listing
+    ├── DeltaMaintenanceSections.kt # The Delta table panel's Optimize (the bare call, and WHERE and ZORDER BY under two fields), Log Cleanup and Vacuum sections, the last behind a listing
     ├── RemoteLocations.kt      # A location in object storage and how to reach it — persisted, minus the secret
     ├── RemoteLocationDialog.kt # The form for a location no file chooser can browse to
     ├── Sidebar.kt             # Workspace panel — add/remove roots, search, drag-to-reorder, format badges (ICE/PMN)
@@ -2593,7 +2593,9 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   detail starts, and only for `rewrite_position_delete_files`: the delete files rewrite-all
   would rewrite, opened through `PositionDeleteRewriteDrops` for which positions it keeps — the
   desktop's click under that section. `--zorder a,b` plans a Delta `OPTIMIZE ZORDER BY` those
-  columns in place of the bare call, the desktop section's field. `plan` exits 0 whatever
+  columns in place of the bare call, and `--where "p = 'x'"` over the partitions the clause
+  matches — the desktop section's two fields, the clause read as Spark SQL, so an unquoted value
+  is a usage error with the caret under it. `plan` exits 0 whatever
   it says, being a plan and not a check — and `export` is `GraphExport`'s SVG, JSON or CSV to
   standard output or `--out`. A local table path is made absolute before it is opened, as the
   desktop's workspace and the IDE's virtual files already are: `MissingFilesReport` normalises
@@ -3199,7 +3201,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,547 tests across 217 files (1,245 in :core, 290 in :desktop, 1 in :intellij, 11 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,557 tests across 218 files (1,254 in :core, 290 in :desktop, 1 in :intellij, 12 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3384,6 +3386,7 @@ container invocation and the traps in it:
 | `delta/drt` | `DeltaRowTrackingFixtureTest` | `delta.enableRowTracking` and in-commit timestamps — `baseRowId`, `defaultRowCommitVersion`, the `rowIdHighWaterMark` domain, an `UPDATE`'s materialized row-id column |
 | `delta/dzo` | `DeltaOptimizeModesFixtureTest` | `OPTIMIZE ZORDER BY` four times on one partitioned table with a vector — every file of both partitions, the lone `p=y` file included; the same again; after an insert by another column; and under `optimize.maxFileSize = 300`, asking for five files and writing four |
 | `delta/dcl` | `DeltaOptimizeModesFixtureTest` | liquid clustering — three unclustered files into a cube, a second run writing nothing, the small cube merged with a new file, then `ALTER TABLE CLUSTER BY (b)`: the new file alone into a cube by `b`, the cube by `a` left with its vector counted in `numDeletionVectorsRemoved`, and a last run writing nothing |
+| `delta/dow` | `DeltaOptimizeWhereFixtureTest` | `OPTIMIZE … WHERE` on a table partitioned by a string and a date, a null partition and a vector in `p=y` — `p = 'x'` compacting two partitions and counting no vector, the same again and `p = 'q'` writing nothing, `d >= '2024-03-06'` against the date, `p <> 'x' ZORDER BY (a)` leaving the null partition out, and `NOT (p LIKE '%y') OR p IS NULL ZORDER BY (a, id)`; each commit's predicate as Catalyst's `toString` |
 | `delta/dvac`, `dvaca`, `dopt` | `DeltaVacuumPlanFixtureTest`, `DeltaOptimizePlanFixtureTest` | five inserts and a whole-file `DELETE`; `dopt` copied before the `OPTIMIZE` that compacted four files into one, `dvaca` after a `VACUUM … RETAIN 0 HOURS` that deleted six, with its `VACUUM START` and `VACUUM END` commits |
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
@@ -4284,8 +4287,27 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   `dcl` (three clustering runs) at the version before it and requires its removes, bytes, file
   count and vector count, and plans nothing where `dcl`'s two runs wrote no commit; turning off
   the columns rule or the lone-cube rule each fails a run. The desktop section plans the bare
-  call and, under a field, `ZORDER BY` the typed columns; `icelens plan <table> optimize --zorder a,b`
-  is the same
+  call and, under two fields, the call with a `WHERE`, a `ZORDER BY`, or both; `icelens plan
+  <table> optimize --where "p = 'x'" --zorder a,b` is the same. **`WHERE` narrows every mode to
+  the partitions it matches** before any rule runs (`txn.filterFiles(partitionPredicate)`), so a
+  vector outside it is not counted either (`dow`'s v10 recorded 0 beside a vector in `p = 'y'`).
+  It may name partition columns only, the resolver ignoring case — `Predicate references
+  non-partition column 'a'. Only the partition columns may be referenced: [p, d]` — and a table
+  with the `clustering` feature refuses any `WHERE` before its `ZORDER BY`. Each column is the
+  partition value cast to its type, so the predicate is exact over a file's partition, not a
+  bound: `deltaFilesMatching` evaluates it through `ScanFilter.holds`, which reads a comparison
+  with a null as false only after `pushNegation` — the one order in which that equals SQL's
+  three-valued answer, and `dow`'s `p <> 'x'` leaving its null partition out is the run that
+  says so (plain negation fails three tests). A literal the type cannot read is Spark's cast to
+  null, false both ways. The clause is read by `parseScanFilter(text, sparkLiterals = true)`: a
+  typed `DATE '…'` is its text, and an unquoted value other than a number or a boolean is refused
+  where it is typed, since Spark reads `x` as a column and `2024-03-05` as arithmetic. **A commit
+  records the predicate as Catalyst's `toString`, not SQL** — `('p = x)`, `NOT ('p = x)`,
+  `(NOT 'p LIKE %y OR isnull('p))`: a column is `'p`, a literal loses its quotes, `<>` is a `NOT`,
+  and a `LIKE` or `IN` prints no parentheses of its own — so `parseCatalystPredicate` reads that
+  back for `planOptimizeBefore`, and a text holding a value it cannot delimit (a space, a
+  parenthesis, a comma) is not compared rather than guessed at. `DeltaOptimizeWhereFixtureTest`
+  holds `dow`'s four commits and two empty runs to the plans
 - **The log cleanup a checkpoint runs is planned from `MetadataCleanup.cleanUpExpiredLogs`**
   (`model/DeltaLogCleanupPlan.kt`): every commit and checkpoint file below the checkpoint
   `_last_checkpoint` names, modified at or before `now - delta.logRetentionDuration` (30 days)
@@ -4342,8 +4364,7 @@ on `--jars` and a `spark.conf` naming the hadoop catalog (`docs/fixtures/variant
   version 0 where the feature was on from the `CREATE`, each commit's `inCommitTimestamp` must be
   above the previous one's, since a time travel by timestamp searches the versions by it. 3.2.1
   spells both properties with `-preview` (`drt`), and both spellings are read
-- Not yet read (the `TODO.md` Delta section): inline deletion vectors in the lookup, and an
-  `OPTIMIZE … WHERE` on partitions in the plan
+- Not yet read (the `TODO.md` Delta section): inline deletion vectors in the lookup
 
 ### Extending for new table formats
 All format-specific models implement the `FormatTableModel` sealed interface.

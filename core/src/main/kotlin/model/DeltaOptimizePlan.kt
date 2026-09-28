@@ -43,22 +43,41 @@ import kotlinx.serialization.json.jsonPrimitive
  * that order into cubes of `max(targetCubeSize, threshold)` (150 GiB) — every one rewritten, a lone
  * file included — each a new `ZCUBE_ID`, its files carrying `clusteringProvider` `liquid`.
  *
+ * **`WHERE`** narrows every mode to the live files of the partitions it matches, before any
+ * rule above runs (`OptimizeExecutor.optimize`: `txn.filterFiles(partitionPredicate)`): the
+ * predicate may name partition columns only — the resolver ignoring case — and each is read as
+ * the partition value cast to the column's type, so it is an exact SQL predicate over each
+ * file's partition, a null partition satisfying no comparison ([DeltaOptimizeWhere]). A table
+ * with the `clustering` feature refuses it before anything else.
+ *
  * **Nothing commits unless a file was written**, and every rewrite is removed and added with
  * `dataChange = false`. **`numDeletionVectorsRemoved` counts the vectors on every file the run
  * considered** — the candidates, or every file under ZORDER BY and clustering, the cubes left out
  * included — not on the files it removed: `dcl`'s v11 recorded 1 and removed no vector
  * ([DeltaOptimizePlan.deletionVectorsCounted]).
  *
- * The oracles are the logs: every `OPTIMIZE` commit of `dvac`, `dzo` and `dcl` against this plan at
- * the version before it, and `dcl`'s two runs that wrote no commit against a plan of nothing. The
- * input order the clustering pack sees is the snapshot's, which the log does not fix; it decides
- * only where a cube is cut, past 150 GiB of files.
+ * The oracles are the logs: every `OPTIMIZE` commit of `dvac`, `dzo`, `dcl` and `dow` against this
+ * plan at the version before it, and the runs of `dcl` and `dow` that wrote no commit against a
+ * plan of nothing. The input order the clustering pack sees is the snapshot's, which the log does
+ * not fix; it decides only where a cube is cut, past 150 GiB of files.
  */
 enum class DeltaOptimizeMode(val label: String) {
     COMPACTION("compaction"),
     ZORDER("ZORDER BY"),
     CLUSTERING("liquid clustering"),
 }
+
+/**
+ * An `OPTIMIZE … WHERE` predicate: [text] as it was written — the clustering refusal quotes it —
+ * and [filter], what it reads as.
+ *
+ * Whether a file is in a partition it matches is decided exactly, not bounded: the partition's
+ * values are known, so each condition is true or false of them, and a comparison with a null
+ * partition value is false — which, once `NOT` is pushed into the operators, is the same answer
+ * SQL's three-valued logic gives ([ScanFilter.holds]). `dow`'s `WHERE p <> 'x'` leaves its null
+ * partition out for that reason.
+ */
+data class DeltaOptimizeWhere(val text: String, val filter: ScanFilter)
 
 data class DeltaOptimizeOptions(
     val minFileSize: Long = 1L shl 30,
@@ -113,6 +132,10 @@ data class DeltaOptimizePlan(
     val columns: List<String> = emptyList(),
     /** The error the command fails with; nothing is planned under it. */
     val refusal: String? = null,
+    /** The `WHERE` the call carries; [files] are then the live files of the partitions it matches. */
+    val where: DeltaOptimizeWhere? = null,
+    /** The live files [where] leaves out. */
+    val outsideWhere: Int = 0,
 ) {
     val rewrittenBins: List<DeltaOptimizeBin> get() = bins.filter { it.rewritten }
     val removed: List<DeltaOptimizeFile> get() = rewrittenBins.flatMap { it.files }
@@ -140,7 +163,7 @@ data class DeltaOptimizePlan(
 
     /** How the mode chooses and packs, under the options in force — one paragraph, both shells. */
     val ruleText: String
-        get() = when (mode) {
+        get() = whereText.orEmpty() + when (mode) {
             DeltaOptimizeMode.COMPACTION -> "Without ZORDER BY: a live file under optimize.minFileSize (${formatBytes(options.minFileSize)}) or " +
                 "whose vector marks over optimize.maxDeletedRowsRatio (${(options.maxDeletedRowsRatio * 100).toInt()}%) of its rows is a candidate; " +
                 "candidates are grouped by partition, sorted smallest first and packed into bins of at most optimize.maxFileSize " +
@@ -153,6 +176,13 @@ data class DeltaOptimizePlan(
                 "${formatBytes(maxOf(options.targetCubeSize, options.minCubeSize))} and every cube rewritten, a lone file too; files " +
                 "clustered by other columns or in a larger cube are left, and so is a lone cube with no unclustered file to merge. " +
                 "Each output file is tagged with its new cube and clusteringProvider liquid, with dataChange false."
+        }
+
+    /** What the `WHERE` keeps, as the sentence the rule starts with; null without one. */
+    val whereText: String?
+        get() = where?.let {
+            "WHERE ${it.text} keeps ${formatCounted(files.size, "live file")} of ${files.size + outsideWhere}, those in the partitions it " +
+                "matches — a comparison with a null partition value is false — and the rule runs over those alone. "
         }
 
     /** What the call would do, in a sentence. */
@@ -173,6 +203,7 @@ data class DeltaOptimizePlan(
     /** Why nothing is written, where nothing is. */
     val nothingBecause: String
         get() = when {
+            files.isEmpty() && where != null -> "no live file is in a partition WHERE ${where.text} matches"
             files.isEmpty() -> "the table has no live file"
             mode == DeltaOptimizeMode.COMPACTION && leftAlone.isNotEmpty() -> "${formatCounted(leftAlone.size, "candidate")}, each alone in its bin"
             mode == DeltaOptimizeMode.COMPACTION -> "no live file under optimize.minFileSize (${formatBytes(options.minFileSize)}) or past the deleted-rows ratio"
@@ -443,40 +474,212 @@ fun deltaClusteringColumns(state: DeltaState): List<String> {
     }
 }
 
+/** The call's clauses as Spark SQL spells them: `WHERE p = 'x' ZORDER BY a, b`, either one alone. */
+fun deltaOptimizeCall(where: DeltaOptimizeWhere?, zOrderBy: List<String>): String =
+    listOfNotNull(where?.let { "WHERE ${it.text}" }, zOrderBy.takeIf { it.isNotEmpty() }?.let { "ZORDER BY ${it.joinToString(", ")}" }).joinToString(" ")
+
+/**
+ * Why `OPTIMIZE … WHERE` fails on a table under [metadata] — a column the predicate names that is
+ * not a partition column, the first in the order written — or null. `verifyPartitionPredicates`
+ * at 3.2.1, the resolver ignoring case.
+ */
+fun deltaPartitionPredicateRefusal(metadata: DeltaMetadata, where: DeltaOptimizeWhere): String? {
+    val partition = metadata.partitionColumns
+    val outside = where.filter.predicates().map { it.column }.firstOrNull { c -> partition.none { it.equals(c, ignoreCase = true) } }
+        ?: return null
+    return "Predicate references non-partition column '$outside'. Only the partition columns may be referenced: [${partition.joinToString(", ")}]"
+}
+
+/**
+ * The live files of [files] in a partition [where] matches: each partition value read as its
+ * column's type (the text for a type the read schema has no counterpart for), a null one
+ * satisfying no comparison, and a `LIKE` matched against the text as SQL matches it.
+ */
+fun deltaFilesMatching(files: Collection<DeltaAddFile>, metadata: DeltaMetadata, where: DeltaOptimizeWhere): List<DeltaAddFile> {
+    val struct = metadata.schema ?: return emptyList()
+    val schema = deltaReadSchema(struct).schema
+    val fields = metadata.partitionColumns.mapNotNull { name -> struct.fields.firstOrNull { it.name.equals(name, ignoreCase = true) } }
+    fun leaf(add: DeltaAddFile, p: ScanPredicate): Boolean {
+        val field = fields.firstOrNull { it.name.equals(p.column, ignoreCase = true) } ?: return false
+        val text = if (field.physicalName in add.partitionValues) add.partitionValues[field.physicalName] else add.partitionValues[field.name]
+        val type = schema.idOfPath(field.name)?.let(schema::typeOf)
+        fun typed(t: String): Any? = type?.let { parseLiteral(t, it) } ?: t.takeIf { type == null }
+        return when (p.op) {
+            PredicateOp.IS_NULL -> text == null
+            PredicateOp.IS_NOT_NULL -> text != null
+            PredicateOp.LIKE -> text != null && sqlLikeMatches(text, p.literal)
+            PredicateOp.NOT_LIKE -> text != null && !sqlLikeMatches(text, p.literal)
+            else -> {
+                // A literal the column's type cannot read is a cast to null in Spark, and so is a
+                // partition value that does not parse: either way the comparison is null, and false.
+                val order = text?.let(::typed)?.let { v -> typed(p.literal)?.let { compareValues(v, it) } } ?: return false
+                when (p.op) {
+                    PredicateOp.EQ -> order == 0
+                    PredicateOp.NOT_EQ -> order != 0
+                    PredicateOp.LT -> order < 0
+                    PredicateOp.LTE -> order <= 0
+                    PredicateOp.GT -> order > 0
+                    else -> order >= 0
+                }
+            }
+        }
+    }
+    return files.filter { add -> where.filter.holds { leaf(add, it) } }
+}
+
+/**
+ * Whether [value] matches the SQL `LIKE` [pattern]: `%` any run, `_` one character, a backslash
+ * taking the next character as it is — Spark's `StringUtils.escapeLikeRegex` with its default
+ * escape.
+ */
+internal fun sqlLikeMatches(value: String, pattern: String): Boolean {
+    val regex = StringBuilder()
+    var i = 0
+    while (i < pattern.length) {
+        val c = pattern[i]
+        when {
+            c == '\\' && i + 1 < pattern.length -> { regex.append(Regex.escape(pattern[i + 1].toString())); i++ }
+            c == '%' -> regex.append("(?s).*")
+            c == '_' -> regex.append("(?s).")
+            else -> regex.append(Regex.escape(c.toString()))
+        }
+        i++
+    }
+    return Regex(regex.toString()).matches(value)
+}
+
 /**
  * The plan at [version] — the latest unless given — for a bare `OPTIMIZE`, or `ZORDER BY`
- * [zOrderBy] where given, under the default options unless given.
+ * [zOrderBy] where given, over the partitions [where] matches where given, under the default
+ * options unless given. Refused in the command's order: a `WHERE` on a clustered table, a
+ * `ZORDER BY` on one, a `WHERE` naming a column that is not a partition column, then the
+ * `ZORDER BY` columns.
  */
 fun DeltaUnifiedTableModel.planOptimize(
     zOrderBy: List<String> = emptyList(),
+    where: DeltaOptimizeWhere? = null,
     options: DeltaOptimizeOptions = DeltaOptimizeOptions(),
     version: Long? = null,
 ): Result<DeltaOptimizePlan> = runCatching {
     val at = requireNotNull(version ?: latestVersion) { "the log holds no version" }
     val state = stateAt(at).getOrThrow()
     val metadata = requireNotNull(state.metadata) { "version $at has no metadata" }
-    val clustering = deltaClusteringColumns(state).takeIf { state.protocol?.writerFeatures.orEmpty().contains("clustering") }.orEmpty()
-    when {
-        zOrderBy.isNotEmpty() -> deltaZOrderRefusal(metadata, state.protocol, zOrderBy)
-            ?.let { DeltaOptimizePlan(at, options, emptyList(), emptyList(), DeltaOptimizeMode.ZORDER, zOrderBy, refusal = it) }
-            ?: planDeltaZOrder(at, state.files.values, zOrderBy, options)
-        clustering.isNotEmpty() -> planDeltaClustering(at, state.files.values, clustering, options)
-        else -> planDeltaOptimize(at, state.files.values, options)
+    val clusteringFeature = state.protocol?.writerFeatures.orEmpty().contains("clustering")
+    val clustering = deltaClusteringColumns(state).takeIf { clusteringFeature }.orEmpty()
+    val mode = when {
+        zOrderBy.isNotEmpty() -> DeltaOptimizeMode.ZORDER
+        clustering.isNotEmpty() -> DeltaOptimizeMode.CLUSTERING
+        else -> DeltaOptimizeMode.COMPACTION
     }
+    val refusal = when {
+        where != null && clusteringFeature ->
+            "OPTIMIZE command for Delta table with clustering doesn't support partition predicates. Please remove the predicates: ${where.text}."
+        zOrderBy.isNotEmpty() && clusteringFeature -> deltaZOrderRefusal(metadata, state.protocol, zOrderBy)
+        else -> where?.let { deltaPartitionPredicateRefusal(metadata, it) }
+            ?: zOrderBy.takeIf { it.isNotEmpty() }?.let { deltaZOrderRefusal(metadata, state.protocol, it) }
+    }
+    if (refusal != null) return@runCatching DeltaOptimizePlan(at, options, emptyList(), emptyList(), mode, zOrderBy.ifEmpty { clustering }, refusal, where)
+    val files = if (where == null) state.files.values.toList() else deltaFilesMatching(state.files.values, metadata, where)
+    val plan = when (mode) {
+        DeltaOptimizeMode.ZORDER -> planDeltaZOrder(at, files, zOrderBy, options)
+        DeltaOptimizeMode.CLUSTERING -> planDeltaClustering(at, files, clustering, options)
+        DeltaOptimizeMode.COMPACTION -> planDeltaOptimize(at, files, options)
+    }
+    plan.copy(where = where, outsideWhere = state.files.size - files.size)
 }
 
 /**
- * The plan an `OPTIMIZE` commit ran — at the version before it, under the `zOrderBy` it records —
- * or null for another operation, a commit under a `predicate` this cannot apply, or a version the
- * log cannot rebuild. The options a session set are not recorded, so the plan is under the
- * defaults; a caller comparing it with the commit checks the removed files agree first.
+ * The plan an `OPTIMIZE` commit ran — at the version before it, under the `zOrderBy` and the
+ * `predicate` it records — or null for another operation, a predicate [parseCatalystPredicate]
+ * cannot read back, or a version the log cannot rebuild. The options a session set are not
+ * recorded, so the plan is under the defaults; a caller comparing it with the commit checks the
+ * removed files agree first.
  */
 fun DeltaUnifiedTableModel.planOptimizeBefore(commit: DeltaCommit): DeltaOptimizePlan? {
     val info = commit.commitInfo ?: return null
     if (info.operation != "OPTIMIZE") return null
     fun list(key: String): List<String>? = (info.operationParameters?.get(key) as? JsonPrimitive)?.contentOrNull
         ?.let { runCatching { (deltaJson.parseToJsonElement(it) as JsonArray).map { e -> e.jsonPrimitive.content } }.getOrNull() }
-    if (list("predicate")?.isEmpty() != true) return null
+    val predicates = list("predicate") ?: return null
+    val where = if (predicates.isEmpty()) null else {
+        val filters = predicates.map { parseCatalystPredicate(it) ?: return null }
+        DeltaOptimizeWhere(predicates.joinToString(" AND "), filters.singleOrNull() ?: ScanFilter.And(filters))
+    }
     val zOrderBy = list("zOrderBy") ?: return null
-    return planOptimize(zOrderBy, version = commit.version - 1).getOrNull()
+    return planOptimize(zOrderBy, where, version = commit.version - 1).getOrNull()
+}
+
+/**
+ * An `OPTIMIZE` commit's recorded `predicate` read back into a filter, or null where it cannot be.
+ *
+ * delta-spark 3.2.1 records each predicate as Catalyst's `toString` of the parsed, unresolved
+ * expression, not as SQL — what `dow`'s log holds: `p = 'x'` is `('p = x)`, `p <> 'x'` is
+ * `NOT ('p = x)`, `p IS NULL` is `isnull('p)`, and a `LIKE` or an `IN` prints no parentheses of
+ * its own (`(NOT 'p LIKE %y OR isnull('p))`). A column is `'name` and a literal loses its quotes,
+ * so a value holding a space, a parenthesis or a comma cannot be told from the text around it:
+ * a text that does not read back as exactly one expression of these shapes is null, never a guess.
+ */
+internal fun parseCatalystPredicate(text: String): ScanFilter? {
+    val tokens = Regex("""[(),]|[^\s(),]+""").findAll(text).map { it.value }.toList()
+    var pos = 0
+    fun next(): String? = tokens.getOrNull(pos)?.also { pos++ }
+
+    // An operand is a column, a literal (null for Catalyst's `null`), or a condition.
+    abstract class Operand
+    class Column(val name: String) : Operand()
+    class Literal(val text: String?) : Operand()
+    class Condition(val filter: ScanFilter) : Operand()
+
+    val comparisons = mapOf("=" to PredicateOp.EQ, "<" to PredicateOp.LT, "<=" to PredicateOp.LTE, ">" to PredicateOp.GT, ">=" to PredicateOp.GTE)
+    val flipped = mapOf(PredicateOp.EQ to PredicateOp.EQ, PredicateOp.LT to PredicateOp.GT, PredicateOp.LTE to PredicateOp.GTE, PredicateOp.GT to PredicateOp.LT, PredicateOp.GTE to PredicateOp.LTE)
+    fun condition(o: Operand?): ScanFilter? = (o as? Condition)?.filter
+    fun term(column: String, op: PredicateOp, literal: String = "") = Condition(ScanFilter.Term(ScanPredicate(column, op, literal)))
+    fun like(column: String, pattern: String) = term(column, if (pattern.none { it == '%' || it == '_' }) PredicateOp.EQ else PredicateOp.LIKE, pattern)
+
+    fun operand(): Operand? {
+        val token = next() ?: return null
+        return when {
+            token == "(" -> {
+                val left = operand() ?: return null
+                val op = next() ?: return null
+                val right = operand() ?: return null
+                if (next() != ")") return null
+                when {
+                    op == "AND" -> Condition(ScanFilter.And(listOf(condition(left) ?: return null, condition(right) ?: return null)))
+                    op == "OR" -> Condition(ScanFilter.Or(listOf(condition(left) ?: return null, condition(right) ?: return null)))
+                    op == "<=>" && left is Column && right is Literal -> right.text?.let { term(left.name, PredicateOp.EQ, it) } ?: term(left.name, PredicateOp.IS_NULL)
+                    op in comparisons && left is Column && right is Literal -> term(left.name, comparisons.getValue(op), right.text ?: return null)
+                    op in comparisons && left is Literal && right is Column -> term(right.name, flipped.getValue(comparisons.getValue(op)), left.text ?: return null)
+                    else -> null
+                }
+            }
+            token == "NOT" -> Condition(ScanFilter.Not(condition(operand()) ?: return null))
+            (token == "isnull" || token == "isnotnull") && next() == "(" -> {
+                val column = operand() as? Column ?: return null
+                if (next() != ")") return null
+                term(column.name, if (token == "isnull") PredicateOp.IS_NULL else PredicateOp.IS_NOT_NULL)
+            }
+            token.startsWith("'") && token.length > 1 -> {
+                val name = token.drop(1)
+                when (tokens.getOrNull(pos)) {
+                    "LIKE" -> { pos++; val pattern = next()?.takeIf { it !in setOf("(", ")", ",") } ?: return null; like(name, pattern) }
+                    "IN" -> {
+                        pos++
+                        if (next() != "(") return null
+                        val values = mutableListOf<String>()
+                        while (true) {
+                            values += next()?.takeIf { it !in setOf("(", ")", ",", "null") } ?: return null
+                            when (next()) { ")" -> break; "," -> continue; else -> return null }
+                        }
+                        Condition(values.map { ScanFilter.Term(ScanPredicate(name, PredicateOp.EQ, it)) }.let { it.singleOrNull() ?: ScanFilter.Or(it) })
+                    }
+                    else -> Column(name)
+                }
+            }
+            token in setOf(")", ",") -> null
+            else -> Literal(token.takeUnless { it == "null" })
+        }
+    }
+    val filter = condition(operand()) ?: return null
+    return filter.takeIf { pos == tokens.size }
 }

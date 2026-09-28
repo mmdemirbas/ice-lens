@@ -2717,6 +2717,15 @@ class InspectorRenderTest {
                 DeltaOptimizeSection((deltaGraphFor("dzo").nodes.filterIsInstance<GraphNode.TableNode>().single().maintenance.value as model.DeltaMaintenanceInput).model, initialZOrder = "a, b")
             }
         }
+        // WHERE on `dow` at its latest version: `p <> 'x'` keeps the y partition and not the null
+        // one, and ZORDER BY a rewrites its one file; and an unquoted value refused where typed.
+        val dow = (deltaGraphFor("dow").nodes.filterIsInstance<GraphNode.TableNode>().single().maintenance.value as model.DeltaMaintenanceInput).model
+        renderScene("delta-optimize-where", width = 1400, height = 2450) {
+            Column(Modifier.padding(16.dp)) { DeltaOptimizeSection(dow, initialWhere = "p <> 'x'", initialZOrder = "a") }
+        }
+        renderScene("delta-optimize-where-unquoted", width = 1400, height = 1900) {
+            Column(Modifier.padding(16.dp)) { DeltaOptimizeSection(dow, initialWhere = "d >= 2024-03-06") }
+        }
         // UniForm on `duni`: the export at the latest version, naming the log's three files.
         val duni = deltaGraphFor("duni").nodes.filterIsInstance<GraphNode.TableNode>().single()
         renderUntil("delta-uniform", width = 1400, height = 520, ready = { duni.deltaUniForm.isRead }) {

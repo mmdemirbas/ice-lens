@@ -27,17 +27,14 @@ Neither is worth doing before the plugin has a reason to read a data file.
 Read: the log, checkpoints of every naming, the replay, file actions, deletion vectors, the
 integrity checks (commit metrics, checkpoint against replay, `_last_checkpoint`, vectors), column
 mapping in both modes, the change data feed, a row's history across versions, and the VACUUM,
-OPTIMIZE planner in its three modes — compaction, ZORDER BY, liquid clustering — and the
+OPTIMIZE planner in its three modes — compaction, ZORDER BY, liquid clustering — with a WHERE
+over partition columns, and the
 log-cleanup planner with their maintenance lines, row tracking on rows, UniForm's
 Iceberg metadata against the log, in-commit timestamps' order.
 
 - **Inline deletion vectors** are decoded on the file panel but the lookup cannot read one — it
   has no file — and leaves the row undecided. delta-spark 3.2.1 does not write them, so a fixture
   needs another writer.
-- **`OPTIMIZE … WHERE`** on partition columns narrows compaction and `ZORDER BY` to the
-  partitions it matches; the plan takes the whole table, and a commit with a `predicate` is not
-  compared with a plan. The predicate is SQL text in the commit, so this needs the partition
-  pruning's evaluator over a parsed clause.
 
 ## Format coverage gaps
 

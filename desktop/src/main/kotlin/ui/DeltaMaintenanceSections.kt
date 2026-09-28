@@ -20,6 +20,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import model.DeltaOptimizeMode
 import model.DeltaOptimizePlan
+import model.DeltaOptimizeWhere
+import model.ScanFilterParse
+import model.deltaOptimizeCall
+import model.parseScanFilter
 import model.DeltaUnifiedTableModel
 import model.DeltaVacuumPlan
 import model.LogCleanupFate
@@ -39,17 +43,25 @@ private const val MAX_DELTA_PLAN_ROWS = 200
 /**
  * What `OPTIMIZE` would rewrite — see [model.planDeltaOptimize] for the rules. Drawn from the log
  * alone, so no click: the bare call first — compaction, or liquid clustering on a clustered table
- * — then, under a field for its columns, the same call with `ZORDER BY`. Each plan leads with
- * what it does, then its bins, then every live file with why it is taken or left.
- * [initialZOrder] seeds the field, which is how a capture reaches the state typing produces.
+ * — then, under two fields, the same call with a `WHERE` over partition columns, a `ZORDER BY`,
+ * or both. Each plan leads with what it does, then its bins, then every live file with why it is
+ * taken or left. The predicate is read as Spark SQL ([parseScanFilter] with `sparkLiterals`), so
+ * an unquoted value is refused where it is typed rather than planned as the value Spark would not
+ * read. [initialWhere] and [initialZOrder] seed the fields, which is how a capture reaches the
+ * state typing produces.
  */
 @Composable
-internal fun DeltaOptimizeSection(model: DeltaUnifiedTableModel, initialZOrder: String = "") {
+internal fun DeltaOptimizeSection(model: DeltaUnifiedTableModel, initialWhere: String = "", initialZOrder: String = "") {
     val colors = MaterialTheme.colorScheme
     val plan = remember(model) { model.planOptimize() }.getOrNull()
+    var where by remember(model) { mutableStateOf(initialWhere) }
     var zOrder by remember(model) { mutableStateOf(initialZOrder) }
+    val whereParse = remember(where) { where.takeIf { it.isNotBlank() }?.let { parseScanFilter(it, sparkLiterals = true) } }
+    val parsedWhere = (whereParse as? ScanFilterParse.Parsed)?.let { DeltaOptimizeWhere(where.trim(), it.filter) }
     val zColumns = zOrder.split(',').map { it.trim() }.filter { it.isNotEmpty() }
-    val zPlan = remember(model, zColumns) { if (zColumns.isEmpty()) null else model.planOptimize(zColumns).getOrNull() }
+    val callPlan = remember(model, zColumns, parsedWhere) {
+        if (zColumns.isEmpty() && parsedWhere == null) null else model.planOptimize(zColumns, parsedWhere).getOrNull()
+    }
     val title = "Optimize" + when {
         plan == null -> ""
         plan.commits -> " — ${formatCounted(plan.removed.size, "file")} into ${plan.filesAddedText}"
@@ -62,29 +74,53 @@ internal fun DeltaOptimizeSection(model: DeltaUnifiedTableModel, initialZOrder: 
         }
         DeltaOptimizePlanBody(plan)
         Text(
-            "ZORDER BY",
+            "WHERE and ZORDER BY",
             fontSize = TypeScale.small,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
         )
         Text(
-            "The same call with ZORDER BY the columns typed here, comma-separated. It is planned beside the bare call above, " +
-                "which is what the table's Maintenance line summarises.",
+            "The same call over the partitions a predicate matches, or ZORDER BY the columns typed here, comma-separated, or both — " +
+                "planned beside the bare call above, which is what the table's Maintenance line summarises. The predicate is Spark SQL " +
+                "over partition columns: quote a value, as in p = 'x'.",
             fontSize = TypeScale.small,
             color = colors.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
         )
         OutlinedTextField(
-            value = zOrder, onValueChange = { zOrder = it }, singleLine = true,
-            label = { Text("columns", fontSize = TypeScale.small) },
+            value = where, onValueChange = { where = it }, singleLine = true,
+            label = { Text("WHERE — partition columns", fontSize = TypeScale.small) },
+            isError = whereParse is ScanFilterParse.Failed,
             textStyle = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.widthIn(max = ZORDER_FIELD_MAX_WIDTH).fillMaxWidth().padding(bottom = 4.dp),
+            modifier = Modifier.widthIn(max = OPTIMIZE_FIELD_MAX_WIDTH).fillMaxWidth(),
         )
-        zPlan?.let { DeltaOptimizePlanBody(it) }
+        if (whereParse is ScanFilterParse.Failed) {
+            Text(
+                "${whereParse.message} — at \"${where.caretAt(whereParse.at)}\"",
+                fontSize = TypeScale.micro,
+                color = colors.error,
+                modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+            )
+        }
+        OutlinedTextField(
+            value = zOrder, onValueChange = { zOrder = it }, singleLine = true,
+            label = { Text("ZORDER BY — columns", fontSize = TypeScale.small) },
+            textStyle = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.widthIn(max = OPTIMIZE_FIELD_MAX_WIDTH).fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
+        )
+        callPlan?.let {
+            Text(
+                "OPTIMIZE ${deltaOptimizeCall(parsedWhere, zColumns)}",
+                fontSize = TypeScale.small,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+            )
+            DeltaOptimizePlanBody(it)
+        }
     }
 }
 
-private val ZORDER_FIELD_MAX_WIDTH = 360.dp
+private val OPTIMIZE_FIELD_MAX_WIDTH = 360.dp
 
 @Composable
 private fun DeltaOptimizePlanBody(plan: DeltaOptimizePlan) {

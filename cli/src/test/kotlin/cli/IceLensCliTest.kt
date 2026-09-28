@@ -64,6 +64,7 @@ class IceLensCliTest {
     private val br = fixture("example/paimon/db.db/br")
     private val dzo = fixture("example/delta/dzo")
     private val dcl = fixture("example/delta/dcl")
+    private val dow = fixture("example/delta/dow")
 
     private class Run(val code: Int, val out: String, val err: String)
 
@@ -378,6 +379,23 @@ class IceLensCliTest {
         assertTrue(icelens("plan", dcl).out.lines().any { it.contains("nothing to do") && it.contains("liquid clustering by b") }, icelens("plan", dcl).out)
         assertEquals(IceLensCli.EXIT_USAGE, icelens("plan", dzo, "vacuum", "--zorder", "a").code)
         assertEquals(IceLensCli.EXIT_USAGE, icelens("plan", dzo, "--zorder", "a").code)
+    }
+
+    @Test
+    fun `plan optimize --where narrows the plan to the partitions the clause matches, read as Spark SQL`() {
+        val w = icelens("plan", dow, "optimize", "--where", "p IS NULL OR p = 'y'", "--zorder", "a")
+        assertEquals(IceLensCli.EXIT_OK, w.code, w.err)
+        assertTrue(w.out.lines().any { it.contains("WHERE p IS NULL OR p = 'y' ZORDER BY a, in place of the bare call above: Would rewrite 2 files") }, w.out)
+        assertTrue(w.out.contains("WHERE p IS NULL OR p = 'y' keeps 2 live files of 4"), w.out)
+        val refused = icelens("plan", dow, "optimize", "--where", "a = 1")
+        assertEquals(IceLensCli.EXIT_OK, refused.code, refused.err)
+        assertTrue(refused.out.contains("Refused: Predicate references non-partition column 'a'. Only the partition columns may be referenced: [p, d]"), refused.out)
+        // An unquoted date is arithmetic to Spark: refused where it is typed, the caret under it.
+        val unquoted = icelens("plan", dow, "optimize", "--where", "d >= 2024-03-06")
+        assertEquals(IceLensCli.EXIT_USAGE, unquoted.code)
+        assertTrue(unquoted.err.contains("quote it: '2024-03-06'") && unquoted.err.lines().any { it == "       ^" }, unquoted.err)
+        assertEquals(IceLensCli.EXIT_USAGE, icelens("plan", dow, "vacuum", "--where", "p = 'x'").code)
+        assertEquals(IceLensCli.EXIT_USAGE, icelens("plan", dow, "--where", "p = 'x'").code)
     }
 
     @Test

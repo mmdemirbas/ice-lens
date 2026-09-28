@@ -514,7 +514,7 @@ internal fun ClauseEditor(
  * `AND` read as a word of its own, and a fragment the reader has to decode is worse than no
  * fragment at all. The window is what the message points at, so it has to be quotable back.
  */
-private fun String.caretAt(at: Int): String {
+internal fun String.caretAt(at: Int): String {
     if (isEmpty()) return this
     val from = (at - 10).coerceIn(0, length)
     val to = (at + 14).coerceIn(0, length)

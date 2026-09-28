@@ -182,6 +182,18 @@ class MaintenanceDetailTest {
     }
 
     @Test
+    fun `OPTIMIZE WHERE on dow plans over the partitions the predicate matches, a null partition not among them`() {
+        val dow = Planned(FixtureCatalog.deltaDir("dow"), y2099)
+        val line = assertNotNull(dow.lines.forProcedure("optimize"))
+        val where = DeltaOptimizeWhere("p <> 'x'", (parseScanFilter("p <> 'x'", sparkLiterals = true) as ScanFilterParse.Parsed).filter)
+        val w = maintenanceDetail(dow.node, line, dow.nowMs, dow.orphans, dow.unexisting, dow.vacuum, zOrderBy = listOf("a"), where = where)
+        assertTrue(w.notes.first().startsWith("WHERE p <> 'x' ZORDER BY a, in place of the bare call above: Would rewrite 1 file"), w.notes.toString())
+        assertTrue(w.notes[1].contains("WHERE p <> 'x' keeps 1 live file of 4"), w.notes.toString())
+        assertEquals(listOf("p=y, d=2024-03-05"), w.table("Bins").column("Partition"))
+        assertEquals(1, w.table("Files").rows.size)
+    }
+
+    @Test
     fun `compact_manifest on pmm rewrites its four manifests into the one of ten entries pmma's snapshot 13 lists`() {
         val detail = Planned(FixtureCatalog.paimonDir("pmm"), y2099).detail("sys.compact_manifest")
         val written = FixtureCatalog.paimonModel("pmma").snapshots.single { it.metadata.id == 13L }

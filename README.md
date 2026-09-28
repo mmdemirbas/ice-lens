@@ -193,6 +193,8 @@ icelens plan /wh/db/orders rewrite_position_delete_files --files
 icelens plan /wh/db/events optimize --zorder a,b
                                                 # a Delta OPTIMIZE ZORDER BY a, b: every file it rewrites,
                                                 # or the error the engine refuses it with
+icelens plan /wh/db/events optimize --where "dt >= '2024-03-01'"
+                                                # the same call over the partitions the clause matches
 icelens export /wh/db/orders --format csv --out files.csv   # the file inventory; svg and json too
 ```
 

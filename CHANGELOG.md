@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Delta `OPTIMIZE … WHERE`, planned.** A predicate over partition columns narrows the plan in
+  every mode to the partitions it matches, read exactly as Spark does: a comparison with a null
+  partition value is false, so `p <> 'x'` leaves the null partition out. A predicate naming a
+  data column, or any predicate on a clustered table, is refused with the engine's message. The
+  desktop's Optimize section has a WHERE field beside the ZORDER BY one, and `icelens plan <table>
+  optimize --where "p = 'x'"` does the same; the clause is Spark SQL, so an unquoted value such
+  as `2024-03-05` (arithmetic to Spark) is refused where it is typed. A commit records its
+  predicate as Catalyst's `toString`, not as SQL, and it is read back, so the integrity check
+  now compares an `OPTIMIZE … WHERE` commit's figures with its plan too. The fixture `dow` runs
+  four such commits and two that write nothing.
+
 - **Delta `OPTIMIZE` with `ZORDER BY` and liquid clustering, planned.** On a clustered table the
   bare call now clusters: the unclustered files and the small cubes clustered by the table's
   columns go into new cubes, while cubes clustered by other columns, cubes of 100 GiB or more and

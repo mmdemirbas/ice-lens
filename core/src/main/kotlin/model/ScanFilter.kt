@@ -107,6 +107,26 @@ fun ScanFilter.verdict(leaf: (ScanPredicate) -> ScanVerdict): ScanVerdict = when
 }
 
 /**
+ * Whether one row — its columns known exactly, not bounded — satisfies the filter, as SQL decides.
+ *
+ * [leaf] answers a condition with a comparison against a null as false, never unknown, and that is
+ * exact only after [pushNegation], which this runs first: with every `NOT` pushed into the
+ * operators the filter is monotone in its leaves, and reading unknown as false commutes with `AND`
+ * and `OR` — the minimum and the maximum over false < unknown < true — so the filter is true here
+ * exactly where SQL's three-valued logic finds it true. Without the push, `NOT (p = 'x')` on a null
+ * `p` would read as true where SQL reads null.
+ */
+fun ScanFilter.holds(leaf: (ScanPredicate) -> Boolean): Boolean {
+    fun fold(filter: ScanFilter): Boolean = when (filter) {
+        is ScanFilter.Term -> leaf(filter.predicate)
+        is ScanFilter.And -> filter.terms.all(::fold)
+        is ScanFilter.Or -> filter.terms.any(::fold)
+        is ScanFilter.Not -> error("pushNegation leaves no Not")
+    }
+    return fold(pushNegation())
+}
+
+/**
  * The filter as a flat list of conditions, or null when it is not one.
  *
  * The row-per-condition form can only build and show a conjunction of plain terms; an `Or`, a `Not`

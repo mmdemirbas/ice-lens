@@ -24,13 +24,19 @@ sealed interface ScanFilterParse {
  * date to one column and a string to another, and the manifest being evaluated decides which. So
  * the only thing done here is stripping the quotes that told the tokenizer where the literal
  * ended. That keeps one place where a literal becomes a value, rather than a second that drifts.
+ * A typed literal — `DATE '2024-03-05'`, `TIMESTAMP '…'` — is its quoted text for the same reason.
+ *
+ * **[sparkLiterals] is for a clause Spark SQL will run**, `OPTIMIZE … WHERE`'s: there an
+ * unquoted word is a column and `2024-03-05` is arithmetic, so an unquoted value other than a
+ * number or a boolean is refused with the quoting that says what was meant, rather than read
+ * here as the value Spark would not.
  */
-fun parseScanFilter(text: String): ScanFilterParse {
+fun parseScanFilter(text: String, sparkLiterals: Boolean = false): ScanFilterParse {
     if (text.isBlank()) return ScanFilterParse.Parsed(ScanFilter.of(emptyList()))
     val tokens = tokenize(text) ?: return ScanFilterParse.Failed(
         "an opening quote with no closing one", text.lastIndexOf('\''),
     )
-    val parser = FilterParser(tokens, text)
+    val parser = FilterParser(tokens, text, sparkLiterals)
     return parser.parseAll()
 }
 
@@ -99,6 +105,12 @@ private fun tokenize(text: String): List<Token>? {
     return tokens
 }
 
+/** The prefixes of a typed literal, `DATE '2024-03-05'`: the quoted text is the value. */
+private val TYPED_LITERALS = setOf("date", "timestamp", "timestamp_ntz", "timestamp_ltz")
+
+/** What Spark SQL reads unquoted as a value: a number or a boolean. */
+private val SPARK_BARE_LITERAL = Regex("""-?\d+(\.\d+)?([eE][-+]?\d+)?|(?i:true|false)""")
+
 private val KEYWORDS = setOf("and", "or", "not", "is", "null", "in", "between", "like")
 
 private val OPERATORS = mapOf(
@@ -118,7 +130,7 @@ private val OPERATORS = mapOf(
  * `a = 1 OR b = 2 AND c = 3` has to mean `a = 1 OR (b = 2 AND c = 3)` here too. Getting it
  * backwards would produce a filter that parses, evaluates, and answers a question nobody asked.
  */
-private class FilterParser(private val tokens: List<Token>, private val text: String) {
+private class FilterParser(private val tokens: List<Token>, private val text: String, private val sparkLiterals: Boolean) {
     private var pos = 0
 
     private fun peek(): Token? = tokens.getOrNull(pos)
@@ -330,6 +342,15 @@ private class FilterParser(private val tokens: List<Token>, private val text: St
         }
         if (token.kind == TokenKind.WORD && token.text.lowercase() in KEYWORDS) {
             fail("expected a value, not '${token.text}'", token.at)
+            return null
+        }
+        val typed = tokens.getOrNull(pos + 1)
+        if (token.kind == TokenKind.WORD && token.text.lowercase() in TYPED_LITERALS && typed?.kind == TokenKind.STRING) {
+            pos += 2
+            return typed.text
+        }
+        if (sparkLiterals && token.kind == TokenKind.WORD && !token.text.matches(SPARK_BARE_LITERAL)) {
+            fail("Spark SQL reads an unquoted ${token.text} as a column or an expression, not as a value; quote it: '${token.text}'", token.at)
             return null
         }
         pos++

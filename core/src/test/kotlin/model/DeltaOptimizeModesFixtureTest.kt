@@ -34,7 +34,7 @@ class DeltaOptimizeModesFixtureTest {
         for (commit in runs) {
             val where = "$table v${commit.version}"
             val metrics = commit.commitInfo!!.operationMetrics!!
-            val plan = model.planOptimize(zOrderOf(commit), options(commit.version), version = commit.version - 1).getOrThrow()
+            val plan = model.planOptimize(zOrderOf(commit), options = options(commit.version), version = commit.version - 1).getOrThrow()
             assertNull(plan.refusal, where)
             assertEquals(commit.removes.map { it.key }.toSet(), plan.removed.map { it.add.key }.toSet(), where)
             assertEquals(metrics.getValue("numRemovedBytes").toLong(), plan.removedBytes, where)
@@ -56,7 +56,7 @@ class DeltaOptimizeModesFixtureTest {
         assertTrue(first.bins.all { it.rewritten })
         assertEquals(2..2, first.filesAdded)
         // Under 300 bytes p=x (905) asks for three and p=y (872) for two; the run wrote three and one.
-        val small = model.planOptimize(listOf("a"), DeltaOptimizeOptions(maxFileSize = 300), version = 9).getOrThrow()
+        val small = model.planOptimize(listOf("a"), options = DeltaOptimizeOptions(maxFileSize = 300), version = 9).getOrThrow()
         assertEquals(listOf(3, 2), small.bins.map { it.outputFiles })
         assertEquals(2..5, small.filesAdded)
         assertEquals("rewritten into up to 3", small.bins.first().verdictText)
