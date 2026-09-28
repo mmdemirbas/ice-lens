@@ -114,6 +114,35 @@ class DuckDbCredentialsTest {
     }
 
     /**
+     * The desktop's location form and the command line's options build a location's credentials
+     * through one function, so the two shells scope and name a key alike.
+     */
+    @Test
+    fun `a location's credentials are scoped to its bucket, and the chain drops a typed key`() {
+        val typed = ObjectStoreCredentials.forLocation(
+            url = "s3://warehouse/db/mor", useCredentialChain = false, keyId = "AKIA", secret = "s", sessionToken = "t",
+            region = " ", endpoint = "127.0.0.1:9000", useSsl = false, urlStyle = "path",
+        )
+        assertEquals("s3://warehouse", typed.scope)
+        assertEquals("icelens_s3___warehouse_db_mor", typed.name)
+        assertEquals(listOf("AKIA", "s", "t"), listOf(typed.keyId, typed.secret, typed.sessionToken))
+        assertEquals(null, typed.region, "a blank field is unset")
+        val chain = ObjectStoreCredentials.forLocation(url = "gs://b/t", useCredentialChain = true, keyId = "AKIA", secret = "s", sessionToken = "t")
+        assertEquals(listOf(null, null, null), listOf(chain.keyId, chain.secret, chain.sessionToken))
+        assertEquals("gcs", chain.type)
+        assertEquals("gs://b", chain.scope)
+    }
+
+    @Test
+    fun `a credential chain that finds nothing says where a key is looked for`() {
+        val chain = ObjectStoreCredentials.forLocation(url = "s3://warehouse/db/mor", useCredentialChain = true)
+        val validation = "Invalid Configuration Error: Secret Validation Failure: during `create` using the following:\nCredential Chain: 'config'"
+        assertTrue(DuckDb.rejectedMessage(chain, validation).startsWith("The credential chain found no key for s3://warehouse"))
+        val typed = ObjectStoreCredentials.forLocation(url = "s3://warehouse/db/mor", useCredentialChain = false, keyId = "k", secret = "s")
+        assertEquals("DuckDB rejected the credentials named 'icelens_s3___warehouse_db_mor': $validation", DuckDb.rejectedMessage(typed, validation))
+    }
+
+    /**
      * Every message a store's own failure produces says what to do about it.
      *
      * One generic "could not read the table" for all of these is the failure mode where the reader

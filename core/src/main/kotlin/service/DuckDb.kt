@@ -45,7 +45,54 @@ data class ObjectStoreCredentials(
     override fun toString(): String =
         "ObjectStoreCredentials(name=$name, type=$type, endpoint=$endpoint, region=$region, " +
             "scope=$scope, chain=$useCredentialChain, keyId=${if (keyId == null) "unset" else "set"}, " +
-            "secret=${if (secret == null) "unset" else "redacted"})"
+            "secret=${if (secret == null) "unset" else "redacted"}, " +
+            "sessionToken=${if (sessionToken == null) "unset" else "redacted"})"
+
+    companion object {
+        /**
+         * The credentials for the object-storage location [url], scoped to its bucket and named
+         * and typed from it — the one derivation the desktop's location form and the command
+         * line's options both go through, so the two cannot scope or name a key differently.
+         * Under [useCredentialChain] a typed key is dropped, and a blank field counts as unset.
+         */
+        fun forLocation(
+            url: String,
+            useCredentialChain: Boolean,
+            keyId: String? = null,
+            secret: String? = null,
+            sessionToken: String? = null,
+            region: String? = null,
+            endpoint: String? = null,
+            useSsl: Boolean = true,
+            urlStyle: String? = null,
+        ): ObjectStoreCredentials = ObjectStoreCredentials(
+            name = secretNameFor(url),
+            type = secretTypeFor(url),
+            keyId = keyId?.takeIf { !useCredentialChain && it.isNotBlank() },
+            secret = secret?.takeIf { !useCredentialChain && it.isNotBlank() },
+            sessionToken = sessionToken?.takeIf { !useCredentialChain && it.isNotBlank() },
+            region = region?.takeIf { it.isNotBlank() },
+            endpoint = endpoint?.takeIf { it.isNotBlank() },
+            useSsl = useSsl,
+            urlStyle = urlStyle?.takeIf { it.isNotBlank() },
+            scope = scopeFor(url),
+            useCredentialChain = useCredentialChain,
+        )
+
+        /** `s3://bucket` — the widest scope a key should ever be handed, so one key never reaches another bucket. */
+        fun scopeFor(url: String): String = "${StorageLocation.schemeOf(url)}://${url.substringAfter("://").substringBefore('/')}"
+
+        /** A DuckDB secret name for [url]. It is an identifier, so everything else becomes an underscore. */
+        fun secretNameFor(url: String): String =
+            ("icelens_" + url.map { if (it.isLetterOrDigit()) it else '_' }.joinToString("")).take(64)
+
+        /** DuckDB's own secret type for [url]'s scheme. `gs`, `gcs` and `r2` all speak the S3 API. */
+        fun secretTypeFor(url: String): String = when (StorageLocation.schemeOf(url)) {
+            "gs", "gcs" -> "gcs"
+            "r2" -> "r2"
+            else -> "s3"
+        }
+    }
 }
 
 /**
@@ -164,13 +211,26 @@ object DuckDb {
             runCatching { conn.createStatement().use { it.execute(createSecretSql(entry)) } }
                 .onFailure {
                     // The SQL is never logged or attached: it carries the key.
-                    throw IllegalStateException(
-                        "DuckDB rejected the credentials named '${entry.name}': ${it.message}", it,
-                    )
+                    throw IllegalStateException(rejectedMessage(entry, it.message.orEmpty()), it)
                 }
         }
         logger.info("Configured {} object-store credential(s) on DuckDB", credentials.size)
     }
+
+    /**
+     * Why [entry] could not be configured, from the engine's [message]. A credential chain that
+     * finds no key is refused by DuckDB's validation ("Secret Validation Failure … Credential
+     * Chain: 'config'"), which says the chain was tried and not that nothing was found — so that
+     * case names where a key is looked for; anything else is the engine's own words.
+     */
+    internal fun rejectedMessage(entry: ObjectStoreCredentials, message: String): String =
+        if (entry.useCredentialChain && message.contains("Secret Validation Failure", ignoreCase = true)) {
+            "The credential chain found no key for ${entry.scope ?: entry.name}: nothing in the environment " +
+                "(AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY), the AWS configuration or an instance role. " +
+                "Configure one of those, or give a key."
+        } else {
+            "DuckDB rejected the credentials named '${entry.name}': $message"
+        }
 
     /**
      * The `CREATE SECRET` statement for [entry].

@@ -61,9 +61,9 @@ internal fun remoteTablesAt(warehouse: String): Map<String, TableFormat> {
  * through as an exception.
  *
  * [isTableLocation] cannot answer this on its own, and the reason is worth stating because it is
- * the same trap twice: `TableFormatDetector` asks `Files.isDirectory`, which is *specified* to
- * answer `false` rather than throw, so through any filesystem it reports a refused key and a
- * dropped table identically. The glob is only there to fail — what it returns is not consulted,
+ * the same trap twice: `TableFormatDetector` asks `Files.isDirectory` of each marker, which is
+ * *specified* to answer `false` rather than throw, so through any filesystem it reports a refused
+ * key and a dropped table identically. The glob is only there to fail — what it returns is not consulted,
  * because object storage has no directory entries and a table's own prefix usually holds no files
  * directly. Deciding stays with the detector.
  */

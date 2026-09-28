@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`icelens` opens a table in object storage with a key.** The command line configured no
+  credentials, so an `s3://`, `gs://` or `r2://` table opened only if its bucket was public. It now
+  takes the fields the desktop's location form has — `--endpoint`, `--no-ssl`, `--url-style`,
+  `--region`, and either `--credential-chain` or `--key-id` with `--secret-stdin`. The secret is
+  read from standard input, or asked for without echo on a terminal, and is refused as an
+  argument, where the shell's history and every process listing would keep it. A refused key
+  reports `Access denied`, and a credential chain that finds no key says where it looked. The
+  MinIO lab now also seeds a Paimon and a Delta table, and the tests compare the command's output
+  on each remote table with its output on the same table on disk.
+
 - **A Paimon branch's changelog is read under the row lookup, and so is a changelog that
   outlived its snapshot.** The `Changelog` stage read `main`'s snapshots only. It now reads every
   branch's stream too, each under its own name, and it reads the long-lived changelogs under
@@ -455,6 +465,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Paimon table the location is, when it is one
 
 ### Fixed
+- **A Paimon or Delta table in object storage is detected as what it is.** Format detection asked
+  first whether the table root was a directory. Object storage has no directories, and a table
+  root holds only prefixes, so every table in a bucket was detected as no format and then opened
+  as Iceberg. Detection now asks only for each format's markers.
 - **A Delta `OPTIMIZE`'s `numDeletionVectorsRemoved` no longer reads as a disagreement** when a
   file with a vector was considered and not rewritten: the engine counts the vectors on every file
   the run considered, and the check now counts them from the plan the commit ran. The two vector

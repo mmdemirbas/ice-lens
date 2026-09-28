@@ -50,6 +50,9 @@ import model.readInputAt
 import model.StatisticsFileCheck
 import model.sweepFileStats
 import service.AggregationPolicy
+import service.DuckDb
+import service.ObjectStorage
+import service.ObjectStoreCredentials
 import service.GraphLayoutService
 import service.PaimonRowLookup
 import service.RowLookup
@@ -57,6 +60,7 @@ import service.StatsCheckReader
 import service.StorageLocation
 import service.TableFormat
 import service.TableFormatDetector
+import java.io.InputStream
 import java.io.PrintStream
 import java.nio.file.Files
 import java.nio.file.Path
@@ -76,6 +80,13 @@ import java.nio.file.Path
  *
  * [run] takes the streams so a test can run a command and read what it printed; `main` hands it
  * the process's own and exits with what it returns.
+ *
+ * A table in object storage is reached with the options every command takes — the endpoint,
+ * region, URL style and TLS of a store other than AWS, and either the credential chain or a key
+ * id — through the same [ObjectStoreCredentials.forLocation] the desktop's location form uses,
+ * so the two shells scope and name a key alike. **The secret is never an argument**: a command
+ * line sits in the shell's history and in every process listing, so `--secret-stdin` reads it
+ * from standard input (without echo where that is a terminal) and `--secret` is refused by name.
  */
 object IceLensCli {
 
@@ -91,7 +102,7 @@ object IceLensCli {
     const val EXIT_UNREADABLE = 3
 
     val USAGE: String = """
-        |icelens — inspect an Apache Iceberg or Apache Paimon table from the command line
+        |icelens — inspect an Apache Iceberg, Apache Paimon or Delta Lake table from the command line
         |
         |usage: icelens <command> <table> [options]
         |
@@ -122,7 +133,18 @@ object IceLensCli {
         |  version                               the build
         |
         |<table> is the directory holding the table — Iceberg's `metadata/`, Paimon's `snapshot/` and
-        |`schema/` — or an object-storage URL the environment's credentials open.
+        |`schema/`, Delta's `_delta_log/` — or an object-storage URL (s3://, gs://, gcs://, r2://).
+        |For a URL every command takes:
+        |  --endpoint HOST:PORT                  a store other than AWS — MinIO, Ceph, OBS
+        |  --no-ssl  --url-style path|vhost      plain http, and path-style URLs for a bare host:port
+        |  --region NAME
+        |  --credential-chain                    the key the AWS configuration, the environment or an
+        |                                        instance role holds
+        |  --key-id ID --secret-stdin            a key given here: the secret is read from standard
+        |                                        input — its first line, a session token from the
+        |                                        second — and never from an argument, which would sit
+        |                                        in the shell's history and the process list
+        |With none of these the store is asked without a key, which opens a public bucket only.
         |
         |<filter> for `lookup` is one clause — `"id = 4"`, `"amount >= 10 AND region = 'eu'"`,
         |`"id IN (1, 2)"`, `"name LIKE 'al%'"` — quoted so the shell keeps it as one argument.
@@ -131,7 +153,7 @@ object IceLensCli {
         |3 the path is not a table this opens, or the node id names nothing
         |""".trimMargin()
 
-    fun run(args: List<String>, out: PrintStream, err: PrintStream): Int {
+    fun run(args: List<String>, out: PrintStream, err: PrintStream, input: InputStream = System.`in`): Int {
         val command = args.firstOrNull()
         if (command == null || command == "help" || command == "--help" || command == "-h") {
             out.print(USAGE)
@@ -141,7 +163,11 @@ object IceLensCli {
             out.println("icelens ${version()}")
             return EXIT_OK
         }
-        val parsed = parse(args.drop(1)) ?: return usageError(err, "an option needs a value, or a value was given to a bare flag")
+        val given = parse(args.drop(1)) ?: return usageError(err, "an option needs a value, or a value was given to a bare flag")
+        val parsed = when (val setup = configureStorage(given, input)) {
+            is StorageSetup.Refused -> return usageError(err, setup.message)
+            is StorageSetup.Ready -> setup.rest
+        }
         return try {
             when (command) {
                 "summary" -> summary(parsed, out, err)
@@ -527,11 +553,121 @@ object IceLensCli {
         // as given, and a relative root made `pru`'s two missing files match no live file.
         val path = runCatching { StorageLocation.pathOf(location) }.getOrElse { throw TableNotOpened(it.message ?: "cannot open $location") }
             .let { if (it.fileSystem == java.nio.file.FileSystems.getDefault()) it.toAbsolutePath().normalize() else it }
-        if (!Files.isDirectory(path)) throw TableNotOpened("$location is not a directory")
+        if (StorageLocation.isRemote(location)) {
+            // Every question asked below answers false when it cannot tell, so a refused key or an
+            // unreachable endpoint would read as "not a table". The listing is asked first and
+            // allowed to throw, which puts the store's own answer in front of the reader. The root
+            // itself is not asked whether it is a directory: object storage has no directories,
+            // `ObjectStorage.isDirectory` looks one level down, and a table root holds only
+            // prefixes — the detector's `metadata/`, `snapshot/` and `_delta_log/` are the question.
+            probeRemote(location)
+        } else if (!Files.isDirectory(path)) {
+            throw TableNotOpened("$location is not a directory")
+        }
         if (TableFormatDetector.detect(path) == TableFormat.UNKNOWN) {
             throw TableNotOpened("$location is not an Iceberg, Paimon or Delta table: no metadata/ holding a *.metadata.json, no snapshot/ with schema/, and no _delta_log/ holding a commit")
         }
         return readTableModel(path)
+    }
+
+    private fun probeRemote(location: String) {
+        try {
+            ObjectStorage.glob("${location.trimEnd('/')}/*")
+        } catch (e: ObjectStorage.ObjectStorageException) {
+            throw TableNotOpened(e.message ?: "cannot list $location")
+        } catch (e: IllegalStateException) {
+            // DuckDb's own: httpfs could not be loaded, or the store rejected the secret's shape.
+            throw TableNotOpened(e.message ?: "cannot reach $location")
+        }
+    }
+
+    // ---- reaching object storage ---------------------------------------------------------------
+
+    /** The options that say how to reach a table in object storage; every command takes them. */
+    private val STORAGE_VALUED = setOf("endpoint", "region", "url-style", "key-id")
+    private val STORAGE_OPTIONS = STORAGE_VALUED + setOf("no-ssl", "credential-chain", "secret-stdin")
+
+    private sealed interface StorageSetup {
+        /** The credentials are configured; [rest] is the command's own options. */
+        data class Ready(val rest: Parsed) : StorageSetup
+        data class Refused(val message: String) : StorageSetup
+    }
+
+    /**
+     * Configures DuckDB for the table named by the first positional from the storage options, and
+     * hands the command its own options back. With none given the credentials are cleared, so a
+     * key from an earlier run in the same process never reaches this one. Refused — a usage
+     * error — where the options contradict each other or the table is not an object-storage URL.
+     */
+    private fun configureStorage(parsed: Parsed, input: InputStream): StorageSetup {
+        if (parsed.has("secret")) {
+            return StorageSetup.Refused(
+                "a secret is never taken as an argument — it would sit in the shell's history and in every " +
+                    "process listing; give --key-id and write the secret to standard input with --secret-stdin",
+            )
+        }
+        val given = parsed.options.keys.filter { it in STORAGE_OPTIONS }
+        val rest = Parsed(parsed.positionals, parsed.options - STORAGE_OPTIONS)
+        if (given.isEmpty()) {
+            DuckDb.setCredentials(emptyList())
+            return StorageSetup.Ready(rest)
+        }
+        val table = parsed.positional(0)
+        if (table == null || !StorageLocation.isRemote(table)) {
+            return StorageSetup.Refused("--${given.first()} is for a table in object storage, and ${table ?: "no table"} is not an object-storage URL")
+        }
+        val chain = parsed.has("credential-chain")
+        val keyId = parsed.value("key-id")
+        val secretOnInput = parsed.has("secret-stdin")
+        if (chain && (keyId != null || secretOnInput)) {
+            return StorageSetup.Refused("--credential-chain finds the key itself; give it, or --key-id with --secret-stdin, not both")
+        }
+        if (keyId != null && !secretOnInput) return StorageSetup.Refused("--key-id needs its secret on standard input: add --secret-stdin")
+        if (secretOnInput && keyId == null) return StorageSetup.Refused("--secret-stdin needs the key it is the secret of: add --key-id")
+        val urlStyle = parsed.value("url-style")
+        if (urlStyle != null && urlStyle !in setOf("path", "vhost")) return StorageSetup.Refused("--url-style is path or vhost, not $urlStyle")
+        val (secret, sessionToken) = if (secretOnInput) {
+            readSecret(input, keyId.orEmpty()) ?: return StorageSetup.Refused("--secret-stdin found no secret on standard input")
+        } else {
+            null to null
+        }
+        DuckDb.setCredentials(
+            listOf(
+                ObjectStoreCredentials.forLocation(
+                    url = table,
+                    useCredentialChain = chain,
+                    keyId = keyId,
+                    secret = secret,
+                    sessionToken = sessionToken,
+                    region = parsed.value("region"),
+                    endpoint = parsed.value("endpoint"),
+                    useSsl = !parsed.has("no-ssl"),
+                    urlStyle = urlStyle,
+                ),
+            ),
+        )
+        return StorageSetup.Ready(rest)
+    }
+
+    /**
+     * The secret and an optional session token: typed without echo where standard input is this
+     * process's terminal, else the first two lines of [input]. A line keeps its spaces and loses
+     * only its line ending, since trimming could alter a secret; a blank first line is no secret.
+     */
+    private fun readSecret(input: InputStream, keyId: String): Pair<String, String?>? {
+        val console = System.console()
+        // Before JDK 22 a console exists only on a terminal; from 22 it exists redirected too, and
+        // isTerminal (absent before 22, so read reflectively on a 17 toolchain) is what says.
+        val interactive = console != null &&
+            runCatching { console.javaClass.getMethod("isTerminal").invoke(console) as Boolean }.getOrDefault(true)
+        if (input === System.`in` && console != null && interactive) {
+            val typed = console.readPassword("secret for key %s: ", keyId) ?: return null
+            return String(typed).also { typed.fill(' ') }.takeIf { it.isNotEmpty() }?.let { it to null }
+        }
+        val reader = input.bufferedReader()
+        val secret = reader.readLine()?.trimEnd('\r')?.takeIf { it.isNotEmpty() } ?: return null
+        val token = reader.readLine()?.trimEnd('\r')?.takeIf { it.isNotEmpty() }
+        return secret to token
     }
 
     private fun graphOf(model: FormatTableModel, showRows: Boolean, policy: AggregationPolicy): GraphModel {
@@ -729,7 +865,7 @@ object IceLensCli {
     }
 
     /** The flags that take a value; every other flag is bare. */
-    private val VALUED = setOf("at", "depth", "format", "out", "page-size", "where", "zorder")
+    private val VALUED = setOf("at", "depth", "format", "out", "page-size", "where", "zorder") + STORAGE_VALUED
 
     private fun usageError(err: PrintStream, message: String): Int {
         err.println("icelens: $message")

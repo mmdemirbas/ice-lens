@@ -31,31 +31,24 @@ data class RemoteLocation(
     /** The bucket, which is the widest scope a key should ever be handed. */
     val bucket: String get() = url.substringAfter("://").substringBefore('/')
 
-    /** `s3://bucket` — what the credentials are restricted to, so one key never reaches another bucket. */
-    val scope: String get() = "${StorageLocation.schemeOf(url)}://$bucket"
+    /** `s3://bucket` — what the credentials are restricted to; see [ObjectStoreCredentials.scopeFor]. */
+    val scope: String get() = ObjectStoreCredentials.scopeFor(url)
 
-    /** A DuckDB secret name. It is an identifier, so everything else becomes an underscore. */
-    val secretName: String get() =
-        ("icelens_" + url.map { if (it.isLetterOrDigit()) it else '_' }.joinToString("")).take(64)
+    /** A DuckDB secret name; see [ObjectStoreCredentials.secretNameFor]. */
+    val secretName: String get() = ObjectStoreCredentials.secretNameFor(url)
 
-    /** DuckDB's own type for the scheme. `gs`, `gcs` and `r2` all speak the S3 API. */
-    val secretType: String get() = when (StorageLocation.schemeOf(url)) {
-        "gs", "gcs" -> "gcs"
-        "r2" -> "r2"
-        else -> "s3"
-    }
+    /** DuckDB's own type for the scheme; see [ObjectStoreCredentials.secretTypeFor]. */
+    val secretType: String get() = ObjectStoreCredentials.secretTypeFor(url)
 
-    fun credentials(secret: String?): ObjectStoreCredentials = ObjectStoreCredentials(
-        name = secretName,
-        type = secretType,
-        keyId = keyId?.takeIf { !useCredentialChain && it.isNotBlank() },
-        secret = secret?.takeIf { !useCredentialChain && it.isNotBlank() },
-        region = region?.takeIf { it.isNotBlank() },
-        endpoint = endpoint?.takeIf { it.isNotBlank() },
-        useSsl = useSsl,
-        urlStyle = urlStyle?.takeIf { it.isNotBlank() },
-        scope = scope,
+    fun credentials(secret: String?): ObjectStoreCredentials = ObjectStoreCredentials.forLocation(
+        url = url,
         useCredentialChain = useCredentialChain,
+        keyId = keyId,
+        secret = secret,
+        region = region,
+        endpoint = endpoint,
+        useSsl = useSsl,
+        urlStyle = urlStyle,
     )
 
     fun serialize(): String = listOf(

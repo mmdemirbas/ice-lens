@@ -2518,9 +2518,14 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   is the store's own, drawn under the root with the control that fixes it: **the secret is
   session-only by design, so a saved location with a typed key arrives unusable on every restart**,
   which makes this the ordinary state rather than an exceptional one. The same trap sits one level
-  down and is why `remoteTableStillThere` exists — `TableFormatDetector` asks `Files.isDirectory`,
-  which is specified to answer `false` rather than throw, so a throwing glob has to run first or a
-  refused key and a dropped table are the same answer
+  down and is why `remoteTableFormat` (`ui/WorkspaceUtils.kt`) and the CLI's `probeRemote` glob
+  first — `TableFormatDetector` asks `Files.isDirectory` of each marker, which is specified to
+  answer `false` rather than throw, so a throwing glob has to run first or a refused key and a
+  dropped table are the same answer. **It does not ask the table root itself**: object storage has
+  no directories, `ObjectStorage.isDirectory` looks one level down for an object, and a table root
+  holds only prefixes — the check it used to open with answered UNKNOWN for every table in a
+  bucket, which `readTableModel` opens as Iceberg, so a Paimon or Delta table there was read as the
+  wrong format. `RemoteTableTest` holds `mor`, `dv` and `dplain` in the lab to their formats
 - **Credentials are a `CREATE SECRET` statement, which makes them the app's one SQL trust
   boundary.** `CREATE SECRET` takes no bind parameters, so every value is inlined; quotes are
   doubled, and the one field that cannot be escaped at all — the secret's *name*, which is an
@@ -2627,6 +2632,22 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   it; `lookup` draws every node too, so its pruning sees every file rather than the page's;
   `show` searches the whole table so an id past the page is found, and reads rows only for a
   `row_…` id. Exit codes: 0, 1 findings, 2 the command line, 3 not a table or no such node.
+  **A table in object storage takes the desktop form's fields as options** — `--endpoint`,
+  `--no-ssl`, `--url-style`, `--region`, and `--credential-chain` or `--key-id` with
+  `--secret-stdin` — built into one `ObjectStoreCredentials` by `ObjectStoreCredentials.forLocation`,
+  the function `RemoteLocation.credentials` calls too, so the two shells scope a key to its bucket
+  and name its secret alike. **The secret is never an argument**, where it would sit in the
+  shell's history and every process listing: `--secret` is refused with that reason, and the
+  secret is the first line of standard input (a session token the second), or a prompt with no
+  echo on a terminal (`Console.readPassword`; `isTerminal` read reflectively, since from JDK 22 a
+  console exists with the streams redirected). With no option the store is asked without a key,
+  which opens a public bucket only; an option on a local table is a usage error. The table is
+  probed with a glob before it is opened, so a refused key says `Access denied` rather than `not a
+  table`, and a credential chain that finds nothing says where it looked
+  (`DuckDb.rejectedMessage`) rather than DuckDB's `Secret Validation Failure`. `IceLensCliTest`
+  holds `summary`, `check`, `tree` and `lookup` on the lab's `mor`, `dv` and `dplain` to their
+  local output, a wrong key and a closed port to their messages with the secret in neither, and
+  every refusal without a store
   **And the binary ships inside the installers**, as jpackage's second launcher
   (`desktop/launchers/icelens.properties`, `--add-launcher` on the app-image build alone, since
   the .dmg, .msi and .deb are packaged from that image): `Contents/MacOS/icelens` in the .app,
@@ -3212,7 +3233,7 @@ consecutive versions (`affectsLayout = false`).
 ./gradlew :core:test --tests "*.IcebergPathsTest"  # Specific test class
 ```
 
-~1,565 tests across 219 files (1,262 in :core, 290 in :desktop, 1 in :intellij, 12 in :cli) covering full pipelines for the three formats (Avro fixtures
+~1,570 tests across 219 files (1,265 in :core, 290 in :desktop, 1 in :intellij, 14 in :cli) covering full pipelines for the three formats (Avro fixtures
 written at runtime via `avro4k`), error recovery, layout post-processing, AppState
 lifecycle, snapshot filter behaviour for both formats, and `SampleRowReader` with real
 Parquet files. Paimon end-to-end fixtures live in `core/src/test/resources/paimon-fixtures/`.
@@ -3404,9 +3425,11 @@ container invocation and the traps in it:
 | `paimon/db.db/pav`, `paz` | `DataFileFormatFixtureTest` | `file.format = avro` — `pav` under `file.compression = deflate`, merged, looked up and checked through `read_avro`; `paz` on the default zstd, which DuckDB's Avro reader refuses — its row cards read in process, its SQL readers through a copy under deflate, to the same answers |
 
 **Remote reading is checked against the same fixture, read twice.** `docs/fixtures/minio-lab.sh up`
-starts a loopback-only MinIO and uploads `example/iceberg/default/mor` to `s3://warehouse/db/mor`;
-`RemoteTableTest` then opens that table *and* the one on disk and requires the two models and the
-two graphs to agree. That comparison is the whole point — a decoder fed truncated or misordered
+starts a loopback-only MinIO and uploads `example/iceberg/default/mor` to `s3://warehouse/db/mor`,
+with `example/paimon/db.db/dv` and `example/delta/dplain` beside it; `RemoteTableTest` then opens
+`mor` *and* the one on disk and requires the two models and the two graphs to agree, and each of
+the three to be detected and read as its own format, and `IceLensCliTest` runs the command line
+over all three against their local output. That comparison is the whole point — a decoder fed truncated or misordered
 bytes produces a model that is internally consistent and wrong, and every assertion written against
 the remote side alone would pass. The tests skip rather than fail when the container is absent, so
 a checkout without Docker stays green.

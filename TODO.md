@@ -445,9 +445,9 @@ What is left:
   in full — the expiries, the purge, the orphan and missing-file removals, `rewrite_table_path`,
   `VACUUM`, the log cleanup, the rewrites, the merges, the compactions, `OPTIMIZE` and
   `fast_forward` as tables of what each acts on (`--files` opens the delete files a position
-  delete rewrite reads). What is left: an object-storage URL opens only with the
-  credentials the environment carries, since there is no form to type a key into. The binary
-  ships inside the installers as a second jpackage launcher; HDFS and ADLS are not yet read.
+  delete rewrite reads). A table in object storage takes the desktop form's fields as options,
+  the secret on standard input and never as an argument. The binary ships inside the installers
+  as a second jpackage launcher; HDFS and ADLS are not yet read.
 
 - **IntelliJ IDEA plugin — done, and *not* through `ComposePanel`.** That was the plan and it does
   not work: IntelliJ ships its own Skiko, a plugin cannot override a platform class, and bundling

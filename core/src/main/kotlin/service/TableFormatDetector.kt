@@ -34,9 +34,16 @@ enum class TableFormat {
  */
 object TableFormatDetector {
 
-    /** Returns the detected [TableFormat] for the given directory. */
+    /**
+     * Returns the detected [TableFormat] for the given directory.
+     *
+     * The markers decide, and the directory itself is not asked whether it is one: object storage
+     * has no directories, `ObjectStorage.isDirectory` looks one level down for an object, and a
+     * table root holds only prefixes (`metadata/`, `data/`) — so asking first answered UNKNOWN for
+     * every table in a bucket, read as Iceberg by `readTableModel` and therefore wrong only for
+     * Paimon and Delta. A path that is not a directory has no markers, which is the same answer.
+     */
     fun detect(dir: Path): TableFormat {
-        if (!Files.isDirectory(dir)) return TableFormat.UNKNOWN
         val format = when {
             isPaimonTable(dir) -> TableFormat.PAIMON
             isDeltaTable(dir) -> TableFormat.DELTA

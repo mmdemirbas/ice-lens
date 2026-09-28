@@ -7,7 +7,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import model.GraphNode
+import model.DeltaUnifiedTableModel
+import model.PaimonUnifiedTableModel
 import model.UnifiedTableModel
+import model.readTableModel
 import org.junit.jupiter.api.Assumptions.assumeTrue
 
 /**
@@ -154,6 +157,39 @@ class RemoteTableTest {
             local.nodes.none { it is GraphNode.ErrorNode } && remote.nodes.none { it is GraphNode.ErrorNode },
             "neither side should have produced an error node",
         )
+    }
+
+    /**
+     * A table root in a bucket is detected by its markers, whichever format it is, and opened as it.
+     *
+     * The regression test for the detector asking the root whether it is a directory: object storage
+     * has none, the one-level listing that answers it finds only prefixes under a table root, and
+     * every remote table read as UNKNOWN — which `readTableModel` opens as Iceberg, so `mor` opened
+     * and a Paimon or Delta table opened as the wrong format. The oracle is the same tables on disk:
+     * each remote graph has the local one's node kinds in the same numbers.
+     */
+    @Test
+    fun `a table root in a bucket is detected by its markers and opened as its own format`() {
+        requireLab()
+        val tables = mapOf(
+            "s3://warehouse/db/mor" to ("example/iceberg/default/mor" to TableFormat.ICEBERG),
+            "s3://warehouse/db/dv" to ("example/paimon/db.db/dv" to TableFormat.PAIMON),
+            "s3://warehouse/db/dplain" to ("example/delta/dplain" to TableFormat.DELTA),
+        )
+        for ((url, expected) in tables) {
+            val (localPath, format) = expected
+            assertEquals(format, TableFormatDetector.detect(StorageLocation.pathOf(url)), url)
+            val remote = readTableModel(StorageLocation.pathOf(url))
+            val local = readTableModel(Paths.get(File(repoRoot, localPath).absolutePath))
+            assertEquals(local::class, remote::class, url)
+            fun kinds(model: model.FormatTableModel) = GraphLayoutService.assembleGraph(model, showRows = false, policy = AggregationPolicy.NONE)
+                .nodes.groupingBy { it::class.simpleName }.eachCount()
+            assertEquals(kinds(local), kinds(remote), url)
+        }
+        assertTrue(readTableModel(StorageLocation.pathOf("s3://warehouse/db/dv")) is PaimonUnifiedTableModel)
+        assertTrue(readTableModel(StorageLocation.pathOf("s3://warehouse/db/dplain")) is DeltaUnifiedTableModel)
+        // A prefix holding nothing has no markers either.
+        assertEquals(TableFormat.UNKNOWN, TableFormatDetector.detect(StorageLocation.pathOf("s3://warehouse/db/nothing-here")))
     }
 
     /**

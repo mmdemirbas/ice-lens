@@ -201,6 +201,18 @@ icelens export /wh/db/orders --format csv --out files.csv   # the file inventory
 `--json` on `summary`, `tree`, `show`, `check`, `lookup` and `plan` prints the same as an object. Standard
 output carries the answer only; anything the engine logs goes to standard error.
 
+A table in object storage is named by its URL, with the store's settings as options. The secret
+is read from standard input, never from an argument, so it stays out of the shell's history:
+
+```bash
+icelens check s3://warehouse/db/orders --region eu-west-1 --credential-chain   # the AWS environment's key
+printf '%s\n' "$SECRET" | icelens summary s3://warehouse/db/orders \
+    --endpoint minio.local:9000 --url-style path --key-id "$KEY_ID" --secret-stdin
+```
+
+On a terminal, `--secret-stdin` asks for the secret without echoing it. With no key option the
+store is asked anonymously, which opens a public bucket only.
+
 The installers carry the same command beside the app, over the app's own runtime, so a machine
 with Iceberg Lens installed has `icelens` with no Java of its own — a link onto the `PATH` is
 all it takes:

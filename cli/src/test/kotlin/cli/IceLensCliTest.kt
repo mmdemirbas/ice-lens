@@ -31,6 +31,7 @@ import service.PaimonRowLookup
 import service.RowLookup
 import service.StatsCheckReader
 import service.GraphLayoutService
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
@@ -40,6 +41,7 @@ import java.nio.file.Paths
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.io.TempDir
 
 /**
@@ -68,10 +70,13 @@ class IceLensCliTest {
 
     private class Run(val code: Int, val out: String, val err: String)
 
-    private fun icelens(vararg args: String): Run {
+    private fun icelens(vararg args: String, input: String = ""): Run {
         val out = ByteArrayOutputStream()
         val err = ByteArrayOutputStream()
-        val code = IceLensCli.run(args.toList(), PrintStream(out, true, Charsets.UTF_8), PrintStream(err, true, Charsets.UTF_8))
+        val code = IceLensCli.run(
+            args.toList(), PrintStream(out, true, Charsets.UTF_8), PrintStream(err, true, Charsets.UTF_8),
+            ByteArrayInputStream(input.toByteArray(Charsets.UTF_8)),
+        )
         return Run(code, out.toString(Charsets.UTF_8), err.toString(Charsets.UTF_8))
     }
 
@@ -451,5 +456,63 @@ class IceLensCliTest {
         val version = icelens("version")
         assertEquals(IceLensCli.EXIT_OK, version.code)
         assertTrue(Regex("icelens \\d+\\.\\d+\\.\\d+\\s*").matches(version.out), version.out)
+    }
+
+    /**
+     * The storage options are refused before anything is opened when they cannot mean anything,
+     * and a secret is never read from an argument — so none of these needs a store to answer.
+     */
+    @Test
+    fun `the storage options refuse what they cannot use, and a secret given as an argument is not echoed`() {
+        fun refused(vararg args: String, input: String = "", says: String) {
+            val run = icelens(*args, input = input)
+            assertEquals(IceLensCli.EXIT_USAGE, run.code, run.out + run.err)
+            assertTrue(says in run.err, run.err)
+        }
+        val url = "s3://warehouse/db/mor"
+        val asArgument = icelens("summary", url, "--key-id", "AKIAEXAMPLE", "--secret", "hunter2-7f3a")
+        assertEquals(IceLensCli.EXIT_USAGE, asArgument.code)
+        assertTrue("never taken as an argument" in asArgument.err, asArgument.err)
+        assertTrue("hunter2-7f3a" !in asArgument.out + asArgument.err, "the refusal repeats the secret")
+        refused("summary", url, "--key-id", "AKIAEXAMPLE", says = "add --secret-stdin")
+        refused("summary", url, "--secret-stdin", input = "s\n", says = "add --key-id")
+        refused("summary", url, "--credential-chain", "--key-id", "AKIAEXAMPLE", "--secret-stdin", input = "s\n", says = "not both")
+        refused("summary", url, "--url-style", "virtual", says = "is path or vhost")
+        refused("summary", mor, "--endpoint", "127.0.0.1:9000", says = "is not an object-storage URL")
+        refused("summary", url, "--key-id", "AKIAEXAMPLE", "--secret-stdin", input = "", says = "found no secret")
+        refused("summary", url, "--key-id", "AKIAEXAMPLE", "--secret-stdin", input = "\n", says = "found no secret")
+    }
+
+    /**
+     * A table in a bucket read with the options, against the same table on disk. Needs
+     * `docs/fixtures/minio-lab.sh up`, which seeds `mor`, `dv` and `dplain` under
+     * `s3://warehouse/db/`; skipped without it, as `RemoteTableTest` is.
+     */
+    @Test
+    fun `a table in object storage opens with a key on standard input and prints what the local one prints`() {
+        val lab = listOf("--endpoint", "127.0.0.1:9000", "--no-ssl", "--url-style", "path", "--region", "us-east-1")
+        val key = lab + listOf("--key-id", "minioadmin", "--secret-stdin")
+        val probe = icelens("summary", "s3://warehouse/db/mor", *key.toTypedArray(), input = "minioadmin\n")
+        assumeTrue(probe.code == IceLensCli.EXIT_OK, "MinIO is not serving s3://warehouse/db — start it with docs/fixtures/minio-lab.sh up")
+
+        fun remoteMatchesLocal(local: String, remote: String, vararg command: String) {
+            val here = icelens(command[0], local, *command.drop(1).toTypedArray())
+            val there = icelens(command[0], remote, *command.drop(1).toTypedArray(), *key.toTypedArray(), input = "minioadmin\n")
+            assertEquals(here.code, there.code, there.err)
+            assertEquals(here.out.replace(local, "<table>"), there.out.replace(remote, "<table>"), command.joinToString(" "))
+        }
+        remoteMatchesLocal(mor, "s3://warehouse/db/mor", "summary")
+        remoteMatchesLocal(mor, "s3://warehouse/db/mor", "check")
+        remoteMatchesLocal(dv, "s3://warehouse/db/dv", "tree")
+        remoteMatchesLocal(fixture("example/delta/dplain"), "s3://warehouse/db/dplain", "lookup", "id = 2")
+
+        val wrong = icelens("summary", "s3://warehouse/db/mor", *lab.toTypedArray(), "--key-id", "minioadmin", "--secret-stdin", input = "not-the-secret-9c1e\n")
+        assertEquals(IceLensCli.EXIT_UNREADABLE, wrong.code, wrong.out)
+        assertTrue("Access denied" in wrong.err, wrong.err)
+        assertTrue("not-the-secret-9c1e" !in wrong.out + wrong.err, "the store's refusal repeats the secret")
+
+        val closed = icelens("summary", "s3://warehouse/db/mor", "--endpoint", "127.0.0.1:1", "--no-ssl", "--url-style", "path", "--key-id", "minioadmin", "--secret-stdin", input = "minioadmin\n")
+        assertEquals(IceLensCli.EXIT_UNREADABLE, closed.code, closed.out)
+        assertTrue("Could not reach the store" in closed.err, closed.err)
     }
 }

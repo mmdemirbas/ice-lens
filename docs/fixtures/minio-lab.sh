@@ -46,14 +46,20 @@ case "${1:-up}" in
     docker exec "$CONTAINER" mkdir -p /seed
     docker cp "$REPO/example/iceberg/default/mor" "$CONTAINER:/seed/mor"
     docker cp "$REPO/core/src/test/resources/paimon-fixtures/." "$CONTAINER:/seed/paimon"
+    docker cp "$REPO/example/paimon/db.db/dv" "$CONTAINER:/seed/dv"
+    docker cp "$REPO/example/delta/dplain" "$CONTAINER:/seed/dplain"
     docker exec "$CONTAINER" mc alias set local "http://127.0.0.1:9000" "$USER" "$PASS" >/dev/null
     docker exec "$CONTAINER" mc mb --ignore-existing local/warehouse >/dev/null
     docker exec "$CONTAINER" mc mirror --overwrite --quiet /seed/mor    local/warehouse/db/mor    >/dev/null
     docker exec "$CONTAINER" mc mirror --overwrite --quiet /seed/paimon local/warehouse/db/paimon >/dev/null
+    docker exec "$CONTAINER" mc mirror --overwrite --quiet /seed/dv     local/warehouse/db/dv     >/dev/null
+    docker exec "$CONTAINER" mc mirror --overwrite --quiet /seed/dplain local/warehouse/db/dplain >/dev/null
 
     echo "MinIO is up on http://127.0.0.1:${PORT} (console ${CONSOLE}), key ${USER}/${PASS}"
     echo "  s3://warehouse/db/mor     — the Iceberg 'mor' fixture"
     echo "  s3://warehouse/db/paimon  — the Paimon fixtures"
+    echo "  s3://warehouse/db/dv      — the Paimon 'dv' fixture"
+    echo "  s3://warehouse/db/dplain  — the Delta 'dplain' fixture"
     echo "Run the remote tests with:  ./gradlew :core:test --tests '*Remote*'"
     ;;
   down) docker rm -f "$CONTAINER" >/dev/null 2>&1 && echo "removed $CONTAINER" || echo "not running" ;;
