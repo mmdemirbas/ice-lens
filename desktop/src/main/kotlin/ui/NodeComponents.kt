@@ -714,7 +714,17 @@ fun MetadataCard(node: GraphNode.MetadataNode, isSelected: Boolean = false) {
                 fontWeight = FontWeight.Bold,
                 color = nodeCardTextSecondary()
             )
-            Text(node.fileName, fontWeight = FontWeight.Bold, fontSize = TypeScale.small, color = nodeCardTextPrimary())
+            // Two lines, as `MetadataNode`'s declared height assumes: a catalog's
+            // `00147-<uuid>.metadata.json` fills two on macOS and wrapped to three under Linux's
+            // wider default font, pushing the last line past the card.
+            Text(
+                node.fileName,
+                fontWeight = FontWeight.Bold,
+                fontSize = TypeScale.small,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                color = nodeCardTextPrimary(),
+            )
             Text("Format V${node.data.formatVersion}", fontSize = TypeScale.small, color = nodeCardTextPrimary())
             Text("Snapshots: ${node.data.snapshots.size}", fontSize = TypeScale.small, color = nodeCardTextPrimary())
             Text("Current Snap: ${node.data.currentSnapshotId ?: "None"}", fontSize = TypeScale.micro, color = nodeCardTextSecondary())
