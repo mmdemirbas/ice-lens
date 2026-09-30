@@ -309,7 +309,7 @@ Stated plainly, because a tool you inspect internals with has to be honest about
 Release assets are built by GitHub Actions and uploaded to GitHub Releases.
 
 ```bash
-./release.sh 1.0.2
+./release.sh 1.1.0
 ```
 
 The script validates the working tree, checks the version in `build.gradle.kts`, runs a local build, creates a git tag, and pushes. The CI release workflow then builds macOS `.dmg`, Windows `.msi`, and Linux `.deb` installers.

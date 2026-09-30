@@ -4,7 +4,7 @@ set -euo pipefail
 # Release helper for Iceberg Lens.
 #
 # Usage:
-#   ./scripts/release.sh 1.0.1
+#   ./release.sh 1.1.0
 #
 # What this script does:
 # 1) Validates git working tree is clean.

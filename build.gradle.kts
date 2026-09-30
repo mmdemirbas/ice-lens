@@ -11,7 +11,7 @@ plugins {
 // :desktop (Compose), :intellij (an IDE tool window) and :cli.
 allprojects {
     group = "com.github.mmdemirbas.icelens"
-    version = "1.0.2"
+    version = "1.1.0"
 
     repositories {
         mavenCentral()

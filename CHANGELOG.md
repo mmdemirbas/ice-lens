@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-30
+
+Everything since 1.0.2, in short:
+
+- **Delta Lake** is read as a third format beside Iceberg (v1–v3) and Paimon: the log, every
+  checkpoint naming, deletion vectors, column mapping, the change data feed and UniForm.
+- **Three shells over one headless engine**: the desktop app, an IntelliJ IDEA tool window, and
+  `icelens`, a command line for scripts and CI that the installers carry beside the app.
+- **Tables in object storage and on HDFS**: `s3://`, `gs://` and `r2://` with a key that is never
+  persisted, and HDFS over WebHDFS as a named user.
+- **Every recorded figure checked against the same figure counted**, over the whole table in one
+  click, and by `icelens check` as an exit code.
+- **Rows and their fate**: the rows a filter matches with the delete or write that decides each,
+  traced through history; what a scan would skip; what differs between two snapshots.
+- **Maintenance planned the way each engine plans it**: expiry, rewrites, compaction, manifest
+  merges, orphan removal, VACUUM and OPTIMIZE, file by file with the reason.
+
 ### Added
 - **Tables on HDFS are read over WebHDFS.** A `webhdfs://namenode:9870/…` location
   (`swebhdfs://` over TLS) opens through the namenode's HTTP API, with no Hadoop client on the
@@ -478,100 +495,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   metadata in one directory and the data under the location; the table panel and the IDE
   strip name the directory the metadata records itself under, only where it differs — and
   the Paimon table the location is, when it is one
-
-### Fixed
-- **The build runs on Linux and Windows again.** The dependency lock was written on a Mac and
-  listed the macOS builds of Compose's desktop runtime and Skiko's native library, so a build on
-  any other system failed on the lock before compiling. The per-system artifacts are left out of
-  the lock now; their versions are those of `desktop-jvm` and `skiko-awt`, which stay locked. CI
-  also hands Gradle the JDK 21 the IntelliJ module compiles with, which the Windows runner did not
-  find by itself.
-- **A metadata card keeps its last line under Linux's default font.** A catalog-named file,
-  `00147-<uuid>.metadata.json`, fills two lines of the card on macOS and wrapped to three under
-  the wider default font on Linux, pushing `Current Snap` past the card's edge. The name is capped
-  at two lines, which the card's declared height already assumed.
-- **A Paimon or Delta table in object storage is detected as what it is.** Format detection asked
-  first whether the table root was a directory. Object storage has no directories, and a table
-  root holds only prefixes, so every table in a bucket was detected as no format and then opened
-  as Iceberg. Detection now asks only for each format's markers.
-- **A Delta `OPTIMIZE`'s `numDeletionVectorsRemoved` no longer reads as a disagreement** when a
-  file with a vector was considered and not rewritten: the engine counts the vectors on every file
-  the run considered, and the check now counts them from the plan the commit ran. The two vector
-  figures an `OPTIMIZE` never records are no longer listed among the ones it is checked on.
-- **The installers launched nothing.** Every `.dmg`, `.msi` and `.deb` built since logging
-  arrived failed on the first logger with `NoClassDefFoundError: javax/naming/NamingException`:
-  the jlinked runtime is built from `nativeDistributions.modules(...)` alone, the list held
-  `java.sql` only, and logback's JNDI handler needs `java.naming` — which jdeps does not see,
-  the handler being reached by reflection. The list is jdeps' suggestion plus `java.naming`
-  now (`java.compiler`, `java.instrument`, `java.naming`, `java.prefs`, `java.sql`,
-  `jdk.unsupported`), and the built `.app` was run, both launchers, before this was written.
-  The release build was broken twice over: ProGuard stopped on 148 warnings about logback's
-  optional mail, servlet and janino references, and — those silenced — its rewrite of ELK's
-  Eclipse-signed jars left classes the JVM refuses against `META-INF/ECLIPSE_.SF`
-  (`SecurityException: SHA-256 digest error`), on the release app's first frame. The
-  signature entries are dropped from ProGuard's output, and line numbers are kept, so a
-  release crash report has them. Found by running the installers, which nothing had done.
-- **An empty file index skips every operator `EmptyFileIndexReader` skips.** A column index the
-  writer left empty was read as a skip for `=` alone; Paimon reads it as a skip for `=`, `IN`,
-  every comparison and `IS NOT NULL`, and a maybe for `<>` and `IS NULL`, which it is now
-- **`Expiry Files` plans the Spark procedure's cleanup, and says what the core API's would
-  leave.** The section, the file history line and the `Maintenance` row picked the cleanup rule
-  by the ref count — incremental with one ref, reachable with more — which is
-  `RemoveSnapshots.cleanExpiredSnapshots`, the core API. `expire_snapshots` from Spark deletes
-  the reachability diff whatever the ref count (`ExpireSnapshotsSparkAction.expireFiles`), and
-  on `mor` the two differ: expiring the overwrite by id freed a data file the incremental rule
-  leaves on disk, named by nothing. The sections plan the procedure's diff now and, with one ref,
-  name the files a Java, Flink or Trino expiry would leave behind
-- **A Paimon `TIMESTAMP` bound past millisecond precision decodes.** Its `BinaryRow` slot is
-  the tail offset in the high 32 bits and the nanos within the millisecond in the low 32, the
-  tail holding the millis — read as a variable-width field it decoded to nothing, so a
-  `TIMESTAMP(6)` or `WITH LOCAL TIME ZONE` column's bounds were shown undecoded and a filter on
-  one pruned no file. `ft`'s bounds now read to the microsecond and agree with DuckDB's values.
-- **Two deletion vectors in one Puffin container are two delete files.** A writer puts one
-  blob per data file into a container, so vectors share a `file_path`; keyed by path alone the
-  second was a duplicate to the table's figures, paired with nothing by the delete pairing, and
-  answered with the first's positions by the lookup and the live count — a row the second
-  vector deletes read as live. A vector is keyed by its container and the data file it
-  references now, everywhere. Seen on `pid`, a Paimon table's Iceberg v3 export; every Iceberg
-  fixture holds one vector per container
-- **A Paimon 64-bit deletion vector is read by its own size field.** Its index range's
-  recorded length is the whole blob, size and CRC included, where a 32-bit vector's is the
-  magic and bitmap alone; read the 32-bit way, a 64-bit vector overran by eight bytes and the
-  last one in the file could not be read at all
-- **A data-evolution split is stitched by field id, and the latest snapshot is read under the
-  latest schema.** A column renamed since either file of a split was written read as a DuckDB
-  error or as null, the stitch having selected the schema's names from the files; each file
-  goes through its projection now, and which file holds a column is decided by id. A rename
-  written after the last commit is what a read shows, as Paimon opens a table under the newest
-  schema file and switches to a snapshot's own only on time travel. `der` is the fixture
-- **A Paimon row's history is traced under the table's current names.** Every step is read
-  under the newest schema, as on Iceberg, so a column renamed between two commits is one
-  column throughout; read under each snapshot's own schema, a row that was only patched read
-  as appearing at the patch
-- **A directory carrying both formats' markers opens as the Paimon table.** Such a directory is
-  a Paimon table whose Iceberg metadata is its export, and opened as Iceberg its `snapshot/`,
-  `schema/` and `manifest/` read as orphans and its snapshots, levels and merge engine are
-  invisible. The detector asks Paimon first now, and the export's files are referenced files
-- **A catalog table's metadata versions are numbered.** A Hive, Glue or REST catalog names a
-  version `00147-<uuid>.metadata.json`; the number is read off that name now, as off
-  `v147.metadata.json`, so the cards say `METADATA 147` and the versions order by it
-- **An Iceberg table with gzip-compressed metadata opens.** `write.metadata.compression-codec
-  = gzip` names every version `v<N>.gz.metadata.json` and writes gzip bytes; the codec is
-  read off the name now, the way Iceberg reads it, where every version was a read error
-  before. `gzmeta` is the fixture
-- **A Paimon table with a struct, array or map column opens.** Its schema JSON writes such a
-  type as an object, which the schema reader took for a string — every schema of the table was
-  a read error and nothing else was drawn. The type is read as a tree now, printed the way
-  Paimon spells it, and the nested fields are placed by their own ids, so a field renamed or
-  added inside a struct reads the way Paimon reads it; the schema steps name the change inside
-  the struct rather than a type change on it. `pne` is the fixture
-- **A migrated file's nested fields are placed through the name mapping's tree.** A struct,
-  a list's element and a map's entries in a file `add_files` registered read as all-null
-  before — the top level was placed through the mapping and every field inside it was looked
-  up by an id the file does not have — so a filter on a field inside the struct found nothing
-  on exactly the files a migrated table is made of. `migdeep` is the fixture
-
-### Added
 - **Both schema panels list nested fields as rows of their own.** A struct's fields under
   their path (`addr.town`), a list's element and a map's key and value, each with the id the
   format places and renames it by — where the metadata panel printed a nested type's JSON in
@@ -580,16 +503,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   headline counting what is not read yet and a control under the table reading the next page,
   the pages folded into one result — on both formats, a Paimon page keeping a data-evolution
   split together
-
-### Fixed
-- **Startup no longer walks the workspace on the main thread.** A restored warehouse comes back
-  with the table list it was saved with and is drawn as `scanning…` until the first poll's sweep
-  lands, which seeds every table it finds as existing rather than announcing them all as new;
-  adding a root walks it on the IO dispatcher before the item appears. The periodic sweep had
-  been off the main thread already, and these two were the scans the rationale for that applied
-  to
-
-### Added
 - **A rename inside a struct is read.** The row lookup and the live-row count rebuild a
   file's struct by field id — `struct_pack` over the file's own column tree, a list's or a
   map's elements through `list_transform` — so `addr.town = 'Ankara'` finds the rows in a file
@@ -681,264 +594,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs over the stitched row — so on `de` a lookup answers `(1, 11, 1)` with `b from <patch>` as
   the note, and `b = 11` finds the row whose `id` sits in a file recording `b` in 1..2. A split
   is read whole when the filter left any file of it.
-
-### Fixed
-- **The scan-pruning file stage is over data files only.** A delete file was evaluated and
-  counted as a data file the scan would read — "2 of 3 data files" on a table with two — where
-  a scan applies it to the data files it is paired with and never opens it on its own.
-- **Scan pruning binds a filter's column by field id, so a rename no longer hides a file's
-  bounds.** A file whose manifest still calls a column by its old name is pruned by a filter on
-  the new one, the way the engine prunes it, on both formats; the prunable columns are the
-  current schema's, each once; and a nested column is named by its path (`addr.town`,
-  `tags.element`, `props.value`) with its own bounds and counts, and the row lookup reads it as
-  struct access. A Paimon file written before a column existed prunes as the scan reads it —
-  null in every row.
-- **An equality delete written before a column rename decides the row again.** The delete
-  file's columns are named as the schema named them when it was written; read by the schema's
-  current name the file answered with an error and the row came back *not decided* where the
-  engine deletes it. The row lookup and the row panel read the delete file projected onto the
-  schema by field id now, and the panel matches the row's cells under the schema's names.
-- **A filter on a column renamed or added since a file was written reads that file instead of
-  failing on it.** Every DuckDB read under a filter addressed the file by its own column names;
-  the row lookup on `evolved`'s `note` reported the two older files as errors, where a read
-  returns their rows with `note` null. The file is read under the schema's names now, a
-  missing column as its initial default or null.
-- **A data file recorded as a `file:` URI outside the table resolves beside it.** `add_files`
-  records `file:/wh/plain-files/…`, which was rebuilt under the table root as `<table>/file:/…`.
-- **A non-Parquet data file is read by the right DuckDB table function, or refused with the
-  reason.** Every reader called `read_parquet` on whatever file it was given, under a comment
-  saying DuckDB detected Parquet, ORC and Avro; an Avro file failed on its magic bytes and drew
-  blank row cards, and an ORC file did the same for a reason DuckDB cannot help with — it has no
-  ORC reader. `read_avro` reads Avro now (without row positions, which the row's fate, the
-  live-row count and the merged count say rather than guess), an ORC file and an Avro file
-  under a codec DuckDB refuses (`zstandard`, Paimon's default) are refused before any query with
-  one sentence, and a row card whose file could not be read prints it in place of the cells.
-- **A partitioned table's columns are read from the file, never from the path.** DuckDB read
-  `dt=19787/` and `amount=98765.43/` directories as Hive partitions, typing the column from the
-  path text over the file's own — a Paimon `DATE` arrived as a `BIGINT`, an Iceberg `DECIMAL`
-  as text, a row lookup on either found nothing, and on DuckDB 1.4.4 the DATE-over-BIGINT
-  collision was an internal error that broke every later query until restart. Every read now
-  passes `hive_partitioning = false`.
-- **A Paimon primary-key table's scan pruning follows the scan's own rule.** Every file was
-  pruned by its own value bounds, which is what an append table's scan does and what a
-  primary-key table's does not: a key predicate prunes a file on its own, the whole filter is
-  decided per bucket — file by file only where the bucket's files cannot overlap, otherwise the
-  bucket read whole if any file may match — and `partial-update` and `aggregation` without
-  deletion vectors are never pruned by value. On `pc`, `v = 'g'` opens all three live files where
-  the panel said one. A level-0 file of a table whose batch reads skip level 0 is `not read`; a
-  file read for its bucket's sake says so in its reason cell; the rule is stated once above the
-  file table. Held to the plans Paimon itself made (`docs/fixtures/paimon-scan-plans.scala`).
-- **A Paimon file index is decoded and the scan plan asks it — where Paimon's read would.** A
-  `bloom-filter` index, embedded in the entry or in the `.index` file beside the data file, is
-  read (the container, the filter, xxHash64 for strings and Wang's hash for numbers) and an
-  equality on an indexed column the filter rules out skips the file. When it is asked follows
-  release-1.3.1: an append table tests an embedded index as it plans and the `.index` file when
-  the read opens it — such a file is listed by the plan and yields no row, which the row says —
-  while a primary-key table's scan tests an embedded index only under deletion vectors and its
-  read consults one only on a split read raw, one file alone in it. `fa` is the new fixture; on
-  `fi` the two files merge-read and their indexes are never opened, which the rows say too. The
-  panel's `File Index` row names the columns and index types. Held to `FileIndexPredicate` and
-  the plan on both tables (`docs/fixtures/paimon-scan-plans.scala`).
-- **A data file's recorded statistics are checked against its rows.** `Statistics Check` on
-  both formats' file panels, behind a click: each column's recorded bounds, null count and
-  (Iceberg) value and NaN count beside the same figures counted from the file, and the entry's
-  row count beside `count(*)` — one-sided on the bounds, since a string bound is truncated,
-  exact on the counts. These are what a scan prunes on without opening the file, so nothing on
-  the read path checks them. Every Parquet file of every fixture agrees; the check names a
-  bound moved past a row.
-- **A Paimon bitmap file index is read, and it answers exactly.** One Roaring bitmap per
-  distinct value and one for null, so the scan-pruning section rules a value out by the
-  dictionary — no false positive, unlike a bloom filter — and answers `<>`, `IS NULL` and
-  `IS NOT NULL` the way `BitmapFileIndex`'s reader does. v1 and v2 layouts, the v2 block
-  directory read block by block. `fb` is the fixture, held to `FileIndexPredicate` over every
-  file and every operator.
-- **A column that is null in every row rules a file out for any comparison.** Both formats'
-  own evaluators skip such a file for `=`, `<`, `<=`, `>`, `>=` and a prefix, and the file
-  stage now does too; for `<>` Paimon skips and Iceberg keeps, and the verdict follows the
-  format the file belongs to, with the reason saying which does what.
-- **A Paimon bloom filter over a timestamp, time or date column is asked.** `FastHash`'s
-  temporal half: a date over its epoch day, a time over its milliseconds of the day, a
-  timestamp of either kind over its microseconds since the epoch (milliseconds at precision 3
-  and below). `ft` is the fixture, and Paimon's plan is the oracle — a value the file holds is
-  kept, and the same second without its microseconds is skipped though it sits inside the
-  file's bounds.
-- **The delete pairing applies Iceberg's partition and bounds rules.** A delete is keyed by the
-  spec and partition it was written under and weighed only against data files under the same
-  key — a vector or a positional delete naming one file is keyed by path instead, and an
-  equality delete under an unpartitioned spec is global — and an equality delete is ruled out
-  where its bounds on an equality column cannot meet the file's, null counts included
-  (`canContainEqDeletesForFile`). Two new verdicts on the file panel's `Deletes Reaching This
-  File`, each with its reason; the row panel's `Delete Files` asks only what is left. Two
-  fixtures pin them against Iceberg's own plan: `fupp`, Flink's upsert sink on a partitioned
-  table, where commit 2's equality delete for a new key is dangling by its bounds — and
-  `eqpart`, equality deletes on `id` alone written under both specs of a table partitioned after
-  its first commit, where the partitioned one is attached to its own partition's file only and
-  the unpartitioned one to every file. Without the partition rule an equality delete in another
-  partition stayed "maybe" on every partitioned merge-on-read table.
-- **A Flink-written merge-on-read table joins the fixtures.** `fup` is Flink 1.20's upsert
-  sink on a v2 table: each commit's equality delete sits beside its data file at one sequence
-  number, and a key upserted twice in one checkpoint gets a positional delete in that same
-  commit — the shape no Spark statement writes, and the one that separates "at or below" from
-  "strictly below" in the pairing. Read back by Flink as `(1, a2), (2, b2), (4, d)`, which the
-  live row count and the row lookup both answer.
-- **The delete pairing is held to Iceberg's own plan.** `FileScanTask.deletes()` over every
-  checked-in table's current snapshot (31 tables, 89 data files) is checked in as an oracle, and
-  `deleteReach` agrees with it both ways: every delete Iceberg applies is reached or unsettled,
-  every proved reach is one Iceberg applies, and the metadata settles every positional delete
-  and vector in the corpus, so the plan's deletes are the proved ones plus the equality deletes.
-- **Iceberg's two pruning stages are held to Iceberg's own plans.**
-  `docs/fixtures/iceberg-scan-plans.scala` prints the data files `planFiles()` opens for 41
-  filters over five checked-in tables — every transform shape, both partition specs, three
-  manifest schemas, `IN`, `BETWEEN`, `NOT`, `OR`, `LIKE`, `IS NULL` — and `IcebergScanPlanTest`
-  requires no file Iceberg opens to be skipped here; all 36 filtered plans agree file for file.
-- **A branch cut from another branch draws in a column of its own, and no column is reused.**
-  Two children of one commit were ordered by write time unless one was on `main`, so a branch
-  cut from a branch and committed to first took the older branch's column and put the fork
-  commit under its own name; and a branch reserved after another line had ended reused that
-  line's column, which put `main`'s commits under `b2` on the same table. Lines are ranked now —
-  `main`, then the other branches by the metadata version that first lists them — and every
-  line keeps a column of its own. `nested` is the fixture.
-- **A Paimon key with no insert record is not a row.** Every engine but `aggregation` answers
-  no row for a key whose records are all retractions — ignored under `ignore-delete`, or
-  retracting by group — and the merged count took them as rows; they are counted as *never
-  inserted* and taken off.
-- **No file of a data-evolution table is pruned by its own bounds.** A patch may replace the
-  values a file's bounds describe, and Paimon 1.3.0+ consults none of them on such a table
-  (`DataEvolutionFileStoreScan`); the file stage now declines with the reason, said once above
-  the file table, while the manifest stage still prunes by partition. The section's headline
-  counts a file nothing could be evaluated against as read — it said *would read 0 of 3* on `de`
-  — and names such files on a line of their own.
-- **A level-0 file a batch read skips says so.** On a `first-row` table or a primary-key table
-  with deletion vectors, the file panel's `LSM Level` row and the IDE strip's `Level` row note
-  that a batch read of the table skips level 0, so a row in the file is not returned until a
-  compaction moves it up — the `dv` append files before their forced compaction, and `fr`'s
-  rewritten file, which nothing ever moves.
-
-### Changed
-- **Every fixture sweep runs on every checked-in table.** The tests that sweep the fixtures list
-  them from `example/` (`FixtureCatalog`) instead of from twenty hand-kept copies that had each
-  stopped at the fixture current when they were written; the core test worker gets a 2 GB heap
-  for it.
-- **The scan-pruning headline carries bytes and rows** — `1.94 KiB of 7.78 KiB, 1 of 4 rows`
-  beside the file count, since a scan's cost is what it reads and three files of a thousand may
-  be the three large ones.
-- **The maintenance sections have a file of their own.** `MaintenanceSections.kt` holds the
-  nine sections the planners draw; `NodeDetails.kt` is down to 2,725 lines.
-- **The inspector's per-node panels are out of `NodeDetailsContent`.** Its 2,080-line `when`
-  now dispatches to one composable per node kind — `NodePanels.kt` (table, row, error, group),
-  `IcebergNodePanels.kt` (metadata, snapshot, manifest, file) and `PaimonNodePanels.kt` (the five
-  Paimon kinds) — and `NodeDetails.kt` keeps the header, the multi-select branches and the
-  sections and helpers the panels share. No behaviour change; every inspector capture renders
-  as before.
-- **The tool-window layout is out of `App.kt`.** `DockState` holds where each window sits,
-  which are hidden, the pane sizes and a drag in flight, with the rules as functions that
-  `DockStateTest` asserts on — where a drop lands, how far a pane may grow, what a bar lists.
-  `DockLayout` draws it and is rendered by `DockLayoutTest` in its three shapes, which is the
-  first time this layout has been seen in a test at all. `App.kt` 1,009 → 593 lines. One
-  observable change: the drop targets a drag lights up are judged against, and drawn over, the
-  dock below the toolbar rather than the whole window.
-- **The README describes the app that ships.** Its limitations still said local filesystem
-  only, Iceberg v1 and v2, partition values not decoded and manifest summaries not read — four
-  claims each false for some time. Features, format coverage, toolbar and shortcuts are current.
-- **Paimon cards are the height of what they draw.** Manifest list 80→42dp, schema 80→54,
-  manifest 80→64, snapshot 84→66 — measured worst plus four, the same rule as the Iceberg cards,
-  which `CardHeightTest` can now assert over two Paimon fixtures rather than one. A manifest list's
-  card says how many manifests it names instead of the words "Manifest List"; the count is on the
-  node and in the inspector, tooltip and IDE tree too.
-
-### Fixed
-- **A deletion vector in object storage is opened at its location, not at a relative path.** The
-  row lookups, the live and merged row counts and the Paimon file node turned a vector's location
-  string back into a path with `Paths.get`, which reads `s3://bucket/key` as a relative path and
-  reported every remote vector as unreadable. They go through `StorageLocation.pathOf` now, and a
-  test holds every file in core to it.
-- **A Paimon file listing every column in `_WRITE_COLS` is not a partial-column file.** A full
-  compaction under `row-tracking.enabled` records every column plus `_ROW_ID` and
-  `_SEQUENCE_NUMBER` there, and the table's figures read its rows as columns of rows other files
-  hold — `rt` showed five rows read as zero, its file panel called the compacted file a patch, and
-  the IDE strip did too. A file is partial only when a schema column is missing from the list.
-- **A looked-up row whose delete file could not be read is `not decided`, not `live`.** The Iceberg
-  lookup noted the unread delete and still reported the row live; a vector decoded past its cap
-  read the same way.
-- **The maintenance summary and the snapshot panel's rewrite and merge sections plan from the
-  newest metadata and the current snapshot whatever the page size draws.** They looked both up on
-  the drawn graph, where each is the last of its siblings — so a page size that folded them, or a
-  snapshot filter, had the sections planning under an older version's options, or not drawn at
-  all. `TableNode.maintenance` now carries both off the builder's full node set.
-- **An unpartitioned spec and an unsorted order say so.** Each drew a table with one row of
-  `N/A` in every cell, which read as a decode that failed; they are one line of text now, and the
-  spec heading marks `(default)` the way the order heading already did.
-- **A file draws as many row cards as it has rows.** Every data file got five row nodes whatever
-  its record count, so a one-row file sat beside four empty `ROW` cards — on every table, since
-  Spark writes small inserts as one file per row. The count is `min(5, record_count)` now, decided
-  from the manifest before the file is opened.
-- **A Paimon partial-column file has its bounds.** Its `_VALUE_STATS` is a row over `_WRITE_COLS`
-  with `_VALUE_STATS_COLS` null, and decoding it against the schema failed the arity check — one
-  field read as three — so the file showed no column bounds at all. The stats fields are now
-  `_VALUE_STATS_COLS`, else `_WRITE_COLS`, else the file's schema.
-- **A Paimon row card leads with the row's own columns.** It listed `_KEY_k`, `_SEQUENCE_NUMBER`
-  and `_VALUE_KIND` before `k` and `v` — the file's physical order, where the system columns come
-  first — and `file_row_number` as a fifth cell. Keys starting with `_` are drawn last now, and the
-  position travels beside the cells as it does for an Iceberg row rather than among them.
-- **A row's panel lists the row's cells.** It iterated the placeholder the builder emits before
-  any file is opened — `file_no` and `row_idx` — so the panel for a selected row showed no cell of
-  it while the card beside it drew five. It reads the resolved row now.
-- **A bound written before its column was widened, listed by a manifest rewritten after, reads as
-  the value it is.** `rewrite_manifests` copies a file's bounds verbatim under the table's current
-  schema, so a four-byte `int` bound sat under a `long` and was reported as `expected 8 bytes for
-  long, got 4`. It is read at the width it was written now — the spec's two promotions, `int → long`
-  and `float → double`, the same tolerance Iceberg's own reader has — and the panel prints
-  `1 (written as int)`. A bound for a column the manifest's schema has dropped is named and typed
-  by the newest table schema that had it, marked `(dropped)`, where the panel printed `field 2`
-  with the bytes undecoded. `promoted` is the fixture.
-- **A Paimon data file written under an older schema than the manifest listing it keeps its
-  bounds.** Key and value statistics were decoded against the manifest's `_SCHEMA_ID`; a
-  compaction's delta manifest, written under the new schema, records the old-schema files it
-  removed, and their two-field stats rows failed the three-field arity check and came out as no
-  bounds at all. They are decoded against the file's own `_SCHEMA_ID` now, and the Column Bounds
-  section says so. `se` is the fixture.
-- **A Paimon table whose data was written to `data-file.external-paths` opens with its files
-  found.** The entry records the external location in `_EXTERNAL_PATH` and the resolver built
-  the path from the table root regardless, so every such file read as missing. The recorded
-  path is used when it is there, found by its tail under the local warehouse when the table was
-  copied down, and reported as recorded-elsewhere-and-absent otherwise — the file panel's
-  `Resolved` row says which. `ep` is the fixture.
-- **A table whose data sits outside its directory opens with its files found.** A
-  `write.data.path` layout records absolute data paths that share nothing with the table below
-  the warehouse, and the sub-path rule rebuilt them under the table root, where nothing is —
-  every file reported missing. Such a path is now re-rooted from the recorded warehouse to its
-  local counterpart, found by the trailing segments the recorded and local table directories
-  share, and the file panel says so as a third `Resolved` outcome. `extdata` is the engine-written
-  fixture, checked in beside its table the way it sat under `/wh`.
-- **A Paimon schema card no longer sits under a manifest-list card.** The schema is a sibling
-  of its snapshots, so ELK lays it out in the manifest lists' column, and overlap prevention
-  kept schemas apart from schemas and lists apart from lists — `pschema_0` was drawn over
-  `pml_2_delta` on `dv` and `pml_3_delta` on `ao`. The two kinds are one layer for that pass now,
-  and `LayoutOverlapTest` checks every column of every checked-in table across kinds.
-- **A group whose parent was itself folded away is no longer drawn over the table card.** At a
-  small page size on a table with many metadata versions (`mor` at 3), the snapshot group under a
-  hidden metadata version reached the layout with no edge and landed in the first column, on
-  top of the table root. Such a group is dropped; its members are counted under the group that
-  hid the parent, so the hidden-node figures still add up.
-- **A partitioned Paimon table opens with its files where they are.** A manifest entry names its
-  file by name only and its partition as a serialised `BinaryRow`, which was never decoded — so on
-  any partitioned table every data file resolved to a path under the table root that does not
-  exist: no rows, every file missing, and "walk the table directory" listing the whole table as
-  orphans. `_PARTITION` is decoded now (dates, strings inline and in the tail, integers, decimals,
-  timestamps, booleans) against the manifest's own schema, the file resolves under
-  `<key>=<value>/…/bucket-N/`, and the file panel, search and IDE tree show the partition beside the
-  directory text Paimon wrote — which for a date is its epoch day. The new `pt` fixture is a
-  Spark-written table over two dates and two regions.
-- **A v1 manifest's entries are at sequence number 0, as the spec reads them, not "N/A".** Every
-  file under a manifest a v1 table wrote printed `N/A` and was left out of the delete-pairing rule
-  as if its number were unknown; the format defines it as 0 and an upgrade to v2 leaves those
-  manifests exactly so. The panels now print the 0 and say it is the reader's default, and a v1
-  manifest orders first among its siblings rather than last. The new `v1` fixture is a v1 table
-  upgraded to v2 in place, with a merge-on-read delete written after the upgrade reaching a file
-  written before it.
-
-### Added
-
 - **The IDE tool window's table row says what an expiry would remove** — `older_than = now` on
   Iceberg, a bare call on Paimon — the one maintenance line that needs no walk.
 - **An Iceberg snapshot says what `SELECT count(*)` returns.** `Live Rows` on the snapshot
@@ -1519,226 +1174,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   taken from the order the rows arrived in — a scan may return them in any order and nothing in
   the result would say that it had — and it is kept off the row as a column, because it is
   DuckDB's answer about the file rather than something the table declares.
-
-### Changed
-- **Changing the page size no longer forgets every other table.** Each cached session records
-  the paging its graph was drawn under, and a later visit whose policy differs redraws from the
-  table model already in memory — one layout, no read of the metadata tree. The same check pages
-  a table again on return after it was drawn whole; before, a cache hit restored the whole graph
-  under a badge saying it was paged at 24. `AppStateAggregationTest` proves the redraw takes no
-  read by deleting the table's directory before the second visit.
-- **The recorded-first path rule is written once.** Metadata files and data files agreed on when
-  a recorded path wins and differed only in the fallback, so `resolveRecordedOr` takes the
-  fallback as a parameter and both callers go through it.
-
-- **The table panel's three timestamps moved out of its identity table into a folded
-  `Table Times` section, and say what they are.** Each renders local, UTC and epoch, so three
-  rows were nine lines and about 600dp — roughly half of what stood between "Collapse all" and
-  the list of section names it is supposed to produce, and none of the three is identity. Their
-  labels were also wrong about what they hold: Iceberg records no table creation or update time,
-  and what was shown as "Table Created (Inferred)" is the oldest **retained** metadata, which
-  moves forward every time old metadata expires. They now read "Oldest retained metadata",
-  "Newest retained metadata" and "Current metadata last-updated-ms", with that caveat on screen.
-  The identity table itself still does not fold, which is deliberate — it is what the reader
-  selected the node to see.
-
-### Fixed
-- **A file's sequence number is shown even when the file does not record one.** Iceberg leaves it
-  out of every entry a commit adds and keeps it once on the manifest, so three of the four files in
-  the merge-on-read fixture were printing `N/A` for a number the format defines exactly. The panel
-  now shows the inherited value and says that it was inherited.
-- **A filter holding a quoted value survives the trip through the form.** The clause is written back
-  from the filter when the editor opens, and it was written back without the quotes it needed — so
-  `ts > '2024-03-05 10:00:00'` came back as two values and the reader's own accepted filter read as
-  a syntax error.
-- **The filter clause is readable at the width the panel is actually used at.** It wrapped nowhere
-  and scrolled sideways instead, so the inspector at its normal width showed about a dozen
-  characters of it — enough to lose track of your own parentheses. It now wraps to four lines, with
-  the line spacing its own text size asks for rather than the 24sp Material's body style was
-  handing it.
-- **A pruning row no longer contradicts itself.** With `OR` in the filter, a term that ruled out
-  its own condition stopped meaning the artifact was ruled out — so a manifest could show
-  "would be read" beside the reason a skip would have carried. The reason now explains the verdict
-  it sits next to, and a skip lists every term that proved it rather than the first.
-- **The main line no longer loses its column to a branch.** At a fork, the column the parent was
-  drawn in went to whichever child was *written* first — so a branch that received a commit before
-  the trunk's next commit took the trunk's lane, the main line stepped sideways halfway down the
-  graph, and the column header above the root commit read as the branch's name rather than
-  `main`. The trunk's commits are now preferred at every fork. Visible only with two branches
-  forking at different points, which is why it survived: the single-fork fixture cannot produce it.
-- **A table in object storage now carries its format badge.** The ICE / PMN chip was computed
-  through `java.io.File`, which is null for every `s3://` path, so remote tables drew without one.
-  The badge comes from the sweep rather than from the row: which of the two globs matched a table
-  *is* its format, so the warehouse listing already knew, and asking the detector in the row would
-  have put a network round trip per table on the thread that draws frames.
-- **A refused key was reported as an empty warehouse.** `ObjectStorage.globTables` wrapped both of
-  its globs in a `runCatching { }.getOrDefault(emptyList())`, which could only ever absorb a real
-  failure — `glob` already answers an empty list for a prefix with nothing under it. So a key that
-  had stopped working produced exactly the answer an empty warehouse produces: the tables vanished
-  from the list, and the store's own message, which says what is wrong and what to do, was seen by
-  nothing but a log line. A warehouse offered nothing to open that might have said otherwise.
-  A listing that could not be done is now a third answer rather than the second one. The sweep
-  carries the reason back, the root **keeps the tables it last had** instead of blanking, and the
-  message is drawn under the root with a **Credentials…** button beside it that reopens the form
-  for that location. Since the secret is held for the session only, this is the ordinary state
-  after a restart, not an exceptional one — which is why the way out is a control on the root
-  rather than knowing that "Add object storage…" doubles as "edit".
-- **A remote warehouse was drawn as deleted from the moment it was added.** The workspace row
-  asked `File(path).exists()`, which is false for every location in object storage — `s3://` is not
-  a path on this machine — so a bucket whose tables listed and opened perfectly well sat in the list
-  in error red with "(deleted)" beside it. Whether a remote warehouse is still there is a question
-  about the store, and the row now claims nothing until a sweep has asked it.
-- **A table in object storage could never be seen to change.** `ObjectStorage` caches a directory
-  listing per prefix so a graph build is not a round trip per data file, and the fingerprint the
-  poll compares is the set of file names under `metadata/` — so the fingerprint was answered from
-  the cache and returned the same value forever, whatever was committed to the table. Nothing
-  cleared those caches when a table was opened either, so an explicit reload re-decoded the
-  metadata the table used to have. `ObjectStorage.invalidate(prefix)` now drops both the listings
-  and the bytes under a prefix, and the fingerprint invalidates the three prefixes it is about
-  before listing them. The regression test writes a second object through DuckDB and asserts both
-  directions — still stale without the invalidation, current with it.
-- **Remote roots are polled on their own cadence.** The workspace sweep and the open table's
-  fingerprint ran every three seconds, which for a remote warehouse is two recursive globs against
-  a store that bills per request — 1,200 requests an hour per root for a table nobody is committing
-  to. Remote work now runs every 30 seconds (`REMOTE_POLL_INTERVAL_MS`); local roots keep the
-  three-second cadence, since a local check is a `stat` against a warm page cache. A sweep that
-  skips the remote roots omits them rather than reporting them empty, so a warehouse is never
-  briefly emptied on screen.
-- **The workspace poll no longer freezes the window every three seconds.** `refreshWarehouseTables`
-  walked every warehouse directory tree on the main thread, on a three-second timer. Measured on a
-  warm cache and a local disk: 19ms at 200 tables, 90ms at 1,000, and 226ms at the 10,000-directory
-  cap the scan stops at — several dropped frames, repeating for as long as the window is open. The
-  walk now runs on an IO dispatcher and only the state update happens on the main thread. Two
-  hazards the asynchrony introduces are closed and pinned by tests: a root removed while a sweep is
-  running is not resurrected, and a root added while one is running is not reported as empty.
-- **Every offscreen capture was drawing its animations at time zero.**
-  `ImageComposeScene.render()` defaults its `nanoTime` argument to the constant `0`, so repeated
-  no-argument renders are repeated copies of the first instant — a valid frame with the animated
-  part missing, which looks like nothing is wrong. It had produced a wrong conclusion recorded as a
-  project convention: two byte-identical focus captures were read as proof that Material draws
-  nothing for focus, when what they showed was a state-layer fade given no time to run. The focus
-  captures now pass an advancing clock, and the convention has been corrected. Every other capture
-  helper was put on the same clock and all 104 written PNGs were compared against their
-  frozen-clock originals: 103 came back byte-identical, so nothing else in the suite had been
-  photographing a state the app does not draw. The one that moved is a focus capture whose panel
-  scrolls, and it moved by a pixel.
-- **The menu's heading now starts where its choices start.** "Siblings drawn per parent" was
-  padded like a menu item and the items are indented past a check slot, so the heading sat 24dp
-  to the left of every number under it. Found by the first render of the items.
-
-- **A label in the inspector's key column broke in the middle of a word at the width the pane
-  opens at, and the hover tooltip had no capture at all.** `DetailRow`'s key was
-  `Modifier.weight(0.20f)` — a fraction, for a column whose content is a vocabulary this
-  application chooses rather than one the table decides. At 300dp that share is about 62dp, and
-  every label holding an eight-letter word fell back to breaking at a character: `Sequenc / e
-  Num.`, `Timesta / mp`. No share fixes it, because the one that fits `Statistics` at the 200dp
-  minimum is 43%, which is 600dp of label at 1400dp. `DetailTable` now derives one width for all
-  of its rows from its own width, clamped to 84–190dp, so the values stay aligned on one x and the
-  labels always fit. The wide panel gained about 100dp of value column from the same change.
-  The divider also had a gutter after it and none before, so a label filling its column sat flush
-  against the rule; it has one on both sides now.
-  Deriving a width means measuring, and `NodeTooltip` — the one other `DetailTable` caller — sized
-  itself with `Modifier.width(IntrinsicSize.Max)`, which asks a layout how wide it wants to be
-  *without* measuring it. A `BoxWithConstraints` cannot answer that and throws. Nothing in the
-  suite rendered the tooltip, so this would have reached a hover in the running app; it is swept
-  for every node kind now, and the tooltip states its width instead of asking its content for one
-  — which also stops a tooltip's width being decided by the longest data-file path in the table.
-- **The inspector's header put its buttons past the edge of the panel at the width the panel
-  actually opens at.** The title and the action buttons shared a `Row`, which neither wraps nor
-  clips and which measures its unweighted children — the buttons — before the weighted title. The
-  pane opens at 300dp and can be dragged to 200dp; at that width the buttons took the whole line
-  and the title was laid out one character per line underneath them, with the rightmost button
-  painted past the panel edge where nothing could reach it. The title now takes its own line,
-  capped at two, and the actions are a `FlowRow` that wraps. Found by rendering the panel at 300dp
-  rather than at the 1400dp every existing capture uses — a `Row` overflowing is invisible at any
-  width where it happens to fit, so `collapse-pages-narrow-1.png` renders it at the narrow one.
-- **A node's deferred read was part of its identity, against a comment saying it was not.**
-  `FileNode.deletionVectorLoader` was a `private val` lambda in a data class's primary
-  constructor, which is a component of the generated `equals` — so two nodes for the same manifest
-  entry, built by two graph builds, carried two distinct lambda objects and compared unequal.
-  Nothing failed and no test asked; the only symptom was Compose re-composing a deletion-vector
-  card that had not changed. It goes through a `DeferredRead` now, whose `equals` states the
-  invariant instead of a comment claiming it, and `DeferredReadTest` pins both halves — two nodes
-  for one entry are equal, and nodes for different entries are still not.
-- **A group card was truncating the word that says what it hides.** At 200dp the count line read
-  `6 more metadata versi…` — the number survived and the noun did not, which is the half a reader
-  needs. It was one sentence at body size, and no width fits that sentence for every kind: at a
-  six-figure count five of the ten overflowed. The noun now sits in the eyebrow and the count on
-  the value line — the shape every other card here already has — and the card reads
-  `METADATA VERSIONS` over `6 not drawn`. `GroupCardWidthTest` is the bound: it draws each of the
-  ten kinds with width slack and requires the content to fit the 200dp the node declares. The
-  height sweep could never have caught this, because an ellipsis costs a card no height at all.
-- **A collapsed group was losing the line that says it is a control.** `GroupNode` declared a 58dp
-  base and the plainest group card measures 60.5, so any group standing for exactly its members —
-  no hidden subtree, no read errors — drew "NOT DRAWN", its count, and then nothing: the
-  "Double-click to open" hint went under the card's own border, where Compose clips nothing and
-  reports no error. It survived the render check because every group the capture drew happened to
-  stand for a subtree, and so declared the taller height. `CardHeightTest` now sweeps every node
-  of every fixture in both filter states rather than one instance per kind, which is what reached
-  the shape that was broken; the capture now draws it too.
-- **A deletion vector is named as one.** It declares `content = 1` exactly as a v2 positional
-  delete file does, so both cards read `POS DELETE` and only the `.puffin` extension told them
-  apart. The card, its tooltip and the inspector title now say `DELETE VECTOR`, from one function
-  rather than the three copies of the decision that existed before.
-- **A file card's row count says what the number counts.** `record_count` is rows held for a data
-  file, rows removed for a positional delete or a deletion vector, and predicate tuples for an
-  equality delete — where one tuple can remove thousands of rows. All three read `1 row`; they now
-  read `1 row`, `deletes 1 row` and `1 equality row`.
-- **A file node reserves 68dp instead of 60.** `FILE 5: DELETE VECTOR — NOT READ` is the longest
-  first line a file card can draw and it wraps at 200dp, and the verdict is appended when a filter
-  is on — after the layout that reserved the height. The card was losing its last line silently,
-  which is the failure `CardHeightTest` exists for and which it did not see, because it measured
-  no pruned card and no vector. It measures both now.
-
-- **Pruning now answers a file count, not just a manifest count.** Iceberg prunes twice — a
-  manifest by the partition summaries its list records, then a file by the bounds it records about
-  its own columns — and only the first stage was modelled. The panel now reports both, and leads
-  with the file line, because "would read 1 of 4 data files" is the number a reader arrives with;
-  a query reports how many files it read and never which. Three consequences worth knowing:
-  an **unpartitioned** table is no longer told there is nothing to do here, since its file bounds
-  still prune; a **bucketed** column, which no range can rule a manifest out on, still eliminates
-  files, because file bounds are the plain source values; and `IS NOT NULL` can be settled at the
-  file stage, which records how many values it holds and how many are null, where a manifest
-  summary records only that a null exists somewhere. A file under a ruled-out manifest reads
-  `not reached` rather than `skipped` — a scan never opens it, so the verdict is not its own — and
-  the canvas fades every node the query does not touch, files included.
-
-### Changed
-- **A card's height is now a bound rather than a coincidence, and the graph is shorter for it.**
-  Most cards printed a file name with no line cap, so "does this fit" had only ever been asked of
-  the short names eight checked-in fixtures carry. Under a catalog's own
-  `00147-<uuid>.metadata.json` the metadata card measured *exactly* its declared height, with
-  nothing left for the rounding another display scale does to a font metric. Every text a table's
-  content can lengthen is now capped at the lines its node reserves, which makes the measurement a
-  worst case — and against that, the snapshot card came down from 112dp to 88 with ref chips and
-  from 84 to 68 without, roughly 25dp of empty space under every snapshot in the graph. The cards
-  that had measured at exactly their declared height gained 4dp instead. The Paimon heights are
-  left alone: there is one Paimon table checked in, with one snapshot, so a conditional line that
-  never appears in it would be invisible to the measurement.
-- **A verdict column now marks only the exception.** Every leading cell in the pruning and tally
-  tables was bold, because each row supplied a colour and `WideTable` bolded any cell that had
-  one — including the neutral colour that exists to say "ordinary". The ordinary rows now pass no
-  colour at all and read as body text, which leaves `SKIPPED` as the one bold, green cell in its
-  column.
-- **The toolbar is its own file.** 266 lines came out of `App.kt`'s thousand-line composable into
-  `Toolbar.kt`, with the snapshot-filter menu — half of it by line count — split off again into
-  its own composable. It is stateless: it reads values and reports intent, and every write to
-  `java.util.prefs` stays with the caller that owns the value. The question the extraction had to
-  answer was which of `App`'s mutable state the toolbar actually touched, which could not be read
-  off the old code; it was eight things, and the signature now says so.
-- **The two canvas modes say what they do.** The toolbar's tooltips read "Pan mode — drag the
-  empty canvas to move the view" and "Select mode — drag the empty canvas to select what it covers
-  (hold Shift to add or remove)". They named the modes before, which tells a reader nothing about
-  the one thing the modes disagree about: a node is dragged and the wheel pans in either. Tooltip
-  text now wraps at 280dp instead of running off the window.
-- **Five text sizes instead of eight.** Every size in the desktop shell now comes from
-  `TypeScale`, at a ratio near 1.2 — 10 / 12 / 14 / 17 / 21. What was there before ran from 8sp
-  to 16sp in steps averaging 1.09x, picked one call site at a time, which is under the difference
-  at which a size reads as deliberate: the screen had eight sizes and one apparent level. Card
-  text is slightly larger throughout as a result, and the inspector's section titles and node
-  header are now distinct from body text rather than a little heavier than it.
-
-### Added
 - **The app has an icon.** A lens set down on a stack of records: the bars are the metadata rows
   the app reads, and under the ring they turn accent-coloured. Two shapes, which is about what
   survives being drawn at 32 pixels. `tools/icon/GenerateIcon.java` draws it and writes every size
@@ -1930,8 +1365,159 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   type change. `UnifiedManifest`, `ManifestNode` and `FileNode` carry it.
 - `ColumnStats` / `columnStatsFor()` in core, with an all-null flag so an absent bound on a
   populated column is explained rather than blank.
+- `TableSummary.current` / `TableSummary.history` (`ContentStats`) — the table as it is now
+  (manifest closure of `current-snapshot-id`, live entries only; `recordCount` is the figure
+  `SELECT count(*)` should agree with before deletes are applied) alongside everything still
+  reachable from any retained snapshot (deduplicated by manifest and data-file path — the
+  "what can I not expire yet" view). The inspector renders both under their own headings.
+- File and record byte totals: `dataSizeBytes` / `deleteSizeBytes` per group, so table size on
+  disk is visible without leaving the app.
+- `ContentStats.deletedEntryCount` — entries recording a removal (Iceberg `status=DELETED`,
+  Paimon `_KIND=1`), counted toward scan cost but contributing no files, records or bytes.
+- `formatCount()` / `formatBytes()` / `formatBytesExact()` in `FormatUtils` — thousands
+  separators and binary byte units for the figures a data engineer compares against engine
+  output. Folds in the private copies that lived in `NodeComponents`, whose byte formatter
+  divided by 1024 and labelled the result KB/MB/GB.
+- Named spec constants `ManifestContent`, `ManifestEntryStatus`, `DataFileContent`,
+  `PaimonEntryKind` replacing bare 0/1/2 literals at the sites touched by this change.
+- `TableSummaryAccuracyTest` — pins all three miscounts against fixtures laid out the way the
+  formats actually write them.
+- Snapshot filter now works for Paimon tables (previously Iceberg-only); `asSnapshotFilterOption()` extension unifies both formats
+- Sample-row inspector for Paimon nodes (`RecursiveDataTableSection` invoked from every Paimon inspector branch; `collectDescendantRows` descends through `PaimonDataFileNode`)
+- 5-entry LRU session cache (was unbounded — could OOM after enough table switches)
+- `formatTimestampShort()` — single-line timestamp for fixed-width table cells
+- `HoverTooltip` shared composable; tool-window bar icons now show their title on hover
+- Multi-select inspector renders a per-node summary table (type + key field per node type)
+- Snapshot-filter dropdown is scrollable (`heightIn(max=420dp).verticalScroll`) for tables with many snapshots
+- Stack-trace inspector panel: bounded scroll (`heightIn(max=320dp)`) + Copy button
+- Toolbar tooltips include keyboard shortcut hints
+- Hover cursor on draggable workspace items
+- Apache Paimon table format support (data model, reader, unified model, graph types, graph builder)
+- `PaimonSchema.kt` — `@Serializable` data classes for Paimon snapshots, schemas, manifest lists, and manifest entries
+- `PaimonReader.kt` — reads Paimon snapshot/schema JSON and manifest list/manifest Avro files
+- `PaimonUnifiedModel.kt` — aggregated Paimon table model linking snapshots, schemas, manifests, and data files
+- `PaimonGraphBuilder.kt` — builds graph nodes and edges from a Paimon unified table model
+- Paimon graph node types: `PaimonSnapshotNode`, `PaimonSchemaNode`, `PaimonManifestListNode`, `PaimonManifestNode`, `PaimonDataFileNode`
+- `AvroReader.kt` — shared Avro file reader extracted from `IcebergReader`, reused by both Iceberg and Paimon readers
+- Paimon node rendering (cards, tooltips, colors, inspector panels) in `NodeComponents.kt` and `NodeDetails.kt`
+- Paimon snapshot color per `commitKind` (APPEND=blue, COMPACT=purple, OVERWRITE=amber, ANALYZE=teal)
+- Paimon manifest list color per kind (base=gray, delta=blue, changelog=amber)
+- Paimon data file color per operation (ADD=green, DELETE=red)
+- `TableFormat.PAIMON` detection in `TableFormatDetector` (presence of `snapshot/` + `schema/` directories)
+- `GraphLayoutService.layoutPaimonGraph()` — Paimon-specific layout entry point
+- Paimon node post-processing in `GraphLayoutService` (ordering, alignment, overlap prevention)
+- Format badge ("ICE"/"PMN") next to table names in workspace sidebar
+- Paimon test fixtures (`src/test/resources/paimon-fixtures/`)
+- `PaimonSchemaTest` — Paimon JSON deserialization tests (9 tests)
+- `PaimonGraphBuilderTest` — Paimon graph construction tests (11 tests)
+- Paimon detection tests in `TableFormatDetectorTest` (4 new tests)
+- `IcebergGraphBuilder` — extracted Iceberg-specific graph construction from `GraphLayoutService` into a dedicated builder
+- `TableFormatDetector` — directory-based table format detection (Iceberg detection, extensible for Paimon)
+- `GraphLayoutService.layoutNodes()` — public API accepting pre-built nodes/edges for format-agnostic layout
+- `AboutDialog` extracted from `App.kt` into `ui/AboutDialog.kt`
+- Keyboard shortcuts: Ctrl/Cmd + =/- (zoom), Ctrl/Cmd + 0 (reset zoom), Ctrl/Cmd + Shift + F (fit graph), Ctrl/Cmd + L (re-layout)
+- Copy-to-clipboard buttons on file paths, UUIDs, and locations in the inspector panel
+- `normalizeFilePath` now handles cloud URIs (`s3://`, `hdfs://`, `gs://`, `abfs://`) and UNC paths
+- Schema evolution view in inspector panel (diff between schema versions)
+- Table properties inspector with change tracking across metadata versions
+- In-app cheat sheet (About dialog > Cheat Sheet tab)
+- Empty state with "Add to Workspace" button on the main canvas
+- Error bar with Reload button and auto-dismiss (8 seconds)
+- Stale data indicator when viewing cached table after filesystem deletion
+- Undo for node dragging (Ctrl/Cmd+Z, up to 20 levels)
+- Snapshot filter hint text in dropdown
+- Tool window drag indicator (grip icon + move cursor on title bar)
+- Dark mode support for node card colors (fill, border, text)
+- Gradle version catalog (libs.versions.toml)
+- ProGuard enabled for release builds
+- Unit tests (80+ tests) covering parsing, layout, filtering, workspace, formatting, security, performance
+- Performance benchmarks for layout, filtering, and graph builder operations
+- CI workflow running tests on all platforms
 
 ### Changed
+- **Every fixture sweep runs on every checked-in table.** The tests that sweep the fixtures list
+  them from `example/` (`FixtureCatalog`) instead of from twenty hand-kept copies that had each
+  stopped at the fixture current when they were written; the core test worker gets a 2 GB heap
+  for it.
+- **The scan-pruning headline carries bytes and rows** — `1.94 KiB of 7.78 KiB, 1 of 4 rows`
+  beside the file count, since a scan's cost is what it reads and three files of a thousand may
+  be the three large ones.
+- **The maintenance sections have a file of their own.** `MaintenanceSections.kt` holds the
+  nine sections the planners draw; `NodeDetails.kt` is down to 2,725 lines.
+- **The inspector's per-node panels are out of `NodeDetailsContent`.** Its 2,080-line `when`
+  now dispatches to one composable per node kind — `NodePanels.kt` (table, row, error, group),
+  `IcebergNodePanels.kt` (metadata, snapshot, manifest, file) and `PaimonNodePanels.kt` (the five
+  Paimon kinds) — and `NodeDetails.kt` keeps the header, the multi-select branches and the
+  sections and helpers the panels share. No behaviour change; every inspector capture renders
+  as before.
+- **The tool-window layout is out of `App.kt`.** `DockState` holds where each window sits,
+  which are hidden, the pane sizes and a drag in flight, with the rules as functions that
+  `DockStateTest` asserts on — where a drop lands, how far a pane may grow, what a bar lists.
+  `DockLayout` draws it and is rendered by `DockLayoutTest` in its three shapes, which is the
+  first time this layout has been seen in a test at all. `App.kt` 1,009 → 593 lines. One
+  observable change: the drop targets a drag lights up are judged against, and drawn over, the
+  dock below the toolbar rather than the whole window.
+- **The README describes the app that ships.** Its limitations still said local filesystem
+  only, Iceberg v1 and v2, partition values not decoded and manifest summaries not read — four
+  claims each false for some time. Features, format coverage, toolbar and shortcuts are current.
+- **Paimon cards are the height of what they draw.** Manifest list 80→42dp, schema 80→54,
+  manifest 80→64, snapshot 84→66 — measured worst plus four, the same rule as the Iceberg cards,
+  which `CardHeightTest` can now assert over two Paimon fixtures rather than one. A manifest list's
+  card says how many manifests it names instead of the words "Manifest List"; the count is on the
+  node and in the inspector, tooltip and IDE tree too.
+- **Changing the page size no longer forgets every other table.** Each cached session records
+  the paging its graph was drawn under, and a later visit whose policy differs redraws from the
+  table model already in memory — one layout, no read of the metadata tree. The same check pages
+  a table again on return after it was drawn whole; before, a cache hit restored the whole graph
+  under a badge saying it was paged at 24. `AppStateAggregationTest` proves the redraw takes no
+  read by deleting the table's directory before the second visit.
+- **The recorded-first path rule is written once.** Metadata files and data files agreed on when
+  a recorded path wins and differed only in the fallback, so `resolveRecordedOr` takes the
+  fallback as a parameter and both callers go through it.
+
+- **The table panel's three timestamps moved out of its identity table into a folded
+  `Table Times` section, and say what they are.** Each renders local, UTC and epoch, so three
+  rows were nine lines and about 600dp — roughly half of what stood between "Collapse all" and
+  the list of section names it is supposed to produce, and none of the three is identity. Their
+  labels were also wrong about what they hold: Iceberg records no table creation or update time,
+  and what was shown as "Table Created (Inferred)" is the oldest **retained** metadata, which
+  moves forward every time old metadata expires. They now read "Oldest retained metadata",
+  "Newest retained metadata" and "Current metadata last-updated-ms", with that caveat on screen.
+  The identity table itself still does not fold, which is deliberate — it is what the reader
+  selected the node to see.
+- **A card's height is now a bound rather than a coincidence, and the graph is shorter for it.**
+  Most cards printed a file name with no line cap, so "does this fit" had only ever been asked of
+  the short names eight checked-in fixtures carry. Under a catalog's own
+  `00147-<uuid>.metadata.json` the metadata card measured *exactly* its declared height, with
+  nothing left for the rounding another display scale does to a font metric. Every text a table's
+  content can lengthen is now capped at the lines its node reserves, which makes the measurement a
+  worst case — and against that, the snapshot card came down from 112dp to 88 with ref chips and
+  from 84 to 68 without, roughly 25dp of empty space under every snapshot in the graph. The cards
+  that had measured at exactly their declared height gained 4dp instead. The Paimon heights are
+  left alone: there is one Paimon table checked in, with one snapshot, so a conditional line that
+  never appears in it would be invisible to the measurement.
+- **A verdict column now marks only the exception.** Every leading cell in the pruning and tally
+  tables was bold, because each row supplied a colour and `WideTable` bolded any cell that had
+  one — including the neutral colour that exists to say "ordinary". The ordinary rows now pass no
+  colour at all and read as body text, which leaves `SKIPPED` as the one bold, green cell in its
+  column.
+- **The toolbar is its own file.** 266 lines came out of `App.kt`'s thousand-line composable into
+  `Toolbar.kt`, with the snapshot-filter menu — half of it by line count — split off again into
+  its own composable. It is stateless: it reads values and reports intent, and every write to
+  `java.util.prefs` stays with the caller that owns the value. The question the extraction had to
+  answer was which of `App`'s mutable state the toolbar actually touched, which could not be read
+  off the old code; it was eight things, and the signature now says so.
+- **The two canvas modes say what they do.** The toolbar's tooltips read "Pan mode — drag the
+  empty canvas to move the view" and "Select mode — drag the empty canvas to select what it covers
+  (hold Shift to add or remove)". They named the modes before, which tells a reader nothing about
+  the one thing the modes disagree about: a node is dragged and the wheel pans in either. Tooltip
+  text now wraps at 280dp instead of running off the window.
+- **Five text sizes instead of eight.** Every size in the desktop shell now comes from
+  `TypeScale`, at a ratio near 1.2 — 10 / 12 / 14 / 17 / 21. What was there before ran from 8sp
+  to 16sp in steps averaging 1.09x, picked one call site at a time, which is under the difference
+  at which a size reads as deliberate: the screen had eight sizes and one apparent level. Card
+  text is slightly larger throughout as a result, and the inspector's section titles and node
+  header are now distinct from body text rather than a little heavier than it.
 - **Split into `:core` and `:desktop` Gradle modules.** `core` is the headless engine — readers,
   decoders, model, analysis, ELK layout — and may not depend on a UI toolkit; a Gradle check
   fails the build if a Compose or AndroidX artifact reaches its compile classpath. `desktop` is
@@ -1956,8 +1542,517 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explaining the other two in the inspector. The edge is withheld from ELK, like commit lineage:
   both ends are data files in the same layer, and letting it constrain layering would push the
   referenced file a whole layer to the right of a node it sits beside.
+- `loadRequestId` is now `AtomicLong` (was `@Volatile var Long` with non-atomic increment); cache-hit branch also bumps it so any in-flight load/reapply bails out
+- `reapplyCurrentLayout` re-reads `graphModel` after the staleness check (was using a captured reference that could go stale)
+- `loadTable` and `reapplyCurrentLayout` route format dispatch through `loadTableModel()` (single dispatch point)
+- `sessionCache` field type is now `MutableMap<String, TableSession>` backed by a synchronized LRU
+- `WorkspaceItem` serialization percent-encodes `%`, `;`, `|` in path values for safe round-trip
+- `ManifestListEntry.sequenceNumber` and `minSequenceNumber` are now `Long?` (Iceberg spec is int64); manifest comparator sentinels widened to `Long.MAX_VALUE`
+- `normalizeFilePath` reconstructs `file://host/path` URIs as UNC `//host/path` instead of dropping the host
+- `GraphLayoutService.parsePosition` rejects values outside `Int` range instead of silently truncating
+- `GraphLayoutService` post-processing partitions nodes by class once per pass (was ~20 `filterIsInstance` scans of the full node list)
+- `Path` and snapshot→manifest fan-in/out counts are reused / pre-cached in `GraphCanvas` (eliminates per-edge per-frame allocation and O(E) scans)
+- `jsonToAnnotatedString` is wrapped in `remember(rawJson, colors)` so the highlighter no longer runs on every recomposition
+- Window position/size persistence is debounced (500ms via `javax.swing.Timer`) instead of one Preferences write per `componentMoved` event
+- Paimon `PaimonManifestListNode` uses a dedicated `simpleId` counter (was reusing the snapshot's `simpleId`)
+- Paimon manifest nodes deduplicate by `fileName` via `manifestPathToId` (mirrors Iceberg)
+- Paimon `TableSummary.dataFileCount` counts ADD entries; `posDeleteFileCount` and `eqDeleteFileCount` stay 0 (Paimon has no positional/equality delete files like Iceberg)
+- Paimon `resolveDataFilePath` flags resolved paths that escape the table directory (mirrors Iceberg's path-traversal check)
+- `computeTableFingerprint` detects Paimon (`snapshot/` + `schema/`) — was always returning `"missing"` for Paimon, breaking cache invalidation
+- `GraphLayoutService` is now layout-only — graph construction delegated to `IcebergGraphBuilder`
+- `UnifiedSnapshot.manifestLists` renamed to `manifests` — field now correctly describes its contents
+- `UnifiedManifest.manifests` renamed to `dataFiles` — field now correctly describes its contents
+- `ParquetReader` renamed to `SampleRowReader` — reflects that DuckDB supports Parquet, ORC, and Avro formats
+- `WorkspaceUtils.scanForTables()` now uses `TableFormatDetector` instead of inline checks
+- Node positions separated from data model (thread-safe initialPositions + Compose-observable positions)
+- DuckDB connection fully synchronized for thread safety
+- Session cache uses ConcurrentHashMap for safe concurrent access
+- Row data loading deferred until display (lazy dataLoader on RowNode)
+- Edge deduplication uses HashSet instead of linear scan
+- Shared utilities extracted: Theme.kt, CommonComponents.kt, FormatUtils.kt, WorkspaceUtils.kt, SnapshotFilter.kt, IcebergPaths.kt
+- Tooltip delays unified to 500ms across all components
+- Sorting comparators moved to `IcebergGraphBuilder`
+
+### Removed
+- Unused `KeyValuePairInt` and `KeyValuePairString` data classes
+- Dead `ParentAlignment` enum and unused `_strategy` parameter
+- Duplicated utility functions across files
 
 ### Fixed
+- **The build runs on Linux and Windows again.** The dependency lock was written on a Mac and
+  listed the macOS builds of Compose's desktop runtime and Skiko's native library, so a build on
+  any other system failed on the lock before compiling. The per-system artifacts are left out of
+  the lock now; their versions are those of `desktop-jvm` and `skiko-awt`, which stay locked. CI
+  also hands Gradle the JDK 21 the IntelliJ module compiles with, which the Windows runner did not
+  find by itself.
+- **A metadata card keeps its last line under Linux's default font.** A catalog-named file,
+  `00147-<uuid>.metadata.json`, fills two lines of the card on macOS and wrapped to three under
+  the wider default font on Linux, pushing `Current Snap` past the card's edge. The name is capped
+  at two lines, which the card's declared height already assumed.
+- **A Paimon or Delta table in object storage is detected as what it is.** Format detection asked
+  first whether the table root was a directory. Object storage has no directories, and a table
+  root holds only prefixes, so every table in a bucket was detected as no format and then opened
+  as Iceberg. Detection now asks only for each format's markers.
+- **A Delta `OPTIMIZE`'s `numDeletionVectorsRemoved` no longer reads as a disagreement** when a
+  file with a vector was considered and not rewritten: the engine counts the vectors on every file
+  the run considered, and the check now counts them from the plan the commit ran. The two vector
+  figures an `OPTIMIZE` never records are no longer listed among the ones it is checked on.
+- **The installers launched nothing.** Every `.dmg`, `.msi` and `.deb` built since logging
+  arrived failed on the first logger with `NoClassDefFoundError: javax/naming/NamingException`:
+  the jlinked runtime is built from `nativeDistributions.modules(...)` alone, the list held
+  `java.sql` only, and logback's JNDI handler needs `java.naming` — which jdeps does not see,
+  the handler being reached by reflection. The list is jdeps' suggestion plus `java.naming`
+  now (`java.compiler`, `java.instrument`, `java.naming`, `java.prefs`, `java.sql`,
+  `jdk.unsupported`), and the built `.app` was run, both launchers, before this was written.
+  The release build was broken twice over: ProGuard stopped on 148 warnings about logback's
+  optional mail, servlet and janino references, and — those silenced — its rewrite of ELK's
+  Eclipse-signed jars left classes the JVM refuses against `META-INF/ECLIPSE_.SF`
+  (`SecurityException: SHA-256 digest error`), on the release app's first frame. The
+  signature entries are dropped from ProGuard's output, and line numbers are kept, so a
+  release crash report has them. Found by running the installers, which nothing had done.
+- **An empty file index skips every operator `EmptyFileIndexReader` skips.** A column index the
+  writer left empty was read as a skip for `=` alone; Paimon reads it as a skip for `=`, `IN`,
+  every comparison and `IS NOT NULL`, and a maybe for `<>` and `IS NULL`, which it is now
+- **`Expiry Files` plans the Spark procedure's cleanup, and says what the core API's would
+  leave.** The section, the file history line and the `Maintenance` row picked the cleanup rule
+  by the ref count — incremental with one ref, reachable with more — which is
+  `RemoveSnapshots.cleanExpiredSnapshots`, the core API. `expire_snapshots` from Spark deletes
+  the reachability diff whatever the ref count (`ExpireSnapshotsSparkAction.expireFiles`), and
+  on `mor` the two differ: expiring the overwrite by id freed a data file the incremental rule
+  leaves on disk, named by nothing. The sections plan the procedure's diff now and, with one ref,
+  name the files a Java, Flink or Trino expiry would leave behind
+- **A Paimon `TIMESTAMP` bound past millisecond precision decodes.** Its `BinaryRow` slot is
+  the tail offset in the high 32 bits and the nanos within the millisecond in the low 32, the
+  tail holding the millis — read as a variable-width field it decoded to nothing, so a
+  `TIMESTAMP(6)` or `WITH LOCAL TIME ZONE` column's bounds were shown undecoded and a filter on
+  one pruned no file. `ft`'s bounds now read to the microsecond and agree with DuckDB's values.
+- **Two deletion vectors in one Puffin container are two delete files.** A writer puts one
+  blob per data file into a container, so vectors share a `file_path`; keyed by path alone the
+  second was a duplicate to the table's figures, paired with nothing by the delete pairing, and
+  answered with the first's positions by the lookup and the live count — a row the second
+  vector deletes read as live. A vector is keyed by its container and the data file it
+  references now, everywhere. Seen on `pid`, a Paimon table's Iceberg v3 export; every Iceberg
+  fixture holds one vector per container
+- **A Paimon 64-bit deletion vector is read by its own size field.** Its index range's
+  recorded length is the whole blob, size and CRC included, where a 32-bit vector's is the
+  magic and bitmap alone; read the 32-bit way, a 64-bit vector overran by eight bytes and the
+  last one in the file could not be read at all
+- **A data-evolution split is stitched by field id, and the latest snapshot is read under the
+  latest schema.** A column renamed since either file of a split was written read as a DuckDB
+  error or as null, the stitch having selected the schema's names from the files; each file
+  goes through its projection now, and which file holds a column is decided by id. A rename
+  written after the last commit is what a read shows, as Paimon opens a table under the newest
+  schema file and switches to a snapshot's own only on time travel. `der` is the fixture
+- **A Paimon row's history is traced under the table's current names.** Every step is read
+  under the newest schema, as on Iceberg, so a column renamed between two commits is one
+  column throughout; read under each snapshot's own schema, a row that was only patched read
+  as appearing at the patch
+- **A directory carrying both formats' markers opens as the Paimon table.** Such a directory is
+  a Paimon table whose Iceberg metadata is its export, and opened as Iceberg its `snapshot/`,
+  `schema/` and `manifest/` read as orphans and its snapshots, levels and merge engine are
+  invisible. The detector asks Paimon first now, and the export's files are referenced files
+- **A catalog table's metadata versions are numbered.** A Hive, Glue or REST catalog names a
+  version `00147-<uuid>.metadata.json`; the number is read off that name now, as off
+  `v147.metadata.json`, so the cards say `METADATA 147` and the versions order by it
+- **An Iceberg table with gzip-compressed metadata opens.** `write.metadata.compression-codec
+  = gzip` names every version `v<N>.gz.metadata.json` and writes gzip bytes; the codec is
+  read off the name now, the way Iceberg reads it, where every version was a read error
+  before. `gzmeta` is the fixture
+- **A Paimon table with a struct, array or map column opens.** Its schema JSON writes such a
+  type as an object, which the schema reader took for a string — every schema of the table was
+  a read error and nothing else was drawn. The type is read as a tree now, printed the way
+  Paimon spells it, and the nested fields are placed by their own ids, so a field renamed or
+  added inside a struct reads the way Paimon reads it; the schema steps name the change inside
+  the struct rather than a type change on it. `pne` is the fixture
+- **A migrated file's nested fields are placed through the name mapping's tree.** A struct,
+  a list's element and a map's entries in a file `add_files` registered read as all-null
+  before — the top level was placed through the mapping and every field inside it was looked
+  up by an id the file does not have — so a filter on a field inside the struct found nothing
+  on exactly the files a migrated table is made of. `migdeep` is the fixture
+- **Startup no longer walks the workspace on the main thread.** A restored warehouse comes back
+  with the table list it was saved with and is drawn as `scanning…` until the first poll's sweep
+  lands, which seeds every table it finds as existing rather than announcing them all as new;
+  adding a root walks it on the IO dispatcher before the item appears. The periodic sweep had
+  been off the main thread already, and these two were the scans the rationale for that applied
+  to
+- **The scan-pruning file stage is over data files only.** A delete file was evaluated and
+  counted as a data file the scan would read — "2 of 3 data files" on a table with two — where
+  a scan applies it to the data files it is paired with and never opens it on its own.
+- **Scan pruning binds a filter's column by field id, so a rename no longer hides a file's
+  bounds.** A file whose manifest still calls a column by its old name is pruned by a filter on
+  the new one, the way the engine prunes it, on both formats; the prunable columns are the
+  current schema's, each once; and a nested column is named by its path (`addr.town`,
+  `tags.element`, `props.value`) with its own bounds and counts, and the row lookup reads it as
+  struct access. A Paimon file written before a column existed prunes as the scan reads it —
+  null in every row.
+- **An equality delete written before a column rename decides the row again.** The delete
+  file's columns are named as the schema named them when it was written; read by the schema's
+  current name the file answered with an error and the row came back *not decided* where the
+  engine deletes it. The row lookup and the row panel read the delete file projected onto the
+  schema by field id now, and the panel matches the row's cells under the schema's names.
+- **A filter on a column renamed or added since a file was written reads that file instead of
+  failing on it.** Every DuckDB read under a filter addressed the file by its own column names;
+  the row lookup on `evolved`'s `note` reported the two older files as errors, where a read
+  returns their rows with `note` null. The file is read under the schema's names now, a
+  missing column as its initial default or null.
+- **A data file recorded as a `file:` URI outside the table resolves beside it.** `add_files`
+  records `file:/wh/plain-files/…`, which was rebuilt under the table root as `<table>/file:/…`.
+- **A non-Parquet data file is read by the right DuckDB table function, or refused with the
+  reason.** Every reader called `read_parquet` on whatever file it was given, under a comment
+  saying DuckDB detected Parquet, ORC and Avro; an Avro file failed on its magic bytes and drew
+  blank row cards, and an ORC file did the same for a reason DuckDB cannot help with — it has no
+  ORC reader. `read_avro` reads Avro now (without row positions, which the row's fate, the
+  live-row count and the merged count say rather than guess), an ORC file and an Avro file
+  under a codec DuckDB refuses (`zstandard`, Paimon's default) are refused before any query with
+  one sentence, and a row card whose file could not be read prints it in place of the cells.
+- **A partitioned table's columns are read from the file, never from the path.** DuckDB read
+  `dt=19787/` and `amount=98765.43/` directories as Hive partitions, typing the column from the
+  path text over the file's own — a Paimon `DATE` arrived as a `BIGINT`, an Iceberg `DECIMAL`
+  as text, a row lookup on either found nothing, and on DuckDB 1.4.4 the DATE-over-BIGINT
+  collision was an internal error that broke every later query until restart. Every read now
+  passes `hive_partitioning = false`.
+- **A Paimon primary-key table's scan pruning follows the scan's own rule.** Every file was
+  pruned by its own value bounds, which is what an append table's scan does and what a
+  primary-key table's does not: a key predicate prunes a file on its own, the whole filter is
+  decided per bucket — file by file only where the bucket's files cannot overlap, otherwise the
+  bucket read whole if any file may match — and `partial-update` and `aggregation` without
+  deletion vectors are never pruned by value. On `pc`, `v = 'g'` opens all three live files where
+  the panel said one. A level-0 file of a table whose batch reads skip level 0 is `not read`; a
+  file read for its bucket's sake says so in its reason cell; the rule is stated once above the
+  file table. Held to the plans Paimon itself made (`docs/fixtures/paimon-scan-plans.scala`).
+- **A Paimon file index is decoded and the scan plan asks it — where Paimon's read would.** A
+  `bloom-filter` index, embedded in the entry or in the `.index` file beside the data file, is
+  read (the container, the filter, xxHash64 for strings and Wang's hash for numbers) and an
+  equality on an indexed column the filter rules out skips the file. When it is asked follows
+  release-1.3.1: an append table tests an embedded index as it plans and the `.index` file when
+  the read opens it — such a file is listed by the plan and yields no row, which the row says —
+  while a primary-key table's scan tests an embedded index only under deletion vectors and its
+  read consults one only on a split read raw, one file alone in it. `fa` is the new fixture; on
+  `fi` the two files merge-read and their indexes are never opened, which the rows say too. The
+  panel's `File Index` row names the columns and index types. Held to `FileIndexPredicate` and
+  the plan on both tables (`docs/fixtures/paimon-scan-plans.scala`).
+- **A data file's recorded statistics are checked against its rows.** `Statistics Check` on
+  both formats' file panels, behind a click: each column's recorded bounds, null count and
+  (Iceberg) value and NaN count beside the same figures counted from the file, and the entry's
+  row count beside `count(*)` — one-sided on the bounds, since a string bound is truncated,
+  exact on the counts. These are what a scan prunes on without opening the file, so nothing on
+  the read path checks them. Every Parquet file of every fixture agrees; the check names a
+  bound moved past a row.
+- **A Paimon bitmap file index is read, and it answers exactly.** One Roaring bitmap per
+  distinct value and one for null, so the scan-pruning section rules a value out by the
+  dictionary — no false positive, unlike a bloom filter — and answers `<>`, `IS NULL` and
+  `IS NOT NULL` the way `BitmapFileIndex`'s reader does. v1 and v2 layouts, the v2 block
+  directory read block by block. `fb` is the fixture, held to `FileIndexPredicate` over every
+  file and every operator.
+- **A column that is null in every row rules a file out for any comparison.** Both formats'
+  own evaluators skip such a file for `=`, `<`, `<=`, `>`, `>=` and a prefix, and the file
+  stage now does too; for `<>` Paimon skips and Iceberg keeps, and the verdict follows the
+  format the file belongs to, with the reason saying which does what.
+- **A Paimon bloom filter over a timestamp, time or date column is asked.** `FastHash`'s
+  temporal half: a date over its epoch day, a time over its milliseconds of the day, a
+  timestamp of either kind over its microseconds since the epoch (milliseconds at precision 3
+  and below). `ft` is the fixture, and Paimon's plan is the oracle — a value the file holds is
+  kept, and the same second without its microseconds is skipped though it sits inside the
+  file's bounds.
+- **The delete pairing applies Iceberg's partition and bounds rules.** A delete is keyed by the
+  spec and partition it was written under and weighed only against data files under the same
+  key — a vector or a positional delete naming one file is keyed by path instead, and an
+  equality delete under an unpartitioned spec is global — and an equality delete is ruled out
+  where its bounds on an equality column cannot meet the file's, null counts included
+  (`canContainEqDeletesForFile`). Two new verdicts on the file panel's `Deletes Reaching This
+  File`, each with its reason; the row panel's `Delete Files` asks only what is left. Two
+  fixtures pin them against Iceberg's own plan: `fupp`, Flink's upsert sink on a partitioned
+  table, where commit 2's equality delete for a new key is dangling by its bounds — and
+  `eqpart`, equality deletes on `id` alone written under both specs of a table partitioned after
+  its first commit, where the partitioned one is attached to its own partition's file only and
+  the unpartitioned one to every file. Without the partition rule an equality delete in another
+  partition stayed "maybe" on every partitioned merge-on-read table.
+- **A Flink-written merge-on-read table joins the fixtures.** `fup` is Flink 1.20's upsert
+  sink on a v2 table: each commit's equality delete sits beside its data file at one sequence
+  number, and a key upserted twice in one checkpoint gets a positional delete in that same
+  commit — the shape no Spark statement writes, and the one that separates "at or below" from
+  "strictly below" in the pairing. Read back by Flink as `(1, a2), (2, b2), (4, d)`, which the
+  live row count and the row lookup both answer.
+- **The delete pairing is held to Iceberg's own plan.** `FileScanTask.deletes()` over every
+  checked-in table's current snapshot (31 tables, 89 data files) is checked in as an oracle, and
+  `deleteReach` agrees with it both ways: every delete Iceberg applies is reached or unsettled,
+  every proved reach is one Iceberg applies, and the metadata settles every positional delete
+  and vector in the corpus, so the plan's deletes are the proved ones plus the equality deletes.
+- **Iceberg's two pruning stages are held to Iceberg's own plans.**
+  `docs/fixtures/iceberg-scan-plans.scala` prints the data files `planFiles()` opens for 41
+  filters over five checked-in tables — every transform shape, both partition specs, three
+  manifest schemas, `IN`, `BETWEEN`, `NOT`, `OR`, `LIKE`, `IS NULL` — and `IcebergScanPlanTest`
+  requires no file Iceberg opens to be skipped here; all 36 filtered plans agree file for file.
+- **A branch cut from another branch draws in a column of its own, and no column is reused.**
+  Two children of one commit were ordered by write time unless one was on `main`, so a branch
+  cut from a branch and committed to first took the older branch's column and put the fork
+  commit under its own name; and a branch reserved after another line had ended reused that
+  line's column, which put `main`'s commits under `b2` on the same table. Lines are ranked now —
+  `main`, then the other branches by the metadata version that first lists them — and every
+  line keeps a column of its own. `nested` is the fixture.
+- **A Paimon key with no insert record is not a row.** Every engine but `aggregation` answers
+  no row for a key whose records are all retractions — ignored under `ignore-delete`, or
+  retracting by group — and the merged count took them as rows; they are counted as *never
+  inserted* and taken off.
+- **No file of a data-evolution table is pruned by its own bounds.** A patch may replace the
+  values a file's bounds describe, and Paimon 1.3.0+ consults none of them on such a table
+  (`DataEvolutionFileStoreScan`); the file stage now declines with the reason, said once above
+  the file table, while the manifest stage still prunes by partition. The section's headline
+  counts a file nothing could be evaluated against as read — it said *would read 0 of 3* on `de`
+  — and names such files on a line of their own.
+- **A level-0 file a batch read skips says so.** On a `first-row` table or a primary-key table
+  with deletion vectors, the file panel's `LSM Level` row and the IDE strip's `Level` row note
+  that a batch read of the table skips level 0, so a row in the file is not returned until a
+  compaction moves it up — the `dv` append files before their forced compaction, and `fr`'s
+  rewritten file, which nothing ever moves.
+- **A deletion vector in object storage is opened at its location, not at a relative path.** The
+  row lookups, the live and merged row counts and the Paimon file node turned a vector's location
+  string back into a path with `Paths.get`, which reads `s3://bucket/key` as a relative path and
+  reported every remote vector as unreadable. They go through `StorageLocation.pathOf` now, and a
+  test holds every file in core to it.
+- **A Paimon file listing every column in `_WRITE_COLS` is not a partial-column file.** A full
+  compaction under `row-tracking.enabled` records every column plus `_ROW_ID` and
+  `_SEQUENCE_NUMBER` there, and the table's figures read its rows as columns of rows other files
+  hold — `rt` showed five rows read as zero, its file panel called the compacted file a patch, and
+  the IDE strip did too. A file is partial only when a schema column is missing from the list.
+- **A looked-up row whose delete file could not be read is `not decided`, not `live`.** The Iceberg
+  lookup noted the unread delete and still reported the row live; a vector decoded past its cap
+  read the same way.
+- **The maintenance summary and the snapshot panel's rewrite and merge sections plan from the
+  newest metadata and the current snapshot whatever the page size draws.** They looked both up on
+  the drawn graph, where each is the last of its siblings — so a page size that folded them, or a
+  snapshot filter, had the sections planning under an older version's options, or not drawn at
+  all. `TableNode.maintenance` now carries both off the builder's full node set.
+- **An unpartitioned spec and an unsorted order say so.** Each drew a table with one row of
+  `N/A` in every cell, which read as a decode that failed; they are one line of text now, and the
+  spec heading marks `(default)` the way the order heading already did.
+- **A file draws as many row cards as it has rows.** Every data file got five row nodes whatever
+  its record count, so a one-row file sat beside four empty `ROW` cards — on every table, since
+  Spark writes small inserts as one file per row. The count is `min(5, record_count)` now, decided
+  from the manifest before the file is opened.
+- **A Paimon partial-column file has its bounds.** Its `_VALUE_STATS` is a row over `_WRITE_COLS`
+  with `_VALUE_STATS_COLS` null, and decoding it against the schema failed the arity check — one
+  field read as three — so the file showed no column bounds at all. The stats fields are now
+  `_VALUE_STATS_COLS`, else `_WRITE_COLS`, else the file's schema.
+- **A Paimon row card leads with the row's own columns.** It listed `_KEY_k`, `_SEQUENCE_NUMBER`
+  and `_VALUE_KIND` before `k` and `v` — the file's physical order, where the system columns come
+  first — and `file_row_number` as a fifth cell. Keys starting with `_` are drawn last now, and the
+  position travels beside the cells as it does for an Iceberg row rather than among them.
+- **A row's panel lists the row's cells.** It iterated the placeholder the builder emits before
+  any file is opened — `file_no` and `row_idx` — so the panel for a selected row showed no cell of
+  it while the card beside it drew five. It reads the resolved row now.
+- **A bound written before its column was widened, listed by a manifest rewritten after, reads as
+  the value it is.** `rewrite_manifests` copies a file's bounds verbatim under the table's current
+  schema, so a four-byte `int` bound sat under a `long` and was reported as `expected 8 bytes for
+  long, got 4`. It is read at the width it was written now — the spec's two promotions, `int → long`
+  and `float → double`, the same tolerance Iceberg's own reader has — and the panel prints
+  `1 (written as int)`. A bound for a column the manifest's schema has dropped is named and typed
+  by the newest table schema that had it, marked `(dropped)`, where the panel printed `field 2`
+  with the bytes undecoded. `promoted` is the fixture.
+- **A Paimon data file written under an older schema than the manifest listing it keeps its
+  bounds.** Key and value statistics were decoded against the manifest's `_SCHEMA_ID`; a
+  compaction's delta manifest, written under the new schema, records the old-schema files it
+  removed, and their two-field stats rows failed the three-field arity check and came out as no
+  bounds at all. They are decoded against the file's own `_SCHEMA_ID` now, and the Column Bounds
+  section says so. `se` is the fixture.
+- **A Paimon table whose data was written to `data-file.external-paths` opens with its files
+  found.** The entry records the external location in `_EXTERNAL_PATH` and the resolver built
+  the path from the table root regardless, so every such file read as missing. The recorded
+  path is used when it is there, found by its tail under the local warehouse when the table was
+  copied down, and reported as recorded-elsewhere-and-absent otherwise — the file panel's
+  `Resolved` row says which. `ep` is the fixture.
+- **A table whose data sits outside its directory opens with its files found.** A
+  `write.data.path` layout records absolute data paths that share nothing with the table below
+  the warehouse, and the sub-path rule rebuilt them under the table root, where nothing is —
+  every file reported missing. Such a path is now re-rooted from the recorded warehouse to its
+  local counterpart, found by the trailing segments the recorded and local table directories
+  share, and the file panel says so as a third `Resolved` outcome. `extdata` is the engine-written
+  fixture, checked in beside its table the way it sat under `/wh`.
+- **A Paimon schema card no longer sits under a manifest-list card.** The schema is a sibling
+  of its snapshots, so ELK lays it out in the manifest lists' column, and overlap prevention
+  kept schemas apart from schemas and lists apart from lists — `pschema_0` was drawn over
+  `pml_2_delta` on `dv` and `pml_3_delta` on `ao`. The two kinds are one layer for that pass now,
+  and `LayoutOverlapTest` checks every column of every checked-in table across kinds.
+- **A group whose parent was itself folded away is no longer drawn over the table card.** At a
+  small page size on a table with many metadata versions (`mor` at 3), the snapshot group under a
+  hidden metadata version reached the layout with no edge and landed in the first column, on
+  top of the table root. Such a group is dropped; its members are counted under the group that
+  hid the parent, so the hidden-node figures still add up.
+- **A partitioned Paimon table opens with its files where they are.** A manifest entry names its
+  file by name only and its partition as a serialised `BinaryRow`, which was never decoded — so on
+  any partitioned table every data file resolved to a path under the table root that does not
+  exist: no rows, every file missing, and "walk the table directory" listing the whole table as
+  orphans. `_PARTITION` is decoded now (dates, strings inline and in the tail, integers, decimals,
+  timestamps, booleans) against the manifest's own schema, the file resolves under
+  `<key>=<value>/…/bucket-N/`, and the file panel, search and IDE tree show the partition beside the
+  directory text Paimon wrote — which for a date is its epoch day. The new `pt` fixture is a
+  Spark-written table over two dates and two regions.
+- **A v1 manifest's entries are at sequence number 0, as the spec reads them, not "N/A".** Every
+  file under a manifest a v1 table wrote printed `N/A` and was left out of the delete-pairing rule
+  as if its number were unknown; the format defines it as 0 and an upgrade to v2 leaves those
+  manifests exactly so. The panels now print the 0 and say it is the reader's default, and a v1
+  manifest orders first among its siblings rather than last. The new `v1` fixture is a v1 table
+  upgraded to v2 in place, with a merge-on-read delete written after the upgrade reaching a file
+  written before it.
+- **A file's sequence number is shown even when the file does not record one.** Iceberg leaves it
+  out of every entry a commit adds and keeps it once on the manifest, so three of the four files in
+  the merge-on-read fixture were printing `N/A` for a number the format defines exactly. The panel
+  now shows the inherited value and says that it was inherited.
+- **A filter holding a quoted value survives the trip through the form.** The clause is written back
+  from the filter when the editor opens, and it was written back without the quotes it needed — so
+  `ts > '2024-03-05 10:00:00'` came back as two values and the reader's own accepted filter read as
+  a syntax error.
+- **The filter clause is readable at the width the panel is actually used at.** It wrapped nowhere
+  and scrolled sideways instead, so the inspector at its normal width showed about a dozen
+  characters of it — enough to lose track of your own parentheses. It now wraps to four lines, with
+  the line spacing its own text size asks for rather than the 24sp Material's body style was
+  handing it.
+- **A pruning row no longer contradicts itself.** With `OR` in the filter, a term that ruled out
+  its own condition stopped meaning the artifact was ruled out — so a manifest could show
+  "would be read" beside the reason a skip would have carried. The reason now explains the verdict
+  it sits next to, and a skip lists every term that proved it rather than the first.
+- **The main line no longer loses its column to a branch.** At a fork, the column the parent was
+  drawn in went to whichever child was *written* first — so a branch that received a commit before
+  the trunk's next commit took the trunk's lane, the main line stepped sideways halfway down the
+  graph, and the column header above the root commit read as the branch's name rather than
+  `main`. The trunk's commits are now preferred at every fork. Visible only with two branches
+  forking at different points, which is why it survived: the single-fork fixture cannot produce it.
+- **A table in object storage now carries its format badge.** The ICE / PMN chip was computed
+  through `java.io.File`, which is null for every `s3://` path, so remote tables drew without one.
+  The badge comes from the sweep rather than from the row: which of the two globs matched a table
+  *is* its format, so the warehouse listing already knew, and asking the detector in the row would
+  have put a network round trip per table on the thread that draws frames.
+- **A refused key was reported as an empty warehouse.** `ObjectStorage.globTables` wrapped both of
+  its globs in a `runCatching { }.getOrDefault(emptyList())`, which could only ever absorb a real
+  failure — `glob` already answers an empty list for a prefix with nothing under it. So a key that
+  had stopped working produced exactly the answer an empty warehouse produces: the tables vanished
+  from the list, and the store's own message, which says what is wrong and what to do, was seen by
+  nothing but a log line. A warehouse offered nothing to open that might have said otherwise.
+  A listing that could not be done is now a third answer rather than the second one. The sweep
+  carries the reason back, the root **keeps the tables it last had** instead of blanking, and the
+  message is drawn under the root with a **Credentials…** button beside it that reopens the form
+  for that location. Since the secret is held for the session only, this is the ordinary state
+  after a restart, not an exceptional one — which is why the way out is a control on the root
+  rather than knowing that "Add object storage…" doubles as "edit".
+- **A remote warehouse was drawn as deleted from the moment it was added.** The workspace row
+  asked `File(path).exists()`, which is false for every location in object storage — `s3://` is not
+  a path on this machine — so a bucket whose tables listed and opened perfectly well sat in the list
+  in error red with "(deleted)" beside it. Whether a remote warehouse is still there is a question
+  about the store, and the row now claims nothing until a sweep has asked it.
+- **A table in object storage could never be seen to change.** `ObjectStorage` caches a directory
+  listing per prefix so a graph build is not a round trip per data file, and the fingerprint the
+  poll compares is the set of file names under `metadata/` — so the fingerprint was answered from
+  the cache and returned the same value forever, whatever was committed to the table. Nothing
+  cleared those caches when a table was opened either, so an explicit reload re-decoded the
+  metadata the table used to have. `ObjectStorage.invalidate(prefix)` now drops both the listings
+  and the bytes under a prefix, and the fingerprint invalidates the three prefixes it is about
+  before listing them. The regression test writes a second object through DuckDB and asserts both
+  directions — still stale without the invalidation, current with it.
+- **Remote roots are polled on their own cadence.** The workspace sweep and the open table's
+  fingerprint ran every three seconds, which for a remote warehouse is two recursive globs against
+  a store that bills per request — 1,200 requests an hour per root for a table nobody is committing
+  to. Remote work now runs every 30 seconds (`REMOTE_POLL_INTERVAL_MS`); local roots keep the
+  three-second cadence, since a local check is a `stat` against a warm page cache. A sweep that
+  skips the remote roots omits them rather than reporting them empty, so a warehouse is never
+  briefly emptied on screen.
+- **The workspace poll no longer freezes the window every three seconds.** `refreshWarehouseTables`
+  walked every warehouse directory tree on the main thread, on a three-second timer. Measured on a
+  warm cache and a local disk: 19ms at 200 tables, 90ms at 1,000, and 226ms at the 10,000-directory
+  cap the scan stops at — several dropped frames, repeating for as long as the window is open. The
+  walk now runs on an IO dispatcher and only the state update happens on the main thread. Two
+  hazards the asynchrony introduces are closed and pinned by tests: a root removed while a sweep is
+  running is not resurrected, and a root added while one is running is not reported as empty.
+- **Every offscreen capture was drawing its animations at time zero.**
+  `ImageComposeScene.render()` defaults its `nanoTime` argument to the constant `0`, so repeated
+  no-argument renders are repeated copies of the first instant — a valid frame with the animated
+  part missing, which looks like nothing is wrong. It had produced a wrong conclusion recorded as a
+  project convention: two byte-identical focus captures were read as proof that Material draws
+  nothing for focus, when what they showed was a state-layer fade given no time to run. The focus
+  captures now pass an advancing clock, and the convention has been corrected. Every other capture
+  helper was put on the same clock and all 104 written PNGs were compared against their
+  frozen-clock originals: 103 came back byte-identical, so nothing else in the suite had been
+  photographing a state the app does not draw. The one that moved is a focus capture whose panel
+  scrolls, and it moved by a pixel.
+- **The menu's heading now starts where its choices start.** "Siblings drawn per parent" was
+  padded like a menu item and the items are indented past a check slot, so the heading sat 24dp
+  to the left of every number under it. Found by the first render of the items.
+
+- **A label in the inspector's key column broke in the middle of a word at the width the pane
+  opens at, and the hover tooltip had no capture at all.** `DetailRow`'s key was
+  `Modifier.weight(0.20f)` — a fraction, for a column whose content is a vocabulary this
+  application chooses rather than one the table decides. At 300dp that share is about 62dp, and
+  every label holding an eight-letter word fell back to breaking at a character: `Sequenc / e
+  Num.`, `Timesta / mp`. No share fixes it, because the one that fits `Statistics` at the 200dp
+  minimum is 43%, which is 600dp of label at 1400dp. `DetailTable` now derives one width for all
+  of its rows from its own width, clamped to 84–190dp, so the values stay aligned on one x and the
+  labels always fit. The wide panel gained about 100dp of value column from the same change.
+  The divider also had a gutter after it and none before, so a label filling its column sat flush
+  against the rule; it has one on both sides now.
+  Deriving a width means measuring, and `NodeTooltip` — the one other `DetailTable` caller — sized
+  itself with `Modifier.width(IntrinsicSize.Max)`, which asks a layout how wide it wants to be
+  *without* measuring it. A `BoxWithConstraints` cannot answer that and throws. Nothing in the
+  suite rendered the tooltip, so this would have reached a hover in the running app; it is swept
+  for every node kind now, and the tooltip states its width instead of asking its content for one
+  — which also stops a tooltip's width being decided by the longest data-file path in the table.
+- **The inspector's header put its buttons past the edge of the panel at the width the panel
+  actually opens at.** The title and the action buttons shared a `Row`, which neither wraps nor
+  clips and which measures its unweighted children — the buttons — before the weighted title. The
+  pane opens at 300dp and can be dragged to 200dp; at that width the buttons took the whole line
+  and the title was laid out one character per line underneath them, with the rightmost button
+  painted past the panel edge where nothing could reach it. The title now takes its own line,
+  capped at two, and the actions are a `FlowRow` that wraps. Found by rendering the panel at 300dp
+  rather than at the 1400dp every existing capture uses — a `Row` overflowing is invisible at any
+  width where it happens to fit, so `collapse-pages-narrow-1.png` renders it at the narrow one.
+- **A node's deferred read was part of its identity, against a comment saying it was not.**
+  `FileNode.deletionVectorLoader` was a `private val` lambda in a data class's primary
+  constructor, which is a component of the generated `equals` — so two nodes for the same manifest
+  entry, built by two graph builds, carried two distinct lambda objects and compared unequal.
+  Nothing failed and no test asked; the only symptom was Compose re-composing a deletion-vector
+  card that had not changed. It goes through a `DeferredRead` now, whose `equals` states the
+  invariant instead of a comment claiming it, and `DeferredReadTest` pins both halves — two nodes
+  for one entry are equal, and nodes for different entries are still not.
+- **A group card was truncating the word that says what it hides.** At 200dp the count line read
+  `6 more metadata versi…` — the number survived and the noun did not, which is the half a reader
+  needs. It was one sentence at body size, and no width fits that sentence for every kind: at a
+  six-figure count five of the ten overflowed. The noun now sits in the eyebrow and the count on
+  the value line — the shape every other card here already has — and the card reads
+  `METADATA VERSIONS` over `6 not drawn`. `GroupCardWidthTest` is the bound: it draws each of the
+  ten kinds with width slack and requires the content to fit the 200dp the node declares. The
+  height sweep could never have caught this, because an ellipsis costs a card no height at all.
+- **A collapsed group was losing the line that says it is a control.** `GroupNode` declared a 58dp
+  base and the plainest group card measures 60.5, so any group standing for exactly its members —
+  no hidden subtree, no read errors — drew "NOT DRAWN", its count, and then nothing: the
+  "Double-click to open" hint went under the card's own border, where Compose clips nothing and
+  reports no error. It survived the render check because every group the capture drew happened to
+  stand for a subtree, and so declared the taller height. `CardHeightTest` now sweeps every node
+  of every fixture in both filter states rather than one instance per kind, which is what reached
+  the shape that was broken; the capture now draws it too.
+- **A deletion vector is named as one.** It declares `content = 1` exactly as a v2 positional
+  delete file does, so both cards read `POS DELETE` and only the `.puffin` extension told them
+  apart. The card, its tooltip and the inspector title now say `DELETE VECTOR`, from one function
+  rather than the three copies of the decision that existed before.
+- **A file card's row count says what the number counts.** `record_count` is rows held for a data
+  file, rows removed for a positional delete or a deletion vector, and predicate tuples for an
+  equality delete — where one tuple can remove thousands of rows. All three read `1 row`; they now
+  read `1 row`, `deletes 1 row` and `1 equality row`.
+- **A file node reserves 68dp instead of 60.** `FILE 5: DELETE VECTOR — NOT READ` is the longest
+  first line a file card can draw and it wraps at 200dp, and the verdict is appended when a filter
+  is on — after the layout that reserved the height. The card was losing its last line silently,
+  which is the failure `CardHeightTest` exists for and which it did not see, because it measured
+  no pruned card and no vector. It measures both now.
+
+- **Pruning now answers a file count, not just a manifest count.** Iceberg prunes twice — a
+  manifest by the partition summaries its list records, then a file by the bounds it records about
+  its own columns — and only the first stage was modelled. The panel now reports both, and leads
+  with the file line, because "would read 1 of 4 data files" is the number a reader arrives with;
+  a query reports how many files it read and never which. Three consequences worth knowing:
+  an **unpartitioned** table is no longer told there is nothing to do here, since its file bounds
+  still prune; a **bucketed** column, which no range can rule a manifest out on, still eliminates
+  files, because file bounds are the plain source values; and `IS NOT NULL` can be settled at the
+  file stage, which records how many values it holds and how many are null, where a manifest
+  summary records only that a null exists somewhere. A file under a ruled-out manifest reads
+  `not reached` rather than `skipped` — a scan never opens it, so the verdict is not its own — and
+  the canvas fades every node the query does not touch, files included.
 - **The build's one flaky test measured the machine's load rather than the graph builder.**
   `PerformanceTest` compared the *sum* of three unwarmed builds at two table sizes against the
   size ratio, so it failed at a ratio of 25.25 during a build that was rendering Compose scenes
@@ -2054,110 +2149,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   snapshot's delta manifest list over its base, so a compacted table reported every file it
   had ever held.
 - Table node card labelled `manifestEntryCount` as "Data Files".
-
-### Added
-- `TableSummary.current` / `TableSummary.history` (`ContentStats`) — the table as it is now
-  (manifest closure of `current-snapshot-id`, live entries only; `recordCount` is the figure
-  `SELECT count(*)` should agree with before deletes are applied) alongside everything still
-  reachable from any retained snapshot (deduplicated by manifest and data-file path — the
-  "what can I not expire yet" view). The inspector renders both under their own headings.
-- File and record byte totals: `dataSizeBytes` / `deleteSizeBytes` per group, so table size on
-  disk is visible without leaving the app.
-- `ContentStats.deletedEntryCount` — entries recording a removal (Iceberg `status=DELETED`,
-  Paimon `_KIND=1`), counted toward scan cost but contributing no files, records or bytes.
-- `formatCount()` / `formatBytes()` / `formatBytesExact()` in `FormatUtils` — thousands
-  separators and binary byte units for the figures a data engineer compares against engine
-  output. Folds in the private copies that lived in `NodeComponents`, whose byte formatter
-  divided by 1024 and labelled the result KB/MB/GB.
-- Named spec constants `ManifestContent`, `ManifestEntryStatus`, `DataFileContent`,
-  `PaimonEntryKind` replacing bare 0/1/2 literals at the sites touched by this change.
-- `TableSummaryAccuracyTest` — pins all three miscounts against fixtures laid out the way the
-  formats actually write them.
-- Snapshot filter now works for Paimon tables (previously Iceberg-only); `asSnapshotFilterOption()` extension unifies both formats
-- Sample-row inspector for Paimon nodes (`RecursiveDataTableSection` invoked from every Paimon inspector branch; `collectDescendantRows` descends through `PaimonDataFileNode`)
-- 5-entry LRU session cache (was unbounded — could OOM after enough table switches)
-- `formatTimestampShort()` — single-line timestamp for fixed-width table cells
-- `HoverTooltip` shared composable; tool-window bar icons now show their title on hover
-- Multi-select inspector renders a per-node summary table (type + key field per node type)
-- Snapshot-filter dropdown is scrollable (`heightIn(max=420dp).verticalScroll`) for tables with many snapshots
-- Stack-trace inspector panel: bounded scroll (`heightIn(max=320dp)`) + Copy button
-- Toolbar tooltips include keyboard shortcut hints
-- Hover cursor on draggable workspace items
-- Apache Paimon table format support (data model, reader, unified model, graph types, graph builder)
-- `PaimonSchema.kt` — `@Serializable` data classes for Paimon snapshots, schemas, manifest lists, and manifest entries
-- `PaimonReader.kt` — reads Paimon snapshot/schema JSON and manifest list/manifest Avro files
-- `PaimonUnifiedModel.kt` — aggregated Paimon table model linking snapshots, schemas, manifests, and data files
-- `PaimonGraphBuilder.kt` — builds graph nodes and edges from a Paimon unified table model
-- Paimon graph node types: `PaimonSnapshotNode`, `PaimonSchemaNode`, `PaimonManifestListNode`, `PaimonManifestNode`, `PaimonDataFileNode`
-- `AvroReader.kt` — shared Avro file reader extracted from `IcebergReader`, reused by both Iceberg and Paimon readers
-- Paimon node rendering (cards, tooltips, colors, inspector panels) in `NodeComponents.kt` and `NodeDetails.kt`
-- Paimon snapshot color per `commitKind` (APPEND=blue, COMPACT=purple, OVERWRITE=amber, ANALYZE=teal)
-- Paimon manifest list color per kind (base=gray, delta=blue, changelog=amber)
-- Paimon data file color per operation (ADD=green, DELETE=red)
-- `TableFormat.PAIMON` detection in `TableFormatDetector` (presence of `snapshot/` + `schema/` directories)
-- `GraphLayoutService.layoutPaimonGraph()` — Paimon-specific layout entry point
-- Paimon node post-processing in `GraphLayoutService` (ordering, alignment, overlap prevention)
-- Format badge ("ICE"/"PMN") next to table names in workspace sidebar
-- Paimon test fixtures (`src/test/resources/paimon-fixtures/`)
-- `PaimonSchemaTest` — Paimon JSON deserialization tests (9 tests)
-- `PaimonGraphBuilderTest` — Paimon graph construction tests (11 tests)
-- Paimon detection tests in `TableFormatDetectorTest` (4 new tests)
-- `IcebergGraphBuilder` — extracted Iceberg-specific graph construction from `GraphLayoutService` into a dedicated builder
-- `TableFormatDetector` — directory-based table format detection (Iceberg detection, extensible for Paimon)
-- `GraphLayoutService.layoutNodes()` — public API accepting pre-built nodes/edges for format-agnostic layout
-- `AboutDialog` extracted from `App.kt` into `ui/AboutDialog.kt`
-- Keyboard shortcuts: Ctrl/Cmd + =/- (zoom), Ctrl/Cmd + 0 (reset zoom), Ctrl/Cmd + Shift + F (fit graph), Ctrl/Cmd + L (re-layout)
-- Copy-to-clipboard buttons on file paths, UUIDs, and locations in the inspector panel
-- `normalizeFilePath` now handles cloud URIs (`s3://`, `hdfs://`, `gs://`, `abfs://`) and UNC paths
-- Schema evolution view in inspector panel (diff between schema versions)
-- Table properties inspector with change tracking across metadata versions
-- In-app cheat sheet (About dialog > Cheat Sheet tab)
-- Empty state with "Add to Workspace" button on the main canvas
-- Error bar with Reload button and auto-dismiss (8 seconds)
-- Stale data indicator when viewing cached table after filesystem deletion
-- Undo for node dragging (Ctrl/Cmd+Z, up to 20 levels)
-- Snapshot filter hint text in dropdown
-- Tool window drag indicator (grip icon + move cursor on title bar)
-- Dark mode support for node card colors (fill, border, text)
-- Gradle version catalog (libs.versions.toml)
-- ProGuard enabled for release builds
-- Unit tests (80+ tests) covering parsing, layout, filtering, workspace, formatting, security, performance
-- Performance benchmarks for layout, filtering, and graph builder operations
-- CI workflow running tests on all platforms
-
-### Changed
-- `loadRequestId` is now `AtomicLong` (was `@Volatile var Long` with non-atomic increment); cache-hit branch also bumps it so any in-flight load/reapply bails out
-- `reapplyCurrentLayout` re-reads `graphModel` after the staleness check (was using a captured reference that could go stale)
-- `loadTable` and `reapplyCurrentLayout` route format dispatch through `loadTableModel()` (single dispatch point)
-- `sessionCache` field type is now `MutableMap<String, TableSession>` backed by a synchronized LRU
-- `WorkspaceItem` serialization percent-encodes `%`, `;`, `|` in path values for safe round-trip
-- `ManifestListEntry.sequenceNumber` and `minSequenceNumber` are now `Long?` (Iceberg spec is int64); manifest comparator sentinels widened to `Long.MAX_VALUE`
-- `normalizeFilePath` reconstructs `file://host/path` URIs as UNC `//host/path` instead of dropping the host
-- `GraphLayoutService.parsePosition` rejects values outside `Int` range instead of silently truncating
-- `GraphLayoutService` post-processing partitions nodes by class once per pass (was ~20 `filterIsInstance` scans of the full node list)
-- `Path` and snapshot→manifest fan-in/out counts are reused / pre-cached in `GraphCanvas` (eliminates per-edge per-frame allocation and O(E) scans)
-- `jsonToAnnotatedString` is wrapped in `remember(rawJson, colors)` so the highlighter no longer runs on every recomposition
-- Window position/size persistence is debounced (500ms via `javax.swing.Timer`) instead of one Preferences write per `componentMoved` event
-- Paimon `PaimonManifestListNode` uses a dedicated `simpleId` counter (was reusing the snapshot's `simpleId`)
-- Paimon manifest nodes deduplicate by `fileName` via `manifestPathToId` (mirrors Iceberg)
-- Paimon `TableSummary.dataFileCount` counts ADD entries; `posDeleteFileCount` and `eqDeleteFileCount` stay 0 (Paimon has no positional/equality delete files like Iceberg)
-- Paimon `resolveDataFilePath` flags resolved paths that escape the table directory (mirrors Iceberg's path-traversal check)
-- `computeTableFingerprint` detects Paimon (`snapshot/` + `schema/`) — was always returning `"missing"` for Paimon, breaking cache invalidation
-- `GraphLayoutService` is now layout-only — graph construction delegated to `IcebergGraphBuilder`
-- `UnifiedSnapshot.manifestLists` renamed to `manifests` — field now correctly describes its contents
-- `UnifiedManifest.manifests` renamed to `dataFiles` — field now correctly describes its contents
-- `ParquetReader` renamed to `SampleRowReader` — reflects that DuckDB supports Parquet, ORC, and Avro formats
-- `WorkspaceUtils.scanForTables()` now uses `TableFormatDetector` instead of inline checks
-- Node positions separated from data model (thread-safe initialPositions + Compose-observable positions)
-- DuckDB connection fully synchronized for thread safety
-- Session cache uses ConcurrentHashMap for safe concurrent access
-- Row data loading deferred until display (lazy dataLoader on RowNode)
-- Edge deduplication uses HashSet instead of linear scan
-- Shared utilities extracted: Theme.kt, CommonComponents.kt, FormatUtils.kt, WorkspaceUtils.kt, SnapshotFilter.kt, IcebergPaths.kt
-- Tooltip delays unified to 500ms across all components
-- Sorting comparators moved to `IcebergGraphBuilder`
-
-### Fixed
 - Stale graph displayed when switching to a deleted table with `forceReloadFromFs` and no cached session (prior fix branch was conditional on `forceReloadFromFs`)
 - `Reveal` button hidden for cloud paths (`s3://`, `hdfs://`, `gs://`, `abfs://`, …) where it would silently fail
 - About-dialog tab indicators now have a background colour on the active tab (was distinguishable only by font weight, easy to miss)
@@ -2177,19 +2168,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Missing cancellation checks in long-running layout operations
 - Compose state written from wrong thread (Dispatchers.Default)
 
-### Removed
-- Unused `KeyValuePairInt` and `KeyValuePairString` data classes
-- Dead `ParentAlignment` enum and unused `_strategy` parameter
-- Duplicated utility functions across files
-
-## [1.0.2] - 2025-02-13
+## [1.0.2] - 2026-02-17
 
 ### Added
 - Dark mode support and color scheme integration
 - Snapshot selection and filtering functionality
 - Identifier fields in graph node representation
 
-## [1.0.1] - 2025-02-12
+## [1.0.1] - 2026-02-17
 
 ### Added
 - Initial release with graph visualization for Iceberg tables
@@ -2198,6 +2184,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Workspace management with multiple tables/warehouses
 - Cross-platform installers (DMG, MSI, DEB)
 
-[Unreleased]: https://github.com/mmdemirbas/ice-lens/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/mmdemirbas/ice-lens/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/mmdemirbas/ice-lens/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/mmdemirbas/ice-lens/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/mmdemirbas/ice-lens/releases/tag/v1.0.1
