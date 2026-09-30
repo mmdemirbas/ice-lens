@@ -480,6 +480,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Paimon table the location is, when it is one
 
 ### Fixed
+- **The build runs on Linux and Windows again.** The dependency lock was written on a Mac and
+  listed the macOS builds of Compose's desktop runtime and Skiko's native library, so a build on
+  any other system failed on the lock before compiling. The per-system artifacts are left out of
+  the lock now; their versions are those of `desktop-jvm` and `skiko-awt`, which stay locked. CI
+  also hands Gradle the JDK 21 the IntelliJ module compiles with, which the Windows runner did not
+  find by itself.
+- **A metadata card keeps its last line under Linux's default font.** A catalog-named file,
+  `00147-<uuid>.metadata.json`, fills two lines of the card on macOS and wrapped to three under
+  the wider default font on Linux, pushing `Current Snap` past the card's edge. The name is capped
+  at two lines, which the card's declared height already assumed.
 - **A Paimon or Delta table in object storage is detected as what it is.** Format detection asked
   first whether the table root was a directory. Object storage has no directories, and a table
   root holds only prefixes, so every table in a bucket was detected as no format and then opened

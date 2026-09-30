@@ -7,7 +7,8 @@ plugins {
 }
 
 // The root project carries no source. It holds the version, the shared repositories and the
-// coverage aggregation; the modules are :core (headless engine) and :desktop (Compose shell).
+// coverage aggregation; the modules are :core (headless engine) and three shells over it,
+// :desktop (Compose), :intellij (an IDE tool window) and :cli.
 allprojects {
     group = "com.github.mmdemirbas.icelens"
     version = "1.0.2"
@@ -30,8 +31,16 @@ allprojects {
     //
     // A build that resolves something the lock does not list fails rather than picking a version,
     // which is the point: the failure names the drift instead of absorbing it.
+    //
+    // Two families are left out, because they name the machine and not the build:
+    // `compose.desktop.currentOs` resolves `desktop-jvm-<os>-<arch>` and that pulls in
+    // `skiko-awt-runtime-<os>-<arch>`, so a lock written on a Mac lists the macOS artifacts and
+    // a Linux or Windows build fails on them. Their versions are their platform-independent
+    // siblings' — `desktop-jvm` and `skiko-awt`, which stay locked.
     dependencyLocking {
         lockAllConfigurations()
+        ignoredDependencies.add("org.jetbrains.compose.desktop:desktop-jvm-*")
+        ignoredDependencies.add("org.jetbrains.skiko:skiko-awt-runtime-*")
     }
 }
 

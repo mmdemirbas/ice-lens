@@ -2802,7 +2802,10 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   constant measured a card as getting **shorter** under stress. Every `Text` a table's content can
   lengthen is now `maxLines`-capped, which is what makes the stressed measurement a bound rather
   than the tallest thing eight fixtures happen to contain, and the heights were tightened against
-  it. Kind coverage is checked against `GraphNode::class.sealedSubclasses`, so a node type added
+  it. The metadata card's file name was the one left uncapped, and macOS could not show it: a
+  catalog's `00147-<uuid>.metadata.json` fills two lines there, and it took the suite run on Linux
+  (`eclipse-temurin:17-jdk` with `libgl1` and DejaVu, the default sans-serif) to wrap it to a
+  third — a height measured under one platform's font is a sample of that font. Kind coverage is checked against `GraphNode::class.sealedSubclasses`, so a node type added
   without a card fails here instead of needing a hand-maintained count, and the card a node gets is
   chosen by `GraphNodeCard` — one composable shared with the canvas, because a `when` written twice
   would let the sweep measure a card the app does not draw
@@ -3198,7 +3201,12 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   next build fails on the first configuration it missed. Both halves of the enforcement were
   exercised rather than assumed: a *changed* version is pulled back by the `{strictly}` constraint
   the lock injects, and a *new* module fails with `Resolved '<module>' which is not part of the
-  dependency lock state`
+  dependency lock state`. **Two families are left out of the lock** (`ignoredDependencies` in the
+  root build): `desktop-jvm-<os>-<arch>` and `skiko-awt-runtime-<os>-<arch>`, which
+  `compose.desktop.currentOs` resolves per machine — a lock written on a Mac listed the macOS pair,
+  and CI on Linux and Windows failed on it from the day the lock went in. Their versions are their
+  siblings' (`desktop-jvm`, `skiko-awt`), which stay locked. CI hands Gradle a JDK 21 for
+  `:intellij` through `org.gradle.java.installations.fromEnv`; the Windows runner found none alone
 - ProGuard is enabled for release builds with keep rules in `proguard-rules.pro`, and the
   rules turn shrinking, optimisation and obfuscation all off — so the pass rewrites every class
   and changes nothing else. Two things that rewrite broke, found the first time an installer

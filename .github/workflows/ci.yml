@@ -18,11 +18,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # :intellij compiles against the IDE on a Java 21 toolchain; everything else is 17.
+      # Gradle does not find a JDK that setup-java installed on every runner by itself (Windows
+      # did not), so 21 is handed to it through an environment variable, and 17 is the JVM
+      # Gradle runs on.
+      - name: Set up JDK 21
+        id: jdk21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
+      # bash on every runner, so the one command line is parsed the same way on all three.
       - name: Build and test
-        run: ./gradlew build test --stacktrace
+        shell: bash
+        env:
+          JDK21: ${{ steps.jdk21.outputs.path }}
+        run: ./gradlew build test --stacktrace -Porg.gradle.java.installations.fromEnv=JDK21
