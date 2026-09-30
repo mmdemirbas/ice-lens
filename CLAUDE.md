@@ -3227,6 +3227,9 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   resource root (`writeVersion`, in `:cli` and `:desktop`), not written into
   `processResources`' output: Gradle treats a file there that no task declares as stale and
   removes it the next time the resources change, which a renamed `logback.xml` did
+- **The Kotlin compile daemon gets 2 GB** (`kotlin.daemon.jvmargs` in `gradle.properties`). It
+  otherwise inherits Gradle's 512 MB default, and a build recompiling `:core`'s tests and
+  `:desktop` together died of `GC overhead limit exceeded` in the compiler
 - Tests use JUnit 5 via `kotlin-test-junit5`; run with `./gradlew test`. **A `@Tag("bench")` class
   is excluded from `test` and run by `./gradlew :core:bench`** on its own JVM with a 4 GB heap.
   `ElkScalingBench` prints timings for up to 64k ELK nodes and catches `Throwable` per
