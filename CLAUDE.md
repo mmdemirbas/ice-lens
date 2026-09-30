@@ -3222,7 +3222,10 @@ cli/build/install/icelens/bin/icelens check example/iceberg/default/mor   # or s
   is jdeps over the jars and is where the list comes from; `java.naming` is what jdeps misses,
   logback's JNDI handler being reached by reflection, and without it every installer built
   since logging arrived failed on the first logger with `javax/naming/NamingException`. Any
-  dependency change is a reason to run the task again, and to run the built `.app` once
+  dependency change is a reason to run the task again, and to run the built `.app` once — and so
+  is a new JDK module in the code: WebHdfs's `java.net.http` went in with no dependency change,
+  and every command of the release `icelens` failed with `java/net/http/HttpClient` until the
+  release image was run
 - `version.properties` is generated into `build/generated/version/` and registered as a
   resource root (`writeVersion`, in `:cli` and `:desktop`), not written into
   `processResources`' output: Gradle treats a file there that no task declares as stale and

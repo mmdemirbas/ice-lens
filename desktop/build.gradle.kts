@@ -77,7 +77,12 @@ compose.desktop {
             // jdeps over the jars; `java.naming` is what it misses, because logback's JNDI
             // handler is reached by reflection — without it every installer built since
             // logging arrived failed on the first logger with `javax/naming/NamingException`.
-            modules("java.compiler", "java.instrument", "java.naming", "java.prefs", "java.sql", "jdk.unsupported")
+            // `java.net.http` is WebHdfs's HttpClient; without it every `icelens` command failed
+            // at startup, since each one configures storage before it reads.
+            modules(
+                "java.compiler", "java.instrument", "java.naming", "java.net.http", "java.prefs", "java.sql",
+                "jdk.unsupported",
+            )
 
             // Generated and committed by `java tools/icon/GenerateIcon.java`. Committed rather
             // than generated at build time, because a packaging step that draws its own icon is a
