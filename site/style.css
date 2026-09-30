@@ -157,6 +157,8 @@ td:first-child { white-space: nowrap; font-weight: 600; }
 
 .gallery + table { margin-top: 1.5rem; }
 .gallery { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); }
+.gallery > .fig + .fig { margin-top: 0; } /* the grid gap spaces them; a margin would push all but the first down */
+.gallery.cols-2 { grid-template-columns: repeat(auto-fit, minmax(max(18rem, calc(50% - 0.5rem)), 1fr)); }
 
 /* ── Footer ─────────────────────────────────────────────────────────────── */
 footer { border-top: 1px solid var(--line); padding: 2.5rem 0 3rem; color: var(--muted); font-size: 0.95rem; }

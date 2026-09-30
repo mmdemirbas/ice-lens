@@ -283,18 +283,23 @@ Stated plainly, because a tool you inspect internals with has to be honest about
   is opened by its location. S3, GCS and R2 are read through DuckDB with a key that is never
   persisted. HDFS is read over WebHDFS under simple authentication, by the desktop app and the
   command line, and a Kerberos-secured cluster not at all; ADLS is not read.
-- **Iceberg v3 is modelled up to what Spark 3.5 can write.** Deletion vectors, row lineage and
-  the `added-rows` allocation are read from real tables; the variant / geometry / geography /
-  `timestamp_ns` types and column defaults are parsed without error but have no fixture, because
-  no engine in the fixture toolchain writes them yet.
+- **Iceberg v3 is modelled up to what the fixture engines write.** Deletion vectors, row lineage,
+  the `added-rows` allocation, column defaults and the `variant` type are read from real tables,
+  the last two written by Iceberg 1.10 (`variant` on Spark 4.0); the geometry / geography /
+  `timestamp_ns` types are parsed without error but have no fixture, because no engine in the
+  fixture toolchain writes them yet.
+- **Delta Lake is modelled against delta-spark 3.2.1.** Its commit metrics, its VACUUM, OPTIMIZE
+  and log-cleanup rules and its checkpoint namings are the ones checked against real tables; a
+  deletion vector in the Native bitmap layout, which that release reads and never writes, is
+  reported as unreadable.
 - **A v2 positional delete file is not mapped to row cards.** Its targets are one per row and
   known only after reading the file, so the rows it removes are counted behind a click and a
   sampled row's panel asks the file for its own position behind another; a v3 deletion vector
   marks the cards.
-- **Equality deletes are evaluated only for a row in hand.** They match by value, so nothing in
-  the metadata links one to a data file; the delete panel says which data files one *may* reach,
-  and only the row lookup or a sampled row's panel, which have the row, can say whether one
-  removes it.
+- **What an equality delete removes is known only by reading.** It matches by value, so the
+  metadata can rule a data file out and never in: the delete panel says which data files one
+  *may* reach, and what it removes from each is counted behind a click that opens every one of
+  them. The row lookup and a sampled row's panel, which have the row, decide it for that row.
 - Sample rows are best-effort: they depend on the file being present and readable by DuckDB,
   and are capped at 50 rows per file, five drawn per data file.
 - Row loading may be slow for tables with many data files when "Show Rows" is enabled.
