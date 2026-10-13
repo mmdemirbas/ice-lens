@@ -1,0 +1,36 @@
+#:schema ../ajans/schema/project-2.schema.json
+contract = 2
+
+[verbs]
+deploy = "Publish a release"
+
+[operations.dev]
+summary = "Run the desktop app (./gradlew run)"
+lifecycle = "service"
+
+[operations."dev ide"]
+summary = "A sandbox IntelliJ with the plugin loaded (downloads an IDE on first use)"
+lifecycle = "service"
+
+[operations.build]
+summary = "Build every module without the tests (the check release.sh runs)"
+
+[operations."build dmg"]
+summary = "The macOS installer (.dmg)"
+
+[operations."build plugin"]
+summary = "The IntelliJ plugin zip, in intellij/build/distributions/"
+
+[operations."build cli"]
+summary = "The command line, at cli/build/install/icelens/bin/icelens"
+
+[operations.test]
+summary = "Every test (./gradlew test; --tests narrows it)"
+
+[operations.verify]
+summary = "The full gate, as CI runs it: build and every test, after ./ctl --check"
+
+[operations."deploy release"]
+summary = "Tag v<version> from build.gradle.kts and push it; the Release workflow publishes the installers"
+target = "github:release"
+effects = ["publishes"]
